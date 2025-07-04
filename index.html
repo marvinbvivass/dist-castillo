@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dist Castillo Ventas</title>
+    <link rel="manifest" href="/manifest.json">
+    <!-- Carga de Tailwind CSS desde CDN para asegurar que el estilo se aplique correctamente -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Firebase SDKs -->
+    <!-- Se usan las versiones 'compat' para compatibilidad con el código JS antiguo si es necesario.
+         Para proyectos nuevos, se recomienda usar las versiones modulares (import { initializeApp } from 'firebase/app';) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-analytics-compat.js"></script>
+    <!-- html2canvas para convertir HTML a imagen -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #app-root {
+            width: 100%;
+            max-width: 800px; /* Ancho máximo aumentado para una mejor visualización de la tabla */
+            background-color: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Sombra ajustada para un aspecto más suave */
+            overflow: hidden;
+            padding: 20px; /* Añadido padding general al app-root */
+        }
+        .screen-container {
+            padding: 0px; /* Eliminado padding duplicado, ahora está en app-root */
+            width: 100%; /* Asegura que el contenedor de la pantalla ocupe todo el ancho disponible */
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 35px;
+            border-radius: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 400px; /* Limitar ancho del modal */
+            max-height: 80%;
+            overflow-y: auto;
+            text-align: center; /* Centrar texto en el modal */
+        }
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        .file-input-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+        }
+        /* Estilos específicos de tabla */
+        .table-container {
+            overflow-x: auto; /* Permite desplazamiento horizontal en pantallas pequeñas */
+            border-radius: 8px;
+            border: 1px solid #e2e8f0; /* border-gray-200 */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px 10px; /* Reducido el padding para hacer la tabla más compacta */
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0; /* border-gray-200 */
+        }
+        th {
+            background-color: #f8fafc; /* bg-gray-50 */
+            font-weight: 600; /* font-semibold */
+            color: #4a5568; /* text-gray-700 */
+            text-transform: uppercase;
+            font-size: 0.875rem; /* text-sm */
+            letter-spacing: 0.05em;
+        }
+        tr:hover {
+            background-color: #f0f4f8; /* hover:bg-gray-100 */
+        }
+        td input[type="number"] {
+            width: 80px; /* Ancho fijo para la entrada de cantidad */
+            padding: 6px 10px;
+            border: 1px solid #cbd5e0; /* border-gray-300 */
+            border-radius: 4px;
+            text-align: center;
+        }
+        .radio-button-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .radio-button-label {
+            background-color: #e3f2fd; /* Azul claro */
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 2px solid #1976d2; /* Azul */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            font-weight: 500;
+            color: #1976d2; /* Azul */
+            text-align: center;
+        }
+        .radio-button-label:hover {
+            background-color: #bbdefb; /* Azul más claro al pasar el ratón */
+        }
+        .radio-button-input:checked + .radio-button-label {
+            background-color: #1976d2; /* Azul */
+            color: white;
+            border-color: #0d47a1; /* Azul más oscuro */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .radio-button-input {
+            display: none; /* Oculta el input de radio real */
+        }
+
+        /* Estilos para el recibo de impresora térmica */
+        .thermal-receipt {
+            font-family: 'monospace', 'Courier New', Courier, monospace; /* Fuente monoespaciada para simular impresora */
+            font-size: 0.75rem; /* Tamaño de fuente pequeño */
+            width: 250px; /* Ancho típico de un recibo térmico */
+            margin: 0 auto;
+            padding: 10px;
+            border: 1px dashed #ccc; /* Borde punteado para simular corte */
+            background-color: #fff;
+            color: #000;
+            text-align: left;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+        }
+        .thermal-receipt h3, .thermal-receipt h4 {
+            text-align: center;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+        }
+        .thermal-receipt .item-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+        .thermal-receipt .item-qty {
+            width: 20%;
+            text-align: left;
+        }
+        .thermal-receipt .item-desc {
+            width: 50%;
+            text-align: left;
+        }
+        .thermal-receipt .item-price, .item-total {
+            width: 30%;
+            text-align: right;
+        }
+        .thermal-receipt .divider {
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+        }
+        .thermal-receipt .total-line {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-top: 5px;
+            font-size: 0.9rem;
+        }
+        .thermal-receipt .footer-text {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.7rem;
+        }
+
+        /* Estilos para impresión */
+        @media print {
+            body > *:not(.print-only) {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: auto;
+                margin: 0;
+                padding: 0;
+            }
+            .thermal-receipt {
+                border: none !important;
+                box-shadow: none !important;
+                width: 100% !important; /* Ajustar para ocupar el ancho de la página de impresión */
+                font-size: 10pt; /* Ajustar el tamaño de la fuente para la impresión */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-root"></div>
+
+    <script defer>
+        // --- Configuración de Firebase ---
+        // Tu configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
+            authDomain: "dist-castillo.firebaseapp.com",
+            projectId: "dist-castillo",
+            storageBucket: "dist-castillo.firebasestorage.app",
+            messagingSenderId: "249846475959",
+            appId: "1:249846475959:web:066c3fbca65ca3965af132",
+            measurementId: "G-V56MBM5YT9"
+        };
+
+        // Inicializar Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth(); // Obtener la instancia de autenticación
+        const analytics = firebase.analytics(); // Ya lo tenías
+
+        // --- Datos Simulados (se mantendrán en localStorage por ahora) ---
+        // Cargar datos de localStorage o usar datos iniciales si no se encuentran
+        let clients = JSON.parse(localStorage.getItem('clients')) || [
+            { id: '1', nombreComercial: 'Los Sartenes de Amita', nombrePersonal: 'Maria Rosario', zona: 'Foranea', sector: 'puerba cambio dos', tlf: '0414555555555', observaciones: 'al frente del chalet' },
+            { id: '3', nombreComercial: 'El Parrandereo', nombrePersonal: 'Jose Martinez', zona: 'Santa Teresa', sector: 'Barrio Bolivar', tlf: '787878787878', observaciones: 'ninguna' },
+            { id: '4', nombreComercial: 'Licoreria Grysyudey', nombrePersonal: 'Guillermina', zona: 'Palo Gordo', sector: 'Via Principal', tlf: '46898755675', observaciones: 'al doblar la esquina' },
+        ];
+
+        let inventory = JSON.parse(localStorage.getItem('inventory')) || [
+            { rubro: 'Cerveceria', sku: '2364', segmento: 'cerveza', producto: 'solera verde', presentacion: '1/4', cantidad: 180, precio: 23 },
+            { rubro: 'Cerveceria', sku: '7458', segmento: 'cerveza', producto: 'ligth', presentacion: '1/4', cantidad: 180, precio: 19.8 },
+            { rubro: 'Alimentos', sku: '1001', segmento: 'panaderia', producto: 'pan de molde', presentacion: 'unidad', cantidad: 50, precio: 3.5 },
+            { rubro: 'Alimentos', sku: '1002', segmento: 'lacteos', producto: 'leche entera', presentacion: 'litro', cantidad: 100, precio: 2.8 },
+            { rubro: 'Cerveceria', sku: '9876', segmento: 'cerveza', producto: 'polar pilsen', presentacion: 'tercio', cantidad: 200, precio: 1.5 },
+        ];
+
+        let vendors = JSON.parse(localStorage.getItem('vendors')) || [
+            { name: 'Wilfredo Chacon', category: 'Alimentos' },
+            { name: 'Yonathan Chavez', category: 'Alimentos' },
+            { name: 'Roberto Chacon', category: 'Cerveceria' },
+        ];
+
+        let dailySales = JSON.parse(localStorage.getItem('dailySales')) || []; // Almacena archivos de venta simulados
+
+        // Establecer vendedor seleccionado inicial basado en localStorage o por defecto al primero si está disponible
+        let selectedVendor = localStorage.getItem('selectedVendor') || (vendors.length > 0 ? vendors[0].name : 'Ninguno');
+
+        // Mapeo de imágenes de productos simulado (SKU a URL de imagen local)
+        const productImages = {
+            '2364': 'https://placehold.co/100x100/ADD8E6/000000?text=Solera', // Solera
+            '7458': 'https://placehold.co/100x100/FFD700/000000?text=Ligth', // Ligth
+            '1001': 'https://placehold.co/100x100/90EE90/000000?text=Pan', // Pan
+            '1002': 'https://placehold.co/100x100/87CEEB/000000?text=Leche', // Leche
+            '9876': 'https://placehold.co/100x100/FFA07A/000000?text=Polar', // Polar
+            'default': 'https://placehold.co/100x100/D3D3D3/000000?text=No+Image' // Imagen por defecto
+        };
+
+        // --- Funciones de Ayuda ---
+        const getCurrentDateFormatted = () => {
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0'); // El mes es 0-indexado
+            const year = today.getFullYear();
+            return `${day}${month}${year}`;
+        };
+
+        // Función genérica para descargar contenido CSV
+        const downloadCSV = (filename, csvContent) => {
+            console.log(`[downloadCSV] Intentando descargar: ${filename}`);
+            console.log(`[downloadCSV] Contenido CSV (primeras 200 chars): ${csvContent.substring(0, 200)}...`);
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) { // Detección de característica
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url); // Limpiar la URL del objeto
+                console.log(`[downloadCSV] Descarga para ${filename} iniciada.`);
+            } else {
+                showMessageModal('La descarga de archivos no es compatible con este navegador.');
+                console.error('[downloadCSV] La descarga de archivos no es compatible.');
+            }
+        };
+
+        // Función genérica para parsear una cadena CSV a un array de objetos
+        const parseCSV = (csvString) => {
+            const lines = csvString.split('\n');
+            const headers = lines[0].split(',').map(header => header.trim());
+            const result = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const currentLine = lines[i].trim();
+                if (currentLine === '') continue; // Saltar líneas vacías
+
+                const data = currentLine.split(',');
+                const obj = {};
+                for (let j = 0; j < headers.length; j++) {
+                    obj[headers[j]] = data[j] ? data[j].trim() : '';
+                }
+                result.push(obj);
+            }
+            return result;
+        };
+
+        // Función genérica para convertir un array de objetos a una cadena CSV
+        const toCSV = (data, headers) => {
+            if (!data || data.length === 0) return '';
+
+            const csvRows = [];
+            const actualHeaders = headers || Object.keys(data[0]);
+            csvRows.push(actualHeaders.join(','));
+
+            for (const row of data) {
+                const values = actualHeaders.map(header => {
+                    const val = row[header];
+                    // Manejar comas y comillas en los valores
+                    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+                        return `"${val.replace(/"/g, '""')}"`;
+                    }
+                    return val;
+                });
+                csvRows.push(values.join(','));
+            }
+            return csvRows.join('\n');
+        };
+
+        // --- Estado Global de la Aplicación ---
+        let screen = 'login'; // La pantalla inicial ahora es 'login'
+        let newClient = { id: '', nombreComercial: '', nombrePersonal: '', zona: '', sector: '', tlf: '', observaciones: '' };
+        let selectedClientForSale = null;
+        let saleQuantities = {}; // {sku: quantity}
+        let clientSearchTerm = '';
+        let showClientPickerModal = false;
+        let currentProductIndex = 0; // Esto será menos relevante con la vista de tabla, pero se mantiene por consistencia
+        let showAddClientForm = false; // Nuevo estado para la visibilidad del formulario de cliente
+
+        // Estado global para el modal de mensajes
+        let showMessageModalState = false;
+        let messageModalText = '';
+
+        // Estado global para el modal de confirmación
+        let showConfirmationModalState = false;
+        let confirmationModalMessage = '';
+        let confirmationModalCallback = null; // La función a ejecutar si el usuario confirma
+
+        // Estado para el usuario autenticado de Firebase
+        let currentUser = null;
+
+        const appRoot = document.getElementById('app-root');
+
+        // Función para mostrar un modal de mensaje personalizado
+        const showMessageModal = (message) => {
+            messageModalText = message;
+            showMessageModalState = true;
+            render(); // Volver a renderizar para mostrar el modal
+        };
+
+        // Función para ocultar el modal de mensaje personalizado
+        const hideMessageModal = () => {
+            showMessageModalState = false;
+            messageModalText = '';
+            render(); // Volver a renderizar para ocultar el modal
+        };
+
+        // Función para renderizar el modal de mensaje
+        const renderMessageModal = () => {
+            if (!showMessageModalState) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'custom-message-modal';
+            modalDiv.className = 'modal'; // Usar estilos de modal existentes
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <p class="text-lg text-center mb-4">${messageModalText}</p>
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideMessageModal()">Cerrar</button>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+        // --- Funciones para el Modal de Confirmación ---
+        const showConfirmationModal = (message, callback) => {
+            console.log('[showConfirmationModal] Mostrando modal de confirmación. Mensaje:', message);
+            confirmationModalMessage = message;
+            confirmationModalCallback = callback;
+            showConfirmationModalState = true;
+            render();
+        };
+
+        const hideConfirmationModal = (confirmed) => {
+            console.log('[hideConfirmationModal] Ocultando modal de confirmación. Confirmado:', confirmed);
+            showConfirmationModalState = false;
+            if (confirmed && confirmationModalCallback) {
+                console.log('[hideConfirmationModal] Ejecutando callback de confirmación.');
+                confirmationModalCallback();
+            }
+            confirmationModalCallback = null; // Limpiar el callback
+            render();
+        };
+
+        const renderConfirmationModal = () => {
+            if (!showConfirmationModalState) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'confirmation-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <p class="text-lg text-center mb-6">${confirmationModalMessage}</p>
+                    <div class="flex justify-around gap-4">
+                        <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(true)">Confirmar</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(false)">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+        // --- Lógica de Autenticación de Firebase ---
+
+        // Función para registrar un nuevo usuario
+        const handleRegister = async () => {
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+
+            if (!email || !password) {
+                showMessageModal('Por favor, ingresa un correo electrónico y una contraseña.');
+                return;
+            }
+
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                currentUser = userCredential.user;
+                showMessageModal(`Registro exitoso para ${currentUser.email}!`);
+                setScreenAndRender('main'); // Ir a la pantalla principal después del registro
+            } catch (error) {
+                showMessageModal(`Error al registrar: ${error.message}`);
+                console.error("Error al registrar:", error);
+            }
+        };
+
+        // Función para iniciar sesión
+        const handleLogin = async () => {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                showMessageModal('Por favor, ingresa tu correo electrónico y contraseña.');
+                return;
+            }
+
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                currentUser = userCredential.user;
+                showMessageModal(`Bienvenido de nuevo, ${currentUser.email}!`);
+                setScreenAndRender('main'); // Ir a la pantalla principal después del inicio de sesión
+            } catch (error) {
+                showMessageModal(`Error al iniciar sesión: ${error.message}`);
+                console.error("Error al iniciar sesión:", error);
+            }
+        };
+
+        // Función para cerrar sesión
+        const handleLogout = async () => {
+            try {
+                await auth.signOut();
+                currentUser = null;
+                showMessageModal('Sesión cerrada correctamente.');
+                setScreenAndRender('login'); // Volver a la pantalla de inicio de sesión
+            } catch (error) {
+                showMessageModal(`Error al cerrar sesión: ${error.message}`);
+                console.error("Error al cerrar sesión:", error);
+            }
+        };
+
+        // Observar el estado de autenticación de Firebase
+        // Esto se ejecuta cuando el estado de autenticación cambia (inicio de sesión, cierre de sesión, carga de página)
+        auth.onAuthStateChanged((user) => {
+            console.log('Estado de autenticación de Firebase cambiado. Usuario:', user ? user.email : 'Ninguno');
+            if (user) {
+                // Usuario ha iniciado sesión
+                currentUser = user;
+                // Si la pantalla actual es 'login' o 'register', redirige a 'main'
+                if (screen === 'login' || screen === 'register') {
+                    setScreenAndRender('main');
+                } else {
+                    render(); // Solo re-renderiza si ya está en una pantalla de la app (no login/register)
+                }
+            } else {
+                // Usuario ha cerrado sesión o no hay usuario autenticado
+                currentUser = null;
+                // Si la pantalla actual no es 'login' o 'register', redirige a 'login'
+                if (screen !== 'login' && screen !== 'register') {
+                    setScreenAndRender('login');
+                }
+            }
+        });
+
+        // --- Función Principal de Renderizado ---
+        const render = () => {
+            appRoot.innerHTML = ''; // Limpiar contenido anterior
+
+            // Si no hay usuario autenticado y no estamos en la pantalla de login/registro, mostrar login
+            if (!currentUser && screen !== 'login' && screen !== 'register') {
+                renderLoginScreen();
+            } else {
+                // Si hay usuario o estamos en login/registro, renderizar la pantalla solicitada
+                switch (screen) {
+                    case 'main':
+                        renderMainScreen();
+                        break;
+                    case 'carga':
+                        renderCargaScreen();
+                        break;
+                    case 'inventario':
+                        renderInventarioScreen();
+                        break;
+                    case 'clientes':
+                        renderClientesScreen();
+                        break;
+                    case 'venta':
+                        renderVentaScreen();
+                        break;
+                    case 'cierreVentas':
+                        renderCierreVentasScreen();
+                        break;
+                    case 'archivos':
+                        renderArchivosScreen();
+                        break;
+                    case 'login':
+                        renderLoginScreen();
+                        break;
+                    case 'register':
+                        renderRegisterScreen();
+                        break;
+                    default:
+                        renderMainScreen(); // Fallback si la pantalla no está definida
+                }
+            }
+            // Siempre renderizar los modales si deben mostrarse
+            renderMessageModal();
+            renderConfirmationModal();
+        };
+
+        // --- Pantallas / Componentes ---
+
+        const renderLoginScreen = () => {
+            const loginDiv = document.createElement('div');
+            loginDiv.className = 'screen-container bg-white rounded-xl shadow-md p-8 max-w-md mx-auto my-10';
+            loginDiv.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-center text-indigo-700">Iniciar Sesión</h2>
+                <input type="email" id="loginEmail" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Correo Electrónico">
+                <input type="password" id="loginPassword" class="h-12 border border-gray-300 rounded-lg px-4 mb-6 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogin()">Iniciar Sesión</button>
+                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('register')">Regístrate aquí</a></p>
+            `;
+            appRoot.appendChild(loginDiv);
+        };
+
+        const renderRegisterScreen = () => {
+            const registerDiv = document.createElement('div');
+            registerDiv.className = 'screen-container bg-white rounded-xl shadow-md p-8 max-w-md mx-auto my-10';
+            registerDiv.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-center text-indigo-700">Registrar Nuevo Usuario</h2>
+                <input type="email" id="registerEmail" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Correo Electrónico">
+                <input type="password" id="registerPassword" class="h-12 border border-gray-300 rounded-lg px-4 mb-6 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleRegister()">Registrar</button>
+                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('login')">Inicia sesión aquí</a></p>
+            `;
+            appRoot.appendChild(registerDiv);
+        };
+
+
+        const renderMainScreen = () => {
+            const mainDiv = document.createElement('div');
+            mainDiv.className = 'flex flex-col items-center justify-center p-5 bg-blue-50 rounded-xl m-2 shadow-lg';
+            mainDiv.innerHTML = `
+                <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
+                ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email}</p>` : ''}
+                <div class="flex flex-wrap justify-center">
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('carga')">CARGA</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('inventario')">INVENTARIO</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('clientes')">CLIENTES</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>
+                </div>
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
+            `;
+            appRoot.appendChild(mainDiv);
+            // updateVendorSelectionDisplay(); // Ya no es necesario aquí
+        };
+
+        const updateVendorSelectionDisplay = () => {
+            const vendorRadioGroup = document.getElementById('vendor-radio-group');
+            if (!vendorRadioGroup) return; // Asegurarse de que el elemento exista
+
+            vendorRadioGroup.innerHTML = ''; // Limpiar radios existentes si los hay
+
+            vendors.forEach(vendor => {
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.id = `vendor-${vendor.name.replace(/\s/g, '-')}`;
+                input.name = 'vendor';
+                input.value = vendor.name;
+                input.className = 'radio-button-input';
+                input.checked = (selectedVendor === vendor.name);
+                input.onchange = (event) => handleVendorChange(event.target.value);
+
+                const label = document.createElement('label');
+                label.htmlFor = `vendor-${vendor.name.replace(/\s/g, '-')}`;
+                label.className = 'radio-button-label';
+                label.textContent = vendor.name;
+
+                vendorRadioGroup.appendChild(input);
+                vendorRadioGroup.appendChild(label);
+            });
+        };
+
+        const handleVendorChange = (vendorName) => {
+            selectedVendor = vendorName;
+            localStorage.setItem('selectedVendor', selectedVendor); // Guardar vendedor seleccionado
+            // No se necesita un re-renderizado completo, solo actualizar los estados de los botones de radio
+            // La función `updateVendorSelectionDisplay` maneja esto al ser llamada
+            // cuando la pantalla principal se renderiza inicialmente.
+            // Si necesitas reaccionar al cambio de vendedor *fuera* de la pantalla principal,
+            // añadirías lógica aquí. Por ahora, es puramente visual en la pantalla principal.
+        };
+
+        const renderCargaScreen = () => {
+            const cargaDiv = document.createElement('div');
+            cargaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            cargaDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CARGA de Inventario</h2>
+                <div class="table-container mb-5">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Sku</th>
+                                <th>Producto</th>
+                                <th>Presentación</th>
+                                <th>Cantidad</th>
+                                <th>Precio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-table-body">
+                        </tbody>
+                    </table>
+                </div>
+                <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveCargaChanges()">Guardar Cambios</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(cargaDiv);
+
+            const inventoryTableBody = document.getElementById('inventory-table-body');
+            inventory.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.rubro}</td>
+                    <td>${item.sku}</td>
+                    <td>${item.producto}</td>
+                    <td>${item.presentacion}</td>
+                    <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${item.cantidad}" onchange="handleCargaQuantityChange('${item.sku}', this.value)"></td>
+                    <td>$${item.precio.toFixed(2)}</td>
+                `;
+                inventoryTableBody.appendChild(row);
+            });
+        };
+
+        const handleCargaQuantityChange = (sku, newQuantity) => {
+            inventory = inventory.map(item =>
+                item.sku === sku ? { ...item, cantidad: parseInt(newQuantity) || 0 } : item
+            );
+        };
+
+        const saveCargaChanges = () => {
+            localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario
+            showMessageModal('Carga Exitosa: Inventario actualizado correctamente.');
+            setScreenAndRender('main');
+        };
+
+        const renderInventarioScreen = () => {
+            const inventarioDiv = document.createElement('div');
+            inventarioDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            inventarioDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO Actual</h2>
+                <div class="table-container mb-5">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Sku</th>
+                                <th>Producto</th>
+                                <th>Presentación</th>
+                                <th>Cantidad</th>
+                                <th>Precio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-display-body">
+                        </tbody>
+                    </table>
+                </div>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(inventarioDiv);
+
+            const inventoryDisplayBody = document.getElementById('inventory-display-body');
+            inventory.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.rubro}</td>
+                    <td>${item.sku}</td>
+                    <td>${item.producto}</td>
+                    <td>${item.presentacion}</td>
+                    <td>${item.cantidad}</td>
+                    <td>$${item.precio.toFixed(2)}</td>
+                `;
+                inventoryDisplayBody.appendChild(row);
+            });
+        };
+
+        // Helper function to get unique values for a given key from the clients array
+        const getUniqueClientValues = (key) => {
+            const values = clients.map(client => client[key]).filter(Boolean); // Get values, filter out empty/null
+            return [...new Set(values)].sort(); // Get unique values and sort them
+        };
+
+        const renderClientesScreen = () => {
+            const clientesDiv = document.createElement('div');
+            clientesDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            clientesDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CLIENTES</h2>
+
+                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Lista de Clientes</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nombre Comercial</th>
+                                    <th>Nombre Personal</th>
+                                    <th>Zona</th>
+                                    <th>Sector</th>
+                                    <th>Teléfono</th>
+                                    <th>Observaciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="client-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
+                    <h3 class="text-xl font-bold mb-4 text-lime-700">Opciones de Cliente</h3>
+                    <button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>
+                    <div id="add-client-form-container" style="display: ${showAddClientForm ? 'block' : 'none'};">
+                        <h4 class="text-lg font-bold mt-5 mb-3 text-lime-800">Formulario de Nuevo Cliente</h4>
+                        <input type="text" id="newClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial">
+                        <input type="text" id="newClientNombrePersonal" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Personal">
+
+                        <select id="newClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
+                            <option value="">Seleccionar Zona</option>
+                        </select>
+                        <select id="newClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
+                            <option value="">Seleccionar Sector</option>
+                        </select>
+
+                        <input type="tel" id="newClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono">
+                        <input type="text" id="newClientObservaciones" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Observaciones">
+                        <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleAddClient()">Guardar Nuevo Cliente</button>
+                    </div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(clientesDiv);
+
+            const clientTableBody = document.getElementById('client-table-body');
+            clients.forEach(client => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${client.id}</td>
+                    <td>${client.nombreComercial}</td>
+                    <td>${client.nombrePersonal}</td>
+                    <td>${client.zona}</td>
+                    <td>${client.sector}</td>
+                    <td>${client.tlf}</td>
+                    <td>${client.observaciones}</td>
+                `;
+                clientTableBody.appendChild(row);
+            });
+
+            // Populate Zona and Sector dropdowns
+            if (showAddClientForm) {
+                const zonaSelect = document.getElementById('newClientZona');
+                const sectorSelect = document.getElementById('newClientSector');
+
+                const uniqueZonas = getUniqueClientValues('zona');
+                const uniqueSectores = getUniqueClientValues('sector');
+
+                uniqueZonas.forEach(zona => {
+                    const option = document.createElement('option');
+                    option.value = zona;
+                    option.textContent = zona;
+                    zonaSelect.appendChild(option);
+                });
+
+                uniqueSectores.forEach(sector => {
+                    const option = document.createElement('option');
+                    option.value = sector;
+                    option.textContent = sector;
+                    sectorSelect.appendChild(option);
+                });
+            }
+        };
+
+        const toggleAddClientForm = () => {
+            showAddClientForm = !showAddClientForm;
+            render(); // Volver a renderizar para mostrar/ocultar el formulario
+        };
+
+        const handleAddClient = () => {
+            const nombreComercial = document.getElementById('newClientNombreComercial').value;
+            const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
+            const zona = document.getElementById('newClientZona').value; // Get value from select
+            const sector = document.getElementById('newClientSector').value; // Get value from select
+            const tlf = document.getElementById('newClientTlf').value;
+            const observaciones = document.getElementById('newClientObservaciones').value;
+
+            if (!nombreComercial || !nombrePersonal || !tlf) {
+                showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
+                return;
+            }
+            const newId = String(Math.max(...clients.map(c => parseInt(c.id))) + 1);
+            clients.push({ id: newId, nombreComercial, nombrePersonal, zona, sector, tlf, observaciones });
+            localStorage.setItem('clients', JSON.stringify(clients)); // Guardar clientes
+            showMessageModal('Cliente Agregado: El nuevo cliente ha sido añadido.');
+
+            // Restablecer campos del formulario y ocultar el formulario
+            document.getElementById('newClientNombreComercial').value = '';
+            document.getElementById('newClientNombrePersonal').value = '';
+            document.getElementById('newClientZona').value = '';
+            document.getElementById('newClientSector').value = '';
+            document.getElementById('newClientTlf').value = '';
+            document.getElementById('newClientObservaciones').value = '';
+            showAddClientForm = false;
+
+            setScreenAndRender('clientes'); // Volver a renderizar para mostrar el nuevo cliente y ocultar el formulario
+        };
+
+        const renderVentaScreen = () => {
+            const ventaDiv = document.createElement('div');
+            ventaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            ventaDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">VENTA</h2>
+
+                <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleClientPickerModal(true)">Seleccionar Cliente</button>
+
+                <div id="selected-client-display" class="text-lg font-bold text-center my-4 text-emerald-800"></div>
+                <div id="product-sale-container"></div>
+                <div id="info-text" class="text-base text-center my-5 text-gray-600"></div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="resetVentaStateAndGoToMain()">Volver al Menú Principal</button>
+            `;
+            appRoot.appendChild(ventaDiv);
+
+            updateVentaScreenContent();
+        };
+
+        const updateVentaScreenContent = () => {
+            const selectedClientDisplay = document.getElementById('selected-client-display');
+            const productSaleContainer = document.getElementById('product-sale-container');
+            const infoText = document.getElementById('info-text');
+
+            if (selectedClientForSale) {
+                selectedClientDisplay.textContent = `Cliente Seleccionado: ${selectedClientForSale.nombreComercial}`;
+                infoText.textContent = ''; // Limpiar texto de información si el cliente está seleccionado
+
+                // Renderizar productos como una tabla
+                productSaleContainer.innerHTML = `
+                    <div class="table-container mb-5">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>SKU</th>
+                                    <th>Cantidad a Vender</th>
+                                    <th>Producto</th>
+                                    <th>Presentación</th>
+                                    <th>Precio</th>
+                                    <th>Disponible</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-for-sale-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showFinalizeSaleConfirmation()">Finalizar Venta</button>
+                `;
+                const productsForSaleBody = document.getElementById('products-for-sale-body');
+                inventory.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${item.cantidad}"></td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>$${item.precio.toFixed(2)}</td>
+                        <td>${item.cantidad}</td>
+                    `;
+                    productsForSaleBody.appendChild(row);
+                });
+
+            } else {
+                selectedClientDisplay.textContent = '';
+                infoText.textContent = 'Por favor, seleccione un cliente para iniciar la venta.';
+                productSaleContainer.innerHTML = ''; // Limpiar tabla de productos si no hay cliente seleccionado
+            }
+
+            if (showClientPickerModal) {
+                renderClientPickerModal();
+            } else {
+                const existingModal = document.getElementById('client-picker-modal');
+                if (existingModal) existingModal.remove();
+            }
+        };
+
+        const handleProductQuantityChange = (sku, quantity) => {
+            saleQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        // Función que muestra el modal de confirmación para finalizar la venta
+        const showFinalizeSaleConfirmation = () => {
+            console.log('[showFinalizeSaleConfirmation] Llamado.');
+            showConfirmationModal('¿Estás seguro de que quieres finalizar esta venta? Esto actualizará el inventario y generará un archivo de venta.', finalizeSaleLogic);
+        };
+
+        // Lógica real de finalización de venta (se ejecuta después de la confirmación)
+        const finalizeSaleLogic = () => {
+            console.log('[finalizeSaleLogic] Iniciando...');
+            if (!selectedClientForSale) {
+                showMessageModal('Error: Por favor, seleccione un cliente primero.');
+                console.error('[finalizeSaleLogic] Error: No hay cliente seleccionado para finalizar la venta.');
+                return;
+            }
+
+            const saleData = [];
+            let totalSaleAmount = 0;
+            let hasInsufficientStock = false;
+            let messages = [];
+
+            inventory.forEach(item => {
+                const quantitySold = saleQuantities[item.sku] || 0;
+                if (quantitySold > 0) {
+                    // Verificar si la cantidad vendida excede el stock disponible
+                    if (quantitySold > item.cantidad) {
+                        messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${item.cantidad}).`);
+                        hasInsufficientStock = true;
+                        return; // Salir del forEach temprano si el stock es insuficiente
+                    }
+                    const subtotal = quantitySold * item.precio;
+                    saleData.push({
+                        sku: item.sku,
+                        producto: item.producto,
+                        presentacion: item.presentacion,
+                        cantidadVendida: quantitySold,
+                        precioUnitario: item.precio,
+                        subtotal: subtotal,
+                    });
+                    totalSaleAmount += subtotal;
+                    // Actualizar la cantidad del inventario
+                    inventory = inventory.map(invItem =>
+                        invItem.sku === item.sku ? { ...invItem, cantidad: invItem.cantidad - quantitySold } : invItem
+                    );
+                }
+            });
+
+            if (hasInsufficientStock) {
+                showMessageModal(messages.join('\n'));
+                console.error('[finalizeSaleLogic] Error: Stock insuficiente detectado. Deteniendo venta.');
+                return; // Detener el proceso de venta si algún stock fue insuficiente
+            }
+
+            if (saleData.length === 0) {
+                showMessageModal('Error: No se ha ingresado ninguna cantidad para la venta.');
+                console.warn('[finalizeSaleLogic] Advertencia: No se ingresó ninguna cantidad para la venta.');
+                return;
+            }
+
+            const fileName = `venta_${selectedClientForSale.nombreComercial.replace(/\s/g, '_')}_${getCurrentDateFormatted()}.csv`;
+            const saleRecord = {
+                fileName: fileName,
+                client: selectedClientForSale,
+                date: getCurrentDateFormatted(),
+                items: saleData,
+                total: totalSaleAmount,
+                rawCSV: `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
+                        saleData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
+                        `\nTotal General:, , , , ,${totalSaleAmount.toFixed(2)}`
+            };
+            console.log('[finalizeSaleLogic] Contenido rawCSV para descarga:', saleRecord.rawCSV);
+
+
+            dailySales.push(saleRecord);
+            console.log('[finalizeSaleLogic] Estado de dailySales antes de guardar:', JSON.parse(JSON.stringify(dailySales)));
+            localStorage.setItem('dailySales', JSON.stringify(dailySales)); // Guardar ventas diarias
+            console.log('[finalizeSaleLogic] dailySales en localStorage después de guardar:', localStorage.getItem('dailySales'));
+
+            console.log('[finalizeSaleLogic] Estado de inventory antes de guardar:', JSON.parse(JSON.stringify(inventory)));
+            localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario actualizado
+            console.log('[finalizeSaleLogic] inventory en localStorage después de guardar:', localStorage.getItem('inventory'));
+
+            messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado.`);
+            messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
+
+            // downloadCSV(fileName, saleRecord.rawCSV); // Ya no se descarga automáticamente aquí, se hace desde Archivos
+
+            // Restablecer el estado de venta
+            resetVentaState();
+            setScreenAndRender('main');
+            showMessageModal(messages.join('\n')); // Mostrar todos los mensajes al final
+            console.log('[finalizeSaleLogic] Finalizado.');
+        };
+
+        const toggleClientPickerModal = (show) => {
+            showClientPickerModal = show;
+            render(); // Volver a renderizar para mostrar/ocultar el modal
+        };
+
+        const renderClientPickerModal = () => {
+            if (!showClientPickerModal) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'client-picker-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Seleccionar Cliente</h3>
+                    <input type="text" id="clientSearchInput" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white" placeholder="Buscar cliente..." onkeyup="filterClientsForPicker(this.value)">
+                    <div id="client-picker-list" class="max-h-60 overflow-y-auto w-full"></div>
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleClientPickerModal(false)">Cerrar</button>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+
+            updateClientPickerList();
+        };
+
+        const updateClientPickerList = () => {
+            const clientPickerListDiv = document.getElementById('client-picker-list');
+            if (!clientPickerListDiv) return;
+
+            clientPickerListDiv.innerHTML = '';
+            const filteredClients = clients.filter(client =>
+                client.nombreComercial.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+                client.nombrePersonal.toLowerCase().includes(clientSearchTerm.toLowerCase())
+            );
+
+            filteredClients.forEach(client => {
+                const clientItem = document.createElement('button');
+                clientItem.className = 'block w-full text-left p-3 border-b border-gray-200 hover:bg-blue-50 transition duration-150 ease-in-out rounded-md';
+                clientItem.textContent = `${client.nombreComercial} (${client.nombrePersonal})`;
+                clientItem.onclick = () => {
+                    selectedClientForSale = client;
+                    toggleClientPickerModal(false);
+                    clientSearchTerm = ''; // Restablecer término de búsqueda
+                    updateVentaScreenContent(); // Actualizar pantalla de venta con el cliente seleccionado
+                };
+                clientPickerListDiv.appendChild(clientItem);
+            });
+        };
+
+        const filterClientsForPicker = (term) => {
+            clientSearchTerm = term;
+            updateClientPickerList();
+        };
+
+        const resetVentaState = () => {
+            selectedClientForSale = null;
+            saleQuantities = {};
+            currentProductIndex = 0; // Restablecer por consistencia, aunque menos usado ahora
+        };
+
+        const resetVentaStateAndGoToMain = () => {
+            resetVentaState();
+            setScreenAndRender('main');
+        };
+
+        const renderCierreVentasScreen = () => {
+            const cierreDiv = document.createElement('div');
+            cierreDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            cierreDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CIERRE DE VENTAS</h2>
+                <div class="mb-8 text-center">
+                    <label class="block text-lg font-semibold text-gray-700 mb-2">Seleccionar Vendedor:</label>
+                    <div class="radio-button-group" id="vendor-radio-group">
+                        <!-- Los botones de radio del vendedor se insertarán aquí por updateVendorSelectionDisplay() -->
+                    </div>
+                </div>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Haz clic en el botón para cerrar las ventas del día. Se te pedirá confirmación.
+                </p>
+                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showCloseSalesConfirmation()">Cerrar Ventas del Día</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(cierreDiv);
+            updateVendorSelectionDisplay(); // Llama a esto para poblar y establecer el estado de verificación
+        };
+
+        // Función que muestra el modal de confirmación para cerrar ventas
+        const showCloseSalesConfirmation = () => {
+            console.log('[showCloseSalesConfirmation] Llamado.');
+            showConfirmationModal('¿Estás seguro de que quieres cerrar las ventas del día? Esto consolidará las ventas y "borrará" los registros individuales.', handleCloseSalesLogic);
+        };
+
+        // Lógica real de cierre de ventas (se ejecuta después de la confirmación)
+        const handleCloseSalesLogic = () => {
+            console.log('[handleCloseSalesLogic] Iniciando...');
+            const today = getCurrentDateFormatted();
+            console.log('[handleCloseSalesLogic] dailySales antes de filtrar por fecha:', JSON.parse(JSON.stringify(dailySales)));
+            const salesForToday = dailySales.filter(sale => sale.date === today);
+            console.log('[handleCloseSalesLogic] Ventas para hoy:', salesForToday);
+            let messages = [];
+
+            if (salesForToday.length === 0) {
+                showMessageModal('No hay Ventas: No hay ventas registradas para hoy para cerrar.');
+                console.warn('[handleCloseSalesLogic] Advertencia: No hay ventas para hoy para cerrar.');
+                return;
+            }
+
+            const aggregatedSalesBySku = {};
+            let totalOverallSale = 0;
+
+            // Agrega cantidades y subtotales por SKU
+            salesForToday.forEach(sale => {
+                sale.items.forEach(item => {
+                    const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
+                    if (!aggregatedSalesBySku[sku]) {
+                        aggregatedSalesBySku[sku] = {
+                            producto: producto,
+                            presentacion: presentacion,
+                            totalCantidad: 0,
+                            totalSubtotal: 0
+                        };
+                    }
+                    aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
+                    aggregatedSalesBySku[sku].totalSubtotal += subtotal;
+                    totalOverallSale += subtotal; // Acumular el total general de los subtotales individuales
+                });
+            });
+
+            let combinedCSVContent = `Venta General Consolidada - Fecha: ${today}\n`;
+            // Añadir información del vendedor
+            combinedCSVContent += `Vendedor: ${selectedVendor}\n\n`;
+            combinedCSVContent += `SKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
+
+            // Añadir datos agregados al contenido CSV
+            for (const sku in aggregatedSalesBySku) {
+                const item = aggregatedSalesBySku[sku];
+                combinedCSVContent += `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}\n`;
+            }
+            combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
+            console.log('[handleCloseSalesLogic] Contenido combinedCSVContent para descarga:', combinedCSVContent);
+
+            const combinedFileName = `venta_consolidada_${today}.csv`;
+            messages.push(`Cierre de Ventas: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas de hoy.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
+
+            downloadCSV(combinedFileName, combinedCSVContent); // Llamada a la función de descarga
+
+            // Simular compartir
+            messages.push(`Compartiendo: Simulando compartir "${combinedFileName}" vía WhatsApp.`);
+
+            // Simular impresión
+            messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
+
+            // Eliminar archivos de ventas diarias individuales (simular eliminando del estado)
+            dailySales = dailySales.filter(sale => sale.date !== today);
+            console.log('[handleCloseSalesLogic] Estado de dailySales antes de guardar (después de filtrar):', JSON.parse(JSON.stringify(dailySales)));
+            localStorage.setItem('dailySales', JSON.stringify(dailySales)); // Guardar ventas diarias actualizadas
+            console.log('[handleCloseSalesLogic] dailySales en localStorage después de cerrar ventas y guardar:', localStorage.getItem('dailySales'));
+            messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados".');
+
+            setScreenAndRender('main');
+            showMessageModal(messages.join('\n')); // Mostrar todos los mensajes al final
+            console.log('[handleCloseSalesLogic] Finalizado.');
+        };
+
+        // --- Funciones de Recibo y Compartir ---
+
+        // Función para generar el contenido HTML del recibo térmico
+        const generateThermalReceiptHtml = (saleRecord) => {
+            let itemsHtml = '';
+            saleRecord.items.forEach(item => {
+                itemsHtml += `
+                    <div class="item-row">
+                        <span class="item-qty">${item.cantidadVendida}x</span>
+                        <span class="item-desc">${item.producto} (${item.presentacion})</span>
+                        <span class="item-price">$${item.precioUnitario.toFixed(2)}</span>
+                        <span class="item-total">$${item.subtotal.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+
+            return `
+                <h3>Dist Castillo Ventas</h3>
+                <h4>Recibo de Venta</h4>
+                <div class="divider"></div>
+                <p>Fecha: ${saleRecord.date}</p>
+                <p>Cliente: ${saleRecord.client.nombreComercial}</p>
+                <p>Vendedor: ${selectedVendor}</p>
+                <div class="divider"></div>
+                <div class="item-row">
+                    <span class="item-qty">Cant.</span>
+                    <span class="item-desc">Producto</span>
+                    <span class="item-price">P. Unit.</span>
+                    <span class="item-total">Total</span>
+                </div>
+                <div class="divider"></div>
+                ${itemsHtml}
+                <div class="divider"></div>
+                <div class="total-line">
+                    <span>TOTAL:</span>
+                    <span>$${saleRecord.total.toFixed(2)}</span>
+                </div>
+                <div class="divider"></div>
+                <p class="footer-text">¡Gracias por tu compra!</p>
+            `;
+        };
+
+        // Función para imprimir el recibo
+        const printSaleReceipt = (saleRecord) => {
+            const receiptHtml = generateThermalReceiptHtml(saleRecord);
+
+            // Crear un elemento temporal para la impresión
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <title>Recibo de Venta</title>
+                    <style>
+                        body { margin: 0; padding: 0; font-family: 'monospace', 'Courier New', Courier, monospace; font-size: 10pt; }
+                        .thermal-receipt { width: 80mm; margin: 0 auto; padding: 5mm; }
+                        .thermal-receipt h3, .thermal-receipt h4 { text-align: center; margin-bottom: 2mm; font-size: 12pt; }
+                        .item-row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
+                        .item-qty { width: 15%; text-align: left; }
+                        .item-desc { width: 55%; text-align: left; }
+                        .item-price, .item-total { width: 30%; text-align: right; }
+                        .divider { border-top: 1px dashed #000; margin: 3mm 0; }
+                        .total-line { display: flex; justify-content: space-between; font-weight: bold; margin-top: 3mm; font-size: 11pt; }
+                        .footer-text { text-align: center; margin-top: 5mm; font-size: 9pt; }
+                        @media print {
+                            body { margin: 0; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="thermal-receipt">
+                        ${receiptHtml}
+                    </div>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+
+            showMessageModal('Se ha abierto el diálogo de impresión. Selecciona tu impresora. Nota: La impresión directa a impresoras térmicas Bluetooth puede requerir configuraciones adicionales del sistema o aplicaciones específicas.');
+        };
+
+        // La función shareSaleAsImage ha sido eliminada ya que el botón de compartir fue removido.
+
+
+        const renderArchivosScreen = () => {
+            const archivosDiv = document.createElement('div');
+            archivosDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            archivosDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Esta sección permite cargar tus propios archivos CSV y descargar los datos actuales o generados.
+                    Debido a las restricciones de seguridad del navegador, el acceso directo a carpetas locales no es posible.
+                </p>
+
+                <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
+                    <h3 class="text-xl font-bold mb-4 text-sky-700">Cargar Archivos CSV</h3>
+                    <div class="mb-3">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label>
+                        <div class="file-input-wrapper">
+                            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
+                            <input type="file" id="uploadClientsCsv" accept=".csv" onchange="handleFileUpload(event, 'clients')">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv:</label>
+                        <div class="file-input-wrapper">
+                            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
+                            <input type="file" id="uploadInventoryCsv" accept=".csv" onchange="handleFileUpload(event, 'inventory')">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label>
+                        <div class="file-input-wrapper">
+                            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
+                            <input type="file" id="uploadVendorsCsv" accept=".csv" onchange="handleFileUpload(event, 'vendors')">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('clients')">Descargar clientes.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('inventory')">Descargar inventario.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vendors')">Descargar vendedor.csv</button>
+                </div>
+
+                <div class="p-4 bg-cyan-50 rounded-lg border border-cyan-300">
+                    <h3 class="text-xl font-bold mb-4 text-cyan-700">Archivos de Venta Generados</h3>
+                    <div id="generated-sale-files-list"></div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(archivosDiv);
+
+            const generatedSaleFilesListDiv = document.getElementById('generated-sale-files-list');
+            if (dailySales.length === 0) {
+                generatedSaleFilesListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de venta generados.</p>';
+            } else {
+                dailySales.forEach(sale => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-cyan-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-cyan-200';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR</button>
+                        </div>
+                    `;
+                    generatedSaleFilesListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        const handleFileUpload = (event, type) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const csvContent = e.target.result;
+                const parsedData = parseCSV(csvContent);
+
+                if (type === 'clients') {
+                    // Mapear encabezados para que coincidan con la estructura de objeto de cliente existente
+                    clients = parsedData.map(row => ({
+                        id: row.ID,
+                        nombreComercial: row['Nombre Comercial'],
+                        nombrePersonal: row['Nombre Personal'],
+                        zona: row.Zona,
+                        sector: row.Sector,
+                        tlf: row.Tlf,
+                        observaciones: row.Observaciones
+                    }));
+                    localStorage.setItem('clients', JSON.stringify(clients)); // Guardar clientes
+                    showMessageModal('clientes.csv cargado exitosamente.');
+                } else if (type === 'inventory') {
+                    // Mapear encabezados para que coincidan con la estructura de objeto de inventario existente
+                    inventory = parsedData.map(row => ({
+                        rubro: row.Rubro,
+                        sku: row.Sku,
+                        segmento: row.Segmento,
+                        producto: row.Producto,
+                        presentacion: row.Presentacion,
+                        cantidad: parseInt(row.Cantidad) || 0,
+                        precio: parseFloat(row.Precio) || 0
+                    }));
+                    localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario
+                    showMessageModal('inventario.csv cargado exitosamente.');
+                } else if (type === 'vendors') {
+                    // Suponiendo que vendor.csv es solo Nombre,Categoría
+                    vendors = parsedData.map(row => ({
+                        name: row['Wilfredo Chacon'] || row.Name, // Ajustar encabezado si es necesario
+                        category: row['Alimentos'] || row.Category // Ajustar encabezado si es necesario
+                    }));
+                    localStorage.setItem('vendors', JSON.stringify(vendors)); // Guardar vendedores
+                    showMessageModal('vendedor.csv cargado exitosamente.');
+                    // Establecer el primer vendedor como seleccionado si los vendedores se acaban de cargar y no se había seleccionado ninguno
+                    if (vendors.length > 0 && selectedVendor === 'Ninguno') {
+                        selectedVendor = vendors[0].name;
+                        localStorage.setItem('selectedVendor', selectedVendor);
+                    }
+                }
+                render(); // Volver a renderizar para reflejar los nuevos datos
+            };
+            reader.readAsText(file);
+        };
+
+        const downloadCurrentData = (dataType) => {
+            let dataToDownload = [];
+            let filename = '';
+            let headers = [];
+
+            if (dataType === 'clients') {
+                dataToDownload = clients.map(c => ({
+                    ID: c.id,
+                    'Nombre Comercial': c.nombreComercial,
+                    'Nombre Personal': c.nombrePersonal,
+                    Zona: c.zona,
+                    Sector: c.sector,
+                    Tlf: c.tlf,
+                    Observaciones: c.observaciones
+                }));
+                filename = 'clientes.csv';
+                headers = ['ID', 'Nombre Comercial', 'Nombre Personal', 'Zona', 'Sector', 'Tlf', 'Observaciones'];
+            } else if (dataType === 'inventory') {
+                dataToDownload = inventory.map(i => ({
+                    Rubro: i.rubro,
+                    Sku: i.sku,
+                    Segmento: i.segmento,
+                    Producto: i.producto,
+                    Presentacion: i.presentacion,
+                    Cantidad: i.cantidad,
+                    Precio: i.precio
+                }));
+                filename = 'inventario.csv';
+                headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
+            } else if (dataType === 'vendors') {
+                dataToDownload = vendors.map(v => ({
+                    Name: v.name,
+                    Category: v.category
+                }));
+                filename = 'vendedor.csv';
+                headers = ['Name', 'Category'];
+            }
+
+            if (dataToDownload.length > 0) {
+                const csvContent = toCSV(dataToDownload, headers);
+                downloadCSV(filename, csvContent);
+            } else {
+                showMessageModal(`No hay datos para descargar en ${dataType}.`);
+            }
+        };
+
+        // Función global para cambiar de pantalla y volver a renderizar
+        const setScreenAndRender = (newScreen) => {
+            console.log(`[setScreenAndRender] Cambiando a pantalla: ${newScreen}`);
+            screen = newScreen;
+            render();
+        };
+
+        // Registro del Service Worker
+        if ('serviceWorker' in navigator) {
+            // Se registra el Service Worker tan pronto como el DOM esté completamente cargado.
+            // Esto es un buen punto intermedio: el DOM está listo, pero aún es temprano
+            // en el ciclo de vida de la página para el registro del SW.!
+            document.addEventListener('DOMContentLoaded', () => {
+                const serviceWorkerFileName = 'service-worker.js';
+                const absoluteServiceWorkerUrl = window.location.origin + '/' + serviceWorkerFileName;
+
+                navigator.serviceWorker.register(absoluteServiceWorkerUrl)
+                    .then(registration => {
+                        console.log('Service Worker registrado con éxito:', registration);
+                    })
+                    .catch(error => {
+                        console.error('Fallo el registro del Service Worker:', error);
+                    });
+            });
+        }
+
+        // Renderizado inicial cuando la página se carga
+        // Se llama a render() al cargar la ventana para asegurar que la UI se muestre.
+        // El onAuthStateChanged de Firebase manejará las transiciones de pantalla posteriores si hay un usuario autenticado.
+        window.onload = () => {
+            console.log('[window.onload] Página cargada, iniciando renderizado.');
+            render();
+        };
+        // Fin del script JavaScript.
+    </script>
+</body>
+</html>
