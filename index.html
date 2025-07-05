@@ -12,12 +12,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
 
     <!-- Firebase SDKs -->
-    <!-- Se usan las versiones 'compat' para compatibilidad con el código JS antiguo si es necesario.
-         Para proyectos nuevos, se recomienda usar las versiones modulares (import { initializeApp } from 'firebase/app';) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-analytics-compat.js"></script>
-    <!-- NUEVO: SDK de Firestore -->
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
     <!-- html2canvas para convertir HTML a imagen -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -242,15 +239,13 @@
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth(); // Obtener la instancia de autenticación
         const analytics = firebase.analytics(); // Ya lo tenías
-        const db = firebase.firestore(); // NUEVO: Obtener la instancia de Firestore
+        const db = firebase.firestore(); // Obtener la instancia de Firestore
 
-        // --- Datos Simulados (ahora se usarán como fallback si Firestore falla o está vacío) ---
-        // Estos datos ya NO se cargan directamente desde localStorage, sino que se usan como valores por defecto
-        // si la base de datos de Firestore está vacía o no se puede acceder.
-        let clients = []; // Se cargará desde Firestore
-        let inventory = []; // Se cargará desde Firestore
-        let vendors = []; // Se cargará desde Firestore
-        let dailySales = []; // Se cargará desde Firestore
+        // --- Datos de la aplicación (se cargarán desde Firestore) ---
+        let clients = [];
+        let inventory = [];
+        let vendors = [];
+        let dailySales = [];
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         const initialClients = [
@@ -275,7 +270,6 @@
 
 
         // Establecer vendedor seleccionado inicial basado en localStorage o por defecto al primero si está disponible
-        // Esto se mantendrá en localStorage por ahora, pero eventualmente también podría ir a Firestore para preferencias de usuario
         let selectedVendor = localStorage.getItem('selectedVendor') || (initialVendors.length > 0 ? initialVendors[0].name : 'Ninguno');
 
         // Mapeo de imágenes de productos simulado (SKU a URL de imagen local)
@@ -382,6 +376,7 @@
 
         // Estado para el usuario autenticado de Firebase
         let currentUser = null;
+        let currentUserData = { role: 'guest' }; // NUEVO: Almacena el perfil del usuario, incluyendo el rol
 
         const appRoot = document.getElementById('app-root');
 
@@ -390,6 +385,10 @@
         let selectedSaleForModification = null;
         let modifiedSaleQuantities = {}; // Temporal storage for quantities in modify modal
         let modificationReason = '';
+
+        // --- Funciones de Rol ---
+        const isAdmin = () => currentUserData.role === 'admin';
+        const isUser = () => currentUserData.role === 'user'; // Puedes añadir otros roles si es necesario
 
         // Función para mostrar un modal de mensaje personalizado
         const showMessageModal = (message) => {
@@ -474,7 +473,16 @@
             try {
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 currentUser = userCredential.user;
-                showMessageModal(`Registro exitoso para ${currentUser.email}!`);
+                // Crear el documento de usuario en Firestore con rol 'user' por defecto
+                const userDocRef = db.collection('users').doc(currentUser.uid);
+                await userDocRef.set({
+                    email: currentUser.email,
+                    role: 'user', // Rol por defecto para nuevos registros
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                currentUserData = { email: currentUser.email, role: 'user' }; // Actualizar datos de usuario localmente
+
+                showMessageModal(`Registro exitoso para ${currentUser.email}! Tu rol es "user".`);
                 setScreenAndRender('main'); // Ir a la pantalla principal después del registro
             } catch (error) {
                 showMessageModal(`Error al registrar: ${error.message}`);
@@ -496,7 +504,7 @@
                 const userCredential = await auth.signInWithEmailAndPassword(email, password);
                 currentUser = userCredential.user;
                 showMessageModal(`Bienvenido de nuevo, ${currentUser.email}!`);
-                setScreenAndRender('main'); // Ir a la pantalla principal después del inicio de sesión
+                // onAuthStateChanged se encargará de cargar los datos del usuario y redirigir
             } catch (error) {
                 showMessageModal(`Error al iniciar sesión: ${error.message}`);
                 console.error("Error al iniciar sesión:", error);
@@ -508,6 +516,7 @@
             try {
                 await auth.signOut();
                 currentUser = null;
+                currentUserData = { role: 'guest' }; // Reiniciar datos de usuario al cerrar sesión
                 showMessageModal('Sesión cerrada correctamente.');
                 setScreenAndRender('login'); // Volver a la pantalla de inicio de sesión
             } catch (error) {
@@ -517,13 +526,35 @@
         };
 
         // Observar el estado de autenticación de Firebase
-        // Esto se ejecuta cuando el estado de autenticación cambia (inicio de sesión, cierre de sesión, carga de página)
-        auth.onAuthStateChanged(async (user) => { // Añadir async aquí para poder usar await en fetchData
+        auth.onAuthStateChanged(async (user) => {
             console.log('Estado de autenticación de Firebase cambiado. Usuario:', user ? user.email : 'Ninguno');
             if (user) {
                 currentUser = user;
-                // Cargar datos de Firestore cuando el usuario está autenticado
+                try {
+                    // Obtener el perfil del usuario de Firestore
+                    const userDoc = await db.collection('users').doc(user.uid).get();
+                    if (userDoc.exists) {
+                        currentUserData = userDoc.data();
+                        console.log('[Firestore] Perfil de usuario cargado:', currentUserData);
+                    } else {
+                        // Si el documento del usuario no existe (ej. usuario antiguo o error en registro), crearlo con rol 'user'
+                        console.warn('[Firestore] Documento de usuario no encontrado. Creando uno con rol "user".');
+                        await db.collection('users').doc(user.uid).set({
+                            email: user.email,
+                            role: 'user',
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        currentUserData = { email: user.email, role: 'user' };
+                    }
+                } catch (error) {
+                    console.error('[Firestore] Error al cargar el perfil del usuario:', error);
+                    showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
+                    currentUserData = { role: 'user' }; // Fallback a rol de usuario normal
+                }
+
+                // Cargar datos de Firestore (clientes, inventario, etc.) después de obtener el rol
                 await fetchDataFromFirestore();
+
                 if (screen === 'login' || screen === 'register') {
                     setScreenAndRender('main');
                 } else {
@@ -531,6 +562,7 @@
                 }
             } else {
                 currentUser = null;
+                currentUserData = { role: 'guest' }; // No hay usuario, rol de invitado
                 // Limpiar datos cuando el usuario no está autenticado
                 clients = [];
                 inventory = [];
@@ -695,26 +727,25 @@
             mainDiv.className = 'flex flex-col items-center justify-center p-5 bg-blue-50 rounded-xl m-2 shadow-lg';
             mainDiv.innerHTML = `
                 <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
-                ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email}</p>` : ''}
+                ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role})</p>` : ''}
                 <div class="flex flex-wrap justify-center">
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('carga')">CARGA</button>
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('carga')">CARGA</button>` : ''}
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('inventario')">INVENTARIO</button>
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('clientes')">CLIENTES</button>
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>` : ''}
                 </div>
                 <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
             `;
             appRoot.appendChild(mainDiv);
-            // updateVendorSelectionDisplay(); // Ya no es necesario aquí
         };
 
         const updateVendorSelectionDisplay = () => {
             const vendorRadioGroup = document.getElementById('vendor-radio-group');
-            if (!vendorRadioGroup) return; // Asegurarse de que el elemento exista
+            if (!vendorRadioGroup) return;
 
-            vendorRadioGroup.innerHTML = ''; // Limpiar radios existentes si los hay
+            vendorRadioGroup.innerHTML = '';
 
             vendors.forEach(vendor => {
                 const input = document.createElement('input');
@@ -738,15 +769,15 @@
 
         const handleVendorChange = (vendorName) => {
             selectedVendor = vendorName;
-            localStorage.setItem('selectedVendor', selectedVendor); // Guardar vendedor seleccionado
-            // No se necesita un re-renderizado completo, solo actualizar los estados de los botones de radio
-            // La función `updateVendorSelectionDisplay` maneja esto al ser llamada
-            // cuando la pantalla principal se renderiza inicialmente.
-            // Si necesitas reaccionar al cambio de vendedor *fuera* de la pantalla principal,
-            // añadirías lógica aquí. Por ahora, es puramente visual en la pantalla principal.
+            localStorage.setItem('selectedVendor', selectedVendor);
         };
 
         const renderCargaScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la carga de inventario.');
+                setScreenAndRender('main');
+                return;
+            }
             const cargaDiv = document.createElement('div');
             cargaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             cargaDiv.innerHTML = `
@@ -794,7 +825,10 @@
         };
 
         const saveCargaChanges = async () => {
-            // Guardar inventario en Firestore
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en el inventario.');
+                return;
+            }
             try {
                 for (const item of inventory) {
                     await db.collection('inventory').doc(item.sku).set(item);
@@ -849,8 +883,8 @@
 
         // Helper function to get unique values for a given key from the clients array
         const getUniqueClientValues = (key) => {
-            const values = clients.map(client => client[key]).filter(Boolean); // Get values, filter out empty/null
-            return [...new Set(values)].sort(); // Get unique values and sort them
+            const values = clients.map(client => client[key]).filter(Boolean);
+            return [...new Set(values)].sort();
         };
 
         const renderClientesScreen = () => {
@@ -882,7 +916,7 @@
 
                 <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
                     <h3 class="text-xl font-bold mb-4 text-lime-700">Opciones de Cliente</h3>
-                    <button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>
+                    ${isAdmin() ? `<button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>` : ''}
                     <div id="add-client-form-container" style="display: ${showAddClientForm ? 'block' : 'none'};">
                         <h4 class="text-lg font-bold mt-5 mb-3 text-lime-800">Formulario de Nuevo Cliente</h4>
                         <input type="text" id="newClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial">
@@ -920,7 +954,6 @@
                 clientTableBody.appendChild(row);
             });
 
-            // Populate Zona and Sector dropdowns
             if (showAddClientForm) {
                 const zonaSelect = document.getElementById('newClientZona');
                 const sectorSelect = document.getElementById('newClientSector');
@@ -945,15 +978,23 @@
         };
 
         const toggleAddClientForm = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden agregar nuevos clientes.');
+                return;
+            }
             showAddClientForm = !showAddClientForm;
-            render(); // Volver a renderizar para mostrar/ocultar el formulario
+            render();
         };
 
         const handleAddClient = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar nuevos clientes.');
+                return;
+            }
             const nombreComercial = document.getElementById('newClientNombreComercial').value;
             const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
-            const zona = document.getElementById('newClientZona').value; // Get value from select
-            const sector = document.getElementById('newClientSector').value; // Get value from select
+            const zona = document.getElementById('newClientZona').value;
+            const sector = document.getElementById('newClientSector').value;
             const tlf = document.getElementById('newClientTlf').value;
             const observaciones = document.getElementById('newClientObservaciones').value;
 
@@ -963,18 +1004,14 @@
             }
 
             try {
-                // Generar un nuevo ID para el cliente (Firestore puede generar uno automáticamente, pero si quieres controlarlo, puedes hacerlo así)
-                const newClientId = `client_${Date.now()}`; // Ejemplo simple de ID
+                const newClientId = `client_${Date.now()}`;
                 const newClientData = { id: newClientId, nombreComercial, nombrePersonal, zona, sector, tlf, observaciones };
 
-                // Añadir el nuevo cliente a Firestore
                 await db.collection('clients').doc(newClientId).set(newClientData);
 
-                // Actualizar el array local de clientes
                 clients.push(newClientData);
                 showMessageModal('Cliente Agregado: El nuevo cliente ha sido añadido a Firestore.');
 
-                // Restablecer campos del formulario y ocultar el formulario
                 document.getElementById('newClientNombreComercial').value = '';
                 document.getElementById('newClientNombrePersonal').value = '';
                 document.getElementById('newClientZona').value = '';
@@ -983,7 +1020,7 @@
                 document.getElementById('newClientObservaciones').value = '';
                 showAddClientForm = false;
 
-                setScreenAndRender('clientes'); // Volver a renderizar para mostrar el nuevo cliente y ocultar el formulario
+                setScreenAndRender('clientes');
             } catch (error) {
                 console.error('Error al añadir cliente a Firestore:', error);
                 showMessageModal('Error al agregar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
@@ -1016,9 +1053,8 @@
 
             if (selectedClientForSale) {
                 selectedClientDisplay.textContent = `Cliente Seleccionado: ${selectedClientForSale.nombreComercial}`;
-                infoText.textContent = ''; // Limpiar texto de información si el cliente está seleccionado
+                infoText.textContent = '';
 
-                // Renderizar productos como una tabla
                 productSaleContainer.innerHTML = `
                     <div class="table-container mb-5">
                         <table>
@@ -1057,7 +1093,7 @@
             } else {
                 selectedClientDisplay.textContent = '';
                 infoText.textContent = 'Por favor, seleccione un cliente para iniciar la venta.';
-                productSaleContainer.innerHTML = ''; // Limpiar tabla de productos si no hay cliente seleccionado
+                productSaleContainer.innerHTML = '';
             }
 
             if (showClientPickerModal) {
@@ -1072,14 +1108,12 @@
             saleQuantities[sku] = parseInt(quantity) || 0;
         };
 
-        // Función que muestra el modal de confirmación para finalizar la venta
         const showFinalizeSaleConfirmation = () => {
             console.log('[showFinalizeSaleConfirmation] Llamado.');
             showConfirmationModal('¿Estás seguro de que quieres finalizar esta venta? Esto actualizará el inventario y generará un archivo de venta.', finalizeSaleLogic);
         };
 
-        // Lógica real de finalización de venta (se ejecuta después de la confirmación)
-        const finalizeSaleLogic = async () => { // Añadir async
+        const finalizeSaleLogic = async () => {
             console.log('[finalizeSaleLogic] Iniciando...');
             if (!selectedClientForSale) {
                 showMessageModal('Error: Por favor, seleccione un cliente primero.');
@@ -1092,17 +1126,14 @@
             let hasInsufficientStock = false;
             let messages = [];
 
-            // Crear una copia del inventario para las actualizaciones
             let updatedInventory = JSON.parse(JSON.stringify(inventory));
 
-            for (const item of inventory) { // Iterar sobre el inventario original para verificar stock
+            for (const item of inventory) {
                 const quantitySold = saleQuantities[item.sku] || 0;
                 if (quantitySold > 0) {
-                    // Verificar si la cantidad vendida excede el stock disponible
                     if (quantitySold > item.cantidad) {
                         messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${item.cantidad}).`);
                         hasInsufficientStock = true;
-                        // No retornar aquí, para acumular todos los mensajes de error de stock
                     } else {
                         const subtotal = quantitySold * item.precio;
                         saleData.push({
@@ -1114,7 +1145,6 @@
                             subtotal: subtotal,
                         });
                         totalSaleAmount += subtotal;
-                        // Actualizar la cantidad en la copia del inventario
                         updatedInventory = updatedInventory.map(invItem =>
                             invItem.sku === item.sku ? { ...invItem, cantidad: invItem.cantidad - quantitySold } : invItem
                         );
@@ -1125,7 +1155,7 @@
             if (hasInsufficientStock) {
                 showMessageModal(messages.join('\n'));
                 console.error('[finalizeSaleLogic] Error: Stock insuficiente detectado. Deteniendo venta.');
-                return; // Detener el proceso de venta si algún stock fue insuficiente
+                return;
             }
 
             if (saleData.length === 0) {
@@ -1148,17 +1178,15 @@
             console.log('[finalizeSaleLogic] Contenido rawCSV para descarga:', saleRecord.rawCSV);
 
             try {
-                // Guardar la venta en Firestore
                 const docRef = await db.collection('dailySales').add(saleRecord);
-                saleRecord.docId = docRef.id; // Guardar el ID del documento de Firestore en el registro local
+                saleRecord.docId = docRef.id;
                 dailySales.push(saleRecord);
                 console.log('[Firestore] Venta guardada en Firestore con ID:', docRef.id);
 
-                // Actualizar el inventario en Firestore
                 for (const item of updatedInventory) {
                     await db.collection('inventory').doc(item.sku).set(item);
                 }
-                inventory = updatedInventory; // Actualizar el inventario local después de guardar en Firestore
+                inventory = updatedInventory;
                 console.log('[Firestore] Inventario actualizado en Firestore.');
 
                 messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
@@ -1167,19 +1195,18 @@
             } catch (error) {
                 console.error('Error al finalizar la venta y guardar en Firestore:', error);
                 showMessageModal('Error al finalizar la venta. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                return; // Detener si hubo un error al guardar
+                return;
             }
 
-            // Restablecer el estado de venta
             resetVentaState();
             setScreenAndRender('main');
-            showMessageModal(messages.join('\n')); // Mostrar todos los mensajes al final
+            showMessageModal(messages.join('\n'));
             console.log('[finalizeSaleLogic] Finalizado.');
         };
 
         const toggleClientPickerModal = (show) => {
             showClientPickerModal = show;
-            render(); // Volver a renderizar para mostrar/ocultar el modal
+            render();
         };
 
         const renderClientPickerModal = () => {
@@ -1218,8 +1245,8 @@
                 clientItem.onclick = () => {
                     selectedClientForSale = client;
                     toggleClientPickerModal(false);
-                    clientSearchTerm = ''; // Restablecer término de búsqueda
-                    updateVentaScreenContent(); // Actualizar pantalla de venta con el cliente seleccionado
+                    clientSearchTerm = '';
+                    updateVentaScreenContent();
                 };
                 clientPickerListDiv.appendChild(clientItem);
             });
@@ -1233,7 +1260,7 @@
         const resetVentaState = () => {
             selectedClientForSale = null;
             saleQuantities = {};
-            currentProductIndex = 0; // Restablecer por consistencia, aunque menos usado ahora
+            currentProductIndex = 0;
         };
 
         const resetVentaStateAndGoToMain = () => {
@@ -1242,6 +1269,11 @@
         };
 
         const renderCierreVentasScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden cerrar ventas.');
+                setScreenAndRender('main');
+                return;
+            }
             const cierreDiv = document.createElement('div');
             cierreDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             cierreDiv.innerHTML = `
@@ -1259,17 +1291,19 @@
                 <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(cierreDiv);
-            updateVendorSelectionDisplay(); // Llama a esto para poblar y establecer el estado de verificación
+            updateVendorSelectionDisplay();
         };
 
-        // Función que muestra el modal de confirmación para cerrar ventas
         const showCloseSalesConfirmation = () => {
             console.log('[showCloseSalesConfirmation] Llamado.');
             showConfirmationModal('¿Estás seguro de que quieres cerrar las ventas del día? Esto consolidará las ventas y "borrará" los registros individuales.', handleCloseSalesLogic);
         };
 
-        // Lógica real de cierre de ventas (se ejecuta después de la confirmación)
-        const handleCloseSalesLogic = async () => { // Añadir async
+        const handleCloseSalesLogic = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden cerrar ventas.');
+                return;
+            }
             console.log('[handleCloseSalesLogic] Iniciando...');
             const today = getCurrentDateFormatted();
             console.log('[handleCloseSalesLogic] dailySales antes de filtrar por fecha:', JSON.parse(JSON.stringify(dailySales)));
@@ -1287,7 +1321,6 @@
             const aggregatedSalesBySku = {};
             let totalOverallSale = 0;
 
-            // Agrega cantidades y subtotales por SKU
             salesForToday.forEach(sale => {
                 sale.items.forEach(item => {
                     const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
@@ -1301,16 +1334,14 @@
                     }
                     aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
                     aggregatedSalesBySku[sku].totalSubtotal += subtotal;
-                    totalOverallSale += subtotal; // Acumular el total general de los subtotales individuales
+                    totalOverallSale += subtotal;
                 });
             });
 
             let combinedCSVContent = `Venta General Consolidada - Fecha: ${today}\n`;
-            // Añadir información del vendedor
             combinedCSVContent += `Vendedor: ${selectedVendor}\n\n`;
             combinedCSVContent += `SKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
 
-            // Añadir datos agregados al contenido CSV
             for (const sku in aggregatedSalesBySku) {
                 const item = aggregatedSalesBySku[sku];
                 combinedCSVContent += `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}\n`;
@@ -1321,16 +1352,14 @@
             const combinedFileName = `venta_consolidada_${today}.csv`;
             messages.push(`Cierre de Ventas: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas de hoy.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
 
-            downloadCSV(combinedFileName, combinedCSVContent); // Llamada a la función de descarga
+            downloadCSV(combinedFileName, combinedCSVContent);
 
 
             // --- Nueva Generación del archivo consolidado por CLIENTE ---
             const uniqueSKUs = new Set();
-            const clientSalesData = {}; // { clientId: { clientName: '...', total: 0, skus: { sku1: qty, sku2: qty } } }
+            const clientSalesData = {};
 
-            // 1. Recopilar todos los SKUs únicos y organizar datos por cliente
             salesForToday.forEach(sale => {
-                // Asegurarse de que el cliente exista en clientSalesData
                 if (!clientSalesData[sale.client.id]) {
                     clientSalesData[sale.client.id] = {
                         clientName: sale.client.nombreComercial,
@@ -1340,38 +1369,33 @@
                 }
 
                 sale.items.forEach(item => {
-                    uniqueSKUs.add(item.sku); // Añadir SKU a la lista de únicos
-                    // Sumar cantidad vendida por SKU para este cliente
+                    uniqueSKUs.add(item.sku);
                     clientSalesData[sale.client.id].skus[item.sku] =
                         (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
-                    // Sumar al total del cliente
                     clientSalesData[sale.client.id].total += item.subtotal;
                 });
             });
 
-            const sortedUniqueSKUs = Array.from(uniqueSKUs).sort(); // Ordenar SKUs para el encabezado
+            const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
 
             let clientCSVContent = `Venta General por Clientes - Fecha: ${today}\n`;
             clientCSVContent += `Vendedor: ${selectedVendor}\n\n`;
 
-            // Encabezado del CSV por cliente
             clientCSVContent += `Cliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
 
             let grandTotalClients = 0;
 
-            // Filas de datos por cliente
             for (const clientId in clientSalesData) {
                 const clientData = clientSalesData[clientId];
-                let clientRow = `"${clientData.clientName}"`; // Usar comillas para nombres con espacios/comas
+                let clientRow = `"${clientData.clientName}"`;
                 sortedUniqueSKUs.forEach(sku => {
-                    clientRow += `,${clientData.skus[sku] || 0}`; // Cantidad vendida o 0 si no se vendió ese SKU
+                    clientRow += `,${clientData.skus[sku] || 0}`;
                 });
                 clientRow += `,${clientData.total.toFixed(2)}\n`;
                 clientCSVContent += clientRow;
                 grandTotalClients += clientData.total;
             }
 
-            // Total general al final del archivo por cliente
             clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
 
             const clientFileName = `ventas_por_cliente_${today}.csv`;
@@ -1379,18 +1403,16 @@
             downloadCSV(clientFileName, clientCSVContent);
 
 
-            // --- Mensajes y Limpieza Final ---
             messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
             messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
 
-            // Eliminar archivos de ventas diarias individuales de Firestore
             try {
                 for (const sale of salesForToday) {
-                    if (sale.docId) { // Asegurarse de que el documento tiene un ID de Firestore
+                    if (sale.docId) {
                         await db.collection('dailySales').doc(sale.docId).delete();
                     }
                 }
-                dailySales = dailySales.filter(sale => sale.date !== today); // Actualizar el array local
+                dailySales = dailySales.filter(sale => sale.date !== today);
                 console.log('[Firestore] Ventas diarias de hoy eliminadas de Firestore.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados" de Firestore.');
             } catch (error) {
@@ -1400,13 +1422,10 @@
 
 
             setScreenAndRender('main');
-            showMessageModal(messages.join('\n')); // Mostrar todos los mensajes al final
+            showMessageModal(messages.join('\n'));
             console.log('[handleCloseSalesLogic] Finalizado.');
         };
 
-        // --- Funciones de Recibo y Compartir (Modificada para generar imagen y compartir) ---
-
-        // Función para generar el contenido HTML del recibo térmico
         const generateThermalReceiptHtml = (saleRecord) => {
             let itemsHtml = '';
             saleRecord.items.forEach(item => {
@@ -1420,7 +1439,6 @@
                 `;
             });
 
-            // Añadir el motivo de modificación si existe
             let modificationReasonHtml = '';
             if (saleRecord.modificationReason) {
                 modificationReasonHtml = `
@@ -1451,40 +1469,36 @@
                         <span>TOTAL:</span>
                         <span>$${saleRecord.total.toFixed(2)}</span>
                     </div>
-                    ${modificationReasonHtml} <!-- Añadir el motivo de modificación aquí -->
+                    ${modificationReasonHtml}
                     <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
                     <p style="text-align: center; margin-top: 10px; font-size: 0.7rem;">¡Gracias por tu compra!</p>
                 </div>
             `;
         };
 
-        // Función para "imprimir" el recibo (ahora genera una imagen y la comparte/descarga)
         const printSaleReceipt = async (saleRecord) => {
             showMessageModal('Generando imagen del recibo...');
             const receiptHtml = generateThermalReceiptHtml(saleRecord);
 
-            // Crear un elemento temporal oculto en el DOM actual para renderizar el recibo
             const tempDiv = document.createElement('div');
             tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px'; // Moverlo fuera de la vista
-            tempDiv.style.width = '250px'; // Ancho fijo para la captura del recibo térmico
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.width = '250px';
             tempDiv.innerHTML = receiptHtml;
             document.body.appendChild(tempDiv);
 
             try {
                 const canvas = await html2canvas(tempDiv, {
-                    scale: 2, // Aumentar la escala para una mejor calidad de imagen
-                    logging: false, // Desactivar logs de html2canvas si no se necesitan
-                    useCORS: true // Importante si hay imágenes de diferentes orígenes
+                    scale: 2,
+                    logging: false,
+                    useCORS: true
                 });
                 console.log('[printSaleReceipt] html2canvas ha generado el canvas.');
 
                 const imageDataUrl = canvas.toDataURL('image/png');
                 console.log('[printSaleReceipt] Data URL de la imagen generada. Longitud:', imageDataUrl.length);
 
-                // Intentar compartir usando la Web Share API (preferido en móviles)
                 if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([], 'recibo.png', { type: 'image/png' })] })) {
-                    // Convertir data URL a Blob para la Web Share API
                     const response = await fetch(imageDataUrl);
                     const blob = await response.blob();
                     const file = new File([blob], `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`, { type: 'image/png' });
@@ -1497,11 +1511,9 @@
                     showMessageModal('Recibo compartido exitosamente a través de las opciones de tu dispositivo.');
                     console.log('[printSaleReceipt] Recibo compartido a través de Web Share API.');
                 } else {
-                    // Fallback para navegadores que no soportan la Web Share API o compartir archivos
                     showMessageModal('La función de compartir avanzada no está disponible en este navegador. Se descargará la imagen del recibo.');
                     console.warn('[printSaleReceipt] Web Share API no disponible o no puede compartir archivos. Se procede a la descarga.');
 
-                    // Descargar la imagen
                     const link = document.createElement('a');
                     link.download = `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`;
                     link.href = imageDataUrl;
@@ -1515,7 +1527,6 @@
                 console.error('[printSaleReceipt] Error al generar o compartir la imagen:', error);
                 showMessageModal('Error al generar o compartir la imagen del recibo. Intenta de nuevo.');
             } finally {
-                // Eliminar el elemento temporal del DOM
                 if (tempDiv && tempDiv.parentNode) {
                     document.body.removeChild(tempDiv);
                     console.log('[printSaleReceipt] Elemento temporal eliminado.');
@@ -1525,6 +1536,11 @@
 
 
         const renderArchivosScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a los archivos.');
+                setScreenAndRender('main');
+                return;
+            }
             const archivosDiv = document.createElement('div');
             archivosDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             archivosDiv.innerHTML = `
@@ -1594,14 +1610,16 @@
             }
         };
 
-        // --- Funciones para el Modal de Modificación de Venta ---
         const openModifySaleModal = (saleRecord) => {
-            selectedSaleForModification = JSON.parse(JSON.stringify(saleRecord)); // Deep copy to avoid direct modification
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden modificar ventas.');
+                return;
+            }
+            selectedSaleForModification = JSON.parse(JSON.stringify(saleRecord));
             modifiedSaleQuantities = {};
             selectedSaleForModification.items.forEach(item => {
                 modifiedSaleQuantities[item.sku] = item.cantidadVendida;
             });
-            // Initialize modification reason from existing record or empty
             modificationReason = selectedSaleForModification.modificationReason || '';
             showModifySaleModalState = true;
             render();
@@ -1617,7 +1635,6 @@
 
         const handleModifiedSaleQuantityChange = (sku, quantity) => {
             modifiedSaleQuantities[sku] = parseInt(quantity) || 0;
-            // Re-render the modal to update totals dynamically if desired, or just wait for save
         };
 
         const handleModificationReasonChange = (reason) => {
@@ -1633,7 +1650,6 @@
             let productsHtml = '';
             let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
 
-            // Add products from the original sale
             selectedSaleForModification.items.forEach(item => {
                 const productInInventory = inventory.find(invItem => invItem.sku === item.sku);
                 const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : item.cantidadVendida;
@@ -1650,7 +1666,6 @@
                 `;
             });
 
-            // Add other products from inventory that were NOT in the original sale
             inventory.forEach(item => {
                 if (!currentSaleSkus.has(item.sku)) {
                     const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : 0;
@@ -1708,7 +1723,11 @@
             appRoot.appendChild(modalDiv);
         };
 
-        const saveModifiedSale = async () => { // Añadir async
+        const saveModifiedSale = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar modificaciones de ventas.');
+                return;
+            }
             if (!modificationReason.trim()) {
                 showMessageModal('Por favor, ingresa un motivo para la modificación.');
                 return;
@@ -1741,12 +1760,10 @@
                 return;
             }
 
-            // Update the selected sale record
             selectedSaleForModification.items = newSaleItems;
             selectedSaleForModification.total = newTotalSaleAmount;
             selectedSaleForModification.modificationReason = modificationReason.trim();
 
-            // Regenerate rawCSV for the modified sale
             selectedSaleForModification.rawCSV =
                 `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
                 newSaleItems.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
@@ -1754,16 +1771,14 @@
                 `Motivo de Modificación:,${modificationReason.trim()}`;
 
 
-            // Find and replace the original sale record in dailySales
             const index = dailySales.findIndex(sale => sale.fileName === selectedSaleForModification.fileName);
             if (index !== -1) {
                 try {
-                    // Actualizar el documento en Firestore
                     await db.collection('dailySales').doc(selectedSaleForModification.docId).set(selectedSaleForModification);
-                    dailySales[index] = selectedSaleForModification; // Actualizar el array local
+                    dailySales[index] = selectedSaleForModification;
                     showMessageModal('Venta modificada y guardada exitosamente en Firestore.');
                     closeModifySaleModal();
-                    render(); // Re-render the Archivos screen to show updated data
+                    render();
                 } catch (error) {
                     console.error('Error al modificar venta en Firestore:', error);
                     showMessageModal('Error al modificar venta. Por favor, revisa tu conexión y las reglas de seguridad.');
@@ -1775,24 +1790,26 @@
         };
 
 
-        const handleFileUpload = async (event, type) => { // Añadir async
+        const handleFileUpload = async (event, type) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden cargar archivos CSV.');
+                return;
+            }
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = async (e) => { // Añadir async
+            reader.onload = async (e) => {
                 const csvContent = e.target.result;
                 const parsedData = parseCSV(csvContent);
 
                 try {
                     if (type === 'clients') {
-                        // Eliminar clientes existentes en Firestore antes de cargar nuevos
                         const existingClientsSnapshot = await db.collection('clients').get();
                         for (const doc of existingClientsSnapshot.docs) {
                             await db.collection('clients').doc(doc.id).delete();
                         }
 
-                        // Mapear y guardar nuevos clientes en Firestore
                         const newClients = parsedData.map(row => ({
                             id: row.ID,
                             nombreComercial: row['Nombre Comercial'],
@@ -1805,16 +1822,14 @@
                         for (const client of newClients) {
                             await db.collection('clients').doc(client.id).set(client);
                         }
-                        clients = newClients; // Actualizar el array local
+                        clients = newClients;
                         showMessageModal('clientes.csv cargado y guardado exitosamente en Firestore.');
                     } else if (type === 'inventory') {
-                        // Eliminar inventario existente en Firestore antes de cargar nuevo
                         const existingInventorySnapshot = await db.collection('inventory').get();
                         for (const doc of existingInventorySnapshot.docs) {
                             await db.collection('inventory').doc(doc.id).delete();
                         }
 
-                        // Mapear y guardar nuevo inventario en Firestore
                         const newInventory = parsedData.map(row => ({
                             rubro: row.Rubro,
                             sku: row.Sku,
@@ -1827,16 +1842,14 @@
                         for (const item of newInventory) {
                             await db.collection('inventory').doc(item.sku).set(item);
                         }
-                        inventory = newInventory; // Actualizar el array local
+                        inventory = newInventory;
                         showMessageModal('inventario.csv cargado y guardado exitosamente en Firestore.');
                     } else if (type === 'vendors') {
-                        // Eliminar vendedores existentes en Firestore antes de cargar nuevos
                         const existingVendorsSnapshot = await db.collection('vendors').get();
                         for (const doc of existingVendorsSnapshot.docs) {
                             await db.collection('vendors').doc(doc.id).delete();
                         }
 
-                        // Mapear y guardar nuevos vendedores en Firestore
                         const newVendors = parsedData.map(row => ({
                             name: row['Wilfredo Chacon'] || row.Name,
                             category: row['Alimentos'] || row.Category
@@ -1844,15 +1857,14 @@
                         for (const vendor of newVendors) {
                             await db.collection('vendors').doc(vendor.name.replace(/\s/g, '_')).set(vendor);
                         }
-                        vendors = newVendors; // Actualizar el array local
+                        vendors = newVendors;
                         showMessageModal('vendedor.csv cargado y guardado exitosamente en Firestore.');
-                        // Establecer el primer vendedor como seleccionado si los vendedores se acaban de cargar y no se había seleccionado ninguno
                         if (vendors.length > 0 && selectedVendor === 'Ninguno') {
                             selectedVendor = vendors[0].name;
                             localStorage.setItem('selectedVendor', selectedVendor);
                         }
                     }
-                    render(); // Volver a renderizar para reflejar los nuevos datos
+                    render();
                 } catch (error) {
                     console.error('Error al cargar archivo CSV a Firestore:', error);
                     showMessageModal('Error al cargar archivo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
@@ -1907,18 +1919,13 @@
             }
         };
 
-        // Función global para cambiar de pantalla y volver a renderizar
         const setScreenAndRender = (newScreen) => {
             console.log(`[setScreenAndRender] Cambiando a pantalla: ${newScreen}`);
             screen = newScreen;
             render();
         };
 
-        // Registro del Service Worker
         if ('serviceWorker' in navigator) {
-            // Se registra el Service Worker tan pronto como el DOM esté completamente cargado.
-            // Esto es un buen punto intermedio: el DOM está listo, pero aún es temprano
-            // en el ciclo de vida de la página para el registro del SW.!
             document.addEventListener('DOMContentLoaded', () => {
                 const serviceWorkerFileName = 'service-worker.js';
                 const absoluteServiceWorkerUrl = window.location.origin + '/' + serviceWorkerFileName;
@@ -1933,16 +1940,10 @@
             });
         }
 
-        // Renderizado inicial cuando la página se carga
-        // Se llama a render() al cargar la ventana para asegurar que la UI se muestre.
-        // El onAuthStateChanged de Firebase manejará las transiciones de pantalla posteriores si hay un usuario autenticado.
         window.onload = () => {
             console.log('[window.onload] Página cargada, esperando autenticación para cargar datos.');
-            // La carga inicial de datos se dispara ahora desde onAuthStateChanged
-            // para asegurar que Firestore se use solo cuando el usuario está autenticado.
-            render(); // Renderiza la pantalla de login/registro inicialmente
+            render();
         };
-        // Fin del script JavaScript.
     </script>
 </body>
 </html>
