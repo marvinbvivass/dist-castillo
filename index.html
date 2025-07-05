@@ -17,6 +17,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-analytics-compat.js"></script>
+    <!-- NUEVO: SDK de Firestore -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
     <!-- html2canvas para convertir HTML a imagen -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -63,8 +65,8 @@
             border-radius: 20px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             width: 90%;
-            max-width: 400px; /* Limitar ancho del modal */
-            max-height: 80%;
+            max-width: 600px; /* Ancho aumentado para el modal de modificación */
+            max-height: 90%; /* Altura máxima para el scroll */
             overflow-y: auto;
             text-align: center; /* Centrar texto en el modal */
         }
@@ -196,7 +198,7 @@
             font-size: 0.7rem;
         }
 
-        /* Estilos para impresión */
+        /* Estilos para impresión (mantener para PC, aunque la lógica principal cambie) */
         @media print {
             body > *:not(.print-only) {
                 display: none !important;
@@ -240,16 +242,24 @@
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth(); // Obtener la instancia de autenticación
         const analytics = firebase.analytics(); // Ya lo tenías
+        const db = firebase.firestore(); // NUEVO: Obtener la instancia de Firestore
 
-        // --- Datos Simulados (se mantendrán en localStorage por ahora) ---
-        // Cargar datos de localStorage o usar datos iniciales si no se encuentran
-        let clients = JSON.parse(localStorage.getItem('clients')) || [
+        // --- Datos Simulados (ahora se usarán como fallback si Firestore falla o está vacío) ---
+        // Estos datos ya NO se cargan directamente desde localStorage, sino que se usan como valores por defecto
+        // si la base de datos de Firestore está vacía o no se puede acceder.
+        let clients = []; // Se cargará desde Firestore
+        let inventory = []; // Se cargará desde Firestore
+        let vendors = []; // Se cargará desde Firestore
+        let dailySales = []; // Se cargará desde Firestore
+
+        // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
+        const initialClients = [
             { id: '1', nombreComercial: 'Los Sartenes de Amita', nombrePersonal: 'Maria Rosario', zona: 'Foranea', sector: 'puerba cambio dos', tlf: '0414555555555', observaciones: 'al frente del chalet' },
             { id: '3', nombreComercial: 'El Parrandereo', nombrePersonal: 'Jose Martinez', zona: 'Santa Teresa', sector: 'Barrio Bolivar', tlf: '787878787878', observaciones: 'ninguna' },
             { id: '4', nombreComercial: 'Licoreria Grysyudey', nombrePersonal: 'Guillermina', zona: 'Palo Gordo', sector: 'Via Principal', tlf: '46898755675', observaciones: 'al doblar la esquina' },
         ];
 
-        let inventory = JSON.parse(localStorage.getItem('inventory')) || [
+        const initialInventory = [
             { rubro: 'Cerveceria', sku: '2364', segmento: 'cerveza', producto: 'solera verde', presentacion: '1/4', cantidad: 180, precio: 23 },
             { rubro: 'Cerveceria', sku: '7458', segmento: 'cerveza', producto: 'ligth', presentacion: '1/4', cantidad: 180, precio: 19.8 },
             { rubro: 'Alimentos', sku: '1001', segmento: 'panaderia', producto: 'pan de molde', presentacion: 'unidad', cantidad: 50, precio: 3.5 },
@@ -257,16 +267,16 @@
             { rubro: 'Cerveceria', sku: '9876', segmento: 'cerveza', producto: 'polar pilsen', presentacion: 'tercio', cantidad: 200, precio: 1.5 },
         ];
 
-        let vendors = JSON.parse(localStorage.getItem('vendors')) || [
+        const initialVendors = [
             { name: 'Wilfredo Chacon', category: 'Alimentos' },
             { name: 'Yonathan Chavez', category: 'Alimentos' },
             { name: 'Roberto Chacon', category: 'Cerveceria' },
         ];
 
-        let dailySales = JSON.parse(localStorage.getItem('dailySales')) || []; // Almacena archivos de venta simulados
 
         // Establecer vendedor seleccionado inicial basado en localStorage o por defecto al primero si está disponible
-        let selectedVendor = localStorage.getItem('selectedVendor') || (vendors.length > 0 ? vendors[0].name : 'Ninguno');
+        // Esto se mantendrá en localStorage por ahora, pero eventualmente también podría ir a Firestore para preferencias de usuario
+        let selectedVendor = localStorage.getItem('selectedVendor') || (initialVendors.length > 0 ? initialVendors[0].name : 'Ninguno');
 
         // Mapeo de imágenes de productos simulado (SKU a URL de imagen local)
         const productImages = {
@@ -374,6 +384,12 @@
         let currentUser = null;
 
         const appRoot = document.getElementById('app-root');
+
+        // Estado para la modificación de ventas
+        let showModifySaleModalState = false;
+        let selectedSaleForModification = null;
+        let modifiedSaleQuantities = {}; // Temporal storage for quantities in modify modal
+        let modificationReason = '';
 
         // Función para mostrar un modal de mensaje personalizado
         const showMessageModal = (message) => {
@@ -502,26 +518,99 @@
 
         // Observar el estado de autenticación de Firebase
         // Esto se ejecuta cuando el estado de autenticación cambia (inicio de sesión, cierre de sesión, carga de página)
-        auth.onAuthStateChanged((user) => {
+        auth.onAuthStateChanged(async (user) => { // Añadir async aquí para poder usar await en fetchData
             console.log('Estado de autenticación de Firebase cambiado. Usuario:', user ? user.email : 'Ninguno');
             if (user) {
-                // Usuario ha iniciado sesión
                 currentUser = user;
-                // Si la pantalla actual es 'login' o 'register', redirige a 'main'
+                // Cargar datos de Firestore cuando el usuario está autenticado
+                await fetchDataFromFirestore();
                 if (screen === 'login' || screen === 'register') {
                     setScreenAndRender('main');
                 } else {
-                    render(); // Solo re-renderiza si ya está en una pantalla de la app (no login/register)
+                    render();
                 }
             } else {
-                // Usuario ha cerrado sesión o no hay usuario autenticado
                 currentUser = null;
-                // Si la pantalla actual no es 'login' o 'register', redirige a 'login'
+                // Limpiar datos cuando el usuario no está autenticado
+                clients = [];
+                inventory = [];
+                vendors = [];
+                dailySales = [];
                 if (screen !== 'login' && screen !== 'register') {
                     setScreenAndRender('login');
+                } else {
+                    render(); // Renderizar pantalla de login/registro
                 }
             }
         });
+
+        // --- Funciones de Carga de Datos desde Firestore ---
+        const fetchDataFromFirestore = async () => {
+            console.log('[Firestore] Intentando cargar datos...');
+            try {
+                // Cargar Clientes
+                const clientsSnapshot = await db.collection('clients').get();
+                if (clientsSnapshot.empty) {
+                    console.log('[Firestore] Colección "clients" vacía. Poblando con datos iniciales.');
+                    for (const client of initialClients) {
+                        await db.collection('clients').doc(client.id).set(client);
+                    }
+                    clients = initialClients;
+                } else {
+                    clients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Clientes cargados:', clients);
+
+                // Cargar Inventario
+                const inventorySnapshot = await db.collection('inventory').get();
+                if (inventorySnapshot.empty) {
+                    console.log('[Firestore] Colección "inventory" vacía. Poblando con datos iniciales.');
+                    for (const item of initialInventory) {
+                        await db.collection('inventory').doc(item.sku).set(item);
+                    }
+                    inventory = initialInventory;
+                } else {
+                    inventory = inventorySnapshot.docs.map(doc => ({ sku: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Inventario cargado:', inventory);
+
+                // Cargar Vendedores
+                const vendorsSnapshot = await db.collection('vendors').get();
+                if (vendorsSnapshot.empty) {
+                    console.log('[Firestore] Colección "vendors" vacía. Poblando con datos iniciales.');
+                    for (const vendor of initialVendors) {
+                        // Firestore no tiene un ID predefinido para nombres, generamos uno o usamos el nombre como ID
+                        await db.collection('vendors').doc(vendor.name.replace(/\s/g, '_')).set(vendor);
+                    }
+                    vendors = initialVendors;
+                } else {
+                    vendors = vendorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Vendedores cargados:', vendors);
+
+                // Cargar Ventas Diarias (asumiendo que se guardan con un ID generado por Firestore)
+                const dailySalesSnapshot = await db.collection('dailySales').get();
+                dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                console.log('[Firestore] Ventas diarias cargadas:', dailySales);
+
+                // Actualizar el vendedor seleccionado si el anterior no existe
+                if (!vendors.some(v => v.name === selectedVendor)) {
+                    selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
+                    localStorage.setItem('selectedVendor', selectedVendor);
+                }
+
+            } catch (error) {
+                console.error('[Firestore] Error al cargar datos de Firestore:', error);
+                showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+                // Fallback a datos iniciales si hay un error al cargar
+                clients = initialClients;
+                inventory = initialInventory;
+                vendors = initialVendors;
+                dailySales = []; // No hay ventas diarias si no se pudo cargar
+            } finally {
+                render(); // Asegurarse de renderizar la UI después de cargar los datos
+            }
+        };
 
         // --- Función Principal de Renderizado ---
         const render = () => {
@@ -567,6 +656,9 @@
             // Siempre renderizar los modales si deben mostrarse
             renderMessageModal();
             renderConfirmationModal();
+            if (showModifySaleModalState) {
+                renderModifySaleModal();
+            }
         };
 
         // --- Pantallas / Componentes ---
@@ -701,9 +793,17 @@
             );
         };
 
-        const saveCargaChanges = () => {
-            localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario
-            showMessageModal('Carga Exitosa: Inventario actualizado correctamente.');
+        const saveCargaChanges = async () => {
+            // Guardar inventario en Firestore
+            try {
+                for (const item of inventory) {
+                    await db.collection('inventory').doc(item.sku).set(item);
+                }
+                showMessageModal('Carga Exitosa: Inventario actualizado correctamente en Firestore.');
+            } catch (error) {
+                console.error('Error al guardar inventario en Firestore:', error);
+                showMessageModal('Error al guardar inventario. Por favor, revisa tu conexión y las reglas de seguridad.');
+            }
             setScreenAndRender('main');
         };
 
@@ -849,7 +949,7 @@
             render(); // Volver a renderizar para mostrar/ocultar el formulario
         };
 
-        const handleAddClient = () => {
+        const handleAddClient = async () => {
             const nombreComercial = document.getElementById('newClientNombreComercial').value;
             const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
             const zona = document.getElementById('newClientZona').value; // Get value from select
@@ -861,21 +961,33 @@
                 showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
                 return;
             }
-            const newId = String(Math.max(...clients.map(c => parseInt(c.id))) + 1);
-            clients.push({ id: newId, nombreComercial, nombrePersonal, zona, sector, tlf, observaciones });
-            localStorage.setItem('clients', JSON.stringify(clients)); // Guardar clientes
-            showMessageModal('Cliente Agregado: El nuevo cliente ha sido añadido.');
 
-            // Restablecer campos del formulario y ocultar el formulario
-            document.getElementById('newClientNombreComercial').value = '';
-            document.getElementById('newClientNombrePersonal').value = '';
-            document.getElementById('newClientZona').value = '';
-            document.getElementById('newClientSector').value = '';
-            document.getElementById('newClientTlf').value = '';
-            document.getElementById('newClientObservaciones').value = '';
-            showAddClientForm = false;
+            try {
+                // Generar un nuevo ID para el cliente (Firestore puede generar uno automáticamente, pero si quieres controlarlo, puedes hacerlo así)
+                const newClientId = `client_${Date.now()}`; // Ejemplo simple de ID
+                const newClientData = { id: newClientId, nombreComercial, nombrePersonal, zona, sector, tlf, observaciones };
 
-            setScreenAndRender('clientes'); // Volver a renderizar para mostrar el nuevo cliente y ocultar el formulario
+                // Añadir el nuevo cliente a Firestore
+                await db.collection('clients').doc(newClientId).set(newClientData);
+
+                // Actualizar el array local de clientes
+                clients.push(newClientData);
+                showMessageModal('Cliente Agregado: El nuevo cliente ha sido añadido a Firestore.');
+
+                // Restablecer campos del formulario y ocultar el formulario
+                document.getElementById('newClientNombreComercial').value = '';
+                document.getElementById('newClientNombrePersonal').value = '';
+                document.getElementById('newClientZona').value = '';
+                document.getElementById('newClientSector').value = '';
+                document.getElementById('newClientTlf').value = '';
+                document.getElementById('newClientObservaciones').value = '';
+                showAddClientForm = false;
+
+                setScreenAndRender('clientes'); // Volver a renderizar para mostrar el nuevo cliente y ocultar el formulario
+            } catch (error) {
+                console.error('Error al añadir cliente a Firestore:', error);
+                showMessageModal('Error al agregar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+            }
         };
 
         const renderVentaScreen = () => {
@@ -967,7 +1079,7 @@
         };
 
         // Lógica real de finalización de venta (se ejecuta después de la confirmación)
-        const finalizeSaleLogic = () => {
+        const finalizeSaleLogic = async () => { // Añadir async
             console.log('[finalizeSaleLogic] Iniciando...');
             if (!selectedClientForSale) {
                 showMessageModal('Error: Por favor, seleccione un cliente primero.');
@@ -980,31 +1092,35 @@
             let hasInsufficientStock = false;
             let messages = [];
 
-            inventory.forEach(item => {
+            // Crear una copia del inventario para las actualizaciones
+            let updatedInventory = JSON.parse(JSON.stringify(inventory));
+
+            for (const item of inventory) { // Iterar sobre el inventario original para verificar stock
                 const quantitySold = saleQuantities[item.sku] || 0;
                 if (quantitySold > 0) {
                     // Verificar si la cantidad vendida excede el stock disponible
                     if (quantitySold > item.cantidad) {
                         messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${item.cantidad}).`);
                         hasInsufficientStock = true;
-                        return; // Salir del forEach temprano si el stock es insuficiente
+                        // No retornar aquí, para acumular todos los mensajes de error de stock
+                    } else {
+                        const subtotal = quantitySold * item.precio;
+                        saleData.push({
+                            sku: item.sku,
+                            producto: item.producto,
+                            presentacion: item.presentacion,
+                            cantidadVendida: quantitySold,
+                            precioUnitario: item.precio,
+                            subtotal: subtotal,
+                        });
+                        totalSaleAmount += subtotal;
+                        // Actualizar la cantidad en la copia del inventario
+                        updatedInventory = updatedInventory.map(invItem =>
+                            invItem.sku === item.sku ? { ...invItem, cantidad: invItem.cantidad - quantitySold } : invItem
+                        );
                     }
-                    const subtotal = quantitySold * item.precio;
-                    saleData.push({
-                        sku: item.sku,
-                        producto: item.producto,
-                        presentacion: item.presentacion,
-                        cantidadVendida: quantitySold,
-                        precioUnitario: item.precio,
-                        subtotal: subtotal,
-                    });
-                    totalSaleAmount += subtotal;
-                    // Actualizar la cantidad del inventario
-                    inventory = inventory.map(invItem =>
-                        invItem.sku === item.sku ? { ...invItem, cantidad: invItem.cantidad - quantitySold } : invItem
-                    );
                 }
-            });
+            }
 
             if (hasInsufficientStock) {
                 showMessageModal(messages.join('\n'));
@@ -1031,20 +1147,28 @@
             };
             console.log('[finalizeSaleLogic] Contenido rawCSV para descarga:', saleRecord.rawCSV);
 
+            try {
+                // Guardar la venta en Firestore
+                const docRef = await db.collection('dailySales').add(saleRecord);
+                saleRecord.docId = docRef.id; // Guardar el ID del documento de Firestore en el registro local
+                dailySales.push(saleRecord);
+                console.log('[Firestore] Venta guardada en Firestore con ID:', docRef.id);
 
-            dailySales.push(saleRecord);
-            console.log('[finalizeSaleLogic] Estado de dailySales antes de guardar:', JSON.parse(JSON.stringify(dailySales)));
-            localStorage.setItem('dailySales', JSON.stringify(dailySales)); // Guardar ventas diarias
-            console.log('[finalizeSaleLogic] dailySales en localStorage después de guardar:', localStorage.getItem('dailySales'));
+                // Actualizar el inventario en Firestore
+                for (const item of updatedInventory) {
+                    await db.collection('inventory').doc(item.sku).set(item);
+                }
+                inventory = updatedInventory; // Actualizar el inventario local después de guardar en Firestore
+                console.log('[Firestore] Inventario actualizado en Firestore.');
 
-            console.log('[finalizeSaleLogic] Estado de inventory antes de guardar:', JSON.parse(JSON.stringify(inventory)));
-            localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario actualizado
-            console.log('[finalizeSaleLogic] inventory en localStorage después de guardar:', localStorage.getItem('inventory'));
+                messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
+                messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
 
-            messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado.`);
-            messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
-
-            // downloadCSV(fileName, saleRecord.rawCSV); // Ya no se descarga automáticamente aquí, se hace desde Archivos
+            } catch (error) {
+                console.error('Error al finalizar la venta y guardar en Firestore:', error);
+                showMessageModal('Error al finalizar la venta. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+                return; // Detener si hubo un error al guardar
+            }
 
             // Restablecer el estado de venta
             resetVentaState();
@@ -1145,7 +1269,7 @@
         };
 
         // Lógica real de cierre de ventas (se ejecuta después de la confirmación)
-        const handleCloseSalesLogic = () => {
+        const handleCloseSalesLogic = async () => { // Añadir async
             console.log('[handleCloseSalesLogic] Iniciando...');
             const today = getCurrentDateFormatted();
             console.log('[handleCloseSalesLogic] dailySales antes de filtrar por fecha:', JSON.parse(JSON.stringify(dailySales)));
@@ -1159,6 +1283,7 @@
                 return;
             }
 
+            // --- Generación del archivo consolidado por SKU (EXISTENTE) ---
             const aggregatedSalesBySku = {};
             let totalOverallSale = 0;
 
@@ -1198,25 +1323,88 @@
 
             downloadCSV(combinedFileName, combinedCSVContent); // Llamada a la función de descarga
 
-            // Simular compartir
-            messages.push(`Compartiendo: Simulando compartir "${combinedFileName}" vía WhatsApp.`);
 
-            // Simular impresión
+            // --- Nueva Generación del archivo consolidado por CLIENTE ---
+            const uniqueSKUs = new Set();
+            const clientSalesData = {}; // { clientId: { clientName: '...', total: 0, skus: { sku1: qty, sku2: qty } } }
+
+            // 1. Recopilar todos los SKUs únicos y organizar datos por cliente
+            salesForToday.forEach(sale => {
+                // Asegurarse de que el cliente exista en clientSalesData
+                if (!clientSalesData[sale.client.id]) {
+                    clientSalesData[sale.client.id] = {
+                        clientName: sale.client.nombreComercial,
+                        total: 0,
+                        skus: {}
+                    };
+                }
+
+                sale.items.forEach(item => {
+                    uniqueSKUs.add(item.sku); // Añadir SKU a la lista de únicos
+                    // Sumar cantidad vendida por SKU para este cliente
+                    clientSalesData[sale.client.id].skus[item.sku] =
+                        (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
+                    // Sumar al total del cliente
+                    clientSalesData[sale.client.id].total += item.subtotal;
+                });
+            });
+
+            const sortedUniqueSKUs = Array.from(uniqueSKUs).sort(); // Ordenar SKUs para el encabezado
+
+            let clientCSVContent = `Venta General por Clientes - Fecha: ${today}\n`;
+            clientCSVContent += `Vendedor: ${selectedVendor}\n\n`;
+
+            // Encabezado del CSV por cliente
+            clientCSVContent += `Cliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
+
+            let grandTotalClients = 0;
+
+            // Filas de datos por cliente
+            for (const clientId in clientSalesData) {
+                const clientData = clientSalesData[clientId];
+                let clientRow = `"${clientData.clientName}"`; // Usar comillas para nombres con espacios/comas
+                sortedUniqueSKUs.forEach(sku => {
+                    clientRow += `,${clientData.skus[sku] || 0}`; // Cantidad vendida o 0 si no se vendió ese SKU
+                });
+                clientRow += `,${clientData.total.toFixed(2)}\n`;
+                clientCSVContent += clientRow;
+                grandTotalClients += clientData.total;
+            }
+
+            // Total general al final del archivo por cliente
+            clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
+
+            const clientFileName = `ventas_por_cliente_${today}.csv`;
+            messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente.`);
+            downloadCSV(clientFileName, clientCSVContent);
+
+
+            // --- Mensajes y Limpieza Final ---
+            messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
             messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
 
-            // Eliminar archivos de ventas diarias individuales (simular eliminando del estado)
-            dailySales = dailySales.filter(sale => sale.date !== today);
-            console.log('[handleCloseSalesLogic] Estado de dailySales antes de guardar (después de filtrar):', JSON.parse(JSON.stringify(dailySales)));
-            localStorage.setItem('dailySales', JSON.stringify(dailySales)); // Guardar ventas diarias actualizadas
-            console.log('[handleCloseSalesLogic] dailySales en localStorage después de cerrar ventas y guardar:', localStorage.getItem('dailySales'));
-            messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados".');
+            // Eliminar archivos de ventas diarias individuales de Firestore
+            try {
+                for (const sale of salesForToday) {
+                    if (sale.docId) { // Asegurarse de que el documento tiene un ID de Firestore
+                        await db.collection('dailySales').doc(sale.docId).delete();
+                    }
+                }
+                dailySales = dailySales.filter(sale => sale.date !== today); // Actualizar el array local
+                console.log('[Firestore] Ventas diarias de hoy eliminadas de Firestore.');
+                messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados" de Firestore.');
+            } catch (error) {
+                console.error('Error al eliminar ventas diarias de Firestore:', error);
+                messages.push('Error al borrar ventas diarias de Firestore. Por favor, revisa las reglas de seguridad.');
+            }
+
 
             setScreenAndRender('main');
             showMessageModal(messages.join('\n')); // Mostrar todos los mensajes al final
             console.log('[handleCloseSalesLogic] Finalizado.');
         };
 
-        // --- Funciones de Recibo y Compartir ---
+        // --- Funciones de Recibo y Compartir (Modificada para generar imagen y compartir) ---
 
         // Función para generar el contenido HTML del recibo térmico
         const generateThermalReceiptHtml = (saleRecord) => {
@@ -1232,75 +1420,108 @@
                 `;
             });
 
+            // Añadir el motivo de modificación si existe
+            let modificationReasonHtml = '';
+            if (saleRecord.modificationReason) {
+                modificationReasonHtml = `
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <p style="font-weight: bold;">Motivo Modificación:</p>
+                    <p>${saleRecord.modificationReason}</p>
+                `;
+            }
+
             return `
-                <h3>Dist Castillo Ventas</h3>
-                <h4>Recibo de Venta</h4>
-                <div class="divider"></div>
-                <p>Fecha: ${saleRecord.date}</p>
-                <p>Cliente: ${saleRecord.client.nombreComercial}</p>
-                <p>Vendedor: ${selectedVendor}</p>
-                <div class="divider"></div>
-                <div class="item-row">
-                    <span class="item-qty">Cant.</span>
-                    <span class="item-desc">Producto</span>
-                    <span class="item-price">P. Unit.</span>
-                    <span class="item-total">Total</span>
+                <div style="font-family: 'monospace', 'Courier New', Courier, monospace; font-size: 0.75rem; width: 250px; margin: 0 auto; padding: 10px; border: 1px dashed #ccc; background-color: #fff; color: #000; text-align: left; box-shadow: 0 0 5px rgba(0,0,0,0.1);">
+                    <h3 style="text-align: center; margin-bottom: 5px; font-size: 0.85rem;">Dist Castillo Ventas</h3>
+                    <h4 style="text-align: center; margin-bottom: 5px; font-size: 0.85rem;">Recibo de Venta</h4>
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <p>Fecha: ${saleRecord.date}</p>
+                    <p>Cliente: ${saleRecord.client.nombreComercial}</p>
+                    <p>Vendedor: ${selectedVendor}</p>
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                        <span style="width: 20%; text-align: left;">Cant.</span>
+                        <span style="width: 50%; text-align: left;">Producto</span>
+                        <span style="width: 30%; text-align: right;">Total</span>
+                    </div>
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    ${itemsHtml}
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px; font-size: 0.9rem;">
+                        <span>TOTAL:</span>
+                        <span>$${saleRecord.total.toFixed(2)}</span>
+                    </div>
+                    ${modificationReasonHtml} <!-- Añadir el motivo de modificación aquí -->
+                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <p style="text-align: center; margin-top: 10px; font-size: 0.7rem;">¡Gracias por tu compra!</p>
                 </div>
-                <div class="divider"></div>
-                ${itemsHtml}
-                <div class="divider"></div>
-                <div class="total-line">
-                    <span>TOTAL:</span>
-                    <span>$${saleRecord.total.toFixed(2)}</span>
-                </div>
-                <div class="divider"></div>
-                <p class="footer-text">¡Gracias por tu compra!</p>
             `;
         };
 
-        // Función para imprimir el recibo
-        const printSaleReceipt = (saleRecord) => {
+        // Función para "imprimir" el recibo (ahora genera una imagen y la comparte/descarga)
+        const printSaleReceipt = async (saleRecord) => {
+            showMessageModal('Generando imagen del recibo...');
             const receiptHtml = generateThermalReceiptHtml(saleRecord);
 
-            // Crear un elemento temporal para la impresión
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <!DOCTYPE html>
-                <html lang="es">
-                <head>
-                    <title>Recibo de Venta</title>
-                    <style>
-                        body { margin: 0; padding: 0; font-family: 'monospace', 'Courier New', Courier, monospace; font-size: 10pt; }
-                        .thermal-receipt { width: 80mm; margin: 0 auto; padding: 5mm; }
-                        .thermal-receipt h3, .thermal-receipt h4 { text-align: center; margin-bottom: 2mm; font-size: 12pt; }
-                        .item-row { display: flex; justify-content: space-between; margin-bottom: 1mm; }
-                        .item-qty { width: 15%; text-align: left; }
-                        .item-desc { width: 55%; text-align: left; }
-                        .item-price, .item-total { width: 30%; text-align: right; }
-                        .divider { border-top: 1px dashed #000; margin: 3mm 0; }
-                        .total-line { display: flex; justify-content: space-between; font-weight: bold; margin-top: 3mm; font-size: 11pt; }
-                        .footer-text { text-align: center; margin-top: 5mm; font-size: 9pt; }
-                        @media print {
-                            body { margin: 0; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="thermal-receipt">
-                        ${receiptHtml}
-                    </div>
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
+            // Crear un elemento temporal oculto en el DOM actual para renderizar el recibo
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px'; // Moverlo fuera de la vista
+            tempDiv.style.width = '250px'; // Ancho fijo para la captura del recibo térmico
+            tempDiv.innerHTML = receiptHtml;
+            document.body.appendChild(tempDiv);
 
-            showMessageModal('Se ha abierto el diálogo de impresión. Selecciona tu impresora. Nota: La impresión directa a impresoras térmicas Bluetooth puede requerir configuraciones adicionales del sistema o aplicaciones específicas.');
+            try {
+                const canvas = await html2canvas(tempDiv, {
+                    scale: 2, // Aumentar la escala para una mejor calidad de imagen
+                    logging: false, // Desactivar logs de html2canvas si no se necesitan
+                    useCORS: true // Importante si hay imágenes de diferentes orígenes
+                });
+                console.log('[printSaleReceipt] html2canvas ha generado el canvas.');
+
+                const imageDataUrl = canvas.toDataURL('image/png');
+                console.log('[printSaleReceipt] Data URL de la imagen generada. Longitud:', imageDataUrl.length);
+
+                // Intentar compartir usando la Web Share API (preferido en móviles)
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([], 'recibo.png', { type: 'image/png' })] })) {
+                    // Convertir data URL a Blob para la Web Share API
+                    const response = await fetch(imageDataUrl);
+                    const blob = await response.blob();
+                    const file = new File([blob], `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`, { type: 'image/png' });
+
+                    await navigator.share({
+                        files: [file],
+                        title: `Recibo de Venta ${saleRecord.fileName}`,
+                        text: `Aquí tienes el recibo de venta para ${saleRecord.client.nombreComercial} del ${saleRecord.date}. Total: $${saleRecord.total.toFixed(2)}`,
+                    });
+                    showMessageModal('Recibo compartido exitosamente a través de las opciones de tu dispositivo.');
+                    console.log('[printSaleReceipt] Recibo compartido a través de Web Share API.');
+                } else {
+                    // Fallback para navegadores que no soportan la Web Share API o compartir archivos
+                    showMessageModal('La función de compartir avanzada no está disponible en este navegador. Se descargará la imagen del recibo.');
+                    console.warn('[printSaleReceipt] Web Share API no disponible o no puede compartir archivos. Se procede a la descarga.');
+
+                    // Descargar la imagen
+                    const link = document.createElement('a');
+                    link.download = `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`;
+                    link.href = imageDataUrl;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    showMessageModal('La imagen del recibo ha sido descargada.');
+                }
+
+            } catch (error) {
+                console.error('[printSaleReceipt] Error al generar o compartir la imagen:', error);
+                showMessageModal('Error al generar o compartir la imagen del recibo. Intenta de nuevo.');
+            } finally {
+                // Eliminar el elemento temporal del DOM
+                if (tempDiv && tempDiv.parentNode) {
+                    document.body.removeChild(tempDiv);
+                    console.log('[printSaleReceipt] Elemento temporal eliminado.');
+                }
+            }
         };
-
-        // La función shareSaleAsImage ha sido eliminada ya que el botón de compartir fue removido.
 
 
         const renderArchivosScreen = () => {
@@ -1310,7 +1531,7 @@
                 <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS</h2>
                 <p class="text-base text-center my-5 text-gray-600">
                     Esta sección permite cargar tus propios archivos CSV y descargar los datos actuales o generados.
-                    Debido a las restricciones de seguridad del navegador, el acceso directo a carpetas locales no es posible.
+                    También puedes ver y modificar ventas pasadas.
                 </p>
 
                 <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
@@ -1365,6 +1586,7 @@
                         <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
                         <div class="flex flex-wrap gap-2">
                             <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR</button>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>
                         </div>
                     `;
                     generatedSaleFilesListDiv.appendChild(fileItemDiv);
@@ -1372,56 +1594,269 @@
             }
         };
 
-        const handleFileUpload = (event, type) => {
+        // --- Funciones para el Modal de Modificación de Venta ---
+        const openModifySaleModal = (saleRecord) => {
+            selectedSaleForModification = JSON.parse(JSON.stringify(saleRecord)); // Deep copy to avoid direct modification
+            modifiedSaleQuantities = {};
+            selectedSaleForModification.items.forEach(item => {
+                modifiedSaleQuantities[item.sku] = item.cantidadVendida;
+            });
+            // Initialize modification reason from existing record or empty
+            modificationReason = selectedSaleForModification.modificationReason || '';
+            showModifySaleModalState = true;
+            render();
+        };
+
+        const closeModifySaleModal = () => {
+            showModifySaleModalState = false;
+            selectedSaleForModification = null;
+            modifiedSaleQuantities = {};
+            modificationReason = '';
+            render();
+        };
+
+        const handleModifiedSaleQuantityChange = (sku, quantity) => {
+            modifiedSaleQuantities[sku] = parseInt(quantity) || 0;
+            // Re-render the modal to update totals dynamically if desired, or just wait for save
+        };
+
+        const handleModificationReasonChange = (reason) => {
+            modificationReason = reason;
+        };
+
+        const renderModifySaleModal = () => {
+            if (!showModifySaleModalState || !selectedSaleForModification) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'modify-sale-modal';
+            modalDiv.className = 'modal';
+            let productsHtml = '';
+            let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
+
+            // Add products from the original sale
+            selectedSaleForModification.items.forEach(item => {
+                const productInInventory = inventory.find(invItem => invItem.sku === item.sku);
+                const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : item.cantidadVendida;
+                productsHtml += `
+                    <tr>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>$${item.precioUnitario.toFixed(2)}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
+                        <td>${productInInventory ? productInInventory.cantidad : 'N/A'}</td>
+                    </tr>
+                `;
+            });
+
+            // Add other products from inventory that were NOT in the original sale
+            inventory.forEach(item => {
+                if (!currentSaleSkus.has(item.sku)) {
+                    const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : 0;
+                    productsHtml += `
+                        <tr>
+                            <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                            <td>${item.sku}</td>
+                            <td>${item.producto}</td>
+                            <td>${item.presentacion}</td>
+                            <td>$${item.precio.toFixed(2)}</td>
+                            <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
+                            <td>${item.cantidad}</td>
+                        </tr>
+                    `;
+                }
+            });
+
+
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Modificar Venta</h3>
+                    <p class="text-lg font-bold mb-2">Cliente: ${selectedSaleForModification.client.nombreComercial}</p>
+                    <p class="text-md text-gray-700 mb-4">Fecha: ${selectedSaleForModification.date}</p>
+
+                    <div class="table-container mb-5">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>SKU</th>
+                                    <th>Producto</th>
+                                    <th>Presentación</th>
+                                    <th>Precio Unitario</th>
+                                    <th>Cantidad</th>
+                                    <th>Disp. Actual</th>
+                                </tr>
+                            </thead>
+                            <tbody id="modify-sale-products-body">
+                                ${productsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mb-4 text-left">
+                        <label for="modificationReason" class="block text-gray-700 text-sm font-bold mb-2">Motivo de la Modificación:</label>
+                        <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3" onchange="handleModificationReasonChange(this.value)">${modificationReason}</textarea>
+                    </div>
+
+                    <div class="flex justify-around gap-4 mt-5">
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveModifiedSale()">Guardar Modificación</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeModifySaleModal()">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+        const saveModifiedSale = async () => { // Añadir async
+            if (!modificationReason.trim()) {
+                showMessageModal('Por favor, ingresa un motivo para la modificación.');
+                return;
+            }
+
+            const newSaleItems = [];
+            let newTotalSaleAmount = 0;
+
+            for (const sku in modifiedSaleQuantities) {
+                const quantity = modifiedSaleQuantities[sku];
+                if (quantity > 0) {
+                    const product = inventory.find(item => item.sku === sku);
+                    if (product) {
+                        const subtotal = quantity * product.precio;
+                        newSaleItems.push({
+                            sku: product.sku,
+                            producto: product.producto,
+                            presentacion: product.presentacion,
+                            cantidadVendida: quantity,
+                            precioUnitario: product.precio,
+                            subtotal: subtotal,
+                        });
+                        newTotalSaleAmount += subtotal;
+                    }
+                }
+            }
+
+            if (newSaleItems.length === 0) {
+                showMessageModal('La venta modificada no puede estar vacía. Ajusta las cantidades.');
+                return;
+            }
+
+            // Update the selected sale record
+            selectedSaleForModification.items = newSaleItems;
+            selectedSaleForModification.total = newTotalSaleAmount;
+            selectedSaleForModification.modificationReason = modificationReason.trim();
+
+            // Regenerate rawCSV for the modified sale
+            selectedSaleForModification.rawCSV =
+                `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
+                newSaleItems.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
+                `\nTotal General:, , , , ,${newTotalSaleAmount.toFixed(2)}\n` +
+                `Motivo de Modificación:,${modificationReason.trim()}`;
+
+
+            // Find and replace the original sale record in dailySales
+            const index = dailySales.findIndex(sale => sale.fileName === selectedSaleForModification.fileName);
+            if (index !== -1) {
+                try {
+                    // Actualizar el documento en Firestore
+                    await db.collection('dailySales').doc(selectedSaleForModification.docId).set(selectedSaleForModification);
+                    dailySales[index] = selectedSaleForModification; // Actualizar el array local
+                    showMessageModal('Venta modificada y guardada exitosamente en Firestore.');
+                    closeModifySaleModal();
+                    render(); // Re-render the Archivos screen to show updated data
+                } catch (error) {
+                    console.error('Error al modificar venta en Firestore:', error);
+                    showMessageModal('Error al modificar venta. Por favor, revisa tu conexión y las reglas de seguridad.');
+                }
+            } else {
+                showMessageModal('Error: No se encontró la venta original para modificar.');
+                console.error('Error: No se encontró la venta original para modificar.');
+            }
+        };
+
+
+        const handleFileUpload = async (event, type) => { // Añadir async
             const file = event.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => { // Añadir async
                 const csvContent = e.target.result;
                 const parsedData = parseCSV(csvContent);
 
-                if (type === 'clients') {
-                    // Mapear encabezados para que coincidan con la estructura de objeto de cliente existente
-                    clients = parsedData.map(row => ({
-                        id: row.ID,
-                        nombreComercial: row['Nombre Comercial'],
-                        nombrePersonal: row['Nombre Personal'],
-                        zona: row.Zona,
-                        sector: row.Sector,
-                        tlf: row.Tlf,
-                        observaciones: row.Observaciones
-                    }));
-                    localStorage.setItem('clients', JSON.stringify(clients)); // Guardar clientes
-                    showMessageModal('clientes.csv cargado exitosamente.');
-                } else if (type === 'inventory') {
-                    // Mapear encabezados para que coincidan con la estructura de objeto de inventario existente
-                    inventory = parsedData.map(row => ({
-                        rubro: row.Rubro,
-                        sku: row.Sku,
-                        segmento: row.Segmento,
-                        producto: row.Producto,
-                        presentacion: row.Presentacion,
-                        cantidad: parseInt(row.Cantidad) || 0,
-                        precio: parseFloat(row.Precio) || 0
-                    }));
-                    localStorage.setItem('inventory', JSON.stringify(inventory)); // Guardar inventario
-                    showMessageModal('inventario.csv cargado exitosamente.');
-                } else if (type === 'vendors') {
-                    // Suponiendo que vendor.csv es solo Nombre,Categoría
-                    vendors = parsedData.map(row => ({
-                        name: row['Wilfredo Chacon'] || row.Name, // Ajustar encabezado si es necesario
-                        category: row['Alimentos'] || row.Category // Ajustar encabezado si es necesario
-                    }));
-                    localStorage.setItem('vendors', JSON.stringify(vendors)); // Guardar vendedores
-                    showMessageModal('vendedor.csv cargado exitosamente.');
-                    // Establecer el primer vendedor como seleccionado si los vendedores se acaban de cargar y no se había seleccionado ninguno
-                    if (vendors.length > 0 && selectedVendor === 'Ninguno') {
-                        selectedVendor = vendors[0].name;
-                        localStorage.setItem('selectedVendor', selectedVendor);
+                try {
+                    if (type === 'clients') {
+                        // Eliminar clientes existentes en Firestore antes de cargar nuevos
+                        const existingClientsSnapshot = await db.collection('clients').get();
+                        for (const doc of existingClientsSnapshot.docs) {
+                            await db.collection('clients').doc(doc.id).delete();
+                        }
+
+                        // Mapear y guardar nuevos clientes en Firestore
+                        const newClients = parsedData.map(row => ({
+                            id: row.ID,
+                            nombreComercial: row['Nombre Comercial'],
+                            nombrePersonal: row['Nombre Personal'],
+                            zona: row.Zona,
+                            sector: row.Sector,
+                            tlf: row.Tlf,
+                            observaciones: row.Observaciones
+                        }));
+                        for (const client of newClients) {
+                            await db.collection('clients').doc(client.id).set(client);
+                        }
+                        clients = newClients; // Actualizar el array local
+                        showMessageModal('clientes.csv cargado y guardado exitosamente en Firestore.');
+                    } else if (type === 'inventory') {
+                        // Eliminar inventario existente en Firestore antes de cargar nuevo
+                        const existingInventorySnapshot = await db.collection('inventory').get();
+                        for (const doc of existingInventorySnapshot.docs) {
+                            await db.collection('inventory').doc(doc.id).delete();
+                        }
+
+                        // Mapear y guardar nuevo inventario en Firestore
+                        const newInventory = parsedData.map(row => ({
+                            rubro: row.Rubro,
+                            sku: row.Sku,
+                            segmento: row.Segmento,
+                            producto: row.Producto,
+                            presentacion: row.Presentacion,
+                            cantidad: parseInt(row.Cantidad) || 0,
+                            precio: parseFloat(row.Precio) || 0
+                        }));
+                        for (const item of newInventory) {
+                            await db.collection('inventory').doc(item.sku).set(item);
+                        }
+                        inventory = newInventory; // Actualizar el array local
+                        showMessageModal('inventario.csv cargado y guardado exitosamente en Firestore.');
+                    } else if (type === 'vendors') {
+                        // Eliminar vendedores existentes en Firestore antes de cargar nuevos
+                        const existingVendorsSnapshot = await db.collection('vendors').get();
+                        for (const doc of existingVendorsSnapshot.docs) {
+                            await db.collection('vendors').doc(doc.id).delete();
+                        }
+
+                        // Mapear y guardar nuevos vendedores en Firestore
+                        const newVendors = parsedData.map(row => ({
+                            name: row['Wilfredo Chacon'] || row.Name,
+                            category: row['Alimentos'] || row.Category
+                        }));
+                        for (const vendor of newVendors) {
+                            await db.collection('vendors').doc(vendor.name.replace(/\s/g, '_')).set(vendor);
+                        }
+                        vendors = newVendors; // Actualizar el array local
+                        showMessageModal('vendedor.csv cargado y guardado exitosamente en Firestore.');
+                        // Establecer el primer vendedor como seleccionado si los vendedores se acaban de cargar y no se había seleccionado ninguno
+                        if (vendors.length > 0 && selectedVendor === 'Ninguno') {
+                            selectedVendor = vendors[0].name;
+                            localStorage.setItem('selectedVendor', selectedVendor);
+                        }
                     }
+                    render(); // Volver a renderizar para reflejar los nuevos datos
+                } catch (error) {
+                    console.error('Error al cargar archivo CSV a Firestore:', error);
+                    showMessageModal('Error al cargar archivo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
                 }
-                render(); // Volver a renderizar para reflejar los nuevos datos
             };
             reader.readAsText(file);
         };
@@ -1502,8 +1937,10 @@
         // Se llama a render() al cargar la ventana para asegurar que la UI se muestre.
         // El onAuthStateChanged de Firebase manejará las transiciones de pantalla posteriores si hay un usuario autenticado.
         window.onload = () => {
-            console.log('[window.onload] Página cargada, iniciando renderizado.');
-            render();
+            console.log('[window.onload] Página cargada, esperando autenticación para cargar datos.');
+            // La carga inicial de datos se dispara ahora desde onAuthStateChanged
+            // para asegurar que Firestore se use solo cuando el usuario está autenticado.
+            render(); // Renderiza la pantalla de login/registro inicialmente
         };
         // Fin del script JavaScript.
     </script>
