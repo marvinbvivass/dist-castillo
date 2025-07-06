@@ -243,9 +243,11 @@
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
         let clients = [];
-        let inventory = [];
+        let inventory = []; // Inventario principal (almacén)
         let vendors = [];
         let dailySales = [];
+        let vehicles = []; // NUEVO: Lista de vehículos/camiones
+        let currentTruckInventory = []; // NUEVO: Inventario del camión actualmente asignado al usuario
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         const initialClients = [
@@ -266,6 +268,13 @@
             { name: 'Wilfredo Chacon', category: 'Alimentos' },
             { name: 'Yonathan Chavez', category: 'Alimentos' },
             { name: 'Roberto Chacon', category: 'Cerveceria' },
+        ];
+
+        // NUEVO: Datos iniciales de vehículos
+        const initialVehicles = [
+            { plate: 'ABC-123', name: 'Volswaguen Worker 220', brand: 'Volswaguen', model: 'Worker 220' },
+            { plate: 'DEF-456', name: 'Chevrolet FVR 300', brand: 'Chevrolet', model: 'FVR 300' },
+            { plate: 'GHI-789', name: 'Chevrolet NPR 250', brand: 'Chevrolet', model: 'NPR 250' },
         ];
 
 
@@ -356,14 +365,14 @@
         };
 
         // --- Estado Global de la Aplicación ---
-        let screen = 'login'; // La pantalla inicial ahora es 'login'
+        let screen = 'login';
         let newClient = { id: '', nombreComercial: '', nombrePersonal: '', zona: '', sector: '', tlf: '', observaciones: '' };
         let selectedClientForSale = null;
-        let saleQuantities = {}; // {sku: quantity}
+        let saleQuantities = {};
         let clientSearchTerm = '';
         let showClientPickerModal = false;
-        let currentProductIndex = 0; // Esto será menos relevante con la vista de tabla, pero se mantiene por consistencia
-        let showAddClientForm = false; // Nuevo estado para la visibilidad del formulario de cliente
+        let currentProductIndex = 0;
+        let showAddClientForm = false;
 
         // Estado global para el modal de mensajes
         let showMessageModalState = false;
@@ -372,36 +381,39 @@
         // Estado global para el modal de confirmación
         let showConfirmationModalState = false;
         let confirmationModalMessage = '';
-        let confirmationModalCallback = null; // La función a ejecutar si el usuario confirma
+        let confirmationModalCallback = null;
 
         // Estado para el usuario autenticado de Firebase
         let currentUser = null;
-        let currentUserData = { role: 'guest' }; // NUEVO: Almacena el perfil del usuario, incluyendo el rol
+        let currentUserData = { role: 'guest', assignedTruckPlate: null }; // Actualizado: incluye assignedTruckPlate
 
         const appRoot = document.getElementById('app-root');
 
         // Estado para la modificación de ventas
         let showModifySaleModalState = false;
         let selectedSaleForModification = null;
-        let modifiedSaleQuantities = {}; // Temporal storage for quantities in modify modal
+        let modifiedSaleQuantities = {};
         let modificationReason = '';
+
+        // Estado para la pantalla de vehículos
+        let editingVehicle = null; // Almacena el vehículo que se está editando
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
-        const isUser = () => currentUserData.role === 'user'; // Puedes añadir otros roles si es necesario
+        const isUser = () => currentUserData.role === 'user';
 
         // Función para mostrar un modal de mensaje personalizado
         const showMessageModal = (message) => {
             messageModalText = message;
             showMessageModalState = true;
-            render(); // Volver a renderizar para mostrar el modal
+            render();
         };
 
         // Función para ocultar el modal de mensaje personalizado
         const hideMessageModal = () => {
             showMessageModalState = false;
             messageModalText = '';
-            render(); // Volver a renderizar para ocultar el modal
+            render();
         };
 
         // Función para renderizar el modal de mensaje
@@ -410,7 +422,7 @@
 
             const modalDiv = document.createElement('div');
             modalDiv.id = 'custom-message-modal';
-            modalDiv.className = 'modal'; // Usar estilos de modal existentes
+            modalDiv.className = 'modal';
             modalDiv.innerHTML = `
                 <div class="modal-content">
                     <p class="text-lg text-center mb-4">${messageModalText}</p>
@@ -436,7 +448,7 @@
                 console.log('[hideConfirmationModal] Ejecutando callback de confirmación.');
                 confirmationModalCallback();
             }
-            confirmationModalCallback = null; // Limpiar el callback
+            confirmationModalCallback = null;
             render();
         };
 
@@ -473,17 +485,17 @@
             try {
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 currentUser = userCredential.user;
-                // Crear el documento de usuario en Firestore con rol 'user' por defecto
                 const userDocRef = db.collection('users').doc(currentUser.uid);
                 await userDocRef.set({
                     email: currentUser.email,
                     role: 'user', // Rol por defecto para nuevos registros
+                    assignedTruckPlate: null, // NUEVO: Sin camión asignado por defecto
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                currentUserData = { email: currentUser.email, role: 'user' }; // Actualizar datos de usuario localmente
+                currentUserData = { email: currentUser.email, role: 'user', assignedTruckPlate: null };
 
-                showMessageModal(`Registro exitoso para ${currentUser.email}! Tu rol es "user".`);
-                setScreenAndRender('main'); // Ir a la pantalla principal después del registro
+                showMessageModal(`Registro exitoso para ${currentUser.email}! Tu rol es "user". Un administrador deberá asignarte un camión para que puedas realizar ventas.`);
+                setScreenAndRender('main');
             } catch (error) {
                 showMessageModal(`Error al registrar: ${error.message}`);
                 console.error("Error al registrar:", error);
@@ -503,7 +515,6 @@
             try {
                 const userCredential = await auth.signInWithEmailAndPassword(email, password);
                 currentUser = userCredential.user;
-                showMessageModal(`Bienvenido de nuevo, ${currentUser.email}!`);
                 // onAuthStateChanged se encargará de cargar los datos del usuario y redirigir
             } catch (error) {
                 showMessageModal(`Error al iniciar sesión: ${error.message}`);
@@ -516,9 +527,9 @@
             try {
                 await auth.signOut();
                 currentUser = null;
-                currentUserData = { role: 'guest' }; // Reiniciar datos de usuario al cerrar sesión
+                currentUserData = { role: 'guest', assignedTruckPlate: null }; // Reiniciar datos de usuario al cerrar sesión
                 showMessageModal('Sesión cerrada correctamente.');
-                setScreenAndRender('login'); // Volver a la pantalla de inicio de sesión
+                setScreenAndRender('login');
             } catch (error) {
                 showMessageModal(`Error al cerrar sesión: ${error.message}`);
                 console.error("Error al cerrar sesión:", error);
@@ -531,25 +542,25 @@
             if (user) {
                 currentUser = user;
                 try {
-                    // Obtener el perfil del usuario de Firestore
                     const userDoc = await db.collection('users').doc(user.uid).get();
                     if (userDoc.exists) {
                         currentUserData = userDoc.data();
                         console.log('[Firestore] Perfil de usuario cargado:', currentUserData);
                     } else {
-                        // Si el documento del usuario no existe (ej. usuario antiguo o error en registro), crearlo con rol 'user'
-                        console.warn('[Firestore] Documento de usuario no encontrado. Creando uno con rol "user".');
+                        // Si el documento del usuario no existe, crearlo con rol 'user' y sin camión asignado
+                        console.warn('[Firestore] Documento de usuario no encontrado. Creando uno con rol "user" y sin camión asignado.');
                         await db.collection('users').doc(user.uid).set({
                             email: user.email,
                             role: 'user',
+                            assignedTruckPlate: null,
                             createdAt: firebase.firestore.FieldValue.serverTimestamp()
                         });
-                        currentUserData = { email: user.email, role: 'user' };
+                        currentUserData = { email: user.email, role: 'user', assignedTruckPlate: null };
                     }
                 } catch (error) {
                     console.error('[Firestore] Error al cargar el perfil del usuario:', error);
                     showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
-                    currentUserData = { role: 'user' }; // Fallback a rol de usuario normal
+                    currentUserData = { role: 'user', assignedTruckPlate: null }; // Fallback a rol de usuario normal
                 }
 
                 // Cargar datos de Firestore (clientes, inventario, etc.) después de obtener el rol
@@ -562,16 +573,17 @@
                 }
             } else {
                 currentUser = null;
-                currentUserData = { role: 'guest' }; // No hay usuario, rol de invitado
-                // Limpiar datos cuando el usuario no está autenticado
+                currentUserData = { role: 'guest', assignedTruckPlate: null }; // No hay usuario, rol de invitado
                 clients = [];
                 inventory = [];
                 vendors = [];
                 dailySales = [];
+                vehicles = [];
+                currentTruckInventory = []; // Limpiar inventario del camión
                 if (screen !== 'login' && screen !== 'register') {
                     setScreenAndRender('login');
                 } else {
-                    render(); // Renderizar pantalla de login/registro
+                    render();
                 }
             }
         });
@@ -593,7 +605,7 @@
                 }
                 console.log('[Firestore] Clientes cargados:', clients);
 
-                // Cargar Inventario
+                // Cargar Inventario Principal (Almacén)
                 const inventorySnapshot = await db.collection('inventory').get();
                 if (inventorySnapshot.empty) {
                     console.log('[Firestore] Colección "inventory" vacía. Poblando con datos iniciales.');
@@ -604,14 +616,13 @@
                 } else {
                     inventory = inventorySnapshot.docs.map(doc => ({ sku: doc.id, ...doc.data() }));
                 }
-                console.log('[Firestore] Inventario cargado:', inventory);
+                console.log('[Firestore] Inventario principal cargado:', inventory);
 
                 // Cargar Vendedores
                 const vendorsSnapshot = await db.collection('vendors').get();
                 if (vendorsSnapshot.empty) {
                     console.log('[Firestore] Colección "vendors" vacía. Poblando con datos iniciales.');
                     for (const vendor of initialVendors) {
-                        // Firestore no tiene un ID predefinido para nombres, generamos uno o usamos el nombre como ID
                         await db.collection('vendors').doc(vendor.name.replace(/\s/g, '_')).set(vendor);
                     }
                     vendors = initialVendors;
@@ -620,7 +631,39 @@
                 }
                 console.log('[Firestore] Vendedores cargados:', vendors);
 
-                // Cargar Ventas Diarias (asumiendo que se guardan con un ID generado por Firestore)
+                // Cargar Vehículos (Camiones)
+                const vehiclesSnapshot = await db.collection('vehicles').get();
+                if (vehiclesSnapshot.empty) {
+                    console.log('[Firestore] Colección "vehicles" vacía. Poblando con datos iniciales y creando inventarios de camiones.');
+                    for (const vehicle of initialVehicles) {
+                        await db.collection('vehicles').doc(vehicle.plate).set(vehicle);
+                        // Crear un documento de inventario vacío para cada camión
+                        await db.collection('truck_inventories').doc(vehicle.plate).set({ items: [] });
+                    }
+                    vehicles = initialVehicles;
+                } else {
+                    vehicles = vehiclesSnapshot.docs.map(doc => ({ plate: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Vehículos cargados:', vehicles);
+
+                // Cargar Inventario del Camión Asignado (si aplica)
+                if (currentUserData.assignedTruckPlate) {
+                    console.log(`[Firestore] Cargando inventario para el camión asignado: ${currentUserData.assignedTruckPlate}`);
+                    const truckInventoryDoc = await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).get();
+                    if (truckInventoryDoc.exists) {
+                        currentTruckInventory = truckInventoryDoc.data().items || [];
+                        console.log('[Firestore] Inventario del camión cargado:', currentTruckInventory);
+                    } else {
+                        console.warn(`[Firestore] No se encontró inventario para el camión ${currentUserData.assignedTruckPlate}. Creando uno vacío.`);
+                        await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).set({ items: [] });
+                        currentTruckInventory = [];
+                    }
+                } else {
+                    currentTruckInventory = []; // No hay camión asignado, no hay inventario de camión
+                    console.log('[Firestore] No hay camión asignado al usuario.');
+                }
+
+                // Cargar Ventas Diarias
                 const dailySalesSnapshot = await db.collection('dailySales').get();
                 dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 console.log('[Firestore] Ventas diarias cargadas:', dailySales);
@@ -638,7 +681,9 @@
                 clients = initialClients;
                 inventory = initialInventory;
                 vendors = initialVendors;
-                dailySales = []; // No hay ventas diarias si no se pudo cargar
+                vehicles = initialVehicles; // Fallback para vehículos
+                dailySales = [];
+                currentTruckInventory = [];
             } finally {
                 render(); // Asegurarse de renderizar la UI después de cargar los datos
             }
@@ -646,13 +691,11 @@
 
         // --- Función Principal de Renderizado ---
         const render = () => {
-            appRoot.innerHTML = ''; // Limpiar contenido anterior
+            appRoot.innerHTML = '';
 
-            // Si no hay usuario autenticado y no estamos en la pantalla de login/registro, mostrar login
             if (!currentUser && screen !== 'login' && screen !== 'register') {
                 renderLoginScreen();
             } else {
-                // Si hay usuario o estamos en login/registro, renderizar la pantalla solicitada
                 switch (screen) {
                     case 'main':
                         renderMainScreen();
@@ -675,6 +718,9 @@
                     case 'archivos':
                         renderArchivosScreen();
                         break;
+                    case 'vehicles': // NUEVO: Pantalla de vehículos
+                        renderVehiclesScreen();
+                        break;
                     case 'login':
                         renderLoginScreen();
                         break;
@@ -682,10 +728,9 @@
                         renderRegisterScreen();
                         break;
                     default:
-                        renderMainScreen(); // Fallback si la pantalla no está definida
+                        renderMainScreen();
                 }
             }
-            // Siempre renderizar los modales si deben mostrarse
             renderMessageModal();
             renderConfirmationModal();
             if (showModifySaleModalState) {
@@ -727,7 +772,7 @@
             mainDiv.className = 'flex flex-col items-center justify-center p-5 bg-blue-50 rounded-xl m-2 shadow-lg';
             mainDiv.innerHTML = `
                 <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
-                ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role})</p>` : ''}
+                ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role}) ${currentUserData.assignedTruckPlate ? ` - Camión: ${currentUserData.assignedTruckPlate}` : ''}</p>` : ''}
                 <div class="flex flex-wrap justify-center">
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('carga')">CARGA</button>` : ''}
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('inventario')">INVENTARIO</button>
@@ -735,6 +780,7 @@
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
                 </div>
                 <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
             `;
@@ -781,7 +827,7 @@
             const cargaDiv = document.createElement('div');
             cargaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             cargaDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CARGA de Inventario</h2>
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CARGA de Inventario (Almacén Principal)</h2>
                 <div class="table-container mb-5">
                     <table>
                         <thead>
@@ -826,17 +872,17 @@
 
         const saveCargaChanges = async () => {
             if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en el inventario.');
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en el inventario principal.');
                 return;
             }
             try {
                 for (const item of inventory) {
                     await db.collection('inventory').doc(item.sku).set(item);
                 }
-                showMessageModal('Carga Exitosa: Inventario actualizado correctamente en Firestore.');
+                showMessageModal('Carga Exitosa: Inventario principal actualizado correctamente en Firestore.');
             } catch (error) {
-                console.error('Error al guardar inventario en Firestore:', error);
-                showMessageModal('Error al guardar inventario. Por favor, revisa tu conexión y las reglas de seguridad.');
+                console.error('Error al guardar inventario principal en Firestore:', error);
+                showMessageModal('Error al guardar inventario principal. Por favor, revisa tu conexión y las reglas de seguridad.');
             }
             setScreenAndRender('main');
         };
@@ -845,7 +891,7 @@
             const inventarioDiv = document.createElement('div');
             inventarioDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             inventarioDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO Actual</h2>
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO Actual (Almacén Principal)</h2>
                 <div class="table-container mb-5">
                     <table>
                         <thead>
@@ -1051,9 +1097,19 @@
             const productSaleContainer = document.getElementById('product-sale-container');
             const infoText = document.getElementById('info-text');
 
+            if (!currentUserData.assignedTruckPlate && isUser()) {
+                selectedClientDisplay.textContent = '';
+                infoText.textContent = 'No tienes un camión asignado. Por favor, contacta a un administrador para que te asigne uno.';
+                productSaleContainer.innerHTML = '';
+                return;
+            }
+
+            const inventoryToDisplay = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
+            const inventorySourceText = currentUserData.assignedTruckPlate ? ` (Camión: ${currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
+
             if (selectedClientForSale) {
                 selectedClientDisplay.textContent = `Cliente Seleccionado: ${selectedClientForSale.nombreComercial}`;
-                infoText.textContent = '';
+                infoText.textContent = `Inventario actual${inventorySourceText}`; // Mostrar de qué inventario se vende
 
                 productSaleContainer.innerHTML = `
                     <div class="table-container mb-5">
@@ -1076,16 +1132,16 @@
                     <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showFinalizeSaleConfirmation()">Finalizar Venta</button>
                 `;
                 const productsForSaleBody = document.getElementById('products-for-sale-body');
-                inventory.forEach(item => {
+                inventoryToDisplay.forEach(item => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
                         <td>${item.sku}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${item.cantidad}"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${item.quantity || item.cantidad}"></td>
                         <td>${item.producto}</td>
                         <td>${item.presentacion}</td>
-                        <td>$${item.precio.toFixed(2)}</td>
-                        <td>${item.cantidad}</td>
+                        <td>$${item.price ? item.price.toFixed(2) : item.precio.toFixed(2)}</td>
+                        <td>${item.quantity || item.cantidad}</td>
                     `;
                     productsForSaleBody.appendChild(row);
                 });
@@ -1121,32 +1177,42 @@
                 return;
             }
 
+            if (isUser() && !currentUserData.assignedTruckPlate) {
+                showMessageModal('Error: No tienes un camión asignado para realizar ventas.');
+                console.error('[finalizeSaleLogic] Error: Usuario no tiene camión asignado.');
+                return;
+            }
+
             const saleData = [];
             let totalSaleAmount = 0;
             let hasInsufficientStock = false;
             let messages = [];
 
-            let updatedInventory = JSON.parse(JSON.stringify(inventory));
+            const sourceInventory = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
+            let updatedSourceInventory = JSON.parse(JSON.stringify(sourceInventory)); // Copia para modificar
 
-            for (const item of inventory) {
+            for (const item of sourceInventory) {
                 const quantitySold = saleQuantities[item.sku] || 0;
+                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad; // Usar 'quantity' para camiones, 'cantidad' para almacén
+
                 if (quantitySold > 0) {
-                    if (quantitySold > item.cantidad) {
-                        messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${item.cantidad}).`);
+                    if (quantitySold > availableQuantity) {
+                        messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
                         hasInsufficientStock = true;
                     } else {
-                        const subtotal = quantitySold * item.precio;
+                        const price = item.price !== undefined ? item.price : item.precio;
+                        const subtotal = quantitySold * price;
                         saleData.push({
                             sku: item.sku,
                             producto: item.producto,
                             presentacion: item.presentacion,
                             cantidadVendida: quantitySold,
-                            precioUnitario: item.precio,
+                            precioUnitario: price,
                             subtotal: subtotal,
                         });
                         totalSaleAmount += subtotal;
-                        updatedInventory = updatedInventory.map(invItem =>
-                            invItem.sku === item.sku ? { ...invItem, cantidad: invItem.cantidad - quantitySold } : invItem
+                        updatedSourceInventory = updatedSourceInventory.map(invItem =>
+                            invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity || invItem.cantidad) - quantitySold, cantidad: (invItem.quantity || invItem.cantidad) - quantitySold } : invItem
                         );
                     }
                 }
@@ -1171,6 +1237,8 @@
                 date: getCurrentDateFormatted(),
                 items: saleData,
                 total: totalSaleAmount,
+                vendor: selectedVendor, // Guardar el vendedor que realizó la venta
+                sourceInventory: currentUserData.assignedTruckPlate ? currentUserData.assignedTruckPlate : 'warehouse', // Origen del inventario
                 rawCSV: `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
                         saleData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
                         `\nTotal General:, , , , ,${totalSaleAmount.toFixed(2)}`
@@ -1183,11 +1251,18 @@
                 dailySales.push(saleRecord);
                 console.log('[Firestore] Venta guardada en Firestore con ID:', docRef.id);
 
-                for (const item of updatedInventory) {
-                    await db.collection('inventory').doc(item.sku).set(item);
+                // Actualizar el inventario de la fuente correcta
+                if (currentUserData.assignedTruckPlate) {
+                    await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).set({ items: updatedSourceInventory });
+                    currentTruckInventory = updatedSourceInventory; // Actualizar inventario local del camión
+                    console.log(`[Firestore] Inventario del camión ${currentUserData.assignedTruckPlate} actualizado en Firestore.`);
+                } else {
+                    for (const item of updatedSourceInventory) {
+                        await db.collection('inventory').doc(item.sku).set(item);
+                    }
+                    inventory = updatedSourceInventory; // Actualizar inventario local del almacén
+                    console.log('[Firestore] Inventario principal actualizado en Firestore.');
                 }
-                inventory = updatedInventory;
-                console.log('[Firestore] Inventario actualizado en Firestore.');
 
                 messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
                 messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
@@ -1455,7 +1530,7 @@
                     <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
                     <p>Fecha: ${saleRecord.date}</p>
                     <p>Cliente: ${saleRecord.client.nombreComercial}</p>
-                    <p>Vendedor: ${selectedVendor}</p>
+                    <p>Vendedor: ${saleRecord.vendor || selectedVendor}</p> <!-- Usar el vendedor de la venta si existe, sino el seleccionado -->
                     <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
                         <span style="width: 20%; text-align: left;">Cant.</span>
@@ -1560,7 +1635,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv:</label>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label>
                         <div class="file-input-wrapper">
                             <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
                             <input type="file" id="uploadInventoryCsv" accept=".csv" onchange="handleFileUpload(event, 'inventory')">
@@ -1578,8 +1653,9 @@
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
                     <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('clients')">Descargar clientes.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('inventory')">Descargar inventario.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('inventory')">Descargar inventario.csv (Almacén Principal)</button>
                     <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vendors')">Descargar vendedor.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vehicles')">Descargar vehículos.csv</button>
                 </div>
 
                 <div class="p-4 bg-cyan-50 rounded-lg border border-cyan-300">
@@ -1650,8 +1726,10 @@
             let productsHtml = '';
             let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
 
+            const inventoryToCompare = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
+
             selectedSaleForModification.items.forEach(item => {
-                const productInInventory = inventory.find(invItem => invItem.sku === item.sku);
+                const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku);
                 const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : item.cantidadVendida;
                 productsHtml += `
                     <tr>
@@ -1661,12 +1739,12 @@
                         <td>${item.presentacion}</td>
                         <td>$${item.precioUnitario.toFixed(2)}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
-                        <td>${productInInventory ? productInInventory.cantidad : 'N/A'}</td>
+                        <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
                     </tr>
                 `;
             });
 
-            inventory.forEach(item => {
+            inventoryToCompare.forEach(item => {
                 if (!currentSaleSkus.has(item.sku)) {
                     const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : 0;
                     productsHtml += `
@@ -1675,9 +1753,9 @@
                             <td>${item.sku}</td>
                             <td>${item.producto}</td>
                             <td>${item.presentacion}</td>
-                            <td>$${item.precio.toFixed(2)}</td>
+                            <td>$${item.price ? item.price.toFixed(2) : item.precio.toFixed(2)}</td>
                             <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
-                            <td>${item.cantidad}</td>
+                            <td>${item.quantity || item.cantidad}</td>
                         </tr>
                     `;
                 }
@@ -1689,6 +1767,7 @@
                     <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Modificar Venta</h3>
                     <p class="text-lg font-bold mb-2">Cliente: ${selectedSaleForModification.client.nombreComercial}</p>
                     <p class="text-md text-gray-700 mb-4">Fecha: ${selectedSaleForModification.date}</p>
+                    <p class="text-md text-gray-700 mb-4">Origen: ${selectedSaleForModification.sourceInventory === 'warehouse' ? 'Almacén Principal' : `Camión ${selectedSaleForModification.sourceInventory}`}</p>
 
                     <div class="table-container mb-5">
                         <table>
@@ -1739,15 +1818,18 @@
             for (const sku in modifiedSaleQuantities) {
                 const quantity = modifiedSaleQuantities[sku];
                 if (quantity > 0) {
-                    const product = inventory.find(item => item.sku === sku);
+                    // Buscar el producto en el inventario principal o del camión según el origen de la venta
+                    const product = (selectedSaleForModification.sourceInventory === 'warehouse' ? inventory : currentTruckInventory)
+                                    .find(item => item.sku === sku);
                     if (product) {
-                        const subtotal = quantity * product.precio;
+                        const price = product.price !== undefined ? product.price : product.precio;
+                        const subtotal = quantity * price;
                         newSaleItems.push({
                             sku: product.sku,
                             producto: product.producto,
                             presentacion: product.presentacion,
                             cantidadVendida: quantity,
-                            precioUnitario: product.precio,
+                            precioUnitario: price,
                             subtotal: subtotal,
                         });
                         newTotalSaleAmount += subtotal;
@@ -1863,6 +1945,27 @@
                             selectedVendor = vendors[0].name;
                             localStorage.setItem('selectedVendor', selectedVendor);
                         }
+                    } else if (type === 'vehicles') { // NUEVO: Cargar vehículos
+                        const existingVehiclesSnapshot = await db.collection('vehicles').get();
+                        for (const doc of existingVehiclesSnapshot.docs) {
+                            await db.collection('vehicles').doc(doc.id).delete();
+                            // También eliminar su inventario de camión asociado
+                            await db.collection('truck_inventories').doc(doc.id).delete();
+                        }
+
+                        const newVehicles = parsedData.map(row => ({
+                            plate: row.Plate,
+                            name: row.Name,
+                            brand: row.Brand,
+                            model: row.Model
+                        }));
+                        for (const vehicle of newVehicles) {
+                            await db.collection('vehicles').doc(vehicle.plate).set(vehicle);
+                            // Crear inventario vacío para el nuevo camión
+                            await db.collection('truck_inventories').doc(vehicle.plate).set({ items: [] });
+                        }
+                        vehicles = newVehicles;
+                        showMessageModal('vehiculos.csv cargado y guardado exitosamente en Firestore.');
                     }
                     render();
                 } catch (error) {
@@ -1909,6 +2012,15 @@
                 }));
                 filename = 'vendedor.csv';
                 headers = ['Name', 'Category'];
+            } else if (dataType === 'vehicles') { // NUEVO: Descargar vehículos
+                dataToDownload = vehicles.map(v => ({
+                    Plate: v.plate,
+                    Name: v.name,
+                    Brand: v.brand,
+                    Model: v.model
+                }));
+                filename = 'vehiculos.csv';
+                headers = ['Plate', 'Name', 'Brand', 'Model'];
             }
 
             if (dataToDownload.length > 0) {
@@ -1919,12 +2031,178 @@
             }
         };
 
+        // --- NUEVA PANTALLA: VEHÍCULOS DE CARGA ---
+        const renderVehiclesScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden gestionar vehículos.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const vehiclesDiv = document.createElement('div');
+            vehiclesDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            vehiclesDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">VEHÍCULOS DE CARGA</h2>
+
+                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Lista de Vehículos</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Placa</th>
+                                    <th>Nombre</th>
+                                    <th>Marca</th>
+                                    <th>Modelo</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vehicles-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
+                    <h3 class="text-xl font-bold mb-4 text-lime-700">${editingVehicle ? 'Editar Vehículo' : 'Agregar Nuevo Vehículo'}</h3>
+                    <input type="text" id="vehiclePlate" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Placa" ${editingVehicle ? 'disabled' : ''} value="${editingVehicle ? editingVehicle.plate : ''}">
+                    <input type="text" id="vehicleName" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre (ej. Volswaguen Worker 220)" value="${editingVehicle ? editingVehicle.name : ''}">
+                    <input type="text" id="vehicleBrand" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Marca" value="${editingVehicle ? editingVehicle.brand : ''}">
+                    <input type="text" id="vehicleModel" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Modelo" value="${editingVehicle ? editingVehicle.model : ''}">
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="${editingVehicle ? 'saveEditedVehicle()' : 'handleAddVehicle()'}">${editingVehicle ? 'Guardar Cambios' : 'Agregar Vehículo'}</button>
+                    ${editingVehicle ? `<button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="cancelEditVehicle()">Cancelar Edición</button>` : ''}
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(vehiclesDiv);
+
+            const vehiclesTableBody = document.getElementById('vehicles-table-body');
+            vehicles.forEach(vehicle => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${vehicle.plate}</td>
+                    <td>${vehicle.name}</td>
+                    <td>${vehicle.brand || 'N/A'}</td>
+                    <td>${vehicle.model || 'N/A'}</td>
+                    <td>
+                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-2" onclick="editVehicle('${vehicle.plate}')">Editar</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="showDeleteVehicleConfirmation('${vehicle.plate}')">Eliminar</button>
+                    </td>
+                `;
+                vehiclesTableBody.appendChild(row);
+            });
+        };
+
+        const handleAddVehicle = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden agregar vehículos.');
+                return;
+            }
+            const plate = document.getElementById('vehiclePlate').value.trim();
+            const name = document.getElementById('vehicleName').value.trim();
+            const brand = document.getElementById('vehicleBrand').value.trim();
+            const model = document.getElementById('vehicleModel').value.trim();
+
+            if (!plate || !name) {
+                showMessageModal('La placa y el nombre del vehículo son obligatorios.');
+                return;
+            }
+            if (vehicles.some(v => v.plate === plate)) {
+                showMessageModal('Ya existe un vehículo con esta placa.');
+                return;
+            }
+
+            const newVehicle = { plate, name, brand, model };
+            try {
+                await db.collection('vehicles').doc(plate).set(newVehicle);
+                // Crear un inventario vacío para el nuevo camión
+                await db.collection('truck_inventories').doc(plate).set({ items: [] });
+                vehicles.push(newVehicle);
+                showMessageModal('Vehículo agregado exitosamente y su inventario de camión creado.');
+                render(); // Re-render para actualizar la lista y limpiar el formulario
+            } catch (error) {
+                console.error('Error al agregar vehículo:', error);
+                showMessageModal('Error al agregar vehículo. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const editVehicle = (plate) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden editar vehículos.');
+                return;
+            }
+            editingVehicle = vehicles.find(v => v.plate === plate);
+            render();
+        };
+
+        const cancelEditVehicle = () => {
+            editingVehicle = null;
+            render();
+        };
+
+        const saveEditedVehicle = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en vehículos.');
+                return;
+            }
+            if (!editingVehicle) return;
+
+            const name = document.getElementById('vehicleName').value.trim();
+            const brand = document.getElementById('vehicleBrand').value.trim();
+            const model = document.getElementById('vehicleModel').value.trim();
+
+            if (!name) {
+                showMessageModal('El nombre del vehículo es obligatorio.');
+                return;
+            }
+
+            const updatedVehicle = { ...editingVehicle, name, brand, model };
+            try {
+                await db.collection('vehicles').doc(updatedVehicle.plate).set(updatedVehicle);
+                vehicles = vehicles.map(v => v.plate === updatedVehicle.plate ? updatedVehicle : v);
+                showMessageModal('Vehículo actualizado exitosamente.');
+                editingVehicle = null;
+                render();
+            } catch (error) {
+                console.error('Error al actualizar vehículo:', error);
+                showMessageModal('Error al actualizar vehículo. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const showDeleteVehicleConfirmation = (plate) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden eliminar vehículos.');
+                return;
+            }
+            showConfirmationModal(`¿Estás seguro de que quieres eliminar el vehículo con placa ${plate}? Esto también eliminará su inventario de camión.`, () => deleteVehicle(plate));
+        };
+
+        const deleteVehicle = async (plate) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden eliminar vehículos.');
+                return;
+            }
+            try {
+                await db.collection('vehicles').doc(plate).delete();
+                await db.collection('truck_inventories').doc(plate).delete(); // Eliminar también el inventario del camión
+                vehicles = vehicles.filter(v => v.plate !== plate);
+                showMessageModal('Vehículo y su inventario de camión eliminados exitosamente.');
+                render();
+            } catch (error) {
+                console.error('Error al eliminar vehículo:', error);
+                showMessageModal('Error al eliminar vehículo. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        // Función global para cambiar de pantalla y volver a renderizar
         const setScreenAndRender = (newScreen) => {
             console.log(`[setScreenAndRender] Cambiando a pantalla: ${newScreen}`);
             screen = newScreen;
             render();
         };
 
+        // Registro del Service Worker
         if ('serviceWorker' in navigator) {
             document.addEventListener('DOMContentLoaded', () => {
                 const serviceWorkerFileName = 'service-worker.js';
