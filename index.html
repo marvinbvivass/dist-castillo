@@ -1097,13 +1097,15 @@
             const productSaleContainer = document.getElementById('product-sale-container');
             const infoText = document.getElementById('info-text');
 
-            if (!currentUserData.assignedTruckPlate && isUser()) {
+            // Si el usuario es normal y no tiene un camión asignado, no puede realizar ventas
+            if (isUser() && !currentUserData.assignedTruckPlate) {
                 selectedClientDisplay.textContent = '';
                 infoText.textContent = 'No tienes un camión asignado. Por favor, contacta a un administrador para que te asigne uno.';
                 productSaleContainer.innerHTML = '';
                 return;
             }
 
+            // Determinar qué inventario mostrar y de qué fuente se realizará la venta
             const inventoryToDisplay = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
             const inventorySourceText = currentUserData.assignedTruckPlate ? ` (Camión: ${currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
 
@@ -1188,19 +1190,21 @@
             let hasInsufficientStock = false;
             let messages = [];
 
+            // Determinar el inventario de origen (camión o almacén principal)
             const sourceInventory = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
             let updatedSourceInventory = JSON.parse(JSON.stringify(sourceInventory)); // Copia para modificar
 
             for (const item of sourceInventory) {
                 const quantitySold = saleQuantities[item.sku] || 0;
-                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad; // Usar 'quantity' para camiones, 'cantidad' para almacén
+                // Usar 'quantity' para inventarios de camiones y 'cantidad' para el inventario principal
+                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad;
 
                 if (quantitySold > 0) {
                     if (quantitySold > availableQuantity) {
                         messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
                         hasInsufficientStock = true;
                     } else {
-                        const price = item.price !== undefined ? item.price : item.precio;
+                        const price = item.price !== undefined ? item.price : item.precio; // Usar 'price' para camiones, 'precio' para almacén
                         const subtotal = quantitySold * price;
                         saleData.push({
                             sku: item.sku,
@@ -1211,8 +1215,9 @@
                             subtotal: subtotal,
                         });
                         totalSaleAmount += subtotal;
+                        // Actualizar la cantidad en la copia del inventario de origen
                         updatedSourceInventory = updatedSourceInventory.map(invItem =>
-                            invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity || invItem.cantidad) - quantitySold, cantidad: (invItem.quantity || invItem.cantidad) - quantitySold } : invItem
+                            invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold, cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold } : invItem
                         );
                     }
                 }
@@ -1251,7 +1256,7 @@
                 dailySales.push(saleRecord);
                 console.log('[Firestore] Venta guardada en Firestore con ID:', docRef.id);
 
-                // Actualizar el inventario de la fuente correcta
+                // Actualizar el inventario de la fuente correcta en Firestore
                 if (currentUserData.assignedTruckPlate) {
                     await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).set({ items: updatedSourceInventory });
                     currentTruckInventory = updatedSourceInventory; // Actualizar inventario local del camión
@@ -1648,6 +1653,13 @@
                             <input type="file" id="uploadVendorsCsv" accept=".csv" onchange="handleFileUpload(event, 'vendors')">
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label>
+                        <div class="file-input-wrapper">
+                            <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
+                            <input type="file" id="uploadVehiclesCsv" accept=".csv" onchange="handleFileUpload(event, 'vehicles')">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
@@ -1726,7 +1738,8 @@
             let productsHtml = '';
             let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
 
-            const inventoryToCompare = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
+            // Determinar el inventario a comparar según el origen de la venta
+            const inventoryToCompare = selectedSaleForModification.sourceInventory === 'warehouse' ? inventory : currentTruckInventory;
 
             selectedSaleForModification.items.forEach(item => {
                 const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku);
