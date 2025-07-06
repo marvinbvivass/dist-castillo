@@ -398,6 +398,11 @@
         // Estado para la pantalla de vehículos
         let editingVehicle = null; // Almacena el vehículo que se está editando
 
+        // NUEVO: Estado para la carga de camiones
+        let selectedTruckForLoading = null;
+        let loadingQuantities = {}; // Cantidades a cargar del almacén al camión
+        let selectedTruckInventoryForLoading = []; // Inventario del camión seleccionado para carga
+
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
         const isUser = () => currentUserData.role === 'user';
@@ -721,6 +726,9 @@
                     case 'vehicles': // NUEVO: Pantalla de vehículos
                         renderVehiclesScreen();
                         break;
+                    case 'truckLoading': // NUEVO: Pantalla de carga de camiones
+                        renderTruckLoadingScreen();
+                        break;
                     case 'login':
                         renderLoginScreen();
                         break;
@@ -781,6 +789,7 @@
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('truckLoading')">CARGA DE CAMIONES</button>` : ''}
                 </div>
                 <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
             `;
@@ -2207,6 +2216,223 @@
                 showMessageModal('Error al eliminar vehículo. Revisa tu conexión y reglas de seguridad.');
             }
         };
+
+        // --- NUEVA PANTALLA: CARGA DE CAMIONES ---
+        const renderTruckLoadingScreen = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden cargar camiones.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const truckLoadingDiv = document.createElement('div');
+            truckLoadingDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            truckLoadingDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CARGA DE CAMIONES</h2>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="truckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión:</label>
+                    <select id="truckSelect" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="handleTruckSelectionForLoading(this.value)">
+                        <option value="">-- Seleccione un camión --</option>
+                        ${vehicles.map(v => `<option value="${v.plate}" ${selectedTruckForLoading && selectedTruckForLoading.plate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
+                    </select>
+                </div>
+
+                ${selectedTruckForLoading ? `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div class="p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                            <h3 class="text-xl font-bold mb-4 text-emerald-700">Inventario del Almacén Principal</h3>
+                            <div class="table-container max-h-60 overflow-y-auto">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>SKU</th>
+                                            <th>Producto</th>
+                                            <th>Disponible</th>
+                                            <th>Cargar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="warehouse-inventory-body">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="p-4 bg-purple-50 rounded-lg border border-purple-300">
+                            <h3 class="text-xl font-bold mb-4 text-purple-700">Inventario del Camión: ${selectedTruckForLoading.name} (${selectedTruckForLoading.plate})</h3>
+                            <div class="table-container max-h-60 overflow-y-auto">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>SKU</th>
+                                            <th>Producto</th>
+                                            <th>Cantidad</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="truck-inventory-display-body">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLoadToTruck()">Cargar al Camión</button>
+                ` : `<p class="text-center text-gray-600">Por favor, seleccione un camión para ver y gestionar su carga.</p>`}
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(truckLoadingDiv);
+
+            if (selectedTruckForLoading) {
+                const warehouseInventoryBody = document.getElementById('warehouse-inventory-body');
+                inventory.forEach(item => {
+                    const row = document.createElement('tr');
+                    // Aseguramos que 'loadingQuantities' tenga un valor inicial de 0 si no existe
+                    if (loadingQuantities[item.sku] === undefined) {
+                        loadingQuantities[item.sku] = 0;
+                    }
+                    row.innerHTML = `
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.cantidad}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${loadingQuantities[item.sku]}" onchange="handleLoadingQuantityChange('${item.sku}', this.value)" min="0" max="${item.cantidad}"></td>
+                    `;
+                    warehouseInventoryBody.appendChild(row);
+                });
+
+                const truckInventoryDisplayBody = document.getElementById('truck-inventory-display-body');
+                selectedTruckInventoryForLoading.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.quantity}</td>
+                    `;
+                    truckInventoryDisplayBody.appendChild(row);
+                });
+            }
+        };
+
+        const handleTruckSelectionForLoading = async (plate) => {
+            if (!plate) {
+                selectedTruckForLoading = null;
+                selectedTruckInventoryForLoading = [];
+                loadingQuantities = {};
+                render();
+                return;
+            }
+
+            selectedTruckForLoading = vehicles.find(v => v.plate === plate);
+            loadingQuantities = {}; // Reiniciar cantidades de carga al seleccionar un nuevo camión
+
+            if (selectedTruckForLoading) {
+                try {
+                    const truckInventoryDoc = await db.collection('truck_inventories').doc(plate).get();
+                    if (truckInventoryDoc.exists) {
+                        selectedTruckInventoryForLoading = truckInventoryDoc.data().items || [];
+                    } else {
+                        console.warn(`[Firestore] No se encontró inventario para el camión ${plate}. Creando uno vacío.`);
+                        await db.collection('truck_inventories').doc(plate).set({ items: [] });
+                        selectedTruckInventoryForLoading = [];
+                    }
+                } catch (error) {
+                    console.error('Error al cargar inventario del camión para carga:', error);
+                    showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
+                    selectedTruckInventoryForLoading = [];
+                }
+            } else {
+                selectedTruckInventoryForLoading = [];
+            }
+            render();
+        };
+
+        const handleLoadingQuantityChange = (sku, quantity) => {
+            loadingQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        const handleLoadToTruck = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden cargar camiones.');
+                return;
+            }
+            if (!selectedTruckForLoading) {
+                showMessageModal('Por favor, selecciona un camión primero.');
+                return;
+            }
+
+            let messages = [];
+            let hasError = false;
+            let itemsToUpdateInWarehouse = JSON.parse(JSON.stringify(inventory)); // Copia del inventario principal
+            let itemsToUpdateInTruck = JSON.parse(JSON.stringify(selectedTruckInventoryForLoading)); // Copia del inventario del camión
+
+            for (const sku in loadingQuantities) {
+                const quantityToLoad = loadingQuantities[sku];
+                if (quantityToLoad <= 0) continue;
+
+                const warehouseItem = itemsToUpdateInWarehouse.find(item => item.sku === sku);
+                if (!warehouseItem) {
+                    messages.push(`Error: Producto con SKU ${sku} no encontrado en el inventario del almacén.`);
+                    hasError = true;
+                    continue;
+                }
+
+                if (quantityToLoad > warehouseItem.cantidad) {
+                    messages.push(`Error: No hay suficiente stock de "${warehouseItem.producto}" (SKU: ${sku}) en el almacén. Disponible: ${warehouseItem.cantidad}, Intentando cargar: ${quantityToLoad}.`);
+                    hasError = true;
+                    continue;
+                }
+
+                // Actualizar cantidad en el almacén
+                warehouseItem.cantidad -= quantityToLoad;
+
+                // Actualizar cantidad en el camión
+                let truckItem = itemsToUpdateInTruck.find(item => item.sku === sku);
+                if (truckItem) {
+                    truckItem.quantity += quantityToLoad;
+                } else {
+                    // Si el producto no existe en el camión, añadirlo
+                    const originalItem = inventory.find(item => item.sku === sku);
+                    if (originalItem) {
+                        itemsToUpdateInTruck.push({
+                            sku: originalItem.sku,
+                            rubro: originalItem.rubro,
+                            segmento: originalItem.segmento,
+                            producto: originalItem.producto,
+                            presentacion: originalItem.presentacion,
+                            quantity: quantityToLoad, // Usamos 'quantity' para el inventario del camión
+                            price: originalItem.precio // Usamos 'price' para el inventario del camión
+                        });
+                    } else {
+                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal para obtener detalles completos.`);
+                    }
+                }
+            }
+
+            if (hasError) {
+                showMessageModal(messages.join('\n'));
+                return;
+            }
+
+            try {
+                // Actualizar inventario del almacén
+                for (const item of itemsToUpdateInWarehouse) {
+                    await db.collection('inventory').doc(item.sku).set(item);
+                }
+                inventory = itemsToUpdateInWarehouse; // Actualizar estado local
+
+                // Actualizar inventario del camión
+                await db.collection('truck_inventories').doc(selectedTruckForLoading.plate).set({ items: itemsToUpdateInTruck });
+                selectedTruckInventoryForLoading = itemsToUpdateInTruck; // Actualizar estado local
+
+                showMessageModal('Carga de inventario al camión realizada exitosamente.');
+                loadingQuantities = {}; // Limpiar cantidades de carga
+                render(); // Re-renderizar para mostrar los cambios
+            } catch (error) {
+                console.error('Error al cargar inventario al camión:', error);
+                showMessageModal('Error al cargar inventario al camión. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
 
         // Función global para cambiar de pantalla y volver a renderizar
         const setScreenAndRender = (newScreen) => {
