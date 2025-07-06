@@ -231,7 +231,7 @@
             projectId: "dist-castillo",
             storageBucket: "dist-castillo.firebasestorage.app",
             messagingSenderId: "249846475959",
-            appId: "1:249846475959:web:066c3fbca65ca3965af132",
+            appId: "1:249846475959:web:066c3fbca65ca39655af132",
             measurementId: "G-V56MBM5YT9"
         };
 
@@ -815,7 +815,7 @@
                     ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>` : ''}
                     ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosAdmin')">ARCHIVOS ADMIN</button>` : ''}
-                    ${currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
+                    ${!isAdmin() && currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('assignVehicle')">ASIGNAR VEHÍCULO</button>` : ''}
                 </div>
@@ -2747,4 +2747,3 @@
     </script>
 </body>
 </html>
-
