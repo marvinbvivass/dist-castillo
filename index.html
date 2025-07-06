@@ -284,14 +284,14 @@
         // Establecer vendedor seleccionado inicial basado en localStorage o por defecto al primero si está disponible
         let selectedVendor = localStorage.getItem('selectedVendor') || (initialVendors.length > 0 ? initialVendors[0].name : 'Ninguno');
 
-        // Mapeo de imágenes de productos simulado (SKU a URL de imagen local)
+        // MODIFICADO: Mapeo de imágenes de productos apuntando a la carpeta local 'images/'
         const productImages = {
-            '2364': 'https://placehold.co/100x100/ADD8E6/000000?text=Solera', // Solera
-            '7458': 'https://placehold.co/100x100/FFD700/000000?text=Ligth', // Ligth
-            '1001': 'https://placehold.co/100x100/90EE90/000000?text=Pan', // Pan
-            '1002': 'https://placehold.co/100x100/87CEEB/000000?text=Leche', // Leche
-            '9876': 'https://placehold.co/100x100/FFA07A/000000?text=Polar', // Polar
-            'default': 'https://placehold.co/100x100/D3D3D3/000000?text=No+Image' // Imagen por defecto
+            '2364': './images/2364.png', // Solera
+            '7458': './images/7458.png', // Ligth
+            '1001': './images/1001.png', // Pan
+            '1002': './images/1002.png', // Leche
+            '9876': './images/9876.png', // Polar
+            'default': './images/no-image.png' // Imagen por defecto
         };
 
         // --- Funciones de Ayuda ---
