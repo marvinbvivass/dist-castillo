@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dist Castillo Ventas</title>
-    <link rel="manifest" href="/manifest.json">
+    <!-- MODIFICADO: Ruta relativa para manifest.json -->
+    <link rel="manifest" href="./manifest.json">
     <!-- Carga de Tailwind CSS desde CDN para asegurar que el estilo se aplique correctamente -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2872,7 +2873,10 @@
         if ('serviceWorker' in navigator) {
             document.addEventListener('DOMContentLoaded', () => {
                 const serviceWorkerFileName = 'service-worker.js';
-                const absoluteServiceWorkerUrl = window.location.origin + '/' + serviceWorkerFileName;
+                // MODIFICADO: Usar window.location.pathname para obtener la ruta base del repositorio
+                // Esto maneja casos como 'https://marvinbvivass.github.io/dist-castillo/'
+                const baseUrl = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
+                const absoluteServiceWorkerUrl = baseUrl + serviceWorkerFileName;
 
                 navigator.serviceWorker.register(absoluteServiceWorkerUrl)
                     .then(registration => {
