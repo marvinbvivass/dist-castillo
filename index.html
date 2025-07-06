@@ -734,8 +734,11 @@
                     case 'cierreVentas':
                         renderCierreVentasScreen();
                         break;
-                    case 'archivos':
-                        renderArchivosScreen();
+                    case 'archivosAdmin': // NUEVO: Pantalla de Archivos para Admin
+                        renderArchivosAdminScreen();
+                        break;
+                    case 'archivosVenta': // NUEVO: Pantalla de Archivos de Venta para Usuarios
+                        renderArchivosVentaScreen();
                         break;
                     case 'vehicles': // Pantalla de vehículos
                         renderVehiclesScreen();
@@ -811,7 +814,8 @@
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('clientes')">CLIENTES</button>
                     ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>` : ''}
                     ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivos')">ARCHIVOS</button>
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosAdmin')">ARCHIVOS ADMIN</button>` : ''}
+                    ${currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('assignVehicle')">ASIGNAR VEHÍCULO</button>` : ''}
                 </div>
@@ -1871,9 +1875,9 @@
                     const itemRef = db.collection('inventory').doc(item.sku);
                     batch.set(itemRef, item); // Usar set para sobrescribir o crear si no existe
                 }
-                inventory = updatedMainInventory; // Actualizar inventario principal local
-                console.log('[Firestore] Inventario principal actualizado en Firestore después del cierre de ventas.');
-                messages.push('Inventario Principal Actualizado: Las ventas del día han sido deducidas del inventario principal.');
+                // Actualizar el estado local del inventario principal
+                inventory = updatedMainInventory;
+                console.log('[Firestore] Inventario principal actualizado localmente después del cierre de ventas.');
 
                 // Eliminar registros de ventas individuales de Firestore
                 for (const sale of salesForToday) {
@@ -1882,9 +1886,13 @@
                         batch.delete(saleRef);
                     }
                 }
-                await batch.commit(); // Confirmar todas las operaciones del batch
+                // Actualizar el estado local de las ventas diarias
                 dailySales = dailySales.filter(sale => sale.date !== today);
-                console.log('[Firestore] Ventas diarias de hoy eliminadas de Firestore.');
+                console.log('[Firestore] Ventas diarias de hoy eliminadas localmente.');
+
+                await batch.commit(); // Confirmar todas las operaciones del batch
+                console.log('[Firestore] Todas las operaciones del cierre de ventas (inventario principal y eliminación de ventas) confirmadas en Firestore.');
+                messages.push('Inventario Principal Actualizado: Las ventas del día han sido deducidas del inventario principal.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados" de Firestore.');
             } catch (error) {
                 console.error('Error al actualizar inventario principal o eliminar ventas diarias de Firestore:', error);
@@ -2006,17 +2014,22 @@
         };
 
 
-        const renderArchivosScreen = () => {
+        // NUEVA: Pantalla de Archivos Admin
+        const renderArchivosAdminScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.');
+                setScreenAndRender('main');
+                return;
+            }
+
             const archivosDiv = document.createElement('div');
             archivosDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
             archivosDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS</h2>
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS ADMIN</h2>
                 <p class="text-base text-center my-5 text-gray-600">
-                    Esta sección permite cargar tus propios archivos CSV y descargar los datos actuales o generados.
-                    También puedes ver y modificar ventas pasadas.
+                    Esta sección permite cargar y descargar archivos de datos maestros.
                 </p>
 
-                ${isAdmin() ? `
                 <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
                     <h3 class="text-xl font-bold mb-4 text-sky-700">Cargar Archivos CSV</h3>
                     <div class="mb-3">
@@ -2048,7 +2061,6 @@
                         </div>
                     </div>
                 </div>
-                ` : ''}
 
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
@@ -2057,6 +2069,27 @@
                     <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vendors')">Descargar vendedor.csv</button>
                     <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vehicles')">Descargar vehículos.csv</button>
                 </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(archivosDiv);
+        };
+
+        // NUEVA: Pantalla de Archivos de Venta (para todos los usuarios autenticados)
+        const renderArchivosVentaScreen = () => {
+            if (!currentUser) {
+                showMessageModal('Acceso denegado: Debes iniciar sesión para ver los archivos de venta.');
+                setScreenAndRender('login');
+                return;
+            }
+
+            const archivosDiv = document.createElement('div');
+            archivosDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            archivosDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS DE VENTA</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes ver, imprimir y modificar (solo administradores) los archivos de venta generados.
+                </p>
 
                 <div class="p-4 bg-cyan-50 rounded-lg border border-cyan-300">
                     <h3 class="text-xl font-bold mb-4 text-cyan-700">Archivos de Venta Generados</h3>
@@ -2085,6 +2118,7 @@
                 });
             }
         };
+
 
         const openModifySaleModal = (saleRecord) => {
             if (!isAdmin()) {
@@ -2147,6 +2181,7 @@
 
             inventoryToCompare.forEach(item => {
                 if (!currentSaleSkus.has(item.sku)) {
+                    const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku); // Re-fetch to ensure it's the correct item
                     const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : 0;
                     productsHtml += `
                         <tr>
@@ -2156,7 +2191,7 @@
                             <td>${item.presentacion}</td>
                             <td>$${item.price ? item.price.toFixed(2) : item.precio.toFixed(2)}</td>
                             <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
-                            <td>${item.quantity || item.cantidad}</td>
+                            <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
                         </tr>
                     `;
                 }
@@ -2712,3 +2747,4 @@
     </script>
 </body>
 </html>
+
