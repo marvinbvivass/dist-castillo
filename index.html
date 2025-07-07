@@ -251,6 +251,7 @@
         let currentTruckInventory = []; // NUEVO: Inventario del camión actualmente asignado al usuario
         let users = []; // NUEVO: Lista de usuarios de la aplicación (para asignación de vehículos)
         let loadRecords = []; // NUEVO: Registros de carga de camiones
+        let transferRecords = []; // NUEVO: Registros de transbordo de inventario entre camiones
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         const initialClients = [
@@ -416,6 +417,11 @@
         // NUEVO: Estado para la pantalla de Reset Cargas Iniciales
         let resetQuantities = {}; // Almacena las cantidades a modificar para el reset
         let allTruckInventories = {}; // Caché de todos los inventarios de camiones para el reset
+
+        // NUEVO: Estado para la función de Transbordo de Inventario
+        let selectedDestinationTruck = null; // El camión de destino seleccionado para el transbordo
+        let transferQuantities = {}; // Cantidades a transferir por SKU
+
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
@@ -601,6 +607,7 @@
                 currentTruckInventory = []; // Limpiar inventario del camión
                 users = []; // Limpiar lista de usuarios
                 loadRecords = []; // Limpiar registros de carga
+                transferRecords = []; // Limpiar registros de transbordo
                 if (screen !== 'login' && screen !== 'register') {
                     setScreenAndRender('login');
                 } else {
@@ -700,6 +707,11 @@
                 loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 console.log('[Firestore] Registros de carga cargados:', loadRecords);
 
+                // NUEVO: Cargar Registros de Transbordo
+                const transferRecordsSnapshot = await db.collection('transferRecords').get();
+                transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                console.log('[Firestore] Registros de transbordo cargados:', transferRecords);
+
 
                 // Actualizar el vendedor seleccionado si el anterior no existe
                 if (!vendors.some(v => v.name === selectedVendor)) {
@@ -719,6 +731,7 @@
                 currentTruckInventory = [];
                 users = [];
                 loadRecords = [];
+                transferRecords = [];
             } finally {
                 render(); // Asegurarse de renderizar la UI después de cargar los datos
             }
@@ -786,6 +799,15 @@
                     case 'resetCargasInicialesEdit': // NUEVO
                         renderResetCargasInicialesEditScreen();
                         break;
+                    case 'transferInventoryPassword': // NUEVO
+                        renderTransferInventoryPasswordScreen();
+                        break;
+                    case 'transferInventory': // NUEVO
+                        renderTransferInventoryScreen();
+                        break;
+                    case 'adminTransferHistory': // NUEVO
+                        renderAdminTransferHistoryScreen();
+                        break;
                     default:
                         renderMainScreen();
                 }
@@ -843,6 +865,8 @@
                     ${!isAdmin() && currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
                     ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('assignVehicle')">ASIGNAR VEHÍCULO</button>` : ''}
+                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('transferInventoryPassword')">TRANSBORDO INV.</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('adminTransferHistory')">HISTORIAL TRANSBORDOS</button>` : ''}
                 </div>
                 <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
             `;
@@ -3173,6 +3197,419 @@
             } catch (error) {
                 console.error('Error al limpiar el historial de cargas:', error);
                 showMessageModal('Error al limpiar el historial de cargas. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        // --- NUEVAS FUNCIONES DE TRANSBORDO DE INVENTARIO ---
+
+        // NUEVO: Pantalla de solicitud de contraseña para Transbordo Inv.
+        const renderTransferInventoryPasswordScreen = () => {
+            if (!isUser()) { // Solo usuarios pueden hacer transbordo
+                showMessageModal('Acceso denegado: Solo los usuarios pueden realizar transbordo de inventario.');
+                setScreenAndRender('main');
+                return;
+            }
+            if (!currentUserData.assignedTruckPlate) {
+                 showMessageModal('No tienes un camión asignado para realizar transbordos. Contacta a un administrador.');
+                 setScreenAndRender('main');
+                 return;
+            }
+
+            const passwordScreenDiv = document.createElement('div');
+            passwordScreenDiv.className = 'screen-container bg-white rounded-xl shadow-md p-8 max-w-md mx-auto my-10';
+            passwordScreenDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-center text-indigo-700">Confirmación de Seguridad</h2>
+                <p class="text-lg text-center mb-6 text-gray-700">Ingrese contraseña para confirmar la operación de transbordo.</p>
+                <input type="password" id="userPasswordForTransfer" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleTransferInventoryPassword()">Continuar</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Cancelar</button>
+            `;
+            appRoot.appendChild(passwordScreenDiv);
+        };
+
+        // NUEVO: Lógica para verificar la contraseña del usuario para Transbordo
+        const handleTransferInventoryPassword = async () => {
+            const password = document.getElementById('userPasswordForTransfer').value;
+
+            if (!password) {
+                showMessageModal('Por favor, ingresa tu contraseña.');
+                return;
+            }
+
+            try {
+                const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                await currentUser.reauthenticateWithCredential(credential);
+
+                // Si la re-autenticación es exitosa, pasar a la pantalla de transbordo
+                selectedDestinationTruck = null; // Reiniciar selección de destino
+                transferQuantities = {}; // Reiniciar cantidades de transbordo
+                setScreenAndRender('transferInventory');
+
+            } catch (error) {
+                showMessageModal(`Error de autenticación: ${error.message}. Contraseña incorrecta o sesión expirada.`);
+                console.error("Error de re-autenticación para transbordo:", error);
+            }
+        };
+
+        // NUEVO: Pantalla principal de Transbordo de Inventario
+        const renderTransferInventoryScreen = () => {
+            if (!isUser() || !currentUserData.assignedTruckPlate) {
+                showMessageModal('Acceso denegado o no tienes un camión asignado.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const sourceTruck = vehicles.find(v => v.plate === currentUserData.assignedTruckPlate);
+            if (!sourceTruck) {
+                showMessageModal('No se encontró información para tu camión asignado.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const destinationTrucks = vehicles.filter(v => v.plate !== sourceTruck.plate);
+
+            const transferDiv = document.createElement('div');
+            transferDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            transferDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">TRANSBORDO DE INVENTARIO</h2>
+                <p class="text-lg text-center mb-4 text-gray-700">Camión de Origen: <strong>${sourceTruck.name} (${sourceTruck.plate})</strong></p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="destinationTruckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión de Destino:</label>
+                    <select id="destinationTruckSelect" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="handleDestinationTruckSelection(this.value)">
+                        <option value="">-- Seleccione un camión --</option>
+                        ${destinationTrucks.map(v => `<option value="${v.plate}" ${selectedDestinationTruck && selectedDestinationTruck.plate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
+                    </select>
+                </div>
+
+                ${selectedDestinationTruck ? `
+                    <p class="text-base text-center mb-4 text-gray-700">Cantidad a trasladar del camión <strong>${sourceTruck.name}</strong> al camión <strong>${selectedDestinationTruck.name}</strong>.</p>
+                    <div class="table-container mb-5">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>SKU</th>
+                                    <th>Producto</th>
+                                    <th>Presentación</th>
+                                    <th>Disponible</th>
+                                    <th>Cantidad a Trasladar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-for-transfer-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showTransferConfirmation()">Realizar Transbordo</button>
+                ` : `<p class="text-center text-gray-600">Por favor, seleccione un camión de destino para continuar.</p>`}
+
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300 mt-8">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Historial de Traslados</h3>
+                    <div id="user-transfer-history-list"></div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(transferDiv);
+
+            if (selectedDestinationTruck) {
+                const productsForTransferBody = document.getElementById('products-for-transfer-body');
+                currentTruckInventory.forEach(item => { // currentTruckInventory es el inventario del camión de origen del usuario
+                    const row = document.createElement('tr');
+                    // Aseguramos que 'transferQuantities' tenga un valor inicial de 0 si no existe
+                    if (transferQuantities[item.sku] === undefined) {
+                        transferQuantities[item.sku] = 0;
+                    }
+                    row.innerHTML = `
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>${item.quantity}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${transferQuantities[item.sku]}" onchange="handleTransferQuantityChange('${item.sku}', this.value)" min="0" max="${item.quantity}"></td>
+                    `;
+                    productsForTransferBody.appendChild(row);
+                });
+            }
+            updateUserTransferHistoryDisplay();
+        };
+
+        // NUEVO: Manejador de selección de camión de destino
+        const handleDestinationTruckSelection = (plate) => {
+            if (!plate) {
+                selectedDestinationTruck = null;
+            } else {
+                selectedDestinationTruck = vehicles.find(v => v.plate === plate);
+            }
+            transferQuantities = {}; // Reiniciar cantidades al cambiar el destino
+            render();
+        };
+
+        // NUEVO: Manejador de cambio de cantidad a trasladar
+        const handleTransferQuantityChange = (sku, quantity) => {
+            transferQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        // NUEVO: Confirmación antes de realizar el transbordo
+        const showTransferConfirmation = () => {
+            showConfirmationModal('¿Estás seguro de que quieres realizar este transbordo de inventario? Esto modificará los inventarios de ambos camiones.', performInventoryTransfer);
+        };
+
+        // NUEVO: Lógica para realizar el transbordo de inventario
+        const performInventoryTransfer = async () => {
+            if (!isUser() || !currentUserData.assignedTruckPlate || !selectedDestinationTruck) {
+                showMessageModal('Error: No se puede realizar el transbordo. Asegúrate de tener un camión asignado y un camión de destino seleccionado.');
+                return;
+            }
+
+            const sourceTruckPlate = currentUserData.assignedTruckPlate;
+            const destinationTruckPlate = selectedDestinationTruck.plate;
+
+            let transferData = [];
+            let messages = [];
+            let hasPositiveTransferQuantity = false;
+
+            // Obtener copias de los inventarios de origen y destino
+            let sourceTruckInventoryCopy = JSON.parse(JSON.stringify(currentTruckInventory));
+            let destinationTruckInventoryCopy = [];
+            try {
+                const destTruckDoc = await db.collection('truck_inventories').doc(destinationTruckPlate).get();
+                destinationTruckInventoryCopy = destTruckDoc.exists ? (destTruckDoc.data().items || []) : [];
+            } catch (error) {
+                console.error('Error al cargar inventario del camión de destino:', error);
+                showMessageModal('Error al cargar el inventario del camión de destino. Intenta de nuevo.');
+                return;
+            }
+
+            for (const sku in transferQuantities) {
+                const quantityToTransfer = transferQuantities[sku];
+                if (quantityToTransfer <= 0) continue;
+
+                hasPositiveTransferQuantity = true;
+
+                const sourceItemIndex = sourceTruckInventoryCopy.findIndex(item => item.sku === sku);
+                const sourceItem = sourceItemIndex !== -1 ? sourceTruckInventoryCopy[sourceItemIndex] : null;
+
+                if (!sourceItem || quantityToTransfer > sourceItem.quantity) {
+                    messages.push(`Error: Cantidad insuficiente para SKU "${sku}" en el camión de origen. Disponible: ${sourceItem ? sourceItem.quantity : 0}, Intentado trasladar: ${quantityToTransfer}.`);
+                    continue;
+                }
+
+                // Deduce del camión de origen
+                sourceTruckInventoryCopy[sourceItemIndex].quantity -= quantityToTransfer;
+
+                // Añade al camión de destino
+                const destItemIndex = destinationTruckInventoryCopy.findIndex(item => item.sku === sku);
+                if (destItemIndex !== -1) {
+                    destinationTruckInventoryCopy[destItemIndex].quantity += quantityToTransfer;
+                } else {
+                    // Si el producto no existe en el camión de destino, añadirlo
+                    const productDetails = inventory.find(item => item.sku === sku); // Obtener detalles completos del producto
+                    if (productDetails) {
+                        destinationTruckInventoryCopy.push({
+                            sku: productDetails.sku,
+                            rubro: productDetails.rubro,
+                            segmento: productDetails.segmento,
+                            producto: productDetails.producto,
+                            presentacion: productDetails.presentacion,
+                            quantity: quantityToTransfer,
+                            price: productDetails.precio
+                        });
+                    } else {
+                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo añadir completamente al camión de destino.`);
+                    }
+                }
+
+                // Registrar para el CSV de traslado
+                transferData.push({
+                    sku: sku,
+                    producto: sourceItem.producto,
+                    presentacion: sourceItem.presentacion,
+                    cantidadTrasladada: quantityToTransfer,
+                    camionOrigen: sourceTruckPlate,
+                    camionDestino: destinationTruckPlate
+                });
+            }
+
+            if (messages.length > 0) {
+                showMessageModal(messages.join('\n'));
+                return;
+            }
+            if (!hasPositiveTransferQuantity) {
+                showMessageModal('Por favor, ingresa al menos una cantidad positiva para realizar el transbordo.');
+                return;
+            }
+
+            // Generar CSV del traslado
+            const transferFileName = `traslado_${sourceTruckPlate}_${destinationTruckPlate}_${getCurrentDateFormatted()}.csv`;
+            const transferCSVContent = `SKU,Producto,Presentacion,Cantidad Trasladada,Camion Origen,Camion Destino\n` +
+                                       transferData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadTrasladada},${item.camionOrigen},${item.camionDestino}`).join('\n');
+
+            const transferRecord = {
+                fileName: transferFileName,
+                date: getCurrentDateFormatted(),
+                sourceTruckPlate: sourceTruckPlate,
+                destinationTruckPlate: destinationTruckPlate,
+                userId: currentUser.uid, // Guardar quién realizó el transbordo
+                items: transferData,
+                rawCSV: transferCSVContent
+            };
+
+            try {
+                const batch = db.batch();
+
+                // Actualizar inventario del camión de origen
+                const sourceTruckRef = db.collection('truck_inventories').doc(sourceTruckPlate);
+                batch.set(sourceTruckRef, { items: sourceTruckInventoryCopy });
+
+                // Actualizar inventario del camión de destino
+                const destinationTruckRef = db.collection('truck_inventories').doc(destinationTruckPlate);
+                batch.set(destinationTruckRef, { items: destinationTruckInventoryCopy });
+
+                // Guardar el registro de transbordo
+                const docRef = await db.collection('transferRecords').add(transferRecord);
+                transferRecord.docId = docRef.id; // Asignar el ID del documento para futuras referencias
+
+                await batch.commit();
+
+                // Actualizar estados locales
+                currentTruckInventory = sourceTruckInventoryCopy; // El inventario del camión del usuario se actualiza
+                transferRecords.push(transferRecord); // Añadir al historial local
+
+                showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
+                downloadCSV(transferFileName, transferCSVContent);
+                selectedDestinationTruck = null; // Limpiar selección de destino
+                transferQuantities = {}; // Limpiar cantidades de transbordo
+                render(); // Re-renderizar para mostrar los cambios y el historial
+            } catch (error) {
+                console.error('Error al realizar transbordo de inventario:', error);
+                showMessageModal('Error al realizar transbordo. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        // NUEVO: Función para actualizar la lista de historial de traslados del usuario
+        const updateUserTransferHistoryDisplay = () => {
+            const userTransferHistoryListDiv = document.getElementById('user-transfer-history-list');
+            if (!userTransferHistoryListDiv) return;
+
+            const userSpecificTransferRecords = transferRecords.filter(record => record.userId === currentUser.uid);
+
+            if (userSpecificTransferRecords.length === 0) {
+                userTransferHistoryListDiv.innerHTML = '<p class="text-gray-600">No hay traslados registrados para tu usuario.</p>';
+            } else {
+                // Ordenar por fecha descendente
+                const sortedUserTransferRecords = [...userSpecificTransferRecords].sort((a, b) => {
+                    const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
+                    const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
+                    return dateB - dateA;
+                });
+
+                userTransferHistoryListDiv.innerHTML = ''; // Limpiar antes de añadir
+                sortedUserTransferRecords.forEach(record => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-yellow-800 mb-2 sm:mb-0">
+                            ${record.fileName} <br>
+                            <span class="text-sm text-gray-600">
+                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Fecha: ${record.date}
+                            </span>
+                        </span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                        </div>
+                    `;
+                    userTransferHistoryListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        // NUEVO: Pantalla de Historial de Transbordo para Administradores
+        const renderAdminTransferHistoryScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de transbordos.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const adminTransferHistoryDiv = document.createElement('div');
+            adminTransferHistoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            adminTransferHistoryDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE TRANSBORDOS</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes ver y descargar todos los archivos de transbordo generados.
+                </p>
+
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Archivos de Transbordo Generados</h3>
+                    <div id="admin-transfer-history-list"></div>
+                </div>
+
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearTransferHistoryConfirmation()">Limpiar Historial de Transbordo</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(adminTransferHistoryDiv);
+
+            const adminTransferHistoryListDiv = document.getElementById('admin-transfer-history-list');
+            if (transferRecords.length === 0) {
+                adminTransferHistoryListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de transbordo generados.</p>';
+            } else {
+                // Ordenar por fecha descendente
+                const sortedTransferRecords = [...transferRecords].sort((a, b) => {
+                    const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
+                    const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
+                    return dateB - dateA;
+                });
+
+                adminTransferHistoryListDiv.innerHTML = ''; // Limpiar antes de añadir
+                sortedTransferRecords.forEach(record => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    const userEmail = users.find(u => u.uid === record.userId)?.email || 'Desconocido';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-yellow-800 mb-2 sm:mb-0">
+                            ${record.fileName} <br>
+                            <span class="text-sm text-gray-600">
+                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}
+                            </span>
+                        </span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                        </div>
+                    `;
+                    adminTransferHistoryListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        // NUEVO: Lógica para confirmar y limpiar el historial de transbordos (para admin)
+        const showClearTransferHistoryConfirmation = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de transbordos.');
+                return;
+            }
+            showConfirmationModal('Confirma desea borrar el Historial de Transbordos (esto afectará a todos los usuarios).', clearTransferHistoryLogic);
+        };
+
+        // NUEVO: Lógica para borrar el historial de transbordos
+        const clearTransferHistoryLogic = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de transbordos.');
+                return;
+            }
+            try {
+                const batch = db.batch();
+                const transferRecordsSnapshot = await db.collection('transferRecords').get();
+                transferRecordsSnapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                transferRecords = []; // Limpiar el estado local
+                showMessageModal('Historial de transbordos borrado exitosamente.');
+                render(); // Re-renderizar la pantalla
+            } catch (error) {
+                console.error('Error al limpiar el historial de transbordos:', error);
+                showMessageModal('Error al limpiar el historial de transbordos. Revisa tu conexión y reglas de seguridad.');
             }
         };
 
