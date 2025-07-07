@@ -239,6 +239,7 @@
         // Inicializar Firebase
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth(); // Obtener la instancia de autenticación
+        // const analytics = firebase.analytics(); // COMENTADO: Eliminar si no se usa activamente para evitar errores 404
         const db = firebase.firestore(); // Obtener la instancia de Firestore
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
@@ -701,15 +702,30 @@
                 dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 console.log('[Firestore] Ventas diarias cargadas:', dailySales);
 
-                // Cargar Registros de Carga
-                const loadRecordsSnapshot = await db.collection('loadRecords').get();
-                loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                console.log('[Firestore] Registros de carga cargados:', loadRecords);
+                // MODIFICADO: Cargar Registros de Carga (solo si es admin)
+                if (isAdmin()) {
+                    const loadRecordsSnapshot = await db.collection('loadRecords').get();
+                    loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                    console.log('[Firestore] Registros de carga cargados (Admin):', loadRecords);
+                } else {
+                    loadRecords = []; // Asegurarse de que esté vacío para usuarios normales
+                    console.log('[Firestore] No se cargan registros de carga para usuarios normales.');
+                }
 
-                // NUEVO: Cargar Registros de Transbordo
-                const transferRecordsSnapshot = await db.collection('transferRecords').get();
-                transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                console.log('[Firestore] Registros de transbordo cargados:', transferRecords);
+                // MODIFICADO: Cargar Registros de Transbordo (filtrado por usuario si es user, todos si es admin)
+                if (isAdmin()) {
+                    const transferRecordsSnapshot = await db.collection('transferRecords').get();
+                    transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                    console.log('[Firestore] Registros de transbordo cargados (Admin):', transferRecords);
+                } else if (isUser() && currentUser) {
+                    // Para usuarios normales, solo cargar sus propios registros de transbordo
+                    const userTransferRecordsSnapshot = await db.collection('transferRecords').where('userId', '==', currentUser.uid).get();
+                    transferRecords = userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                    console.log('[Firestore] Registros de transbordo cargados (User):', transferRecords);
+                } else {
+                    transferRecords = []; // Asegurarse de que esté vacío si no hay usuario o no es admin/user
+                    console.log('[Firestore] No se cargan registros de transbordo.');
+                }
 
 
                 // Actualizar el vendedor seleccionado si el anterior no existe
