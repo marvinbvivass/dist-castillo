@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dist Castillo Ventas</title>
-    <!-- MODIFICADO: Ruta relativa para manifest.json -->
+    <!-- Ruta relativa para manifest.json -->
     <link rel="manifest" href="./manifest.json">
     <!-- Carga de Tailwind CSS desde CDN para asegurar que el estilo se aplique correctamente -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,7 +30,7 @@
             min-height: 100vh;
             padding: 20px;
             box-sizing: border-box;
-            /* NUEVO: Estilos para la imagen de fondo */
+            /* Estilos para la imagen de fondo */
             background-image: url('./images/fondo.png'); /* Asegúrate de que la ruta sea correcta */
             background-size: cover; /* Cubre todo el viewport */
             background-position: center; /* Centra la imagen */
@@ -295,7 +295,7 @@
         // Establecer vendedor seleccionado inicial basado en localStorage o por defecto al primero si está disponible
         let selectedVendor = localStorage.getItem('selectedVendor') || (initialVendors.length > 0 ? initialVendors[0].name : 'Ninguno');
 
-        // MODIFICADO: Mapeo de imágenes de productos apuntando a la carpeta local 'images/'
+        // Mapeo de imágenes de productos apuntando a la carpeta local 'images/'
         const productImages = {
             '2364': './images/2364.png', // Solera
             '7458': './images/7458.png', // Ligth
@@ -716,7 +716,7 @@
                 dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 console.log('[Firestore] Ventas diarias cargadas:', dailySales);
 
-                // MODIFICADO: Cargar Registros de Carga (solo si es admin)
+                // Cargar Registros de Carga (solo si es admin)
                 if (isAdmin()) {
                     const loadRecordsSnapshot = await db.collection('loadRecords').get();
                     loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
@@ -726,7 +726,7 @@
                     console.log('[Firestore] No se cargan registros de carga para usuarios normales.');
                 }
 
-                // MODIFICADO: Cargar Registros de Transbordo (filtrado por usuario si es user, todos si es admin)
+                // Cargar Registros de Transbordo (filtrado por usuario si es user, todos si es admin)
                 if (isAdmin()) {
                     const transferRecordsSnapshot = await db.collection('transferRecords').get();
                     transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
@@ -777,13 +777,13 @@
                     case 'main':
                         renderMainScreen();
                         break;
-                    case 'cargaSelection': // NUEVO: Pantalla de selección de carga para admins
+                    case 'cargaSelection': // Pantalla de selección de carga para admins
                         renderCargaSelectionScreen();
                         break;
                     case 'truckLoading': // Renombrado de 'carga' a 'truckLoading' para mayor claridad
                         renderTruckReceivingScreen();
                         break;
-                    case 'loadHistory': // NUEVO: Pantalla de historial de cargas
+                    case 'loadHistory': // Pantalla de historial de cargas
                         renderLoadHistoryScreen();
                         break;
                     case 'inventario':
@@ -936,7 +936,7 @@
             localStorage.setItem('selectedVendor', selectedVendor);
         };
 
-        // MODIFICADO: Pantalla de selección para la sección "CARGA" (solo para admins)
+        // Pantalla de selección para la sección "CARGA" (solo para admins)
         const renderCargaSelectionScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la sección de Carga.');
@@ -1233,7 +1233,7 @@
         };
 
 
-        // MODIFICADA: Pantalla de recepción de mercancía en camión
+        // Pantalla de recepción de mercancía en camión
         const renderTruckReceivingScreen = async () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la carga de inventario.');
@@ -1518,7 +1518,7 @@
             renderInventarioScreen(); // Reutiliza la función de renderizado de inventario
         };
 
-        // MODIFICADA: renderInventarioScreen ahora es más flexible y asíncrona
+        // renderInventarioScreen ahora es más flexible y asíncrona
         const renderInventarioScreen = async () => {
             const inventarioDiv = document.createElement('div');
             inventarioDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
@@ -1716,7 +1716,7 @@
                     </div>
                 </div>
 
-                ${(isAdmin() || isUser()) ? ` <!-- MODIFICADO: Ahora usuarios también pueden agregar/modificar clientes -->
+                ${(isAdmin() || isUser()) ? ` <!-- Ahora usuarios también pueden agregar/modificar clientes -->
                 <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
                     <h3 class="text-xl font-bold mb-4 text-lime-700">Opciones de Cliente</h3>
                     <button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>
@@ -1745,7 +1745,7 @@
 
             updateClientTableForClientesScreen();
 
-            if ((isAdmin() || isUser()) && showAddClientForm) { // MODIFICADO: Ahora usuarios también pueden ver el formulario de añadir
+            if ((isAdmin() || isUser()) && showAddClientForm) { // Ahora usuarios también pueden ver el formulario de añadir
                 const zonaSelect = document.getElementById('newClientZona');
                 const sectorSelect = document.getElementById('newClientSector');
 
@@ -1787,7 +1787,7 @@
 
             if (filteredClients.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="8" class="text-center text-gray-500 py-4">No se encontraron clientes.</td>`; // MODIFICADO: colspan a 8
+                row.innerHTML = `<td colspan="8" class="text-center text-gray-500 py-4">No se encontraron clientes.</td>`; // colspan a 8
                 clientTableBody.appendChild(row);
             } else {
                 filteredClients.forEach(client => {
@@ -1810,13 +1810,13 @@
         };
 
         const toggleAddClientForm = () => {
-            // MODIFICADO: Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
+            // Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
             showAddClientForm = !showAddClientForm;
             render();
         };
 
         const handleAddClient = async () => {
-            // MODIFICADO: Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
+            // Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
             const nombreComercial = document.getElementById('newClientNombreComercial').value;
             const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
             const zona = document.getElementById('newClientZona').value;
@@ -2250,159 +2250,155 @@
 
         const handleCloseSalesLogic = async () => {
             console.log('[handleCloseSalesLogic] Iniciando...');
-            const today = getCurrentDateFormatted();
-            console.log('[handleCloseSalesLogic] Ventas diarias antes de filtrar por fecha:', JSON.parse(JSON.stringify(dailySales)));
-            const salesForToday = dailySales.filter(sale => sale.date === today);
-            console.log('[handleCloseSalesLogic] Ventas para hoy:', salesForToday);
             let messages = [];
 
-            if (salesForToday.length === 0) {
-                showMessageModal('No hay Ventas: No hay ventas registradas para hoy para cerrar.');
-                console.warn('[handleCloseSalesLogic] Advertencia: No hay ventas para hoy para cerrar.');
+            if (dailySales.length === 0) {
+                showMessageModal('No hay Ventas: No hay ventas registradas para cerrar.');
+                console.warn('[handleCloseSalesLogic] Advertencia: No hay ventas para cerrar.');
                 return;
             }
 
-            // --- Generación del archivo consolidado por SKU (EXISTENTE) ---
-            const aggregatedSalesBySku = {};
-            let totalOverallSale = 0;
+            // Group sales by date
+            const salesByDate = {};
+            dailySales.forEach(sale => {
+                if (!salesByDate[sale.date]) {
+                    salesByDate[sale.date] = [];
+                }
+                salesByDate[sale.date].push(sale);
+            });
 
-            salesForToday.forEach(sale => {
-                sale.items.forEach(item => {
-                    const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
-                    if (!aggregatedSalesBySku[sku]) {
-                        aggregatedSalesBySku[sku] = {
-                            producto: producto,
-                            presentacion: presentacion,
-                            totalCantidad: 0,
-                            totalSubtotal: 0
+            let allProcessedSaleDocIds = [];
+            let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Start with a fresh copy of current inventory
+
+            // Process sales for each date
+            for (const date in salesByDate) {
+                const salesForThisDate = salesByDate[date];
+
+                // --- Aggregation logic for this date (by SKU) ---
+                const aggregatedSalesBySku = {};
+                let totalOverallSale = 0;
+                salesForThisDate.forEach(sale => {
+                    sale.items.forEach(item => {
+                        const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
+                        if (!aggregatedSalesBySku[sku]) {
+                            aggregatedSalesBySku[sku] = {
+                                producto: producto,
+                                presentacion: presentacion,
+                                totalCantidad: 0,
+                                totalSubtotal: 0
+                            };
+                        }
+                        aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
+                        aggregatedSalesBySku[sku].totalSubtotal += subtotal;
+                        totalOverallSale += subtotal;
+                    });
+                });
+
+                // Generate combined CSV by SKU
+                let combinedCSVContent = `Venta General Consolidada - Fecha: ${date}\n`;
+                combinedCSVContent += `Vendedor: ${selectedVendor}\n\n`;
+                combinedCSVContent += `SKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
+                for (const sku in aggregatedSalesBySku) {
+                    const item = aggregatedSalesBySku[sku];
+                    combinedCSVContent += `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}\n`;
+                }
+                combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
+                const combinedFileName = `venta_consolidada_${date}.csv`;
+                messages.push(`Cierre de Ventas para ${date}: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
+                downloadCSV(combinedFileName, combinedCSVContent);
+
+                // --- Aggregation logic for this date (by Client) ---
+                const uniqueSKUs = new Set();
+                const clientSalesData = {};
+                salesForThisDate.forEach(sale => {
+                    if (!clientSalesData[sale.client.id]) {
+                        clientSalesData[sale.client.id] = {
+                            clientName: sale.client.nombreComercial,
+                            total: 0,
+                            skus: {}
                         };
                     }
-                    aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
-                    aggregatedSalesBySku[sku].totalSubtotal += subtotal;
-                    totalOverallSale += subtotal;
+                    sale.items.forEach(item => {
+                        uniqueSKUs.add(item.sku);
+                        clientSalesData[sale.client.id].skus[item.sku] =
+                            (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
+                        clientSalesData[sale.client.id].total += item.subtotal;
+                    });
                 });
-            });
+                const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
+                let clientCSVContent = `Venta General por Clientes - Fecha: ${date}\n`;
+                clientCSVContent += `Vendedor: ${selectedVendor}\n\n`;
+                clientCSVContent += `Cliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
+                let grandTotalClients = 0;
+                for (const clientId in clientSalesData) {
+                    const clientData = clientSalesData[clientId];
+                    let clientRow = `"${clientData.clientName}"`;
+                    sortedUniqueSKUs.forEach(sku => {
+                        clientRow += `,${clientData.skus[sku] || 0}`;
+                    });
+                    clientRow += `,${clientData.total.toFixed(2)}\n`;
+                    clientCSVContent += clientRow;
+                    grandTotalClients += clientData.total;
+                }
+                clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
+                const clientFileName = `ventas_por_cliente_${date}.csv`;
+                messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
+                downloadCSV(clientFileName, clientCSVContent);
 
-            let combinedCSVContent = `Venta General Consolidada - Fecha: ${today}\n`;
-            combinedCSVContent += `Vendedor: ${selectedVendor}\n\n`;
-            combinedCSVContent += `SKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
+                // --- Deduct aggregated sales from Main Warehouse Inventory for THIS DATE ---
+                for (const sku in aggregatedSalesBySku) {
+                    const totalQuantitySold = aggregatedSalesBySku[sku].totalCantidad;
+                    const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
 
-            for (const sku in aggregatedSalesBySku) {
-                const item = aggregatedSalesBySku[sku];
-                combinedCSVContent += `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}\n`;
-            }
-            combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
-            console.log('[handleCloseSalesLogic] Contenido combinedCSVContent para descarga:', combinedCSVContent);
-
-            const combinedFileName = `venta_consolidada_${today}.csv`;
-            messages.push(`Cierre de Ventas: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas de hoy.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
-
-            downloadCSV(combinedFileName, combinedCSVContent);
-
-
-            // --- Nueva Generación del archivo consolidado por CLIENTE ---
-            const uniqueSKUs = new Set();
-            const clientSalesData = {};
-
-            salesForToday.forEach(sale => {
-                if (!clientSalesData[sale.client.id]) {
-                    clientSalesData[sale.client.id] = {
-                        clientName: sale.client.nombreComercial,
-                        total: 0,
-                        skus: {}
-                    };
+                    if (mainInventoryItem) {
+                        mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold);
+                        console.log(`[handleCloseSalesLogic] SKU ${sku} for date ${date}: Old quantity: ${mainInventoryItem.cantidad + totalQuantitySold}, Sold: ${totalQuantitySold}, New quantity: ${mainInventoryItem.cantidad}`);
+                    } else {
+                        console.warn(`[handleCloseSalesLogic] SKU ${sku} sold (${totalQuantitySold} units) for date ${date} not found in main inventory for deduction. Possibly a new product or an SKU error.`);
+                    }
                 }
 
-                sale.items.forEach(item => {
-                    uniqueSKUs.add(item.sku);
-                    clientSalesData[sale.client.id].skus[item.sku] =
-                        (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
-                    clientSalesData[sale.client.id].total += item.subtotal;
+                // Collect docIds for deletion for this date
+                salesForThisDate.forEach(sale => {
+                    if (sale.docId) {
+                        allProcessedSaleDocIds.push(sale.docId);
+                    }
                 });
-            });
-
-            const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
-
-            let clientCSVContent = `Venta General por Clientes - Fecha: ${today}\n`;
-            clientCSVContent += `Vendedor: ${selectedVendor}\n\n`;
-
-            clientCSVContent += `Cliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
-
-            let grandTotalClients = 0;
-
-            for (const clientId in clientSalesData) {
-                const clientData = clientSalesData[clientId];
-                let clientRow = `"${clientData.clientName}"`;
-                sortedUniqueSKUs.forEach(sku => {
-                    clientRow += `,${clientData.skus[sku] || 0}`;
-                });
-                clientRow += `,${clientData.total.toFixed(2)}\n`;
-                clientCSVContent += clientRow;
-                grandTotalClients += clientData.total;
-            }
-
-            clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
-
-            const clientFileName = `ventas_por_cliente_${today}.csv`;
-            messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente.`);
-            downloadCSV(clientFileName, clientCSVContent);
-
+            } // End of loop for each date
 
             messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
             messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
 
-            // --- Deducir ventas agregadas del Inventario Principal del Almacén ---
-            let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Crear una copia mutable
-            console.log('[handleCloseSalesLogic] Inventario principal ANTES de la deducción:', JSON.parse(JSON.stringify(updatedMainInventory)));
-
-            for (const sku in aggregatedSalesBySku) {
-                const totalQuantitySold = aggregatedSalesBySku[sku].totalCantidad;
-                const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
-
-                if (mainInventoryItem) {
-                    const oldQuantity = mainInventoryItem.cantidad;
-                    mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold);
-                    console.log(`[handleCloseSalesLogic] SKU ${sku}: Cantidad anterior: ${oldQuantity}, Vendido: ${totalQuantitySold}, Nueva cantidad: ${mainInventoryItem.cantidad}`);
-                } else {
-                    console.warn(`[handleCloseSalesLogic] SKU ${sku} vendido (${totalQuantitySold} unidades) no encontrado en el inventario principal para deducción. Posiblemente un producto nuevo o un error de SKU.`);
-                }
-            }
-            console.log('[handleCloseSalesLogic] Inventario principal DESPUÉS de la deducción (local):', JSON.parse(JSON.stringify(updatedMainInventory)));
-
-
             try {
-                // Usar un batch para actualizaciones atómicas
+                // Use a batch for atomic updates
                 const batch = db.batch();
 
-                // Actualizar el inventario principal del almacén en Firestore
+                // Update the main warehouse inventory in Firestore with the final deduced quantities
                 for (const item of updatedMainInventory) {
                     const itemRef = db.collection('inventory').doc(item.sku);
-                    batch.set(itemRef, item); // Usar set para sobrescribir o crear si no existe
+                    batch.set(itemRef, item); // Use set to overwrite or create if not exists
                 }
-                // Actualizar el estado local del inventario principal
+                // Update the local main inventory state
                 inventory = updatedMainInventory;
                 console.log('[Firestore] Inventario principal actualizado localmente después del cierre de ventas.');
 
-                // Eliminar registros de ventas individuales de Firestore
-                for (const sale of salesForToday) {
-                    if (sale.docId) {
-                        const saleRef = db.collection('dailySales').doc(sale.docId);
-                        batch.delete(saleRef);
-                    }
+                // Delete individual sales records from Firestore that were processed
+                for (const docId of allProcessedSaleDocIds) {
+                    const saleRef = db.collection('dailySales').doc(docId);
+                    batch.delete(saleRef);
                 }
-                // Actualizar el estado local de las ventas diarias
-                dailySales = dailySales.filter(sale => sale.date !== today);
-                console.log('[Firestore] Ventas diarias de hoy eliminadas localmente.');
+                // Update the local dailySales state
+                dailySales = dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId));
+                console.log('[Firestore] Ventas diarias procesadas eliminadas localmente.');
 
-                await batch.commit(); // Confirmar todas las operaciones del batch
+                await batch.commit(); // Commit all batch operations
                 console.log('[Firestore] Todas las operaciones del cierre de ventas (inventario principal y eliminación de ventas) confirmadas en Firestore.');
-                messages.push('Inventario Principal Actualizado: Las ventas del día han sido deducidas del inventario principal.');
-                messages.push('Archivos Borrados: Los archivos de ventas individuales de hoy han sido "borrados" de Firestore.');
+                messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
+                messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
                 console.error('Error al actualizar inventario principal o eliminar ventas diarias de Firestore:', error);
                 messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
             }
-
 
             setScreenAndRender('main');
             showMessageModal(messages.join('\n'));
@@ -3220,7 +3216,7 @@
             }
         };
 
-        // MODIFICADO: Pantalla de Historial de Cargas (con botón Limpiar Historial)
+        // Pantalla de Historial de Cargas (con botón Limpiar Historial)
         const renderLoadHistoryScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de cargas.');
@@ -3732,7 +3728,7 @@
         if ('serviceWorker' in navigator) {
             document.addEventListener('DOMContentLoaded', () => {
                 const serviceWorkerFileName = 'service-worker.js';
-                // MODIFICADO: Usar window.location.pathname para obtener la ruta base del repositorio
+                // Usar window.location.pathname para obtener la ruta base del repositorio
                 // Esto maneja casos como 'https://marvinbvivass.github.io/dist-castillo/'
                 const baseUrl = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
                 const absoluteServiceWorkerUrl = baseUrl + serviceWorkerFileName;
