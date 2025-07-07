@@ -422,6 +422,10 @@
         let selectedDestinationTruck = null; // El camión de destino seleccionado para el transbordo
         let transferQuantities = {}; // Cantidades a transferir por SKU
 
+        // NUEVO: Estado para la edición de clientes
+        let editingClient = null; // Almacena el cliente que se está editando
+        let showEditClientModal = false; // Controla la visibilidad del modal de edición de cliente
+
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
@@ -831,6 +835,9 @@
             renderConfirmationModal();
             if (showModifySaleModalState) {
                 renderModifySaleModal();
+            }
+            if (showEditClientModal) { // NUEVO: Renderizar el modal de edición de cliente
+                renderEditClientModal();
             }
         };
 
@@ -1690,6 +1697,7 @@
                                     <th>Sector</th>
                                     <th>Teléfono</th>
                                     <th>Observaciones</th>
+                                    <th>Acciones</th> <!-- NUEVO: Columna de acciones -->
                                 </tr>
                             </thead>
                             <tbody id="client-table-body">
@@ -1698,7 +1706,7 @@
                     </div>
                 </div>
 
-                ${isAdmin() ? `
+                ${(isAdmin() || isUser()) ? ` <!-- MODIFICADO: Ahora usuarios también pueden agregar/modificar clientes -->
                 <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
                     <h3 class="text-xl font-bold mb-4 text-lime-700">Opciones de Cliente</h3>
                     <button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>
@@ -1727,7 +1735,7 @@
 
             updateClientTableForClientesScreen();
 
-            if (isAdmin() && showAddClientForm) {
+            if ((isAdmin() || isUser()) && showAddClientForm) { // MODIFICADO: Ahora usuarios también pueden ver el formulario de añadir
                 const zonaSelect = document.getElementById('newClientZona');
                 const sectorSelect = document.getElementById('newClientSector');
 
@@ -1769,7 +1777,7 @@
 
             if (filteredClients.length === 0) {
                 const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="7" class="text-center text-gray-500 py-4">No se encontraron clientes.</td>`;
+                row.innerHTML = `<td colspan="8" class="text-center text-gray-500 py-4">No se encontraron clientes.</td>`; // MODIFICADO: colspan a 8
                 clientTableBody.appendChild(row);
             } else {
                 filteredClients.forEach(client => {
@@ -1782,6 +1790,9 @@
                         <td>${client.sector}</td>
                         <td>${client.tlf}</td>
                         <td>${client.observaciones}</td>
+                        <td>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="openEditClientModal(${JSON.stringify(client).replace(/"/g, '&quot;')})">Editar</button>
+                        </td>
                     `;
                     clientTableBody.appendChild(row);
                 });
@@ -1789,19 +1800,13 @@
         };
 
         const toggleAddClientForm = () => {
-            if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden agregar nuevos clientes.');
-                return;
-            }
+            // MODIFICADO: Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
             showAddClientForm = !showAddClientForm;
             render();
         };
 
         const handleAddClient = async () => {
-            if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden guardar nuevos clientes.');
-                return;
-            }
+            // MODIFICADO: Eliminado el check isAdmin(), ahora cualquier usuario puede agregar
             const nombreComercial = document.getElementById('newClientNombreComercial').value;
             const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
             const zona = document.getElementById('newClientZona').value;
@@ -1837,6 +1842,83 @@
                 showMessageModal('Error al agregar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
             }
         };
+
+        // NUEVO: Funciones para la edición de clientes
+        const openEditClientModal = (client) => {
+            // No se necesita check de rol aquí, ya que el botón de editar solo se muestra a los que pueden editar
+            editingClient = JSON.parse(JSON.stringify(client)); // Copia profunda para no modificar el objeto original directamente
+            showEditClientModal = true;
+            render();
+        };
+
+        const closeEditClientModal = () => {
+            editingClient = null;
+            showEditClientModal = false;
+            render();
+        };
+
+        const handleEditClientChange = (field, value) => {
+            if (editingClient) {
+                editingClient[field] = value;
+            }
+        };
+
+        const saveEditedClient = async () => {
+            // No se necesita check de rol aquí, ya que el botón de editar solo se muestra a los que pueden editar
+            if (!editingClient) return;
+
+            // Basic validation (can be expanded)
+            if (!editingClient.nombreComercial || !editingClient.nombrePersonal || !editingClient.tlf) {
+                showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
+                return;
+            }
+
+            try {
+                await db.collection('clients').doc(editingClient.id).set(editingClient);
+                // Update local clients array
+                clients = clients.map(c => c.id === editingClient.id ? editingClient : c);
+                showMessageModal('Cliente actualizado exitosamente.');
+                closeEditClientModal();
+                setScreenAndRender('clientes'); // Re-render the clients screen to show updates
+            } catch (error) {
+                console.error('Error al actualizar cliente en Firestore:', error);
+                showMessageModal('Error al actualizar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        const renderEditClientModal = () => {
+            if (!showEditClientModal || !editingClient) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'edit-client-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Editar Cliente</h3>
+                    <input type="text" id="editClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial" value="${editingClient.nombreComercial}" onchange="handleEditClientChange('nombreComercial', this.value)">
+                    <input type="text" id="editClientNombrePersonal" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Personal" value="${editingClient.nombrePersonal}" onchange="handleEditClientChange('nombrePersonal', this.value)">
+
+                    <select id="editClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('zona', this.value)">
+                        <option value="">Seleccionar Zona</option>
+                        ${getUniqueClientValues('zona').map(z => `<option value="${z}" ${editingClient.zona === z ? 'selected' : ''}>${z}</option>`).join('')}
+                    </select>
+                    <select id="editClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('sector', this.value)">
+                        <option value="">Seleccionar Sector</option>
+                        ${getUniqueClientValues('sector').map(s => `<option value="${s}" ${editingClient.sector === s ? 'selected' : ''}>${s}</option>`).join('')}
+                    </select>
+
+                    <input type="tel" id="editClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono" value="${editingClient.tlf}" onchange="handleEditClientChange('tlf', this.value)">
+                    <input type="text" id="editClientObservaciones" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Observaciones" value="${editingClient.observaciones}" onchange="handleEditClientChange('observaciones', this.value)">
+
+                    <div class="flex justify-around gap-4 mt-5">
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveEditedClient()">Guardar Cambios</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeEditClientModal()">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
 
         const renderVentaScreen = () => {
             const ventaDiv = document.createElement('div');
