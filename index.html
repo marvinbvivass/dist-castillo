@@ -464,8 +464,8 @@
         // NUEVO: Estado para la función de Transbordo de Inventario
         // Estas variables ahora son gestionadas por transferModule, pero las mantenemos aquí para la inicialización
         // y para pasarlas al módulo.
-        let selectedDestinationTruck = null; // El camión de destino seleccionado para el transbordo
-        let transferQuantities = {}; // Cantidades a transferir por SKU
+        // let selectedDestinationTruck = null; // MOVIDO A transferModule
+        // let transferQuantities = {}; // MOVIDO A transferModule
 
         // NUEVO: Estado para la edición de clientes
         // Estas variables ahora son gestionadas por clientModule, pero las mantenemos aquí para la inicialización
@@ -502,7 +502,7 @@
             modalDiv.innerHTML = `
                 <div class="modal-content">
                     <p class="text-lg text-center mb-4">${messageModalText}</p>
-                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideMessageModal()">Cerrar</button>
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.hideMessageModal()">Cerrar</button>
                 </div>
             `;
             appRoot.appendChild(modalDiv);
@@ -538,8 +538,8 @@
                 <div class="modal-content">
                     <p class="text-lg text-center mb-6">${confirmationModalMessage}</p>
                     <div class="flex justify-around gap-4">
-                        <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(true)">Confirmar</button>
-                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(false)">Cancelar</button>
+                        <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.hideConfirmationModal(true)">Confirmar</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.hideConfirmationModal(false)">Cancelar</button>
                     </div>
                 </div>
             `;
@@ -784,8 +784,8 @@
                     fetchDataFromFirestore: fetchDataFromFirestore, // Pasar la función de re-fetch
                     auth: auth, // Pasar la instancia de auth para re-autenticación
                     // Pasar los estados locales de transbordo si es necesario mantenerlos entre renders
-                    selectedDestinationTruck: selectedDestinationTruck,
-                    transferQuantities: transferQuantities
+                    // selectedDestinationTruck: selectedDestinationTruck, // Ahora gestionado internamente por el módulo
+                    // transferQuantities: transferQuantities // Ahora gestionado internamente por el módulo
                 });
 
 
@@ -1041,8 +1041,8 @@
                 <h2 class="text-3xl font-bold mb-6 text-center text-indigo-700">Iniciar Sesión</h2>
                 <input type="email" id="loginEmail" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Correo Electrónico">
                 <input type="password" id="loginPassword" class="h-12 border border-gray-300 rounded-lg px-4 mb-6 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogin()">Iniciar Sesión</button>
-                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('register')">Regístrate aquí</a></p>
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.handleLogin()">Iniciar Sesión</button>
+                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="window.setScreenAndRender('register')">Regístrate aquí</a></p>
             `;
             appRoot.appendChild(loginDiv);
         };
@@ -1054,8 +1054,8 @@
                 <h2 class="text-3xl font-bold mb-6 text-center text-indigo-700">Registrar Nuevo Usuario</h2>
                 <input type="email" id="registerEmail" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Correo Electrónico">
                 <input type="password" id="registerPassword" class="h-12 border border-gray-300 rounded-lg px-4 mb-6 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleRegister()">Registrar</button>
-                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('login')">Inicia sesión aquí</a></p>
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.handleRegister()">Registrar</button>
+                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="window.setScreenAndRender('login')">Inicia sesión aquí</a></p>
             `;
             appRoot.appendChild(registerDiv);
         };
@@ -1068,20 +1068,20 @@
                 <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
                 ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role}) ${currentUserData.assignedTruckPlate ? ` - Camión: ${currentUserData.assignedTruckPlate}` : ''}</p>` : ''}
                 <div class="flex flex-wrap justify-center">
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cargaSelection')">CARGA</button>` : ''}
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('adminInventorySelection')">INVENTARIO</button>` : ''}
-                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('inventario')">INVENTARIO</button>` : ''}
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('clientes')">CLIENTES</button>
-                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('venta')">VENTA</button>` : ''}
-                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosAdmin')">ARCHIVOS ADMIN</button>` : ''}
-                    ${!isAdmin() && currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('assignVehicle')">ASIGNAR VEHÍCULO</button>` : ''}
-                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('transferInventoryPassword')">TRANSBORDO INV.</button>` : ''}
-                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('adminTransferHistory')">HISTORIAL TRANSBORDOS</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('cargaSelection')">CARGA</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('adminInventorySelection')">INVENTARIO</button>` : ''}
+                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('inventario')">INVENTARIO</button>` : ''}
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('clientes')">CLIENTES</button>
+                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('venta')">VENTA</button>` : ''}
+                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('cierreVentas')">CIERRE VENTAS</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('archivosAdmin')">ARCHIVOS ADMIN</button>` : ''}
+                    ${!isAdmin() && currentUser ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('archivosVenta')">ARCHIVOS DE VENTA</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('vehicles')">VEHÍCULOS DE CARGA</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('assignVehicle')">ASIGNAR VEHÍCULO</button>` : ''}
+                    ${isUser() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('transferInventoryPassword')">TRANSBORDO INV.</button>` : ''}
+                    ${isAdmin() ? `<button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="window.setScreenAndRender('adminTransferHistory')">HISTORIAL TRANSBORDOS</button>` : ''}
                 </div>
-                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.handleLogout()">Cerrar Sesión</button>
             `;
             appRoot.appendChild(mainDiv);
         };
@@ -1100,7 +1100,7 @@
                 input.value = vendor.name;
                 input.className = 'radio-button-input';
                 input.checked = (selectedVendor === vendor.name);
-                input.onchange = (event) => handleVendorChange(event.target.value);
+                input.onchange = (event) => window.handleVendorChange(event.target.value);
 
                 const label = document.createElement('label');
                 label.htmlFor = `vendor-${vendor.name.replace(/\s/g, '-')}`;
@@ -1132,8 +1132,8 @@
                 <p class="text-base text-center my-5 text-gray-600">
                     Esta sección permite consolidar y cerrar las ventas del día.
                 </p>
-                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showCloseSalesConfirmation()">Cerrar Ventas del Día</button>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.showCloseSalesConfirmation()">Cerrar Ventas del Día</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(cierreDiv);
             updateVendorSelectionDisplay();
@@ -1433,41 +1433,41 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label>
                         <div class="file-input-wrapper">
                             <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
-                            <input type="file" id="uploadClientsCsv" accept=".csv" onchange="handleFileUpload(event, 'clients')">
+                            <input type="file" id="uploadClientsCsv" accept=".csv" onchange="window.handleFileUpload(event, 'clients')">
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label>
                         <div class="file-input-wrapper">
                             <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
-                            <input type="file" id="uploadInventoryCsv" accept=".csv" onchange="handleFileUpload(event, 'inventory')">
+                            <input type="file" id="uploadInventoryCsv" accept=".csv" onchange="window.handleFileUpload(event, 'inventory')">
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label>
                         <div class="file-input-wrapper">
                             <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
-                            <input type="file" id="uploadVendorsCsv" accept=".csv" onchange="handleFileUpload(event, 'vendors')">
+                            <input type="file" id="uploadVendorsCsv" accept=".csv" onchange="window.handleFileUpload(event, 'vendors')">
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label>
                         <div class="file-input-wrapper">
                             <button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button>
-                            <input type="file" id="uploadVehiclesCsv" accept=".csv" onchange="handleFileUpload(event, 'vehicles')">
+                            <input type="file" id="uploadVehiclesCsv" accept=".csv" onchange="window.handleFileUpload(event, 'vehicles')">
                         </div>
                     </div>
                 </div>
 
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('clients')">Descargar clientes.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('inventory')">Descargar inventario.csv (Almacén Principal)</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vendors')">Descargar vendedor.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vehicles')">Descargar vehículos.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="window.downloadCurrentData('clients')">Descargar clientes.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="window.downloadCurrentData('inventory')">Descargar inventario.csv (Almacén Principal)</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="window.downloadCurrentData('vendors')">Descargar vendedor.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="window.downloadCurrentData('vehicles')">Descargar vehículos.csv</button>
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(archivosDiv);
         };
@@ -1493,7 +1493,7 @@
                     <div id="generated-sale-files-list"></div>
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(archivosDiv);
 
@@ -1507,8 +1507,8 @@
                     fileItemDiv.innerHTML = `
                         <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR</button>
-                            ${isAdmin() ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>` : ''}
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="window.printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR</button>
+                            ${isAdmin() ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="window.openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>` : ''}
                         </div>
                     `;
                     generatedSaleFilesListDiv.appendChild(fileItemDiv);
@@ -1570,7 +1570,7 @@
                         <td>${item.producto}</td>
                         <td>${item.presentacion}</td>
                         <td>$${item.precioUnitario.toFixed(2)}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="window.handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
                         <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
                     </tr>
                 `;
@@ -1587,7 +1587,7 @@
                             <td>${item.producto}</td>
                             <td>${item.presentacion}</td>
                             <td>$${item.price ? item.price.toFixed(2) : item.precio.toFixed(2)}</td>
-                            <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
+                            <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="window.handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
                             <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
                         </tr>
                     `;
@@ -1623,12 +1623,12 @@
 
                     <div class="mb-4 text-left">
                         <label for="modificationReason" class="block text-gray-700 text-sm font-bold mb-2">Motivo de la Modificación:</label>
-                        <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3" onchange="handleModificationReasonChange(this.value)">${modificationReason}</textarea>
+                        <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3" onchange="window.handleModificationReasonChange(this.value)">${modificationReason}</textarea>
                     </div>
 
                     <div class="flex justify-around gap-4 mt-5">
-                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveModifiedSale()">Guardar Modificación</button>
-                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeModifySaleModal()">Cancelar</button>
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.saveModifiedSale()">Guardar Modificación</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.closeModifySaleModal()">Cancelar</button>
                     </div>
                 </div>
             `;
@@ -1902,11 +1902,11 @@
                     <input type="text" id="vehicleName" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre (ej. Volswaguen Worker 220)" value="${editingVehicle ? editingVehicle.name : ''}">
                     <input type="text" id="vehicleBrand" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Marca" value="${editingVehicle ? editingVehicle.brand : ''}">
                     <input type="text" id="vehicleModel" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Modelo" value="${editingVehicle ? editingVehicle.model : ''}">
-                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="${editingVehicle ? 'saveEditedVehicle()' : 'handleAddVehicle()'}">${editingVehicle ? 'Guardar Cambios' : 'Agregar Vehículo'}</button>
-                    ${editingVehicle ? `<button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="cancelEditVehicle()">Cancelar Edición</button>` : ''}
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="${editingVehicle ? 'window.saveEditedVehicle()' : 'window.handleAddVehicle()'}">${editingVehicle ? 'Guardar Cambios' : 'Agregar Vehículo'}</button>
+                    ${editingVehicle ? `<button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.cancelEditVehicle()">Cancelar Edición</button>` : ''}
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(vehiclesDiv);
 
@@ -1919,8 +1919,8 @@
                     <td>${vehicle.brand || 'N/A'}</td>
                     <td>${vehicle.model || 'N/A'}</td>
                     <td>
-                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-2" onclick="editVehicle('${vehicle.plate}')">Editar</button>
-                        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="showDeleteVehicleConfirmation('${vehicle.plate}')">Eliminar</button>
+                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-2" onclick="window.editVehicle('${vehicle.plate}')">Editar</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="window.showDeleteVehicleConfirmation('${vehicle.plate}')">Eliminar</button>
                     </td>
                 `;
                 vehiclesTableBody.appendChild(row);
@@ -2060,7 +2060,7 @@
                     </div>
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="window.setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(assignVehicleDiv);
 
@@ -2078,7 +2078,7 @@
                         </select>
                     </td>
                     <td>
-                        <button class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-1 px-3 rounded-md text-sm" onclick="handleAssignVehicle('${user.uid}')">Guardar</button>
+                        <button class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-1 px-3 rounded-md text-sm" onclick="window.handleAssignVehicle('${user.uid}')">Guardar</button>
                     </td>
                 `;
                 userAssignmentTableBody.appendChild(row);
@@ -2113,9 +2113,6 @@
             }
         };
 
-        // Funciones de Transbordo de Inventario (AHORA EN transferModule.js)
-        // Eliminadas de aquí.
-
         // Función global para cambiar de pantalla y volver a renderizar
         const setScreenAndRender = (newScreen) => {
             console.log(`[setScreenAndRender] Cambiando a pantalla: ${newScreen}`);
@@ -2146,6 +2143,44 @@
             console.log('[window.onload] Página cargada, esperando autenticación para cargar datos.');
             render();
         };
+
+        // --- HACIENDO FUNCIONES ACCESIBLES GLOBALMENTE PARA onclick EN HTML ---
+        // Esto es necesario porque usamos type="module" en el script.
+        window.handleLogin = handleLogin;
+        window.handleRegister = handleRegister;
+        window.handleLogout = handleLogout;
+        window.setScreenAndRender = setScreenAndRender;
+        window.hideMessageModal = hideMessageModal;
+        window.hideConfirmationModal = hideConfirmationModal;
+        window.showCloseSalesConfirmation = showCloseSalesConfirmation;
+        window.handleVendorChange = handleVendorChange;
+        window.printSaleReceipt = printSaleReceipt;
+        window.openModifySaleModal = openModifySaleModal;
+        window.handleModifiedSaleQuantityChange = handleModifiedSaleQuantityChange;
+        window.handleModificationReasonChange = handleModificationReasonChange;
+        window.saveModifiedSale = saveModifiedSale;
+        window.closeModifySaleModal = closeModifySaleModal;
+        window.handleFileUpload = handleFileUpload;
+        window.downloadCurrentData = downloadCurrentData;
+        window.editVehicle = editVehicle;
+        window.cancelEditVehicle = cancelEditVehicle;
+        window.saveEditedVehicle = saveEditedVehicle;
+        window.showDeleteVehicleConfirmation = showDeleteVehicleConfirmation;
+        window.deleteVehicle = deleteVehicle;
+        window.handleAssignVehicle = handleAssignVehicle;
+
+        // Funciones de módulos que se llaman directamente desde el HTML
+        // Es importante que estas funciones sean exportadas en sus respectivos módulos
+        // y que el `onclick` en el HTML las llame a través del nombre del módulo.
+        // Ej: onclick="receivingModule.handleTruckSelectionForReceiving()"
+        // Si hay funciones de módulos que se llaman con `onclick="someFunction()"`,
+        // entonces también deben ser adjuntadas al window object como las de arriba.
+        // Por ejemplo, si en receivingModule.js tienes:
+        // export const handleTruckSelectionForReceiving = () => { ... }
+        // Y en el HTML tienes: <button onclick="receivingModule.handleTruckSelectionForReceiving()">
+        // Esto es correcto. No necesitan estar en window.
+        // Si tuvieras <button onclick="handleTruckSelectionForReceiving()">, entonces sí necesitarías:
+        // window.handleTruckSelectionForReceiving = receivingModule.handleTruckSelectionForReceiving;
     </script>
 </body>
 </html>
