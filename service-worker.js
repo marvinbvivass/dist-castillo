@@ -1,6 +1,6 @@
 const CACHE_NAME = 'dist-castillo-cache-v1';
 const STATIC_ASSETS_TO_CACHE = [
-    './', // Cachea la página principal (index.html)
+    // './', // MODIFICADO: Eliminado el caché de la ruta raíz './' para evitar posibles errores de "Request failed"
     './index.html',
     './manifest.json',
     // MODIFICADO: Eliminado 'https://cdn.tailwindcss.com' de la lista de precache
