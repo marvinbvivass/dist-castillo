@@ -413,6 +413,10 @@
         let currentAdminInventoryView = 'main'; // 'main' o un 'plate' de camión
         let selectedAdminVehicleForInventory = null; // El vehículo seleccionado por el admin para ver su inventario
 
+        // NUEVO: Estado para la pantalla de Reset Cargas Iniciales
+        let resetQuantities = {}; // Almacena las cantidades a modificar para el reset
+        let allTruckInventories = {}; // Caché de todos los inventarios de camiones para el reset
+
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
         const isUser = () => currentUserData.role === 'user'; // Simplificado para cualquier usuario no admin
@@ -776,6 +780,12 @@
                     case 'register':
                         renderRegisterScreen();
                         break;
+                    case 'resetCargasInicialesPassword': // NUEVO
+                        renderResetCargasInicialesPasswordScreen();
+                        break;
+                    case 'resetCargasInicialesEdit': // NUEVO
+                        renderResetCargasInicialesEditScreen();
+                        break;
                     default:
                         renderMainScreen();
                 }
@@ -870,7 +880,7 @@
             localStorage.setItem('selectedVendor', selectedVendor);
         };
 
-        // NUEVO: Pantalla de selección para la sección "CARGA" (solo para admins)
+        // MODIFICADO: Pantalla de selección para la sección "CARGA" (solo para admins)
         const renderCargaSelectionScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la sección de Carga.');
@@ -888,11 +898,284 @@
                 <div class="flex flex-wrap justify-center gap-4">
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('truckLoading')">RECEPCIÓN DE MERCANCÍA EN CAMIÓN</button>
                     <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('loadHistory')">HISTORIAL DE CARGAS</button>
+                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-red-700" onclick="setScreenAndRender('resetCargasInicialesPassword')">RESET CARGAS INICIALES</button>
                 </div>
                 <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(cargaSelectionDiv);
         };
+
+        // NUEVO: Pantalla de solicitud de contraseña para Reset Cargas Iniciales
+        const renderResetCargasInicialesPasswordScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const passwordScreenDiv = document.createElement('div');
+            passwordScreenDiv.className = 'screen-container bg-white rounded-xl shadow-md p-8 max-w-md mx-auto my-10';
+            passwordScreenDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-center text-red-700">Confirmación de Seguridad</h2>
+                <p class="text-lg text-center mb-6 text-gray-700">Esta función altera directamente los diversos inventarios (Principal y por vehículo) de la empresa, necesitamos confirmación si desea continuar.</p>
+                <input type="password" id="adminPasswordForReset" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="Contraseña de Administrador">
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleResetCargasInicialesPassword()">Continuar</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Cancelar</button>
+            `;
+            appRoot.appendChild(passwordScreenDiv);
+        };
+
+        // NUEVO: Lógica para verificar la contraseña del administrador
+        const handleResetCargasInicialesPassword = async () => {
+            const password = document.getElementById('adminPasswordForReset').value;
+
+            if (!password) {
+                showMessageModal('Por favor, ingresa la contraseña.');
+                return;
+            }
+
+            try {
+                // Re-autenticar al usuario actual con la contraseña proporcionada
+                const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                await currentUser.reauthenticateWithCredential(credential);
+
+                // Si la re-autenticación es exitosa, cargar los datos y pasar a la pantalla de edición
+                await loadAllInventoriesForReset();
+                setScreenAndRender('resetCargasInicialesEdit');
+
+            } catch (error) {
+                showMessageModal(`Error de autenticación: ${error.message}. Contraseña incorrecta o sesión expirada.`);
+                console.error("Error de re-autenticación para reset de cargas:", error);
+            }
+        };
+
+        // NUEVO: Cargar todos los inventarios (principal y de camiones) para la edición
+        const loadAllInventoriesForReset = async () => {
+            resetQuantities = {};
+            allTruckInventories = {};
+
+            // Cargar inventario principal
+            const mainInvSnapshot = await db.collection('inventory').get();
+            inventory = mainInvSnapshot.docs.map(doc => ({ sku: doc.id, ...doc.data() }));
+
+            // Inicializar resetQuantities con el inventario principal
+            inventory.forEach(item => {
+                resetQuantities[item.sku] = {
+                    main: item.cantidad,
+                    trucks: {}
+                };
+            });
+
+            // Cargar inventarios de todos los camiones
+            const truckInvSnapshot = await db.collection('truck_inventories').get();
+            truckInvSnapshot.docs.forEach(doc => {
+                const truckPlate = doc.id;
+                const items = doc.data().items || [];
+                allTruckInventories[truckPlate] = items;
+
+                items.forEach(item => {
+                    if (!resetQuantities[item.sku]) {
+                        // Si un SKU existe en un camión pero no en el inventario principal, inicializarlo
+                        resetQuantities[item.sku] = {
+                            main: 0, // Por defecto 0 en principal si no existe
+                            trucks: {}
+                        };
+                    }
+                    resetQuantities[item.sku].trucks[truckPlate] = item.quantity;
+                });
+            });
+
+            // Asegurarse de que todos los SKUs del inventario principal tengan entradas para todos los camiones (con 0 si no están)
+            Object.keys(resetQuantities).forEach(sku => {
+                vehicles.forEach(vehicle => {
+                    if (resetQuantities[sku].trucks[vehicle.plate] === undefined) {
+                        resetQuantities[sku].trucks[vehicle.plate] = 0;
+                    }
+                });
+            });
+
+            console.log('[Reset Cargas] Datos cargados para edición:', resetQuantities);
+        };
+
+        // NUEVO: Pantalla de edición de inventarios para Reset Cargas Iniciales
+        const renderResetCargasInicialesEditScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const editScreenDiv = document.createElement('div');
+            editScreenDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+
+            let tableHeaders = `
+                <th>SKU</th>
+                <th>Producto</th>
+                <th>Principal</th>
+            `;
+            vehicles.forEach(v => {
+                tableHeaders += `<th>${v.plate}</th>`;
+            });
+
+            let tableRows = '';
+            // Ordenar SKUs para una visualización consistente
+            const sortedSKUs = Object.keys(resetQuantities).sort();
+
+            sortedSKUs.forEach(sku => {
+                const productDetails = inventory.find(item => item.sku === sku) || { producto: 'Desconocido', presentacion: '' };
+                tableRows += `
+                    <tr>
+                        <td>${sku}</td>
+                        <td>${productDetails.producto}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${resetQuantities[sku].main}" onchange="handleResetQuantityChange('${sku}', 'main', this.value)" min="0"></td>
+                `;
+                vehicles.forEach(v => {
+                    const truckQty = resetQuantities[sku].trucks[v.plate] !== undefined ? resetQuantities[sku].trucks[v.plate] : 0;
+                    tableRows += `<td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${truckQty}" onchange="handleResetQuantityChange('${sku}', '${v.plate}', this.value)" min="0"></td>`;
+                });
+                tableRows += `</tr>`;
+            });
+
+            editScreenDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-red-700">RESET DE CARGAS INICIALES</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Modifica las cantidades del inventario principal y de cada camión.
+                    Asegúrate de que la suma de las cantidades de un SKU en todos los camiones no exceda la cantidad en el inventario principal.
+                </p>
+                <div class="table-container mb-5">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr>
+                                ${tableHeaders}
+                            </tr>
+                        </thead>
+                        <tbody id="reset-inventories-body">
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveResetCargasIniciales()">Guardar Cambios de Inventario</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Cancelar y Volver</button>
+            `;
+            appRoot.appendChild(editScreenDiv);
+        };
+
+        // NUEVO: Manejador de cambio de cantidad para el reset de inventarios
+        const handleResetQuantityChange = (sku, type, value) => {
+            const parsedValue = parseInt(value) || 0;
+            if (type === 'main') {
+                resetQuantities[sku].main = parsedValue;
+            } else {
+                resetQuantities[sku].trucks[type] = parsedValue;
+            }
+        };
+
+        // NUEVO: Lógica para guardar los cambios de Reset Cargas Iniciales
+        const saveResetCargasIniciales = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en esta función.');
+                return;
+            }
+
+            let validationErrors = [];
+            let updatedMainInventory = [];
+            let updatedTruckInventories = {}; // { 'plate': [{item}, {item}] }
+
+            // Inicializar updatedTruckInventories para todos los camiones
+            vehicles.forEach(v => {
+                updatedTruckInventories[v.plate] = [];
+            });
+
+            // Procesar cada SKU y realizar la validación de coherencia
+            for (const sku of Object.keys(resetQuantities)) {
+                const mainQty = resetQuantities[sku].main;
+                let totalTruckQty = 0;
+
+                // Calcular la suma de cantidades en camiones para este SKU
+                for (const truckPlate in resetQuantities[sku].trucks) {
+                    totalTruckQty += resetQuantities[sku].trucks[truckPlate];
+                }
+
+                // Validar coherencia: suma de camiones no puede ser mayor que el principal
+                if (totalTruckQty > mainQty) {
+                    validationErrors.push(`Error de coherencia para SKU ${sku}: La suma de cantidades en camiones (${totalTruckQty}) excede la cantidad en el inventario principal (${mainQty}).`);
+                }
+
+                // Preparar datos para el inventario principal
+                const originalItemDetails = inventory.find(item => item.sku === sku);
+                if (originalItemDetails) {
+                    updatedMainInventory.push({ ...originalItemDetails, cantidad: mainQty });
+                } else {
+                    // Si es un SKU nuevo que solo existe en resetQuantities (no en el inventario original)
+                    // Esto podría pasar si se añade un SKU en la UI que no estaba en el inventario inicial
+                    // Para simplificar, asumimos que todos los SKUs ya existen en `inventory` al cargar.
+                    // Si no, se necesitaría un mecanismo para añadir nuevos productos al inventario principal aquí.
+                    console.warn(`SKU ${sku} no encontrado en el inventario principal original. Se añadirá con la cantidad especificada.`);
+                    updatedMainInventory.push({
+                        rubro: 'Desconocido', // Placeholder, idealmente se obtendría de alguna parte
+                        sku: sku,
+                        segmento: 'Desconocido',
+                        producto: `Producto ${sku}`,
+                        presentacion: 'Unidad',
+                        cantidad: mainQty,
+                        precio: 0 // Placeholder
+                    });
+                }
+
+                // Preparar datos para los inventarios de camiones
+                for (const truckPlate in resetQuantities[sku].trucks) {
+                    const truckQty = resetQuantities[sku].trucks[truckPlate];
+                    if (truckQty > 0) {
+                        // Buscar detalles completos del producto para el inventario del camión
+                        const productDetails = inventory.find(item => item.sku === sku) || originalItemDetails;
+                        if (productDetails) {
+                            updatedTruckInventories[truckPlate].push({
+                                sku: productDetails.sku,
+                                rubro: productDetails.rubro,
+                                segmento: productDetails.segmento,
+                                producto: productDetails.producto,
+                                presentacion: productDetails.presentacion,
+                                quantity: truckQty,
+                                price: productDetails.precio // Usar el precio del inventario principal
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (validationErrors.length > 0) {
+                showMessageModal(`Errores de validación:\n${validationErrors.join('\n')}`);
+                return;
+            }
+
+            try {
+                const batch = db.batch();
+
+                // Actualizar inventario principal
+                updatedMainInventory.forEach(item => {
+                    const itemRef = db.collection('inventory').doc(item.sku);
+                    batch.set(itemRef, item);
+                });
+
+                // Actualizar inventarios de camiones
+                for (const truckPlate in updatedTruckInventories) {
+                    const truckRef = db.collection('truck_inventories').doc(truckPlate);
+                    batch.set(truckRef, { items: updatedTruckInventories[truckPlate] });
+                }
+
+                await batch.commit();
+
+                // Actualizar el estado local después de un guardado exitoso
+                await fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+
+                showMessageModal('Inventarios actualizados exitosamente con las nuevas cargas iniciales.');
+                setScreenAndRender('cargaSelection');
+            } catch (error) {
+                console.error('Error al guardar los cambios de cargas iniciales:', error);
+                showMessageModal('Error al guardar los cambios de inventario. Revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
 
         // MODIFICADA: Pantalla de recepción de mercancía en camión
         const renderTruckReceivingScreen = async () => {
@@ -2806,7 +3089,7 @@
             }
         };
 
-        // NUEVO: Pantalla de Historial de Cargas
+        // MODIFICADO: Pantalla de Historial de Cargas (con botón Limpiar Historial)
         const renderLoadHistoryScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de cargas.');
@@ -2827,7 +3110,8 @@
                     <div id="generated-load-files-list"></div>
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Volver</button>
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearLoadHistoryConfirmation()">Limpiar Historial</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Volver</button>
             `;
             appRoot.appendChild(loadHistoryDiv);
 
@@ -2858,6 +3142,37 @@
                     `;
                     generatedLoadFilesListDiv.appendChild(fileItemDiv);
                 });
+            }
+        };
+
+        // NUEVO: Lógica para confirmar y limpiar el historial de cargas
+        const showClearLoadHistoryConfirmation = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de cargas.');
+                return;
+            }
+            showConfirmationModal('Confirma desea borrar el Historial de Cargas', clearLoadHistoryLogic);
+        };
+
+        // NUEVO: Lógica para borrar el historial de cargas
+        const clearLoadHistoryLogic = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de cargas.');
+                return;
+            }
+            try {
+                const batch = db.batch();
+                const loadRecordsSnapshot = await db.collection('loadRecords').get();
+                loadRecordsSnapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                loadRecords = []; // Limpiar el estado local
+                showMessageModal('Historial de cargas borrado exitosamente.');
+                render(); // Re-renderizar la pantalla
+            } catch (error) {
+                console.error('Error al limpiar el historial de cargas:', error);
+                showMessageModal('Error al limpiar el historial de cargas. Revisa tu conexión y reglas de seguridad.');
             }
         };
 
