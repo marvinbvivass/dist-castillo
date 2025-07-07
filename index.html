@@ -23,7 +23,6 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f5f5f5;
             margin: 0;
             display: flex;
             justify-content: center;
@@ -31,19 +30,30 @@
             min-height: 100vh;
             padding: 20px;
             box-sizing: border-box;
+            /* NUEVO: Estilos para la imagen de fondo */
+            background-image: url('./images/fondo.png'); /* Asegúrate de que la ruta sea correcta */
+            background-size: cover; /* Cubre todo el viewport */
+            background-position: center; /* Centra la imagen */
+            background-repeat: no-repeat; /* Evita que la imagen se repita */
+            background-attachment: fixed; /* Mantiene la imagen fija al hacer scroll */
+            background-color: rgba(0, 0, 0, 0.1); /* Ligera capa oscura para mejorar contraste */
         }
         #app-root {
             width: 100%;
-            max-width: 800px; /* Ancho máximo aumentado para una mejor visualización de la tabla */
-            background-color: #ffffff;
+            max-width: 800px;
+            background-color: rgba(255, 255, 255, 0.9); /* Fondo semi-transparente para app-root */
             border-radius: 15px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Sombra ajustada para un aspecto más suave */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            padding: 20px; /* Añadido padding general al app-root */
+            padding: 20px;
         }
         .screen-container {
-            padding: 0px; /* Eliminado padding duplicado, ahora está en app-root */
-            width: 100%; /* Asegura que el contenedor de la pantalla ocupe todo el ancho disponible */
+            padding: 0px;
+            width: 100%;
+            /* Ajuste para que los contenedores de pantalla también sean semi-transparentes si se usan como fondo */
+            background-color: rgba(255, 255, 255, 0.95); /* Un poco menos transparente que app-root */
+            border-radius: 10px; /* Bordes redondeados para los contenedores internos */
+            padding: 20px; /* Padding para el contenido de la pantalla */
         }
         .modal {
             position: fixed;
@@ -51,22 +61,22 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.7); /* Fondo más oscuro para el modal */
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 1000;
         }
         .modal-content {
-            background-color: white;
+            background-color: rgba(255, 255, 255, 0.98); /* Fondo casi opaco para el contenido del modal */
             padding: 35px;
             border-radius: 20px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             width: 90%;
-            max-width: 600px; /* Ancho aumentado para el modal de modificación */
-            max-height: 90%; /* Altura máxima para el scroll */
+            max-width: 600px;
+            max-height: 90%;
             overflow-y: auto;
-            text-align: center; /* Centrar texto en el modal */
+            text-align: center;
         }
         .file-input-wrapper {
             position: relative;
