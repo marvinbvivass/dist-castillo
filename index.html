@@ -252,6 +252,26 @@
         // const analytics = firebase.analytics(); // COMENTADO: Eliminar si no se usa activamente para evitar errores 404
         const db = firebase.firestore(); // Obtener la instancia de Firestore
 
+        // Habilitar la persistencia offline de Firestore
+        // Esto permite que la aplicación funcione sin conexión y sincronice los datos cuando se reconecte.
+        // Las operaciones de escritura (add, set, update, delete) se ponen en cola localmente.
+        firebase.firestore().enablePersistence()
+            .then(() => {
+                console.log("Persistencia offline de Firestore habilitada.");
+            })
+            .catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    // Múltiples pestañas abiertas o Service Worker ya está usando la persistencia
+                    console.warn("La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.");
+                } else if (err.code == 'unimplemented') {
+                    // El navegador actual no soporta la característica
+                    console.warn("El navegador actual no soporta la persistencia offline de Firestore.");
+                } else {
+                    console.error("Error al habilitar la persistencia offline de Firestore:", err);
+                }
+            });
+
+
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
         let clients = [];
         let inventory = []; // Inventario principal (almacén)
@@ -2373,25 +2393,25 @@
                 // Use a batch for atomic updates
                 const batch = db.batch();
 
-                // Update the main warehouse inventory in Firestore with the final deduced quantities
+                // Actualizar el inventario del almacén principal en Firestore con las cantidades finales deducidas
                 for (const item of updatedMainInventory) {
                     const itemRef = db.collection('inventory').doc(item.sku);
-                    batch.set(itemRef, item); // Use set to overwrite or create if not exists
+                    batch.set(itemRef, item); // Usar set para sobrescribir o crear si no existe
                 }
-                // Update the local main inventory state
+                // Actualizar el estado local del inventario principal
                 inventory = updatedMainInventory;
                 console.log('[Firestore] Inventario principal actualizado localmente después del cierre de ventas.');
 
-                // Delete individual sales records from Firestore that were processed
+                // Eliminar registros de ventas individuales de Firestore que fueron procesados
                 for (const docId of allProcessedSaleDocIds) {
                     const saleRef = db.collection('dailySales').doc(docId);
                     batch.delete(saleRef);
                 }
-                // Update the local dailySales state
+                // Actualizar el estado local de dailySales
                 dailySales = dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId));
                 console.log('[Firestore] Ventas diarias procesadas eliminadas localmente.');
 
-                await batch.commit(); // Commit all batch operations
+                await batch.commit(); // Confirmar todas las operaciones del batch
                 console.log('[Firestore] Todas las operaciones del cierre de ventas (inventario principal y eliminación de ventas) confirmadas en Firestore.');
                 messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
