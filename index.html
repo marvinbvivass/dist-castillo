@@ -239,7 +239,6 @@
         // Inicializar Firebase
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth(); // Obtener la instancia de autenticación
-        const analytics = firebase.analytics(); // Ya lo tenías
         const db = firebase.firestore(); // Obtener la instancia de Firestore
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
