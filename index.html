@@ -282,6 +282,8 @@
         let users = []; // NUEVO: Lista de usuarios de la aplicación (para asignación de vehículos)
         let loadRecords = []; // NUEVO: Registros de carga de camiones
         let transferRecords = []; // NUEVO: Registros de transbordo de inventario entre camiones
+        let zonesData = []; // NUEVO: Datos de zonas
+        let sectorsData = []; // NUEVO: Datos de sectores
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         const initialClients = [
@@ -309,6 +311,19 @@
             { plate: 'ABC-123', name: 'Volswaguen Worker 220', brand: 'Volswaguen', model: 'Worker 220' },
             { plate: 'DEF-456', name: 'Chevrolet FVR 300', brand: 'Chevrolet', model: 'FVR 300' },
             { plate: 'GHI-789', name: 'Chevrolet NPR 250', brand: 'Chevrolet', model: 'NPR 250' },
+        ];
+
+        // NUEVO: Datos iniciales de zonas y sectores
+        const initialZones = [
+            { name: 'Foranea' },
+            { name: 'Santa Teresa' },
+            { name: 'Palo Gordo' }
+        ];
+
+        const initialSectors = [
+            { name: 'puerba cambio dos' },
+            { name: 'Barrio Bolivar' },
+            { name: 'Via Principal' }
         ];
 
 
@@ -457,6 +472,11 @@
 
         // NUEVO: Estado para el filtro de búsqueda en el inventario del usuario
         let inventorySearchTermUser = '';
+
+        // NUEVO: Estado para el modal de gestión de zonas y sectores
+        let showManageZonesSectorsModalState = false;
+        let editingZone = null; // Zona siendo editada
+        let editingSector = null; // Sector siendo editado
 
 
         // --- Funciones de Rol ---
@@ -644,6 +664,8 @@
                 users = []; // Limpiar lista de usuarios
                 loadRecords = [];
                 transferRecords = [];
+                zonesData = []; // Limpiar zonas
+                sectorsData = []; // Limpiar sectores
                 if (screen !== 'login' && screen !== 'register') {
                     setScreenAndRender('login');
                 } else {
@@ -715,6 +737,32 @@
                 users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
                 console.log('[Firestore] Usuarios cargados:', users);
 
+                // Cargar Zonas
+                const zonesSnapshot = await db.collection('zones').get();
+                if (zonesSnapshot.empty) {
+                    console.log('[Firestore] Colección "zones" vacía. Poblando con datos iniciales.');
+                    for (const zone of initialZones) {
+                        await db.collection('zones').doc(zone.name).set(zone);
+                    }
+                    zonesData = initialZones;
+                } else {
+                    zonesData = zonesSnapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Zonas cargadas:', zonesData);
+
+                // Cargar Sectores
+                const sectorsSnapshot = await db.collection('sectors').get();
+                if (sectorsSnapshot.empty) {
+                    console.log('[Firestore] Colección "sectors" vacía. Poblando con datos iniciales.');
+                    for (const sector of initialSectors) {
+                        await db.collection('sectors').doc(sector.name).set(sector);
+                    }
+                    sectorsData = initialSectors;
+                } else {
+                    sectorsData = sectorsSnapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }));
+                }
+                console.log('[Firestore] Sectores cargados:', sectorsData);
+
 
                 // Cargar Inventario del Camión Asignado (si aplica)
                 if (currentUserData.assignedTruckPlate) {
@@ -783,6 +831,8 @@
                 users = [];
                 loadRecords = [];
                 transferRecords = [];
+                zonesData = initialZones; // Fallback para zonas
+                sectorsData = initialSectors; // Fallback para sectores
             } finally {
                 render(); // Asegurarse de renderizar la UI después de cargar los datos
             }
@@ -873,6 +923,9 @@
             }
             if (showEditClientModal) { // NUEVO: Renderizar el modal de edición de cliente
                 renderEditClientModal();
+            }
+            if (showManageZonesSectorsModalState) { // NUEVO: Renderizar el modal de gestión de zonas y sectores
+                renderManageZonesSectorsModal();
             }
         };
 
@@ -1813,9 +1866,11 @@
 
                         <select id="newClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
                             <option value="">Seleccionar Zona</option>
+                            ${zonesData.map(z => `<option value="${z.name}">${z.name}</option>`).join('')}
                         </select>
                         <select id="newClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
                             <option value="">Seleccionar Sector</option>
+                            ${sectorsData.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
                         </select>
 
                         <input type="tel" id="newClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono">
@@ -1825,33 +1880,18 @@
                 </div>
                 ` : ''}
 
+                ${isAdmin() ? `
+                <div class="p-4 bg-orange-50 rounded-lg border border-orange-300 mt-5">
+                    <h3 class="text-xl font-bold mb-4 text-orange-700">Gestionar Zonas y Sectores (Admin)</h3>
+                    <button class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="openManageZonesSectorsModal()">Gestionar Zonas y Sectores</button>
+                </div>
+                ` : ''}
+
                 <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(clientesDiv);
 
             updateClientTableForClientesScreen();
-
-            if ((isAdmin() || isUser()) && showAddClientForm) { // Ahora usuarios también pueden ver el formulario de añadir
-                const zonaSelect = document.getElementById('newClientZona');
-                const sectorSelect = document.getElementById('newClientSector');
-
-                const uniqueZonas = getUniqueClientValues('zona');
-                const uniqueSectores = getUniqueClientValues('sector');
-
-                uniqueZonas.forEach(zona => {
-                    const option = document.createElement('option');
-                    option.value = zona;
-                    option.textContent = zona;
-                    zonaSelect.appendChild(option);
-                });
-
-                uniqueSectores.forEach(sector => {
-                    const option = document.createElement('option');
-                    option.value = sector;
-                    option.textContent = sector;
-                    sectorSelect.appendChild(option);
-                });
-            }
         };
 
         // Función para filtrar clientes en la pantalla de Clientes
@@ -1960,7 +2000,6 @@
         };
 
         const saveEditedClient = async () => {
-            // No se necesita check de rol aquí, ya que el botón de editar solo se muestra a los que pueden editar
             if (!editingClient) return;
 
             // Basic validation (can be expanded)
@@ -1969,18 +2008,60 @@
                 return;
             }
 
-            try {
-                await db.collection('clients').doc(editingClient.id).set(editingClient);
-                // Update local clients array
-                clients = clients.map(c => c.id === editingClient.id ? editingClient : c);
-                showMessageModal('Cliente actualizado exitosamente.');
-                closeEditClientModal();
-                setScreenAndRender('clientes'); // Re-render the clients screen to show updates
-            } catch (error) {
-                console.error('Error al actualizar cliente en Firestore:', error);
-                showMessageModal('Error al actualizar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+            // Find the original client in the local 'clients' array to get its original ID
+            const originalClient = clients.find(c => c.id === editingClient.id);
+            const originalClientId = originalClient ? originalClient.id : null;
+
+            // Check if the ID has changed AND the current user is an admin
+            const isIdChanged = isAdmin() && editingClient.id !== originalClientId;
+
+            if (isIdChanged) {
+                showConfirmationModal(
+                    `El ID del cliente ha cambiado de "${originalClientId}" a "${editingClient.id}". ` +
+                    `Esto creará un nuevo cliente y eliminará el antiguo. ` +
+                    `Las ventas históricas asociadas al ID antiguo NO se actualizarán automáticamente. ` +
+                    `¿Deseas continuar?`,
+                    async () => {
+                        try {
+                            const batch = db.batch();
+
+                            // 1. Create new client document with the new ID
+                            const newClientRef = db.collection('clients').doc(editingClient.id);
+                            batch.set(newClientRef, editingClient);
+
+                            // 2. Delete old client document
+                            const oldClientRef = db.collection('clients').doc(originalClientId);
+                            batch.delete(oldClientRef);
+
+                            await batch.commit();
+
+                            // Update local clients array
+                            clients = clients.filter(c => c.id !== originalClientId); // Remove old client
+                            clients.push(editingClient); // Add new client
+                            showMessageModal('Cliente actualizado exitosamente (ID cambiado). Las ventas históricas no se actualizaron.');
+                            closeEditClientModal();
+                            setScreenAndRender('clientes'); // Re-render the clients screen to show updates
+                        } catch (error) {
+                            console.error('Error al actualizar cliente (cambio de ID) en Firestore:', error);
+                            showMessageModal('Error al actualizar cliente (cambio de ID). Por favor, revisa tu conexión y las reglas de seguridad.');
+                        }
+                    }
+                );
+            } else {
+                try {
+                    await db.collection('clients').doc(editingClient.id).set(editingClient);
+                    // Update local clients array
+                    clients = clients.map(c => c.id === editingClient.id ? editingClient : c);
+                    showMessageModal('Cliente actualizado exitosamente.');
+                    closeEditClientModal();
+                    setScreenAndRender('clientes'); // Re-render the clients screen to show updates
+                } catch (error) {
+                    console.error('Error al actualizar cliente en Firestore:', error);
+                    showMessageModal('Error al actualizar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+                }
             }
         };
+
 
         const renderEditClientModal = () => {
             if (!showEditClientModal || !editingClient) return;
@@ -1991,16 +2072,17 @@
             modalDiv.innerHTML = `
                 <div class="modal-content">
                     <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Editar Cliente</h3>
+                    <input type="text" id="editClientId" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="ID del Cliente" value="${editingClient.id}" ${isAdmin() ? '' : 'disabled'} onchange="handleEditClientChange('id', this.value)">
                     <input type="text" id="editClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial" value="${editingClient.nombreComercial}" onchange="handleEditClientChange('nombreComercial', this.value)">
                     <input type="text" id="editClientNombrePersonal" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Personal" value="${editingClient.nombrePersonal}" onchange="handleEditClientChange('nombrePersonal', this.value)">
 
                     <select id="editClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('zona', this.value)">
                         <option value="">Seleccionar Zona</option>
-                        ${getUniqueClientValues('zona').map(z => `<option value="${z}" ${editingClient.zona === z ? 'selected' : ''}>${z}</option>`).join('')}
+                        ${zonesData.map(z => `<option value="${z.name}" ${editingClient.zona === z.name ? 'selected' : ''}>${z.name}</option>`).join('')}
                     </select>
                     <select id="editClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('sector', this.value)">
                         <option value="">Seleccionar Sector</option>
-                        ${getUniqueClientValues('sector').map(s => `<option value="${s}" ${editingClient.sector === s ? 'selected' : ''}>${s}</option>`).join('')}
+                        ${sectorsData.map(s => `<option value="${s.name}" ${editingClient.sector === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
 
                     <input type="tel" id="editClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono" value="${editingClient.tlf}" onchange="handleEditClientChange('tlf', this.value)">
@@ -2015,6 +2097,308 @@
             appRoot.appendChild(modalDiv);
         };
 
+        // NUEVO: Funciones para la gestión de zonas y sectores (Admin)
+        const openManageZonesSectorsModal = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden gestionar zonas y sectores.');
+                return;
+            }
+            showManageZonesSectorsModalState = true;
+            editingZone = null;
+            editingSector = null;
+            render();
+        };
+
+        const closeManageZonesSectorsModal = () => {
+            showManageZonesSectorsModalState = false;
+            editingZone = null;
+            editingSector = null;
+            render();
+        };
+
+        const renderManageZonesSectorsModal = () => {
+            if (!showManageZonesSectorsModalState) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'manage-zones-sectors-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Gestionar Zonas y Sectores</h3>
+
+                    <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                        <h4 class="text-xl font-bold mb-3 text-blue-700">Zonas</h4>
+                        <div id="zones-list" class="mb-4 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2"></div>
+                        <input type="text" id="zoneNameInput" class="h-10 border border-gray-300 rounded-lg px-3 mb-2 text-base w-full bg-white" placeholder="Nombre de la nueva zona" value="${editingZone ? editingZone.name : ''}">
+                        <div class="flex gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md flex-1" onclick="${editingZone ? 'saveEditedZone()' : 'addZone()'}">${editingZone ? 'Guardar Zona' : 'Agregar Zona'}</button>
+                            ${editingZone ? `<button class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md flex-1" onclick="cancelEditZone()">Cancelar</button>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="mb-6 p-4 bg-purple-50 rounded-lg border border-purple-300">
+                        <h4 class="text-xl font-bold mb-3 text-purple-700">Sectores</h4>
+                        <div id="sectors-list" class="mb-4 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2"></div>
+                        <input type="text" id="sectorNameInput" class="h-10 border border-gray-300 rounded-lg px-3 mb-2 text-base w-full bg-white" placeholder="Nombre del nuevo sector" value="${editingSector ? editingSector.name : ''}">
+                        <div class="flex gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md flex-1" onclick="${editingSector ? 'saveEditedSector()' : 'addSector()'}">${editingSector ? 'Guardar Sector' : 'Agregar Sector'}</button>
+                            ${editingSector ? `<button class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md flex-1" onclick="cancelEditSector()">Cancelar</button>` : ''}
+                        </div>
+                    </div>
+
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeManageZonesSectorsModal()">Cerrar</button>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+            updateZonesList();
+            updateSectorsList();
+        };
+
+        const updateZonesList = () => {
+            const zonesListDiv = document.getElementById('zones-list');
+            if (!zonesListDiv) return;
+            zonesListDiv.innerHTML = '';
+            zonesData.forEach(zone => {
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center bg-white p-2 mb-1 rounded-md border border-gray-200';
+                item.innerHTML = `
+                    <span>${zone.name}</span>
+                    <div>
+                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-1" onclick="editZone('${zone.name}')">Editar</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="showDeleteZoneConfirmation('${zone.name}')">Eliminar</button>
+                    </div>
+                `;
+                zonesListDiv.appendChild(item);
+            });
+        };
+
+        const updateSectorsList = () => {
+            const sectorsListDiv = document.getElementById('sectors-list');
+            if (!sectorsListDiv) return;
+            sectorsListDiv.innerHTML = '';
+            sectorsData.forEach(sector => {
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center bg-white p-2 mb-1 rounded-md border border-gray-200';
+                item.innerHTML = `
+                    <span>${sector.name}</span>
+                    <div>
+                        <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-1" onclick="editSector('${sector.name}')">Editar</button>
+                        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="showDeleteSectorConfirmation('${sector.name}')">Eliminar</button>
+                    </div>
+                `;
+                sectorsListDiv.appendChild(item);
+            });
+        };
+
+        const addZone = async () => {
+            const name = document.getElementById('zoneNameInput').value.trim();
+            if (!name) {
+                showMessageModal('El nombre de la zona no puede estar vacío.');
+                return;
+            }
+            if (zonesData.some(z => z.name === name)) {
+                showMessageModal('Ya existe una zona con ese nombre.');
+                return;
+            }
+            try {
+                await db.collection('zones').doc(name).set({ name: name });
+                zonesData.push({ name: name });
+                zonesData.sort((a, b) => a.name.localeCompare(b.name)); // Mantener ordenado
+                document.getElementById('zoneNameInput').value = '';
+                updateZonesList();
+                showMessageModal('Zona agregada exitosamente.');
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al agregar zona:', error);
+                showMessageModal('Error al agregar zona. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const editZone = (name) => {
+            editingZone = zonesData.find(z => z.name === name);
+            render(); // Re-render para actualizar el input del modal
+            openManageZonesSectorsModal(); // Reabrir el modal de gestión
+        };
+
+        const cancelEditZone = () => {
+            editingZone = null;
+            document.getElementById('zoneNameInput').value = '';
+            render();
+            openManageZonesSectorsModal(); // Reabrir el modal de gestión
+        };
+
+        const saveEditedZone = async () => {
+            if (!editingZone) return;
+            const newName = document.getElementById('zoneNameInput').value.trim();
+            if (!newName) {
+                showMessageModal('El nombre de la zona no puede estar vacío.');
+                return;
+            }
+            if (newName !== editingZone.name && zonesData.some(z => z.name === newName)) {
+                showMessageModal('Ya existe una zona con el nuevo nombre.');
+                return;
+            }
+            try {
+                // Si el nombre cambió, crear uno nuevo y borrar el viejo
+                if (newName !== editingZone.name) {
+                    await db.collection('zones').doc(newName).set({ name: newName });
+                    await db.collection('zones').doc(editingZone.name).delete();
+                    // Actualizar clientes que usen la zona antigua (esto es una operación costosa y se haría idealmente en el backend)
+                    // Para esta implementación, se asume que los clientes se actualizarán manualmente o en un proceso por lotes.
+                    // Aquí solo actualizamos el estado local.
+                    clients = clients.map(client => client.zona === editingZone.name ? { ...client, zona: newName } : client);
+                    // Actualizar Firestore para los clientes afectados (esto puede ser muy lento para muchos clientes)
+                    const clientsWithOldZone = await db.collection('clients').where('zona', '==', editingZone.name).get();
+                    const batch = db.batch();
+                    clientsWithOldZone.docs.forEach(doc => {
+                        const clientRef = db.collection('clients').doc(doc.id);
+                        batch.update(clientRef, { zona: newName });
+                    });
+                    await batch.commit();
+                } else {
+                    // Si el nombre no cambió, solo actualizamos el documento existente (aunque en este caso no hay campos adicionales)
+                    await db.collection('zones').doc(newName).set({ name: newName });
+                }
+
+                zonesData = zonesData.filter(z => z.name !== editingZone.name);
+                zonesData.push({ name: newName });
+                zonesData.sort((a, b) => a.name.localeCompare(b.name));
+                editingZone = null;
+                showMessageModal('Zona actualizada exitosamente.');
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al guardar zona:', error);
+                showMessageModal('Error al guardar zona. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const showDeleteZoneConfirmation = (name) => {
+            showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${name}"? Esto no actualizará automáticamente los clientes asociados.`, () => deleteZone(name));
+        };
+
+        const deleteZone = async (name) => {
+            try {
+                await db.collection('zones').doc(name).delete();
+                zonesData = zonesData.filter(z => z.name !== name);
+                showMessageModal('Zona eliminada exitosamente.');
+                updateZonesList();
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al eliminar zona:', error);
+                showMessageModal('Error al eliminar zona. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const addSector = async () => {
+            const name = document.getElementById('sectorNameInput').value.trim();
+            if (!name) {
+                showMessageModal('El nombre del sector no puede estar vacío.');
+                return;
+            }
+            if (sectorsData.some(s => s.name === name)) {
+                showMessageModal('Ya existe un sector con ese nombre.');
+                return;
+            }
+            try {
+                await db.collection('sectors').doc(name).set({ name: name });
+                sectorsData.push({ name: name });
+                sectorsData.sort((a, b) => a.name.localeCompare(b.name)); // Mantener ordenado
+                document.getElementById('sectorNameInput').value = '';
+                updateSectorsList();
+                showMessageModal('Sector agregado exitosamente.');
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al agregar sector:', error);
+                showMessageModal('Error al agregar sector. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const editSector = (name) => {
+            editingSector = sectorsData.find(s => s.name === name);
+            render(); // Re-render para actualizar el input del modal
+            openManageZonesSectorsModal(); // Reabrir el modal de gestión
+        };
+
+        const cancelEditSector = () => {
+            editingSector = null;
+            document.getElementById('sectorNameInput').value = '';
+            render();
+            openManageZonesSectorsModal(); // Reabrir el modal de gestión
+        };
+
+        const saveEditedSector = async () => {
+            if (!editingSector) return;
+            const newName = document.getElementById('sectorNameInput').value.trim();
+            if (!newName) {
+                showMessageModal('El nombre del sector no puede estar vacío.');
+                return;
+            }
+            if (newName !== editingSector.name && sectorsData.some(s => s.name === newName)) {
+                showMessageModal('Ya existe un sector con el nuevo nombre.');
+                return;
+            }
+            try {
+                // Si el nombre cambió, crear uno nuevo y borrar el viejo
+                if (newName !== editingSector.name) {
+                    await db.collection('sectors').doc(newName).set({ name: newName });
+                    await db.collection('sectors').doc(editingSector.name).delete();
+                    // Actualizar clientes que usen el sector antiguo (esto es una operación costosa y se haría idealmente en el backend)
+                    // Para esta implementación, se asume que los clientes se actualizarán manualmente o en un proceso por lotes.
+                    // Aquí solo actualizamos el estado local.
+                    clients = clients.map(client => client.sector === editingSector.name ? { ...client, sector: newName } : client);
+                    // Actualizar Firestore para los clientes afectados
+                    const clientsWithOldSector = await db.collection('clients').where('sector', '==', editingSector.name).get();
+                    const batch = db.batch();
+                    clientsWithOldSector.docs.forEach(doc => {
+                        const clientRef = db.collection('clients').doc(doc.id);
+                        batch.update(clientRef, { sector: newName });
+                    });
+                    await batch.commit();
+                } else {
+                    // Si el nombre no cambió, solo actualizamos el documento existente
+                    await db.collection('sectors').doc(newName).set({ name: newName });
+                }
+
+                sectorsData = sectorsData.filter(s => s.name !== editingSector.name);
+                sectorsData.push({ name: newName });
+                sectorsData.sort((a, b) => a.name.localeCompare(b.name));
+                editingSector = null;
+                showMessageModal('Sector actualizado exitosamente.');
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al guardar sector:', error);
+                showMessageModal('Error al guardar sector. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const showDeleteSectorConfirmation = (name) => {
+            showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${name}"? Esto no actualizará automáticamente los clientes asociados.`, () => deleteSector(name));
+        };
+
+        const deleteSector = async (name) => {
+            try {
+                await db.collection('sectors').doc(name).delete();
+                sectorsData = sectorsData.filter(s => s.name !== name);
+                showMessageModal('Sector eliminado exitosamente.');
+                updateSectorsList();
+                // Re-renderizar la pantalla de clientes para actualizar los selects
+                setScreenAndRender('clientes');
+                openManageZonesSectorsModal(); // Reabrir el modal de gestión
+            } catch (error) {
+                console.error('Error al eliminar sector:', error);
+                showMessageModal('Error al eliminar sector. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
 
         const renderVentaScreen = () => {
             const ventaDiv = document.createElement('div');
