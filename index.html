@@ -195,7 +195,7 @@
         }
         .thermal-receipt .total-line {
             display: flex;
-            justify-content: space-between;
+            justify: space-between;
             font-weight: bold;
             margin-top: 5px;
             font-size: 0.9rem;
@@ -350,8 +350,84 @@
         };
 
         // Función genérica para descargar contenido CSV
-        const downloadCSV = (filename, csvContent) => {
+        // MODIFICADO: Ahora solo acepta el nombre del archivo. El contenido se busca internamente.
+        const downloadCSV = (filename) => {
             console.log(`[downloadCSV] Intentando descargar: ${filename}`);
+
+            let csvContent = '';
+            // Buscar en loadRecords
+            const loadRecord = loadRecords.find(record => record.fileName === filename);
+            if (loadRecord) {
+                csvContent = loadRecord.rawCSV;
+            } else {
+                // Buscar en transferRecords
+                const transferRecord = transferRecords.find(record => record.fileName === filename);
+                if (transferRecord) {
+                    csvContent = transferRecord.rawCSV;
+                } else {
+                    // Buscar en dailySales (para archivos de venta consolidados)
+                    const saleRecord = dailySales.find(sale => sale.fileName === filename);
+                    if (saleRecord) {
+                        csvContent = saleRecord.rawCSV;
+                    } else {
+                        // Para descargas de datos maestros (clientes, inventario, etc.)
+                        let dataToDownload = [];
+                        let headers = [];
+                        if (filename === 'clientes.csv') {
+                            dataToDownload = clients.map(c => ({
+                                ID: c.id,
+                                'Nombre Comercial': c.nombreComercial,
+                                'Nombre Personal': c.nombrePersonal,
+                                Zona: c.zona,
+                                Sector: c.sector,
+                                Tlf: c.tlf,
+                                Observaciones: c.observaciones
+                            }));
+                            headers = ['ID', 'Nombre Comercial', 'Nombre Personal', 'Zona', 'Sector', 'Tlf', 'Observaciones'];
+                        } else if (filename === 'inventario.csv') {
+                            dataToDownload = inventory.map(i => ({
+                                Rubro: i.rubro,
+                                Sku: i.sku,
+                                Segmento: i.segmento,
+                                Producto: i.producto,
+                                Presentacion: i.presentacion,
+                                Cantidad: i.cantidad,
+                                Precio: i.precio
+                            }));
+                            headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
+                        } else if (filename === 'vendedor.csv') {
+                            dataToDownload = vendors.map(v => ({
+                                Name: v.name,
+                                Category: v.category
+                            }));
+                            headers = ['Name', 'Category'];
+                        } else if (filename === 'vehiculos.csv') {
+                            dataToDownload = vehicles.map(v => ({
+                                Plate: v.plate,
+                                Name: v.name,
+                                Brand: v.brand,
+                                Model: v.model
+                            }));
+                            headers = ['Plate', 'Name', 'Brand', 'Model'];
+                        }
+
+                        if (dataToDownload.length > 0) {
+                            csvContent = toCSV(dataToDownload, headers);
+                        } else {
+                            showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+                            console.error(`[downloadCSV] No se encontró contenido para el archivo: ${filename}`);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (!csvContent) {
+                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+                console.error(`[downloadCSV] Contenido CSV vacío para el archivo: ${filename}`);
+                return;
+            }
+
             console.log(`[downloadCSV] Contenido CSV (primeras 200 chars): ${csvContent.substring(0, 200)}...`);
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -1535,7 +1611,7 @@
                 await batch.commit(); // Confirmar todas las operaciones del batch
 
                 showMessageModal('Recepción de mercancía registrada exitosamente. Inventarios actualizados y archivo de carga generado.');
-                downloadCSV(loadFileName, loadCSVContent); // Descargar el archivo CSV
+                downloadCSV(loadFileName); // Descargar el archivo CSV
                 receivingQuantities = {}; // Limpiar cantidades de recepción
                 selectedTruckForReceiving = null; // Limpiar selección de camión
                 selectedLoader = null; // Limpiar selección de cargador
@@ -2775,7 +2851,7 @@
                 combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
                 const combinedFileName = `venta_consolidada_${date}.csv`;
                 messages.push(`Cierre de Ventas para ${date}: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
-                downloadCSV(combinedFileName, combinedCSVContent);
+                downloadCSV(combinedFileName); // MODIFICADO: Solo se pasa el nombre del archivo
 
                 // --- Aggregation logic for this date (by Client) ---
                 const uniqueSKUs = new Set();
@@ -2813,7 +2889,7 @@
                 clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
                 const clientFileName = `ventas_por_cliente_${date}.csv`;
                 messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
-                downloadCSV(clientFileName, clientCSVContent);
+                downloadCSV(clientFileName); // MODIFICADO: Solo se pasa el nombre del archivo
 
                 // --- Deduct aggregated sales from Main Warehouse Inventory for THIS DATE ---
                 for (const sku in aggregatedSalesBySku) {
@@ -3034,10 +3110,10 @@
 
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('clients')">Descargar clientes.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('inventory')">Descargar inventario.csv (Almacén Principal)</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vendors')">Descargar vendedor.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCurrentData('vehicles')">Descargar vehículos.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('clientes.csv')">Descargar clientes.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('inventario.csv')">Descargar inventario.csv (Almacén Principal)</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('vendedor.csv')">Descargar vendedor.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('vehiculos.csv')">Descargar vehículos.csv</button>
                 </div>
 
                 <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
@@ -3511,7 +3587,9 @@
 
             if (dataToDownload.length > 0) {
                 const csvContent = toCSV(dataToDownload, headers);
-                downloadCSV(filename, csvContent);
+                // MODIFICADO: Llamar a la función downloadCSV con el contenido generado
+                const tempFileName = filename; // Usar una variable temporal para el nombre del archivo
+                downloadCSV(tempFileName); // Pasa solo el nombre del archivo
             } else {
                 showMessageModal(`No hay datos para descargar en ${dataType}.`);
             }
@@ -3814,7 +3892,7 @@
                             </span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
                         </div>
                     `;
                     generatedLoadFilesListDiv.appendChild(fileItemDiv);
@@ -4130,7 +4208,7 @@
                 transferRecords.push(transferRecord); // Añadir al historial local
 
                 showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
-                downloadCSV(transferFileName, transferCSVContent);
+                downloadCSV(transferFileName); // Descargar el archivo CSV
                 selectedDestinationTruck = null; // Limpiar selección de destino
                 transferQuantities = {}; // Limpiar cantidades de transbordo
                 render(); // Re-renderizar para mostrar los cambios y el historial
@@ -4161,15 +4239,16 @@
                 sortedUserTransferRecords.forEach(record => {
                     const fileItemDiv = document.createElement('div');
                     fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    const userEmail = users.find(u => u.uid === record.userId)?.email || 'Desconocido';
                     fileItemDiv.innerHTML = `
                         <span class="text-base text-yellow-800 mb-2 sm:mb-0">
                             ${record.fileName} <br>
                             <span class="text-sm text-gray-600">
-                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Fecha: ${record.date}
+                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}
                             </span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
                         </div>
                     `;
                     userTransferHistoryListDiv.appendChild(fileItemDiv);
@@ -4227,7 +4306,7 @@
                             </span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
                         </div>
                     `;
                     adminTransferHistoryListDiv.appendChild(fileItemDiv);
