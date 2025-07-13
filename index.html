@@ -65,7 +65,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 1000;
+            z-index: 1000; /* Aumentado el z-index para que aparezca encima */
         }
         .modal-content {
             background-color: rgba(255, 255, 255, 0.98); /* Fondo casi opaco para el contenido del modal */
@@ -544,6 +544,7 @@
 
         // NUEVO: Estado para la edición de clientes
         let editingClient = null; // Almacena el cliente que se está editando
+        let originalEditingClientId = null; // ALMACENA EL ID ORIGINAL DEL CLIENTE CUANDO SE INICIA LA EDICIÓN
         let showEditClientModal = false; // Controla la visibilidad del modal de edición de cliente
 
         // NUEVO: Estado para el filtro de búsqueda en el inventario del usuario
@@ -1562,6 +1563,11 @@
                 });
             }
 
+            if (messages.length > 0) {
+                showMessageModal(messages.join('\n'));
+                return;
+            }
+
             if (!hasPositiveReceivingQuantity) {
                 showMessageModal('Por favor, ingresa al menos una cantidad positiva para registrar la recepción.');
                 return;
@@ -2059,12 +2065,14 @@
         const openEditClientModal = (client) => {
             // No se necesita check de rol aquí, ya que el botón de editar solo se muestra a los que pueden editar
             editingClient = JSON.parse(JSON.stringify(client)); // Copia profunda para no modificar el objeto original directamente
+            originalEditingClientId = client.id; // ALMACENAR EL ID ORIGINAL
             showEditClientModal = true;
             render();
         };
 
         const closeEditClientModal = () => {
             editingClient = null;
+            originalEditingClientId = null; // Limpiar también el ID original
             showEditClientModal = false;
             render();
         };
@@ -2079,7 +2087,7 @@
             if (!editingClient) return;
 
             // Captura el valor actual de editingClient en una constante local para el ámbito del callback
-            const clientToSave = editingClient; // <--- LÍNEA AÑADIDA
+            const clientToSave = editingClient;
 
             // Basic validation (can be expanded)
             if (!clientToSave.nombreComercial || !clientToSave.nombrePersonal || !clientToSave.tlf) {
@@ -2087,16 +2095,12 @@
                 return;
             }
 
-            // Find the original client in the local 'clients' array to get its original ID
-            const originalClient = clients.find(c => c.id === clientToSave.id);
-            const originalClientId = originalClient ? originalClient.id : null;
-
-            // Check if the ID has changed AND the current user is an admin
-            const isIdChanged = isAdmin() && clientToSave.id !== originalClientId;
+            // Usar originalEditingClientId para la comparación y eliminación
+            const isIdChanged = isAdmin() && clientToSave.id !== originalEditingClientId;
 
             if (isIdChanged) {
                 showConfirmationModal(
-                    `El ID del cliente ha cambiado de "${originalClientId}" a "${clientToSave.id}". ` +
+                    `El ID del cliente ha cambiado de "${originalEditingClientId}" a "${clientToSave.id}". ` +
                     `Esto creará un nuevo cliente y eliminará el antiguo. ` +
                     `Las ventas históricas asociadas al ID antiguo NO se actualizarán automáticamente. ` +
                     `¿Deseas continuar?`,
@@ -2108,14 +2112,14 @@
                             const newClientRef = db.collection('clients').doc(clientToSave.id);
                             batch.set(newClientRef, clientToSave);
 
-                            // 2. Delete old client document
-                            const oldClientRef = db.collection('clients').doc(originalClientId);
+                            // 2. Delete old client document using original ID
+                            const oldClientRef = db.collection('clients').doc(originalEditingClientId);
                             batch.delete(oldClientRef);
 
                             await batch.commit();
 
                             // Update local clients array
-                            clients = clients.filter(c => c.id !== originalClientId); // Remove old client
+                            clients = clients.filter(c => c.id !== originalEditingClientId); // Remove old client
                             clients.push(clientToSave); // Add new client
                             showMessageModal('Cliente actualizado exitosamente (ID cambiado). Las ventas históricas no se actualizaron.');
                             closeEditClientModal();
@@ -3310,8 +3314,7 @@
 
                 if (newQty > 0) {
                     // Buscar el producto en el inventario principal o del camión según el origen de la venta
-                    const product = (selectedSaleForModification.sourceInventory === 'warehouse' ? inventory : currentTruckInventory)
-                                    .find(item => item.sku === sku);
+                    const product = (selectedSaleForModification.sourceInventory === 'warehouse' || isAdmin()) ? inventory.find(item => item.sku === sku) : currentTruckInventory.find(item => item.sku === sku);
                     if (product) {
                         const price = product.price !== undefined ? product.price : product.precio;
                         const subtotal = newQty * price;
