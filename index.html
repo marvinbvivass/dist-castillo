@@ -233,7 +233,7 @@
 <body>
     <div id="app-root"></div>
 
-    <script defer>
+    <script>
         // --- Configuración de Firebase ---
         // Tu configuración de Firebase
         const firebaseConfig = {
@@ -273,20 +273,19 @@
 
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
-        let clients = []; // Se mantiene la declaración, pero la gestión se moverá
+        let clients = [];
         let inventory = []; // Inventario principal (almacén)
         let vendors = [];
         let dailySales = [];
-        let vehicles = []; // NUEVO: Lista de vehículos/camiones
-        let currentTruckInventory = []; // NUEVO: Inventario del camión actualmente asignado al usuario
-        let users = []; // NUEVO: Lista de usuarios de la aplicación (para asignación de vehículos)
-        let loadRecords = []; // NUEVO: Registros de carga de camiones
-        let transferRecords = []; // NUEVO: Registros de transbordo de inventario entre camiones
-        let zonesData = []; // NUEVO: Datos de zonas
-        let sectorsData = []; // NUEVO: Datos de sectores
+        let vehicles = []; // Lista de vehículos/camiones
+        let currentTruckInventory = []; // Inventario del camión actualmente asignado al usuario
+        let users = []; // Lista de usuarios de la aplicación (para asignación de vehículos)
+        let loadRecords = []; // Registros de carga de camiones
+        let transferRecords = []; // Registros de transbordo de inventario entre camiones
+        let zonesData = []; // Datos de zonas
+        let sectorsData = []; // Datos de sectores
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
-        // Eliminados initialClients, initialZones, initialSectors
         const initialInventory = [
             { rubro: 'Cerveceria', sku: '2364', segmento: 'cerveza', producto: 'solera verde', presentacion: '1/4', cantidad: 180, precio: 23 },
             { rubro: 'Cerveceria', sku: '7458', segmento: 'cerveza', producto: 'ligth', presentacion: '1/4', cantidad: 180, precio: 19.8 },
@@ -301,7 +300,6 @@
             { name: 'Roberto Chacon', category: 'Cerveceria' },
         ];
 
-        // NUEVO: Datos iniciales de vehículos
         const initialVehicles = [
             { plate: 'ABC-123', name: 'Volswaguen Worker 220', brand: 'Volswaguen', model: 'Worker 220' },
             { plate: 'DEF-456', name: 'Chevrolet FVR 300', brand: 'Chevrolet', model: 'FVR 300' },
@@ -331,78 +329,60 @@
         };
 
         // Función genérica para descargar contenido CSV
-        // MODIFICADO: Ahora solo acepta el nombre del archivo. El contenido se busca internamente.
-        const downloadCSV = (filename) => {
+        const downloadCSV = (filename, content) => {
             console.log(`[downloadCSV] Intentando descargar: ${filename}`);
 
-            let csvContent = '';
-            // Buscar en loadRecords
-            const loadRecord = loadRecords.find(record => record.fileName === filename);
-            if (loadRecord) {
-                csvContent = loadRecord.rawCSV;
-            } else {
-                // Buscar en transferRecords
-                const transferRecord = transferRecords.find(record => record.fileName === filename);
-                if (transferRecord) {
-                    csvContent = transferRecord.rawCSV;
-                } else {
-                    // Buscar en dailySales (para archivos de venta consolidados)
-                    const saleRecord = dailySales.find(sale => sale.fileName === filename);
-                    if (saleRecord) {
-                        csvContent = saleRecord.rawCSV;
-                    } else {
-                        // Para descargas de datos maestros (clientes, inventario, etc.)
-                        let dataToDownload = [];
-                        let headers = [];
-                        if (filename === 'inventario.csv') {
-                            dataToDownload = inventory.map(i => ({
-                                Rubro: i.rubro,
-                                Sku: i.sku,
-                                Segmento: i.segmento,
-                                Producto: i.producto,
-                                Presentacion: i.presentacion,
-                                Cantidad: i.cantidad,
-                                Precio: i.precio
-                            }));
-                            headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
-                        } else if (filename === 'vendedor.csv') {
-                            dataToDownload = vendors.map(v => ({
-                                Name: v.name,
-                                Category: v.category
-                            }));
-                            headers = ['Name', 'Category'];
-                        } else if (filename === 'vehiculos.csv') {
-                            dataToDownload = vehicles.map(v => ({
-                                Plate: v.plate,
-                                Name: v.name,
-                                Brand: v.brand,
-                                Model: v.model
-                            }));
-                            headers = ['Plate', 'Name', 'Brand', 'Model'];
-                        } else if (filename === 'clientes.csv') { // Se mantiene la referencia para que downloadCSV siga funcionando si se le llama con 'clientes.csv'
-                            // Esta rama ya no debería ser alcanzada para la descarga de clientes reales
-                            // ya que la lógica de clientes se moverá.
-                            // Si se necesita descargar clientes desde aquí, se requeriría una función en el archivo de clientes
-                            // que exponga los datos de clientes para la descarga.
-                            console.warn("Intento de descargar clientes.csv desde index.html. La gestión de clientes se ha movido.");
-                            return;
-                        }
-
-                        if (dataToDownload.length > 0) {
-                            csvContent = toCSV(dataToDownload, headers);
-                        } else {
-                            showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                            console.error(`[downloadCSV] No se encontró contenido para el archivo: ${filename}`);
-                            return;
-                        }
-                    }
-                }
-            }
+            let csvContent = content; // Usar el contenido pasado directamente
 
             if (!csvContent) {
-                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                console.error(`[downloadCSV] Contenido CSV vacío para el archivo: ${filename}`);
-                return;
+                // Fallback para datos maestros si no se pasó contenido explícitamente
+                let dataToDownload = [];
+                let headers = [];
+                if (filename === 'inventario.csv') {
+                    dataToDownload = inventory.map(i => ({
+                        Rubro: i.rubro,
+                        Sku: i.sku,
+                        Segmento: i.segmento,
+                        Producto: i.producto,
+                        Presentacion: i.presentacion,
+                        Cantidad: i.cantidad,
+                        Precio: i.precio
+                    }));
+                    headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
+                } else if (filename === 'vendedor.csv') {
+                    dataToDownload = vendors.map(v => ({
+                        Name: v.name,
+                        Category: v.category
+                    }));
+                    headers = ['Name', 'Category'];
+                } else if (filename === 'vehiculos.csv') {
+                    dataToDownload = vehicles.map(v => ({
+                        Plate: v.plate,
+                        Name: v.name,
+                        Brand: v.brand,
+                        Model: v.model
+                    }));
+                    headers = ['Plate', 'Name', 'Brand', 'Model'];
+                } else if (filename === 'clientes.csv') {
+                    dataToDownload = clients.map(c => ({
+                        ID: c.id,
+                        NombreComercial: c.nombreComercial,
+                        NombrePersonal: c.nombrePersonal,
+                        Zona: c.zona,
+                        Sector: c.sector,
+                        Telefono: c.tlf,
+                        Observaciones: c.observaciones
+                    }));
+                    headers = ['ID', 'NombreComercial', 'NombrePersonal', 'Zona', 'Sector', 'Telefono', 'Observaciones'];
+                }
+
+                if (dataToDownload.length > 0) {
+                    csvContent = toCSV(dataToDownload, headers);
+                } else {
+                    showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+                    console.error(`[downloadCSV] No se encontró contenido para el archivo: ${filename}`);
+                    return;
+                }
             }
 
             console.log(`[downloadCSV] Contenido CSV (primeras 200 chars): ${csvContent.substring(0, 200)}...`);
@@ -469,7 +449,6 @@
 
         // --- Estado Global de la Aplicación ---
         let screen = 'login';
-        // Eliminadas variables de estado relacionadas con clientes, zonas y sectores
         let selectedClientForSale = null;
         let saleQuantities = {};
         let clientSearchTerm = ''; // Para el modal de selección de cliente en Venta
@@ -502,27 +481,45 @@
 
         // Estado para la carga de camiones (ahora recepción)
         let selectedTruckForReceiving = null; // Renomrado de selectedTruckForLoading
-        let selectedLoader = null; // NUEVO: Vendedor que realiza la carga
+        let selectedLoader = null; // Vendedor que realiza la carga
         let receivingQuantities = {}; // Renomrado de loadingQuantities
         let selectedTruckInventoryForReceiving = []; // Renomrado de selectedTruckInventoryForLoading
 
-        // NUEVO: Estado para la vista de inventario del admin
+        // Estado para la vista de inventario del admin
+        let currentAdminInventoryView = 'main'; // 'main' o un 'plate' de camión
         let selectedAdminVehicleForInventory = null; // El vehículo seleccionado por el admin para ver su inventario
 
-        // NUEVO: Estado para la pantalla de Reset Cargas Iniciales
+        // Estado para la pantalla de Reset Cargas Iniciales
         let resetQuantities = {}; // Almacena las cantidades a modificar para el reset
         let allTruckInventories = {}; // Caché de todos los inventarios de camiones para el reset
 
-        // NUEVO: Estado para la función de Transbordo de Inventario
+        // Estado para la función de Transbordo de Inventario
         let selectedDestinationTruck = null; // El camión de destino seleccionado para el transbordo
         let transferQuantities = {}; // Cantidades a transferir por SKU
 
-        // NUEVO: Estado para el filtro de búsqueda en el inventario del usuario
+        // Estado para el filtro de búsqueda en el inventario del usuario
         let inventorySearchTermUser = '';
+
+        // Estado local del módulo de clientes
+        let clientSearchTermClientes = '';
+        let showAddClientForm = false;
+        let editingClient = null;
+        let showEditClientModal = false;
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
         const isUser = () => currentUserData.role === 'user'; // Simplificado para cualquier usuario no admin
+
+        // Función para actualizar el estado global desde los módulos
+        const updateGlobalState = (key, value) => {
+            if (window[key] !== undefined) {
+                window[key] = value;
+            } else {
+                console.warn(`Intento de actualizar variable global no existente: ${key}`);
+            }
+            // Para variables de estado local de módulos, se manejan dentro de los módulos
+            // o se pasan como propiedades mutables si es necesario.
+        };
 
         // Función para mostrar un modal de mensaje personalizado
         const showMessageModal = (message) => {
@@ -719,7 +716,7 @@
         const fetchDataFromFirestore = async () => {
             console.log('[Firestore] Intentando cargar datos...');
             try {
-                // Cargar Clientes (solo para obtener los datos, no para gestionar desde aquí)
+                // Cargar Clientes
                 const clientsSnapshot = await db.collection('clients').get();
                 clients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 console.log('[Firestore] Clientes cargados:', clients);
@@ -777,12 +774,12 @@
                     console.log('[Firestore] No se cargan todos los usuarios para usuarios no administradores.');
                 }
 
-                // Cargar Zonas (solo para obtener los datos, no para gestionar desde aquí)
+                // Cargar Zonas
                 const zonesSnapshot = await db.collection('zones').get();
                 zonesData = zonesSnapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }));
                 console.log('[Firestore] Zonas cargadas:', zonesData);
 
-                // Cargar Sectores (solo para obtener los datos, no para gestionar desde aquí)
+                // Cargar Sectores
                 const sectorsSnapshot = await db.collection('sectors').get();
                 sectorsData = sectorsSnapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }));
                 console.log('[Firestore] Sectores cargados:', sectorsData);
@@ -882,16 +879,11 @@
                     case 'loadHistory': // Pantalla de historial de cargas
                         renderLoadHistoryScreen();
                         break;
-                    case 'inventario': // Para usuarios normales
+                    case 'inventario': // Para usuarios normales y admins (hub)
                         renderInventarioScreen();
                         break;
                     case 'clientes':
-                        // Se delega a un archivo externo
-                        if (typeof renderClientsScreenExternal === 'function') {
-                            renderClientsScreenExternal();
-                        } else {
-                            appRoot.innerHTML = '<p class="text-center text-red-600 text-lg py-4">Error: La funcionalidad de clientes no está cargada. Asegúrate de que clients.js esté enlazado correctamente.</p>';
-                        }
+                        renderClientesScreen();
                         break;
                     case 'venta':
                         renderVentaScreen();
@@ -908,10 +900,10 @@
                     case 'vehicles':
                         renderVehiclesScreen();
                         break;
-                    case 'adminInventorySelection': // NUEVA: Hub de inventario para admin
+                    case 'adminInventorySelection': // Hub de inventario para admin
                         renderAdminInventorySelection();
                         break;
-                    case 'adminMainInventory': // NUEVA: Inventario principal para admin
+                    case 'adminMainInventory': // Inventario principal para admin
                         renderAdminMainInventoryScreen();
                         break;
                     case 'adminVehicleInventory': // Existente, ahora solo para admin
@@ -949,6 +941,9 @@
             renderConfirmationModal();
             if (showModifySaleModalState) {
                 renderModifySaleModal();
+            }
+            if (showEditClientModal) {
+                renderEditClientModal();
             }
             // Eliminadas las llamadas a renderEditClientModal y renderManageZonesSectorsModal
             // ya que ahora estarán en el archivo de clientes.
@@ -1039,6 +1034,1743 @@
             localStorage.setItem('selectedVendor', selectedVendor);
         };
 
+        // --- CLIENTES ---
+        // Helper function to get unique values for a given key from the clients array
+        const getUniqueClientValues = (key) => {
+            const values = clients.map(client => client[key]).filter(Boolean);
+            return [...new Set(values)].sort();
+        };
+
+        const renderClientesScreen = () => {
+            const clientesDiv = document.createElement('div');
+            clientesDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            clientesDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CLIENTES</h2>
+
+                <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="clientSearchInputClientes" class="block text-lg font-semibold text-blue-700 mb-2">Buscar Cliente:</label>
+                    <input type="text" id="clientSearchInputClientes" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Buscar por Nombre Comercial o Personal..." value="${clientSearchTermClientes}" onkeyup="filterClientsForClientesScreen(this.value)">
+                </div>
+
+                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Lista de Clientes</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nombre Comercial</th>
+                                    <th>Nombre Personal</th>
+                                    <th>Zona</th>
+                                    <th>Sector</th>
+                                    <th>Teléfono</th>
+                                    <th>Observaciones</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="client-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
+                    <h3 class="text-xl font-bold mb-4 text-lime-700">Opciones de Cliente</h3>
+                    <button class="bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleAddClientForm()">Agregar Nuevo Cliente</button>
+                    <div id="add-client-form-container" style="display: ${showAddClientForm ? 'block' : 'none'};">
+                        <h4 class="text-lg font-bold mt-5 mb-3 text-lime-800">Formulario de Nuevo Cliente</h4>
+                        <input type="text" id="newClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial">
+                        <input type="text" id="newClientNombrePersonal" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Personal">
+
+                        <select id="newClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
+                            <option value="">Seleccionar Zona</option>
+                        </select>
+                        <select id="newClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white">
+                            <option value="">Seleccionar Sector</option>
+                        </select>
+
+                        <input type="tel" id="newClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono">
+                        <input type="text" id="newClientObservaciones" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Observaciones">
+                        <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleAddClient()">Guardar Nuevo Cliente</button>
+                    </div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(clientesDiv);
+
+            updateClientTableForClientesScreen();
+
+            if (showAddClientForm) {
+                const zonaSelect = document.getElementById('newClientZona');
+                const sectorSelect = document.getElementById('newClientSector');
+
+                const uniqueZonas = getUniqueClientValues('zona');
+                const uniqueSectores = getUniqueClientValues('sector');
+
+                uniqueZonas.forEach(zona => {
+                    const option = document.createElement('option');
+                    option.value = zona;
+                    option.textContent = zona;
+                    zonaSelect.appendChild(option);
+                });
+
+                uniqueSectores.forEach(sector => {
+                    const option = document.createElement('option');
+                    option.value = sector;
+                    option.textContent = sector;
+                    sectorSelect.appendChild(option);
+                });
+            }
+            // Renderizar el modal de edición si está activo
+            if (showEditClientModal) {
+                renderEditClientModal();
+            }
+        };
+
+        const filterClientsForClientesScreen = (term) => {
+            clientSearchTermClientes = term;
+            updateClientTableForClientesScreen();
+        };
+
+        const updateClientTableForClientesScreen = () => {
+            const clientTableBody = document.getElementById('client-table-body');
+            if (!clientTableBody) return;
+
+            clientTableBody.innerHTML = '';
+            const filteredClients = clients.filter(client =>
+                client.nombreComercial.toLowerCase().includes(clientSearchTermClientes.toLowerCase()) ||
+                client.nombrePersonal.toLowerCase().includes(clientSearchTermClientes.toLowerCase())
+            );
+
+            if (filteredClients.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="8" class="text-center text-gray-500 py-4">No se encontraron clientes.</td>`;
+                clientTableBody.appendChild(row);
+            } else {
+                filteredClients.forEach(client => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${client.id}</td>
+                        <td>${client.nombreComercial}</td>
+                        <td>${client.nombrePersonal}</td>
+                        <td>${client.zona}</td>
+                        <td>${client.sector}</td>
+                        <td>${client.tlf}</td>
+                        <td>${client.observaciones}</td>
+                        <td>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="openEditClientModal(${JSON.stringify(client).replace(/"/g, '&quot;')})">Editar</button>
+                        </td>
+                    `;
+                    clientTableBody.appendChild(row);
+                });
+            }
+        };
+
+        const toggleAddClientForm = () => {
+            showAddClientForm = !showAddClientForm;
+            render();
+        };
+
+        const handleAddClient = async () => {
+            const nombreComercial = document.getElementById('newClientNombreComercial').value;
+            const nombrePersonal = document.getElementById('newClientNombrePersonal').value;
+            const zona = document.getElementById('newClientZona').value;
+            const sector = document.getElementById('newClientSector').value;
+            const tlf = document.getElementById('newClientTlf').value;
+            const observaciones = document.getElementById('newClientObservaciones').value;
+
+            if (!nombreComercial || !nombrePersonal || !tlf) {
+                showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
+                return;
+            }
+
+            try {
+                const newClientId = `client_${Date.now()}`;
+                const newClientData = { id: newClientId, nombreComercial, nombrePersonal, zona, sector, tlf, observaciones };
+
+                await db.collection('clients').doc(newClientId).set(newClientData);
+
+                clients.push(newClientData); // Actualizar estado local
+                showMessageModal('Cliente Agregado: El nuevo cliente ha sido añadido a Firestore.');
+
+                document.getElementById('newClientNombreComercial').value = '';
+                document.getElementById('newClientNombrePersonal').value = '';
+                document.getElementById('newClientZona').value = '';
+                document.getElementById('newClientSector').value = '';
+                document.getElementById('newClientTlf').value = '';
+                document.getElementById('newClientObservaciones').value = '';
+                showAddClientForm = false;
+
+                render();
+            } catch (error) {
+                console.error('Error al añadir cliente a Firestore:', error);
+                showMessageModal('Error al agregar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        const openEditClientModal = (client) => {
+            editingClient = JSON.parse(JSON.stringify(client)); // Copia profunda
+            showEditClientModal = true;
+            render(); // Re-render para mostrar el modal
+        };
+
+        const closeEditClientModal = () => {
+            editingClient = null;
+            showEditClientModal = false;
+            render();
+        };
+
+        const handleEditClientChange = (field, value) => {
+            if (editingClient) {
+                editingClient[field] = value;
+            }
+        };
+
+        const saveEditedClient = async () => {
+            if (!editingClient) return;
+
+            if (!editingClient.nombreComercial || !editingClient.nombrePersonal || !editingClient.tlf) {
+                showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
+                return;
+            }
+
+            try {
+                await db.collection('clients').doc(editingClient.id).set(editingClient);
+                clients = clients.map(c => c.id === editingClient.id ? editingClient : c); // Actualizar estado local
+
+                showMessageModal('Cliente actualizado exitosamente.');
+                closeEditClientModal();
+            } catch (error) {
+                console.error('Error al actualizar cliente en Firestore:', error);
+                showMessageModal('Error al actualizar cliente. Por favor, revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        const renderEditClientModal = () => {
+            if (!showEditClientModal || !editingClient) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'edit-client-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Editar Cliente</h3>
+                    <input type="text" id="editClientNombreComercial" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Comercial" value="${editingClient.nombreComercial}" onchange="handleEditClientChange('nombreComercial', this.value)">
+                    <input type="text" id="editClientNombrePersonal" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre Personal" value="${editingClient.nombrePersonal}" onchange="handleEditClientChange('nombrePersonal', this.value)">
+
+                    <select id="editClientZona" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('zona', this.value)">
+                        <option value="">Seleccionar Zona</option>
+                        ${getUniqueClientValues('zona').map(z => `<option value="${z}" ${editingClient.zona === z ? 'selected' : ''}>${z}</option>`).join('')}
+                    </select>
+                    <select id="editClientSector" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" onchange="handleEditClientChange('sector', this.value)">
+                        <option value="">Seleccionar Sector</option>
+                        ${getUniqueClientValues('sector').map(s => `<option value="${s}" ${editingClient.sector === s ? 'selected' : ''}>${s}</option>`).join('')}
+                    </select>
+
+                    <input type="tel" id="editClientTlf" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Teléfono" value="${editingClient.tlf}" onchange="handleEditClientChange('tlf', this.value)">
+                    <input type="text" id="editClientObservaciones" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Observaciones" value="${editingClient.observaciones}" onchange="handleEditClientChange('observaciones', this.value)">
+
+                    <div class="flex justify-around gap-4 mt-5">
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveEditedClient()">Guardar Cambios</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeEditClientModal()">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+
+        // --- INVENTARIO ---
+        // Pantalla de selección de inventario para administradores
+        const renderAdminInventorySelection = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección de inventario.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const selectionDiv = document.createElement('div');
+            selectionDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            selectionDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">SELECCIÓN DE INVENTARIO</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Selecciona qué inventario deseas visualizar.
+                </p>
+                <div class="flex flex-wrap justify-center gap-4">
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setAdminInventoryView('main')">INVENTARIO PRINCIPAL</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="renderAdminVehicleInventoryScreen()">INVENTARIO POR VEHÍCULO</button>
+                </div>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(selectionDiv);
+        };
+
+        // Función para establecer la vista de inventario del admin
+        const setAdminInventoryView = async (viewType, plate = null) => {
+            currentAdminInventoryView = viewType;
+            selectedAdminVehicleForInventory = plate ? vehicles.find(v => v.plate === plate) : null;
+            render(); // Re-renderizar para mostrar la vista correcta
+        };
+
+        // renderInventarioScreen ahora es más flexible y asíncrona
+        const renderInventarioScreen = async () => {
+            const inventarioDiv = document.createElement('div');
+            inventarioDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            inventarioDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO Actual</h2>
+                <div id="inventory-content"></div>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="${isAdmin() ? "setScreenAndRender('adminInventorySelection')" : "setScreenAndRender('main')"}">Volver</button>
+            `;
+            appRoot.appendChild(inventarioDiv);
+
+            const inventoryContentDiv = document.getElementById('inventory-content');
+
+            let displayInventory = [];
+            let inventorySourceText = '';
+
+            if (isAdmin()) {
+                if (currentAdminInventoryView === 'main') {
+                    displayInventory = inventory;
+                    inventorySourceText = ' (Almacén Principal)';
+                    updateInventoryDisplayTable(inventoryContentDiv, displayInventory, inventorySourceText);
+                } else if (currentAdminInventoryView === 'vehicle' && selectedAdminVehicleForInventory) {
+                    inventorySourceText = ` (Camión: ${selectedAdminVehicleForInventory.name} - ${selectedAdminVehicleForInventory.plate})`;
+                    inventoryContentDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Cargando inventario para ${selectedAdminVehicleForInventory.name}...</p>`;
+                    try {
+                        const truckInventoryDoc = await db.collection('truck_inventories').doc(selectedAdminVehicleForInventory.plate).get();
+                        displayInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+                        if (displayInventory.length === 0) {
+                             inventoryContentDiv.innerHTML = `
+                                <p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${selectedAdminVehicleForInventory.name} vacío por el momento.</p>
+                            `;
+                        } else {
+                            updateInventoryDisplayTable(inventoryContentDiv, displayInventory, inventorySourceText);
+                        }
+                    } catch (error) {
+                        console.error('Error al cargar inventario del camión para admin:', error);
+                        showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
+                        inventoryContentDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
+                    }
+                    return; // Salir aquí ya que el contenido se actualiza de forma asíncrona
+                } else if (currentAdminInventoryView === 'vehicle' && !selectedAdminVehicleForInventory) {
+                    inventoryContentDiv.innerHTML = `
+                        <p class="text-center text-gray-600 text-lg py-4">Por favor, seleccione un vehículo para ver su inventario.</p>
+                    `;
+                    return;
+                }
+            } else { // Usuario normal
+                if (currentUserData.assignedTruckPlate) {
+                    displayInventory = currentTruckInventory; // Esto es correctamente el inventario del camión asignado al usuario
+                    inventorySourceText = ` (Camión: ${currentUserData.assignedTruckPlate})`;
+                    if (displayInventory.length === 0) {
+                        inventoryContentDiv.innerHTML = `
+                            <p class="text-center text-gray-600 text-lg py-4">Inventario del camión vacío por el momento.</p>
+                        `;
+                        return;
+                    }
+                } else {
+                    inventoryContentDiv.innerHTML = `
+                        <p class="text-center text-red-600 text-lg py-4">Todavía no tienes un vehículo asignado.</p>
+                        <p class="text-center text-gray-600 text-md">Por favor, contacta a un administrador para que te asigne uno.</p>
+                    `;
+                    return;
+                }
+            }
+
+            // Esta línea solo se alcanzará para isAdmin() && currentAdminInventoryView === 'main'
+            // o para los casos de isUser() donde currentTruckInventory está poblado.
+            updateInventoryDisplayTable(inventoryContentDiv, displayInventory, inventorySourceText);
+        };
+
+        // Función auxiliar para actualizar la tabla de inventario
+        const updateInventoryDisplayTable = (containerDiv, displayInventory, inventorySourceText) => {
+            let tableHtml = `
+                <p class="text-base text-center mb-4 text-gray-700">Mostrando inventario${inventorySourceText}</p>
+                <div class="table-container mb-5">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Sku</th>
+                                <th>Producto</th>
+                                <th>Presentación</th>
+                                <th>Cantidad</th>
+                                <th>Precio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-display-body">
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            containerDiv.innerHTML = tableHtml;
+
+            const inventoryDisplayBody = document.getElementById('inventory-display-body');
+            displayInventory.forEach(item => {
+                const row = document.createElement('tr');
+                const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
+                const price = item.price !== undefined ? item.price : item.precio;
+                row.innerHTML = `
+                    <td>${item.rubro}</td>
+                    <td>${item.sku}</td>
+                    <td>${item.producto}</td>
+                    <td>${item.presentacion}</td>
+                    <td>${quantity}</td>
+                    <td>$${price.toFixed(2)}</td>
+                `;
+                inventoryDisplayBody.appendChild(row);
+            });
+        };
+
+        // Pantalla para que el admin seleccione un vehículo para ver su inventario
+        const renderAdminVehicleInventoryScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const adminVehicleInventoryDiv = document.createElement('div');
+            adminVehicleInventoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            adminVehicleInventoryDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO POR VEHÍCULO</h2>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="adminVehicleSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión:</label>
+                    <select id="adminVehicleSelect" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="handleAdminVehicleSelection(this.value)">
+                        <option value="">-- Seleccione un camión --</option>
+                        ${vehicles.map(v => `<option value="${v.plate}" ${selectedAdminVehicleForInventory && selectedAdminVehicleForInventory.plate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
+                    </select>
+                </div>
+
+                <div id="selected-vehicle-inventory-display">
+                    ${selectedAdminVehicleForInventory ? `<p class="text-center text-gray-600 text-lg py-4">Cargando inventario para ${selectedAdminVehicleForInventory.name}...</p>` : '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>'}
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('adminInventorySelection')">Volver</button>
+            `;
+            appRoot.appendChild(adminVehicleInventoryDiv);
+
+            if (selectedAdminVehicleForInventory) {
+                // Llama a la función de renderizado de inventario para mostrar el inventario del camión
+                setAdminInventoryView('vehicle', selectedAdminVehicleForInventory.plate);
+            }
+        };
+
+        // Manejador de selección de vehículo para el admin en la vista de inventario
+        const handleAdminVehicleSelection = (plate) => {
+            if (plate) {
+                selectedAdminVehicleForInventory = vehicles.find(v => v.plate === plate);
+                setAdminInventoryView('vehicle', plate);
+            } else {
+                selectedAdminVehicleForInventory = null;
+                // Limpiar el contenido si no hay camión seleccionado
+                document.getElementById('selected-vehicle-inventory-display').innerHTML = '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>';
+                render(); // Re-render para actualizar la pantalla
+            }
+        };
+
+        // --- VENTA ---
+        const renderVentaScreen = () => {
+            const ventaDiv = document.createElement('div');
+            ventaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            ventaDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">VENTA</h2>
+
+                <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleClientPickerModal(true)">Seleccionar Cliente</button>
+
+                <div id="selected-client-display" class="text-lg font-bold text-center my-4 text-emerald-800"></div>
+                <div id="product-sale-container"></div>
+                <div id="info-text" class="text-base text-center my-5 text-gray-600"></div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="resetVentaStateAndGoToMain()">Volver al Menú Principal</button>
+            `;
+            appRoot.appendChild(ventaDiv);
+
+            updateVentaScreenContent();
+        };
+
+        const updateVentaScreenContent = () => {
+            const selectedClientDisplay = document.getElementById('selected-client-display');
+            const productSaleContainer = document.getElementById('product-sale-container');
+            const infoText = document.getElementById('info-text');
+
+            // Si el usuario es normal y no tiene un camión asignado, no puede realizar ventas
+            if (isUser() && !currentUserData.assignedTruckPlate) {
+                selectedClientDisplay.textContent = '';
+                infoText.textContent = 'No tienes un camión asignado. Por favor, contacta a un administrador para que te asigne uno.';
+                productSaleContainer.innerHTML = '';
+                return;
+            }
+
+            // Determinar qué inventario mostrar y de qué fuente se realizará la venta
+            const inventoryToDisplay = currentUserData.assignedTruckPlate ? currentTruckInventory : inventory;
+            const inventorySourceText = currentUserData.assignedTruckPlate ? ` (Camión: ${currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
+
+            if (selectedClientForSale) {
+                selectedClientDisplay.textContent = `Cliente Seleccionado: ${selectedClientForSale.nombreComercial}`;
+                infoText.textContent = `Inventario actual${inventorySourceText}`; // Mostrar de qué inventario se vende
+
+                productSaleContainer.innerHTML = `
+                    <div class="table-container mb-5">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>SKU</th>
+                                    <th>Cantidad a Vender</th>
+                                    <th>Producto</th>
+                                    <th>Presentación</th>
+                                    <th>Precio</th>
+                                    <th>Disponible</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-for-sale-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showFinalizeSaleConfirmation()">Finalizar Venta</button>
+                `;
+                const productsForSaleBody = document.getElementById('products-for-sale-body');
+                inventoryToDisplay.forEach(item => {
+                    const row = document.createElement('tr');
+                    // Usar 'quantity' y 'price' para inventario de camiones, 'cantidad' y 'precio' para almacén
+                    const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
+                    const price = item.price !== undefined ? item.price : item.precio;
+
+                    row.innerHTML = `
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${quantity}"></td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>$${price.toFixed(2)}</td>
+                        <td>${quantity}</td>
+                    `;
+                    productsForSaleBody.appendChild(row);
+                });
+
+            } else {
+                selectedClientDisplay.textContent = '';
+                infoText.textContent = 'Por favor, seleccione un cliente para iniciar la venta.';
+                productSaleContainer.innerHTML = '';
+            }
+
+            if (showClientPickerModal) {
+                renderClientPickerModal();
+            } else {
+                const existingModal = document.getElementById('client-picker-modal');
+                if (existingModal) existingModal.remove();
+            }
+        };
+
+        const handleProductQuantityChange = (sku, quantity) => {
+            saleQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        const showFinalizeSaleConfirmation = () => {
+            console.log('[showFinalizeSaleConfirmation] Llamado.');
+            showConfirmationModal('¿Estás seguro de que quieres finalizar esta venta? Esto actualizará el inventario y generará un archivo de venta.', finalizeSaleLogic);
+        };
+
+        const finalizeSaleLogic = async () => {
+            console.log('[finalizeSaleLogic] Iniciando...');
+            if (!selectedClientForSale) {
+                showMessageModal('Error: Por favor, seleccione un cliente primero.');
+                console.error('[finalizeSaleLogic] Error: No hay cliente seleccionado para finalizar la venta.');
+                return;
+            }
+
+            // Si el usuario es normal y no tiene un camión asignado, no puede realizar ventas
+            if (isUser() && !currentUserData.assignedTruckPlate) {
+                showMessageModal('Error: No tienes un camión asignado para realizar ventas.');
+                console.error('[finalizeSaleLogic] Error: Usuario no tiene camión asignado.');
+                return;
+            }
+
+            const saleData = [];
+            let totalSaleAmount = 0;
+            let hasInsufficientStock = false;
+            let messages = [];
+
+            // Determinar el inventario de origen (camión o almacén principal)
+            const sourceInventoryCollection = currentUserData.assignedTruckPlate ? 'truck_inventories' : 'inventory';
+            const sourceInventoryDocId = currentUserData.assignedTruckPlate; // Placa del camión si es un camión
+
+            let currentSourceInventoryData;
+            if (sourceInventoryCollection === 'truck_inventories') {
+                const truckInventoryDoc = await db.collection(sourceInventoryCollection).doc(sourceInventoryDocId).get();
+                currentSourceInventoryData = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+            } else {
+                // Para el almacén, trabajamos con el array 'inventory' global ya cargado
+                currentSourceInventoryData = JSON.parse(JSON.stringify(inventory));
+            }
+
+            let updatedSourceInventory = JSON.parse(JSON.stringify(currentSourceInventoryData)); // Copia para modificar
+
+            for (const item of currentSourceInventoryData) { // Iterar sobre los datos del inventario de origen
+                const quantitySold = saleQuantities[item.sku] || 0;
+                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad;
+
+                if (quantitySold > 0) {
+                    if (quantitySold > availableQuantity) {
+                        messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
+                        hasInsufficientStock = true;
+                    } else {
+                        const price = item.price !== undefined ? item.price : item.precio;
+                        const subtotal = quantitySold * price;
+                        saleData.push({
+                            sku: item.sku,
+                            producto: item.producto,
+                            presentacion: item.presentacion,
+                            cantidadVendida: quantitySold,
+                            precioUnitario: price,
+                            subtotal: subtotal,
+                        });
+                        totalSaleAmount += subtotal;
+
+                        // Actualizar la cantidad en la copia del inventario de origen
+                        updatedSourceInventory = updatedSourceInventory.map(invItem =>
+                            invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold, cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold } : invItem
+                        );
+                    }
+                }
+            }
+
+            if (hasInsufficientStock) {
+                showMessageModal(messages.join('\n'));
+                console.error('[finalizeSaleLogic] Error: Stock insuficiente detectado. Deteniendo venta.');
+                return;
+            }
+
+            if (saleData.length === 0) {
+                showMessageModal('Error: No se ha ingresado ninguna cantidad para la venta.');
+                console.warn('[finalizeSaleLogic] Advertencia: No se ingresó ninguna cantidad para la venta.');
+                return;
+            }
+
+            const fileName = `venta_${selectedClientForSale.nombreComercial.replace(/\s/g, '_')}_${getCurrentDateFormatted()}.csv`;
+            const saleRecord = {
+                fileName: fileName,
+                client: selectedClientForSale,
+                date: getCurrentDateFormatted(),
+                items: saleData,
+                total: totalSaleAmount,
+                vendor: selectedVendor, // Guardar el vendedor que realizó la venta
+                sourceInventory: currentUserData.assignedTruckPlate ? currentUserData.assignedTruckPlate : 'warehouse', // Origen del inventario
+                rawCSV: `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
+                        saleData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
+                        `\nTotal General:, , , , ,${totalSaleAmount.toFixed(2)}`
+            };
+            console.log('[finalizeSaleLogic] Contenido rawCSV para descarga:', saleRecord.rawCSV);
+
+            try {
+                const docRef = await db.collection('dailySales').add(saleRecord);
+                saleRecord.docId = docRef.id;
+                dailySales.push(saleRecord); // Actualizar el estado local de dailySales
+                console.log('[Firestore] Venta guardada en Firestore con ID:', docRef.id);
+
+                // Actualizar el inventario de la fuente correcta en Firestore
+                if (sourceInventoryCollection === 'truck_inventories') {
+                    await db.collection('truck_inventories').doc(sourceInventoryDocId).set({ items: updatedSourceInventory });
+                    currentTruckInventory = updatedSourceInventory; // Actualizar inventario local del camión
+                    console.log(`[Firestore] Inventario del camión ${sourceInventoryDocId} actualizado en Firestore.`);
+                } else { // Es 'inventory' (almacén principal) - Esto no debería ocurrir si las ventas siempre son de camiones
+                    // Si por alguna razón un usuario sin camión asignado pudiera vender del almacén directamente,
+                    // esta lógica lo manejaría, pero la instrucción es que el inventario principal se deduce al cierre.
+                    // Por ahora, no se modifica el inventario principal aquí.
+                    console.log('[finalizeSaleLogic] Venta realizada desde el almacén principal. La deducción se realizará en el cierre de ventas.');
+                }
+
+                messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
+                messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
+
+            } catch (error) {
+                console.error('Error al finalizar la venta y guardar en Firestore:', error);
+                showMessageModal('Error al finalizar la venta. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+                return;
+            }
+
+            resetVentaState();
+            setScreenAndRender('main');
+            showMessageModal(messages.join('\n'));
+            console.log('[finalizeSaleLogic] Finalizado.');
+        };
+
+        const toggleClientPickerModal = (show) => {
+            showClientPickerModal = show;
+            render(); // Re-renderizar la pantalla de venta para mostrar/ocultar el modal
+        };
+
+        const renderClientPickerModal = () => {
+            if (!showClientPickerModal) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'client-picker-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Seleccionar Cliente</h3>
+                    <input type="text" id="clientSearchInput" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white" placeholder="Buscar cliente..." onkeyup="filterClientsForPicker(this.value)">
+                    <div id="client-picker-list" class="max-h-60 overflow-y-auto w-full"></div>
+                    <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleClientPickerModal(false)">Cerrar</button>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+
+            updateClientPickerList();
+        };
+
+        const updateClientPickerList = () => {
+            const clientPickerListDiv = document.getElementById('client-picker-list');
+            if (!clientPickerListDiv) return;
+
+            clientPickerListDiv.innerHTML = '';
+            const filteredClients = clients.filter(client =>
+                client.nombreComercial.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
+                client.nombrePersonal.toLowerCase().includes(clientSearchTerm.toLowerCase())
+            );
+
+            filteredClients.forEach(client => {
+                const clientItem = document.createElement('button');
+                clientItem.className = 'block w-full text-left p-3 border-b border-gray-200 hover:bg-blue-50 transition duration-150 ease-in-out rounded-md';
+                clientItem.textContent = `${client.nombreComercial} (${client.nombrePersonal})`;
+                clientItem.onclick = () => {
+                    selectedClientForSale = client;
+                    toggleClientPickerModal(false);
+                    clientSearchTerm = '';
+                    updateVentaScreenContent();
+                };
+                clientPickerListDiv.appendChild(clientItem);
+            });
+        };
+
+        const filterClientsForPicker = (term) => {
+            clientSearchTerm = term;
+            updateClientPickerList();
+        };
+
+        const resetVentaState = () => {
+            selectedClientForSale = null;
+            saleQuantities = {};
+            // currentProductIndex = 0; // currentProductIndex no parece ser una variable global persistente de venta
+        };
+
+        const resetVentaStateAndGoToMain = () => {
+            resetVentaState();
+            setScreenAndRender('main');
+        };
+
+        // --- CIERRE DE VENTAS ---
+        const renderCierreVentasScreen = () => {
+            if (!isUser()) {
+                showMessageModal('Acceso denegado: Solo los usuarios pueden acceder al cierre de ventas.');
+                setScreenAndRender('main');
+                return;
+            }
+            if (!currentUserData.assignedTruckPlate) {
+                showMessageModal('No tienes un camión asignado para realizar el cierre de ventas. Contacta a un administrador.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const cierreVentasDiv = document.createElement('div');
+            cierreVentasDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            cierreVentasDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CIERRE DE VENTAS</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes consolidar tus ventas del día y ajustar el inventario de tu camión.
+                </p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <h3 class="text-xl font-bold mb-4 text-blue-700">Ventas Realizadas Hoy (${getCurrentDateFormatted()})</h3>
+                    <div id="daily-sales-list"></div>
+                    <p class="text-lg font-bold text-right mt-4">Total Ventas del Día: <span id="daily-sales-total"></span></p>
+                </div>
+
+                <div class="mb-6 p-4 bg-purple-50 rounded-lg border border-purple-300">
+                    <h3 class="text-xl font-bold mb-4 text-purple-700">Inventario Final del Camión (${currentUserData.assignedTruckPlate})</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Producto</th>
+                                    <th>Cantidad Final</th>
+                                </tr>
+                            </thead>
+                            <tbody id="final-truck-inventory-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showFinalizeDayConfirmation()">Finalizar Día y Consolidar</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(cierreVentasDiv);
+
+            updateCierreVentasContent();
+        };
+
+        const updateCierreVentasContent = () => {
+            const dailySalesListDiv = document.getElementById('daily-sales-list');
+            const dailySalesTotalSpan = document.getElementById('daily-sales-total');
+            const finalTruckInventoryBody = document.getElementById('final-truck-inventory-body');
+
+            const todaySales = dailySales.filter(sale =>
+                sale.date === getCurrentDateFormatted() &&
+                sale.vendor === selectedVendor // Filtrar por el vendedor actual
+            );
+
+            let totalSalesAmountToday = 0;
+            if (todaySales.length === 0) {
+                dailySalesListDiv.innerHTML = '<p class="text-gray-600">No hay ventas registradas para hoy.</p>';
+            } else {
+                dailySalesListDiv.innerHTML = '';
+                todaySales.forEach(sale => {
+                    const saleItemDiv = document.createElement('div');
+                    saleItemDiv.className = 'bg-blue-100 p-2 rounded-lg mb-2 flex justify-between items-center border border-blue-200';
+                    saleItemDiv.innerHTML = `
+                        <span class="text-base text-blue-800">
+                            Cliente: ${sale.client.nombreComercial} - Total: $${sale.total.toFixed(2)}
+                        </span>
+                        <div class="flex gap-2">
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">Imprimir</button>
+                            <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-md text-sm" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">Modificar</button>
+                        </div>
+                    `;
+                    dailySalesListDiv.appendChild(saleItemDiv);
+                    totalSalesAmountToday += sale.total;
+                });
+            }
+            dailySalesTotalSpan.textContent = `$${totalSalesAmountToday.toFixed(2)}`;
+
+            // Mostrar el inventario actual del camión
+            finalTruckInventoryBody.innerHTML = '';
+            if (currentTruckInventory.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="3" class="text-center text-gray-500 py-4">Inventario del camión vacío.</td>`;
+                finalTruckInventoryBody.appendChild(row);
+            } else {
+                currentTruckInventory.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.quantity}</td>
+                    `;
+                    finalTruckInventoryBody.appendChild(row);
+                });
+            }
+        };
+
+        const showFinalizeDayConfirmation = () => {
+            showConfirmationModal('¿Estás seguro de que quieres finalizar el día? Esto consolidará las ventas y ajustará el inventario principal.', handleFinalizeDayLogic);
+        };
+
+        const handleFinalizeDayLogic = async () => {
+            if (!isUser()) {
+                showMessageModal('Acceso denegado: Solo los usuarios pueden finalizar el día.');
+                return;
+            }
+            if (!currentUserData.assignedTruckPlate) {
+                showMessageModal('No tienes un camión asignado para finalizar el día.');
+                return;
+            }
+
+            const todaySales = dailySales.filter(sale =>
+                sale.date === getCurrentDateFormatted() &&
+                sale.vendor === selectedVendor
+            );
+
+            if (todaySales.length === 0) {
+                showMessageModal('No hay ventas registradas para hoy para consolidar.');
+                return;
+            }
+
+            try {
+                const batch = db.batch();
+
+                // 1. Deducir las ventas del inventario principal
+                let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
+
+                for (const sale of todaySales) {
+                    for (const saleItem of sale.items) {
+                        const mainInventoryItemIndex = updatedMainInventory.findIndex(item => item.sku === saleItem.sku);
+                        if (mainInventoryItemIndex !== -1) {
+                            updatedMainInventory[mainInventoryItemIndex].cantidad -= saleItem.cantidadVendida;
+                            if (updatedMainInventory[mainInventoryItemIndex].cantidad < 0) {
+                                updatedMainInventory[mainInventoryItemIndex].cantidad = 0; // Evitar cantidades negativas
+                            }
+                        } else {
+                            console.warn(`Producto ${saleItem.sku} vendido no encontrado en el inventario principal. No se pudo deducir.`);
+                        }
+                    }
+                }
+
+                // Actualizar el inventario principal en Firestore
+                for (const item of updatedMainInventory) {
+                    const itemRef = db.collection('inventory').doc(item.sku);
+                    batch.set(itemRef, item);
+                }
+
+                // 2. Limpiar el inventario del camión del usuario
+                const truckInventoryRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
+                batch.set(truckInventoryRef, { items: [] }); // Vaciar el inventario del camión
+
+                await batch.commit();
+
+                // Actualizar estados locales después de la operación exitosa
+                await fetchDataFromFirestore(); // Re-fetch para asegurar la consistencia
+
+                showMessageModal('Día finalizado exitosamente. Ventas consolidadas y camión vaciado.');
+                setScreenAndRender('main');
+            } catch (error) {
+                console.error('Error al finalizar el día:', error);
+                showMessageModal('Error al finalizar el día. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const printSaleReceipt = (sale) => {
+            const receiptHtml = generateThermalReceiptHtml(sale);
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Recibo de Venta</title>
+                    <style>
+                        body { font-family: 'monospace', 'Courier New', Courier, monospace; margin: 0; padding: 0; }
+                        .thermal-receipt {
+                            font-size: 12px; /* Ajustado para impresión */
+                            width: 80mm; /* Ancho típico de recibo térmico */
+                            margin: 0 auto;
+                            padding: 10px;
+                            box-sizing: border-box;
+                        }
+                        .thermal-receipt h3, .thermal-receipt h4 { text-align: center; margin-bottom: 5px; font-size: 14px; }
+                        .thermal-receipt .item-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                        .thermal-receipt .item-qty { width: 20%; text-align: left; }
+                        .thermal-receipt .item-desc { width: 50%; text-align: left; }
+                        .thermal-receipt .item-price, .item-total { width: 30%; text-align: right; }
+                        .thermal-receipt .divider { border-top: 1px dashed #000; margin: 5px 0; }
+                        .thermal-receipt .total-line { display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px; font-size: 13px; }
+                        .thermal-receipt .footer-text { text-align: center; margin-top: 10px; font-size: 10px; }
+                        @media print {
+                            body { margin: 0; }
+                            .thermal-receipt { border: none !important; box-shadow: none !important; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="thermal-receipt">
+                        ${receiptHtml}
+                    </div>
+                    <script>
+                        window.onload = function() {
+                            window.print();
+                            window.onafterprint = function() {
+                                window.close();
+                            };
+                        };
+                    </script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        };
+
+        const generateThermalReceiptHtml = (sale) => {
+            let itemsHtml = '';
+            sale.items.forEach(item => {
+                itemsHtml += `
+                    <div class="item-row">
+                        <span class="item-qty">${item.cantidadVendida}</span>
+                        <span class="item-desc">${item.producto}</span>
+                        <span class="item-price">$${item.precioUnitario.toFixed(2)}</span>
+                        <span class="item-total">$${item.subtotal.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+
+            return `
+                <h3>DIST CASTILLO</h3>
+                <h4>RECIBO DE VENTA</h4>
+                <p>Fecha: ${sale.date}</p>
+                <p>Vendedor: ${sale.vendor}</p>
+                <p>Cliente: ${sale.client.nombreComercial}</p>
+                <p>ID Cliente: ${sale.client.id}</p>
+                <div class="divider"></div>
+                <div class="item-row">
+                    <span class="item-qty">Cant.</span>
+                    <span class="item-desc">Producto</span>
+                    <span class="item-price">P. Unit.</span>
+                    <span class="item-total">Total</span>
+                </div>
+                <div class="divider"></div>
+                ${itemsHtml}
+                <div class="divider"></div>
+                <div class="total-line">
+                    <span>TOTAL:</span>
+                    <span>$${sale.total.toFixed(2)}</span>
+                </div>
+                <div class="divider"></div>
+                <p class="footer-text">¡Gracias por tu compra!</p>
+            `;
+        };
+
+        const openModifySaleModal = (sale) => {
+            selectedSaleForModification = JSON.parse(JSON.stringify(sale)); // Copia profunda
+            modifiedSaleQuantities = {};
+            selectedSaleForModification.items.forEach(item => {
+                modifiedSaleQuantities[item.sku] = item.cantidadVendida;
+            });
+            modificationReason = ''; // Resetear la razón de modificación
+            showModifySaleModalState = true;
+            render();
+        };
+
+        const closeModifySaleModal = () => {
+            selectedSaleForModification = null;
+            modifiedSaleQuantities = {};
+            modificationReason = '';
+            showModifySaleModalState = false;
+            render();
+        };
+
+        const handleModifiedQuantityChange = (sku, quantity) => {
+            modifiedSaleQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        const handleModificationReasonChange = (reason) => {
+            modificationReason = reason;
+        };
+
+        const saveModifiedSale = async () => {
+            if (!selectedSaleForModification || !modificationReason) {
+                showMessageModal('Por favor, ingresa una razón para la modificación.');
+                return;
+            }
+
+            let newSaleItems = [];
+            let newTotalSaleAmount = 0;
+            let messages = [];
+
+            // Obtener el inventario actual del camión
+            const currentTruckInventoryData = JSON.parse(JSON.stringify(currentTruckInventory));
+            let updatedTruckInventory = JSON.parse(JSON.stringify(currentTruckInventory));
+
+            // Calcular el cambio neto de cada SKU para ajustar el inventario del camión
+            let inventoryChanges = {}; // { sku: netChange }
+
+            // Primero, "devolver" las cantidades originales de la venta al inventario del camión
+            selectedSaleForModification.items.forEach(item => {
+                inventoryChanges[item.sku] = (inventoryChanges[item.sku] || 0) + item.cantidadVendida;
+            });
+
+            // Luego, "deducir" las nuevas cantidades de la venta
+            for (const sku in modifiedSaleQuantities) {
+                const newQuantity = modifiedSaleQuantities[sku];
+                const originalItemDetails = inventory.find(i => i.sku === sku); // Obtener detalles del producto
+                if (!originalItemDetails) {
+                    messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo procesar completamente.`);
+                    continue;
+                }
+
+                if (newQuantity > 0) {
+                    // Si el producto no estaba en la venta original pero ahora se añade, o si la cantidad aumenta
+                    inventoryChanges[sku] = (inventoryChanges[sku] || 0) - newQuantity;
+
+                    const price = originalItemDetails.precio; // Usar precio del inventario principal
+                    const subtotal = newQuantity * price;
+                    newSaleItems.push({
+                        sku: sku,
+                        producto: originalItemDetails.producto,
+                        presentacion: originalItemDetails.presentacion,
+                        cantidadVendida: newQuantity,
+                        precioUnitario: price,
+                        subtotal: subtotal,
+                    });
+                    newTotalSaleAmount += subtotal;
+                }
+            }
+
+            // Aplicar los cambios al inventario del camión y validar stock
+            for (const sku in inventoryChanges) {
+                const change = inventoryChanges[sku]; // Positivo si se devuelve, negativo si se vende más
+                const truckItemIndex = updatedTruckInventory.findIndex(item => item.sku === sku);
+
+                if (truckItemIndex !== -1) {
+                    updatedTruckInventory[truckItemIndex].quantity += change;
+                    if (updatedTruckInventory[truckItemIndex].quantity < 0) {
+                        messages.push(`Error: Stock insuficiente para actualizar "${updatedTruckInventory[truckItemIndex].producto}". Cantidad resultante negativa.`);
+                        return; // Detener si hay stock negativo
+                    }
+                } else {
+                    // Si el SKU no estaba en el camión y el cambio es negativo (se intenta vender algo que no estaba)
+                    if (change < 0) {
+                        messages.push(`Error: Producto con SKU "${sku}" no encontrado en el inventario del camión para deducir.`);
+                        return;
+                    } else if (change > 0) {
+                        // Si el cambio es positivo (se devuelve algo que no estaba en el camión, ej. se elimina de la venta)
+                        // Esto podría indicar un error lógico o que el producto se añadió manualmente al camión.
+                        // Por ahora, lo ignoramos o lo añadimos con el cambio positivo.
+                        const originalItemDetails = inventory.find(i => i.sku === sku);
+                        if (originalItemDetails) {
+                            updatedTruckInventory.push({
+                                sku: originalItemDetails.sku,
+                                rubro: originalItemDetails.rubro,
+                                segmento: originalItemDetails.segmento,
+                                producto: originalItemDetails.producto,
+                                presentacion: originalItemDetails.presentacion,
+                                quantity: change,
+                                price: originalItemDetails.precio
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (messages.length > 0) {
+                showMessageModal(messages.join('\n'));
+                return;
+            }
+
+            if (newSaleItems.length === 0) {
+                showMessageModal('Error: La venta modificada no contiene productos.');
+                return;
+            }
+
+            const modifiedSaleRecord = {
+                ...selectedSaleForModification,
+                items: newSaleItems,
+                total: newTotalSaleAmount,
+                lastModified: getCurrentDateFormatted(),
+                modificationReason: modificationReason,
+            };
+
+            try {
+                const batch = db.batch();
+
+                // Actualizar el documento de venta en Firestore
+                const saleRef = db.collection('dailySales').doc(selectedSaleForModification.docId);
+                batch.set(saleRef, modifiedSaleRecord);
+
+                // Actualizar el inventario del camión en Firestore
+                const truckInventoryRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
+                batch.set(truckInventoryRef, { items: updatedTruckInventory });
+
+                await batch.commit();
+
+                // Actualizar estados locales después de la operación exitosa
+                dailySales = dailySales.map(sale => sale.docId === modifiedSaleRecord.docId ? modifiedSaleRecord : sale);
+                currentTruckInventory = updatedTruckInventory; // Actualizar el inventario local del camión
+
+                showMessageModal('Venta modificada y inventario actualizado exitosamente.');
+                closeModifySaleModal();
+                setScreenAndRender('cierreVentas');
+            } catch (error) {
+                console.error('Error al guardar la venta modificada:', error);
+                showMessageModal('Error al modificar la venta. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        const renderModifySaleModal = () => {
+            if (!showModifySaleModalState || !selectedSaleForModification) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'modify-sale-modal';
+            modalDiv.className = 'modal';
+
+            let itemsHtml = '';
+            // Usar el inventario actual del camión para obtener la cantidad disponible real
+            const currentInventoryMap = new Map(currentTruckInventory.map(item => [item.sku, item.quantity]));
+
+            // Combinar productos de la venta original y productos en el inventario actual del camión
+            const allSkusInvolved = new Set([
+                ...selectedSaleForModification.items.map(item => item.sku),
+                ...currentTruckInventory.map(item => item.sku)
+            ]);
+
+            allSkusInvolved.forEach(sku => {
+                const saleItem = selectedSaleForModification.items.find(item => item.sku === sku);
+                const inventoryItem = inventory.find(item => item.sku === sku); // Para obtener detalles del producto
+                const currentAvailable = currentInventoryMap.get(sku) !== undefined ? currentInventoryMap.get(sku) : (inventoryItem ? inventoryItem.cantidad : 0);
+                const quantityInModal = modifiedSaleQuantities[sku] !== undefined ? modifiedSaleQuantities[sku] : (saleItem ? saleItem.cantidadVendida : 0);
+
+                if (inventoryItem) { // Solo mostrar productos que existen en el inventario principal
+                    itemsHtml += `
+                        <div class="flex items-center mb-2">
+                            <img src="${productImages[sku] || productImages['default']}" alt="Imagen de ${inventoryItem.producto}" class="w-10 h-10 rounded-md object-cover mr-2">
+                            <span class="flex-1 text-left text-gray-700">${inventoryItem.producto} (${inventoryItem.presentacion}) - Disp: ${currentAvailable}</span>
+                            <input type="number" class="border border-gray-300 rounded-md text-center w-24 ml-2" value="${quantityInModal}" onchange="handleModifiedQuantityChange('${sku}', this.value)" min="0" max="${currentAvailable + (saleItem ? saleItem.cantidadVendida : 0)}">
+                        </div>
+                    `;
+                }
+            });
+
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Modificar Venta</h3>
+                    <p class="text-lg text-center mb-4">Venta ID: ${selectedSaleForModification.docId}</p>
+                    <p class="text-lg text-center mb-4">Cliente: ${selectedSaleForModification.client.nombreComercial}</p>
+                    <p class="text-lg text-center mb-4">Fecha: ${selectedSaleForModification.date}</p>
+
+                    <div class="mb-4">
+                        <label for="modificationReason" class="block text-left text-gray-700 text-sm font-bold mb-2">Razón de la Modificación:</label>
+                        <textarea id="modificationReason" class="w-full p-2 border border-gray-300 rounded-lg" rows="3" onchange="handleModificationReasonChange(this.value)">${modificationReason}</textarea>
+                    </div>
+
+                    <div class="mb-6 max-h-60 overflow-y-auto border border-gray-200 p-3 rounded-lg">
+                        <h4 class="text-xl font-bold mb-3 text-indigo-600">Productos en Venta</h4>
+                        ${itemsHtml}
+                    </div>
+
+                    <div class="flex justify-around gap-4 mt-5">
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveModifiedSale()">Guardar Modificación</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeModifySaleModal()">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+
+        // --- ARCHIVOS ADMIN ---
+        const renderArchivosAdminScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const filesAdminDiv = document.createElement('div');
+            filesAdminDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            filesAdminDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS DE ADMINISTRACIÓN</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes cargar y descargar archivos CSV para gestionar los datos maestros de la aplicación.
+                </p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Inventario Principal</h3>
+                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
+                        Cargar Inventario CSV
+                        <input type="file" onchange="handleFileUpload(event, 'inventory')" accept=".csv">
+                    </label>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCSV('inventario.csv')">Descargar Inventario CSV</button>
+                </div>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Vendedores</h3>
+                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
+                        Cargar Vendedores CSV
+                        <input type="file" onchange="handleFileUpload(event, 'vendors')" accept=".csv">
+                    </label>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCSV('vendedor.csv')">Descargar Vendedores CSV</button>
+                </div>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Vehículos</h3>
+                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
+                        Cargar Vehículos CSV
+                        <input type="file" onchange="handleFileUpload(event, 'vehicles')" accept=".csv">
+                    </label>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCSV('vehiculos.csv')">Descargar Vehículos CSV</button>
+                </div>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Clientes</h3>
+                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
+                        Cargar Clientes CSV
+                        <input type="file" onchange="handleFileUpload(event, 'clients')" accept=".csv">
+                    </label>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCSV('clientes.csv')">Descargar Clientes CSV</button>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(filesAdminDiv);
+        };
+
+        // Función para manejar la carga de archivos CSV
+        const handleFileUpload = (event, type) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const csvString = e.target.result;
+                const parsedData = parseCSV(csvString);
+
+                try {
+                    const batch = db.batch();
+                    const collectionRef = db.collection(type);
+
+                    // Eliminar todos los documentos existentes en la colección antes de añadir nuevos
+                    const existingDocs = await collectionRef.get();
+                    existingDocs.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+
+                    // Añadir los nuevos documentos
+                    for (const item of parsedData) {
+                        let docId = item.sku || item.name || item.plate || item.ID; // Usar un ID único del CSV
+                        if (type === 'clients' && item.ID) { // Para clientes, usar el ID del CSV
+                            docId = item.ID;
+                        } else if (type === 'clients' && !item.ID) { // Generar un ID si no viene en el CSV
+                            docId = `client_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+                            item.ID = docId; // Asignar el ID generado al objeto
+                        } else if (type === 'inventory' && item.Sku) {
+                            docId = item.Sku;
+                        } else if (type === 'vendors' && item.Name) {
+                            docId = item.Name.replace(/\s/g, '_'); // Usar nombre como ID para vendors
+                        } else if (type === 'vehicles' && item.Plate) {
+                            docId = item.Plate;
+                        } else {
+                            docId = collectionRef.doc().id; // Fallback a ID automático de Firestore
+                        }
+
+                        // Mapear los nombres de las columnas del CSV a los nombres de las propiedades de Firestore
+                        let dataToSave = {};
+                        if (type === 'inventory') {
+                            dataToSave = {
+                                rubro: item.Rubro,
+                                sku: item.Sku,
+                                segmento: item.Segmento,
+                                producto: item.Producto,
+                                presentacion: item.Presentacion,
+                                cantidad: parseInt(item.Cantidad) || 0,
+                                precio: parseFloat(item.Precio) || 0
+                            };
+                        } else if (type === 'vendors') {
+                            dataToSave = {
+                                name: item.Name,
+                                category: item.Category
+                            };
+                        } else if (type === 'vehicles') {
+                            dataToSave = {
+                                plate: item.Plate,
+                                name: item.Name,
+                                brand: item.Brand,
+                                model: item.Model
+                            };
+                            // Si se cargan nuevos vehículos, crear un inventario de camión vacío para ellos
+                            const truckInventoryDoc = await db.collection('truck_inventories').doc(docId).get();
+                            if (!truckInventoryDoc.exists) {
+                                batch.set(db.collection('truck_inventories').doc(docId), { items: [] });
+                            }
+                        } else if (type === 'clients') {
+                            dataToSave = {
+                                id: docId, // Usar el ID (generado o del CSV)
+                                nombreComercial: item.NombreComercial,
+                                nombrePersonal: item.NombrePersonal,
+                                zona: item.Zona,
+                                sector: item.Sector,
+                                tlf: item.Telefono,
+                                observaciones: item.Observaciones
+                            };
+                        } else {
+                            dataToSave = item; // Para otros tipos, guardar tal cual
+                        }
+
+                        batch.set(collectionRef.doc(docId), dataToSave);
+                    }
+
+                    await batch.commit();
+                    await fetchDataFromFirestore(); // Recargar todos los datos después de la carga
+                    showMessageModal(`Archivo CSV de ${type} cargado y datos actualizados exitosamente.`);
+                } catch (error) {
+                    console.error(`Error al cargar el archivo CSV de ${type} a Firestore:`, error);
+                    showMessageModal(`Error al cargar el archivo CSV de ${type}. Asegúrate de que el formato sea correcto y tengas permisos.`);
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        // --- ARCHIVOS DE VENTA (PARA USUARIOS NORMALES) ---
+        const renderArchivosVentaScreen = () => {
+            // No se requiere check de isAdmin() aquí, ya que es para usuarios normales.
+            if (!currentUser) { // Asegurarse de que haya un usuario logueado
+                showMessageModal('Acceso denegado: Debes iniciar sesión para ver tus archivos de venta.');
+                setScreenAndRender('login');
+                return;
+            }
+
+            const filesVentaDiv = document.createElement('div');
+            filesVentaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            filesVentaDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">MIS ARCHIVOS DE VENTA</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes ver y descargar tus archivos de venta individuales.
+                </p>
+
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Mis Archivos de Venta Generados</h3>
+                    <div id="generated-sale-files-list"></div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(filesVentaDiv);
+
+            const generatedSaleFilesListDiv = document.getElementById('generated-sale-files-list');
+            // Filtrar las ventas para mostrar solo las del usuario actual
+            // NOTA: Se asume que 'selectedVendor' refleja el vendedor logueado.
+            // Si un usuario puede cambiar su 'selectedVendor', esto podría no ser preciso.
+            // Una forma más robusta sería filtrar por currentUser.uid si el saleRecord.vendor guardara el UID.
+            const userSales = dailySales.filter(sale => sale.vendor === selectedVendor);
+
+            if (userSales.length === 0) {
+                generatedSaleFilesListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de venta generados para ti.</p>';
+            } else {
+                // Ordenar por fecha descendente
+                const sortedUserSales = [...userSales].sort((a, b) => {
+                    const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
+                    const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
+                    return dateB - dateA;
+                });
+
+                sortedUserSales.forEach(sale => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-yellow-800 mb-2 sm:mb-0">
+                            ${sale.fileName} <br>
+                            <span class="text-sm text-gray-600">
+                                Cliente: ${sale.client.nombreComercial} - Total: $${sale.total.toFixed(2)} - Fecha: ${sale.date}
+                            </span>
+                        </span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${sale.fileName}', '${sale.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR RECIBO</button>
+                            <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>
+                        </div>
+                    `;
+                    generatedSaleFilesListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        // --- VEHÍCULOS DE CARGA (ADMIN) ---
+        const renderVehiclesScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden gestionar vehículos.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const vehiclesDiv = document.createElement('div');
+            vehiclesDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            vehiclesDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">VEHÍCULOS DE CARGA</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes gestionar los vehículos disponibles para la carga de inventario.
+                </p>
+
+                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Lista de Vehículos</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Placa</th>
+                                    <th>Nombre</th>
+                                    <th>Marca</th>
+                                    <th>Modelo</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vehicle-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
+                    <h3 class="text-xl font-bold mb-4 text-lime-700">Agregar Nuevo Vehículo</h3>
+                    <input type="text" id="newVehiclePlate" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Placa del Vehículo">
+                    <input type="text" id="newVehicleName" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre del Vehículo">
+                    <input type="text" id="newVehicleBrand" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Marca">
+                    <input type="text" id="newVehicleModel" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Modelo">
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleAddVehicle()">Agregar Vehículo</button>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(vehiclesDiv);
+
+            updateVehicleTable();
+            if (editingVehicle) {
+                renderEditVehicleModal();
+            }
+        };
+
+        const updateVehicleTable = () => {
+            const vehicleTableBody = document.getElementById('vehicle-table-body');
+            if (!vehicleTableBody) return;
+
+            vehicleTableBody.innerHTML = '';
+            if (vehicles.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="5" class="text-center text-gray-500 py-4">No hay vehículos registrados.</td>`;
+                vehicleTableBody.appendChild(row);
+            } else {
+                vehicles.forEach(vehicle => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${vehicle.plate}</td>
+                        <td>${vehicle.name}</td>
+                        <td>${vehicle.brand}</td>
+                        <td>${vehicle.model}</td>
+                        <td>
+                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="openEditVehicleModal(${JSON.stringify(vehicle).replace(/"/g, '&quot;')})">Editar</button>
+                            <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm ml-1" onclick="showDeleteVehicleConfirmation('${vehicle.plate}')">Eliminar</button>
+                        </td>
+                    `;
+                    vehicleTableBody.appendChild(row);
+                });
+            }
+        };
+
+        const handleAddVehicle = async () => {
+            const plate = document.getElementById('newVehiclePlate').value;
+            const name = document.getElementById('newVehicleName').value;
+            const brand = document.getElementById('newVehicleBrand').value;
+            const model = document.getElementById('newVehicleModel').value;
+
+            if (!plate || !name) {
+                showMessageModal('Por favor, ingresa la placa y el nombre del vehículo.');
+                return;
+            }
+
+            if (vehicles.some(v => v.plate === plate)) {
+                showMessageModal('Error: Ya existe un vehículo con esta placa.');
+                return;
+            }
+
+            try {
+                const newVehicleData = { plate, name, brand, model };
+                await db.collection('vehicles').doc(plate).set(newVehicleData);
+                await db.collection('truck_inventories').doc(plate).set({ items: [] }); // Crear inventario vacío para el nuevo camión
+
+                vehicles.push(newVehicleData); // Actualizar estado local
+                showMessageModal('Vehículo agregado exitosamente.');
+
+                document.getElementById('newVehiclePlate').value = '';
+                document.getElementById('newVehicleName').value = '';
+                document.getElementById('newVehicleBrand').value = '';
+                document.getElementById('newVehicleModel').value = '';
+
+                render();
+            } catch (error) {
+                console.error('Error al agregar vehículo a Firestore:', error);
+                showMessageModal('Error al agregar vehículo. Revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        const openEditVehicleModal = (vehicle) => {
+            editingVehicle = JSON.parse(JSON.stringify(vehicle)); // Copia profunda
+            render(); // Re-render para mostrar el modal
+        };
+
+        const closeEditVehicleModal = () => {
+            editingVehicle = null;
+            render();
+        };
+
+        const handleEditVehicleChange = (field, value) => {
+            if (editingVehicle) {
+                editingVehicle[field] = value;
+            }
+        };
+
+        const saveEditedVehicle = async () => {
+            if (!editingVehicle) return;
+
+            if (!editingVehicle.name || !editingVehicle.plate) {
+                showMessageModal('Error: La placa y el nombre del vehículo son obligatorios.');
+                return;
+            }
+
+            try {
+                await db.collection('vehicles').doc(editingVehicle.plate).set(editingVehicle);
+                vehicles = vehicles.map(v => v.plate === editingVehicle.plate ? editingVehicle : v); // Actualizar estado local
+                showMessageModal('Vehículo actualizado exitosamente.');
+                closeEditVehicleModal();
+            } catch (error) {
+                console.error('Error al actualizar vehículo en Firestore:', error);
+                showMessageModal('Error al actualizar vehículo. Revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        const renderEditVehicleModal = () => {
+            if (!editingVehicle) return;
+
+            const modalDiv = document.createElement('div');
+            modalDiv.id = 'edit-vehicle-modal';
+            modalDiv.className = 'modal';
+            modalDiv.innerHTML = `
+                <div class="modal-content">
+                    <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Editar Vehículo</h3>
+                    <p class="text-lg text-center mb-4">Placa: ${editingVehicle.plate}</p>
+                    <input type="text" id="editVehicleName" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Nombre del Vehículo" value="${editingVehicle.name}" onchange="handleEditVehicleChange('name', this.value)">
+                    <input type="text" id="editVehicleBrand" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Marca" value="${editingVehicle.brand}" onchange="handleEditVehicleChange('brand', this.value)">
+                    <input type="text" id="editVehicleModel" class="h-12 border border-gray-300 rounded-lg px-4 mb-3 text-base w-full bg-white" placeholder="Modelo" value="${editingVehicle.model}" onchange="handleEditVehicleChange('model', this.value)">
+                    <div class="flex justify-around gap-4 mt-5">
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveEditedVehicle()">Guardar Cambios</button>
+                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeEditVehicleModal()">Cancelar</button>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(modalDiv);
+        };
+
+        const showDeleteVehicleConfirmation = (plate) => {
+            showConfirmationModal(`¿Estás seguro de que quieres eliminar el vehículo con placa ${plate}? Esto también eliminará su inventario asociado.`, () => deleteVehicleLogic(plate));
+        };
+
+        const deleteVehicleLogic = async (plate) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden eliminar vehículos.');
+                return;
+            }
+            try {
+                const batch = db.batch();
+
+                // Eliminar el documento del vehículo
+                const vehicleRef = db.collection('vehicles').doc(plate);
+                batch.delete(vehicleRef);
+
+                // Eliminar el inventario del camión asociado
+                const truckInventoryRef = db.collection('truck_inventories').doc(plate);
+                batch.delete(truckInventoryRef);
+
+                // Desasignar el vehículo de cualquier usuario que lo tenga asignado
+                const usersWithThisTruck = users.filter(user => user.assignedTruckPlate === plate);
+                for (const user of usersWithThisTruck) {
+                    const userRef = db.collection('users').doc(user.uid);
+                    batch.update(userRef, { assignedTruckPlate: null });
+                }
+
+                await batch.commit();
+
+                // Actualizar estados locales
+                vehicles = vehicles.filter(v => v.plate !== plate);
+                users = users.map(user => user.assignedTruckPlate === plate ? { ...user, assignedTruckPlate: null } : user);
+                if (currentUserData.assignedTruckPlate === plate) {
+                    currentUserData.assignedTruckPlate = null;
+                    currentTruckInventory = [];
+                }
+
+                showMessageModal('Vehículo y su inventario asociado eliminados exitosamente. Usuarios desasignados.');
+                render();
+            } catch (error) {
+                console.error('Error al eliminar vehículo:', error);
+                showMessageModal('Error al eliminar el vehículo. Revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        // --- ASIGNAR VEHÍCULO A USUARIO (ADMIN) ---
+        const renderAssignVehicleScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden asignar vehículos.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const assignVehicleDiv = document.createElement('div');
+            assignVehicleDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            assignVehicleDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ASIGNAR VEHÍCULO A USUARIO</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Asigna un vehículo de carga a un usuario vendedor.
+                </p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="userSelectForAssignment" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Usuario:</label>
+                    <select id="userSelectForAssignment" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="updateVehicleAssignmentDisplay(this.value)">
+                        <option value="">-- Seleccione un usuario --</option>
+                        ${users.map(u => `<option value="${u.uid}" ${u.uid === (currentUser ? currentUser.uid : '') ? 'selected' : ''}>${u.email} (${u.role})</option>`).join('')}
+                    </select>
+                </div>
+
+                <div id="vehicle-assignment-details">
+                    <!-- Contenido dinámico de asignación de vehículo -->
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(assignVehicleDiv);
+
+            // Cargar los detalles del usuario seleccionado inicialmente (si hay uno)
+            if (currentUser && users.length > 0) {
+                updateVehicleAssignmentDisplay(currentUser.uid);
+            }
+        };
+
+        const updateVehicleAssignmentDisplay = (userId) => {
+            const assignmentDetailsDiv = document.getElementById('vehicle-assignment-details');
+            assignmentDetailsDiv.innerHTML = '';
+
+            const selectedUser = users.find(u => u.uid === userId);
+
+            if (!selectedUser) {
+                assignmentDetailsDiv.innerHTML = '<p class="text-center text-gray-600">Seleccione un usuario para gestionar su asignación de vehículo.</p>';
+                return;
+            }
+
+            assignmentDetailsDiv.innerHTML = `
+                <div class="mb-6 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
+                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Asignar Vehículo a ${selectedUser.email}</h3>
+                    <p class="text-base text-gray-700 mb-4">Vehículo actualmente asignado: <strong>${selectedUser.assignedTruckPlate || 'Ninguno'}</strong></p>
+
+                    <label for="vehicleSelectForUser" class="block text-lg font-semibold text-emerald-700 mb-2">Seleccionar Vehículo:</label>
+                    <select id="vehicleSelectForUser" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent">
+                        <option value="">-- Desasignar Vehículo --</option>
+                        ${vehicles.map(v => `<option value="${v.plate}" ${selectedUser.assignedTruckPlate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
+                    </select>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="assignVehicleToUser('${selectedUser.uid}')">Guardar Asignación</button>
+                </div>
+            `;
+        };
+
+        const assignVehicleToUser = async (userId) => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden asignar vehículos.');
+                return;
+            }
+            const vehiclePlate = document.getElementById('vehicleSelectForUser').value || null; // Puede ser null para desasignar
+
+            try {
+                const userRef = db.collection('users').doc(userId);
+                await userRef.update({ assignedTruckPlate: vehiclePlate });
+
+                // Actualizar el estado local de `users`
+                users = users.map(u => u.uid === userId ? { ...u, assignedTruckPlate: vehiclePlate } : u);
+
+                // Si el usuario asignado es el currentUser, actualizar también su estado local
+                if (currentUser && currentUser.uid === userId) {
+                    currentUserData.assignedTruckPlate = vehiclePlate;
+                    // También limpiar o cargar el inventario del camión del usuario actual
+                    if (vehiclePlate) {
+                        const truckInventoryDoc = await db.collection('truck_inventories').doc(vehiclePlate).get();
+                        currentTruckInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+                    } else {
+                        currentTruckInventory = [];
+                    }
+                }
+
+                showMessageModal(`Vehículo ${vehiclePlate || 'desasignado'} exitosamente al usuario.`);
+                render(); // Re-render para actualizar la UI
+            } catch (error) {
+                console.error('Error al asignar vehículo:', error);
+                showMessageModal('Error al asignar vehículo. Revisa tu conexión y las reglas de seguridad.');
+            }
+        };
+
+        // --- RECEPCIÓN DE MERCANCÍA (CARGA) Y RESET DE CARGAS INICIALES ---
         // Pantalla de selección para la sección "CARGA" (solo para admins)
         const renderCargaSelectionScreen = () => {
             if (!isAdmin()) {
@@ -1055,16 +2787,16 @@
                     Selecciona una opción para la gestión de cargas.
                 </p>
                 <div class="flex flex-wrap justify-center gap-4">
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('truckLoading')">RECEPCIÓN DE MERCANCÍA EN CAMIÓN</button>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('loadHistory')">HISTORIAL DE CARGAS</button>
-                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-red-700" onclick="setScreenAndRender('resetCargasInicialesPassword')">RESET CARGAS INICIALES</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="renderTruckReceivingScreen()">RECEPCIÓN DE MERCANCÍA EN CAMIÓN</button>
+                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="renderLoadHistoryScreen()">HISTORIAL DE CARGAS</button>
+                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-red-700" onclick="renderResetCargasInicialesPasswordScreen()">RESET CARGAS INICIALES</button>
                 </div>
                 <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
             `;
             appRoot.appendChild(cargaSelectionDiv);
         };
 
-        // NUEVO: Pantalla de solicitud de contraseña para Reset Cargas Iniciales
+        // Pantalla de solicitud de contraseña para Reset Cargas Iniciales
         const renderResetCargasInicialesPasswordScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.');
@@ -1084,7 +2816,7 @@
             appRoot.appendChild(passwordScreenDiv);
         };
 
-        // NUEVO: Lógica para verificar la contraseña del administrador
+        // Lógica para verificar la contraseña del administrador
         const handleResetCargasInicialesPassword = async () => {
             const password = document.getElementById('adminPasswordForReset').value;
 
@@ -1108,7 +2840,7 @@
             }
         };
 
-        // NUEVO: Cargar todos los inventarios (principal y de camiones) para la edición
+        // Cargar todos los inventarios (principal y de camiones) para la edición
         const loadAllInventoriesForReset = async () => {
             resetQuantities = {};
             allTruckInventories = {};
@@ -1145,8 +2877,8 @@
             });
 
             // Asegurarse de que todos los SKUs del inventario principal tengan entradas para todos los camiones (con 0 si no están)
-            Object.keys(resetQuantities).forEach(sku => {
-                vehicles.forEach(vehicle => {
+            vehicles.forEach(vehicle => {
+                Object.keys(resetQuantities).forEach(sku => {
                     if (resetQuantities[sku].trucks[vehicle.plate] === undefined) {
                         resetQuantities[sku].trucks[vehicle.plate] = 0;
                     }
@@ -1156,7 +2888,7 @@
             console.log('[Reset Cargas] Datos cargados para edición:', resetQuantities);
         };
 
-        // NUEVO: Pantalla de edición de inventarios para Reset Cargas Iniciales
+        // Pantalla de edición de inventarios para Reset Cargas Iniciales
         const renderResetCargasInicialesEditScreen = () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.');
@@ -1219,7 +2951,7 @@
             appRoot.appendChild(editScreenDiv);
         };
 
-        // NUEVO: Manejador de cambio de cantidad para el reset de inventarios
+        // Manejador de cambio de cantidad para el reset de inventarios
         const handleResetQuantityChange = (sku, type, value) => {
             const parsedValue = parseInt(value) || 0;
             if (type === 'main') {
@@ -1229,7 +2961,7 @@
             }
         };
 
-        // NUEVO: Lógica para guardar los cambios de Reset Cargas Iniciales
+        // Lógica para guardar los cambios de Reset Cargas Iniciales
         const saveResetCargasIniciales = async () => {
             if (!isAdmin()) {
                 showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en esta función.');
@@ -1261,9 +2993,21 @@
                 }
 
                 // Preparar datos para el inventario principal
-                const originalItemDetails = inventory.find(item => item.sku === sku) || { rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${sku}`, presentacion: 'Unidad', precio: 0 };
-                updatedMainInventory.push({ ...originalItemDetails, sku: sku, cantidad: mainQty });
-
+                const originalItemDetails = inventory.find(item => item.sku === sku);
+                if (originalItemDetails) {
+                    updatedMainInventory.push({ ...originalItemDetails, cantidad: mainQty });
+                } else {
+                    console.warn(`SKU ${sku} no encontrado en el inventario principal original. Se añadirá con la cantidad especificada.`);
+                    updatedMainInventory.push({
+                        rubro: 'Desconocido',
+                        sku: sku,
+                        segmento: 'Desconocido',
+                        producto: `Producto ${sku}`,
+                        presentacion: 'Unidad',
+                        cantidad: mainQty,
+                        precio: 0
+                    });
+                }
 
                 // Preparar datos para los inventarios de camiones
                 for (const truckPlate in resetQuantities[sku].trucks) {
@@ -1279,7 +3023,7 @@
                                 producto: productDetails.producto,
                                 presentacion: productDetails.presentacion,
                                 quantity: truckQty,
-                                price: productDetails.precio // Usar el precio del inventario principal
+                                price: productDetails.precio
                             });
                         }
                     }
@@ -1315,10 +3059,9 @@
                 setScreenAndRender('cargaSelection');
             } catch (error) {
                 console.error('Error al guardar los cambios de cargas iniciales:', error);
-                showMessageModal('Error al guardar los cambios de inventario. Revisa tu conexión y reglas de seguridad.');
+                showMessageModal('Error al guardar los cambios de inventario. Revisa tu conexión y las reglas de seguridad.');
             }
         };
-
 
         // Pantalla de recepción de mercancía en camión
         const renderTruckReceivingScreen = async () => {
@@ -1428,7 +3171,7 @@
             render();
         };
 
-        // NUEVO: Manejador de selección de quien realiza la carga
+        // Manejador de selección de quien realiza la carga
         const handleLoaderSelection = (loaderName) => {
             selectedLoader = loaderName || null;
             receivingQuantities = {}; // Reiniciar cantidades de recepción al cambiar el cargador
@@ -1511,11 +3254,6 @@
                 });
             }
 
-            if (messages.length > 0) {
-                showMessageModal(messages.join('\n'));
-                return;
-            }
-
             if (!hasPositiveReceivingQuantity) {
                 showMessageModal('Por favor, ingresa al menos una cantidad positiva para registrar la recepción.');
                 return;
@@ -1548,412 +3286,533 @@
                     const itemRef = db.collection('inventory').doc(item.sku);
                     batch.set(itemRef, item);
                 }
-                inventory = itemsToUpdateInWarehouse; // Actualizar estado local
+                // No se actualiza inventory aquí directamente, se hará con fetchDataFromFirestore
 
                 // Actualizar inventario del camión en Firestore
                 const truckInventoryRef = db.collection('truck_inventories').doc(selectedTruckForReceiving.plate);
                 batch.set(truckInventoryRef, { items: itemsToUpdateInTruck });
-                selectedTruckInventoryForReceiving = itemsToUpdateInTruck; // Actualizar estado local
+                // No se actualiza selectedTruckInventoryForReceiving aquí directamente
 
                 // Guardar el registro de carga en Firestore
                 const docRef = await db.collection('loadRecords').add(loadRecord);
                 loadRecord.docId = docRef.id;
-                loadRecords.push(loadRecord); // Añadir al estado local
-                console.log('[Firestore] Registro de carga guardado con ID:', docRef.id);
+                // No se actualiza loadRecords aquí directamente
 
 
                 await batch.commit(); // Confirmar todas las operaciones del batch
 
+                // Re-fetch all data to ensure consistency across the application
+                await fetchDataFromFirestore();
+
                 showMessageModal('Recepción de mercancía registrada exitosamente. Inventarios actualizados y archivo de carga generado.');
-                downloadCSV(loadFileName); // Descargar el archivo CSV
+                downloadCSV(loadFileName, loadCSVContent); // Descargar el archivo CSV
                 receivingQuantities = {}; // Limpiar cantidades de recepción
                 selectedTruckForReceiving = null; // Limpiar selección de camión
                 selectedLoader = null; // Limpiar selección de cargador
-                render(); // Re-renderizar para mostrar los cambios
+                setScreenAndRender('cargaSelection'); // Re-renderizar para mostrar los cambios
             } catch (error) {
                 console.error('Error al registrar la recepción de mercancía o guardar registro de carga:', error);
                 showMessageModal('Error al registrar la recepción de mercancía. Revisa tu conexión y reglas de seguridad.');
             }
         };
 
-
-        // NUEVA: Pantalla de selección de inventario para administradores (HUB)
-        const renderAdminInventorySelection = () => {
+        // Pantalla de Historial de Cargas (con botón Limpiar Historial)
+        const renderLoadHistoryScreen = () => {
             if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección de inventario.');
+                showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de cargas.');
                 setScreenAndRender('main');
                 return;
             }
 
-            const selectionDiv = document.createElement('div');
-            selectionDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            selectionDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">SELECCIÓN DE INVENTARIO (ADMIN)</h2>
+            const loadHistoryDiv = document.createElement('div');
+            loadHistoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            loadHistoryDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE CARGAS</h2>
                 <p class="text-base text-center my-5 text-gray-600">
-                    Selecciona qué inventario deseas visualizar o gestionar.
-                </p>
-                <div class="flex flex-wrap justify-center gap-4">
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('adminMainInventory')">INVENTARIO PRINCIPAL</button>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700" onclick="setScreenAndRender('adminVehicleInventory')">INVENTARIO POR VEHÍCULO</button>
-                </div>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
-            `;
-            appRoot.appendChild(selectionDiv);
-        };
-
-        // NUEVA: Pantalla de Inventario Principal (para Admin)
-        const renderAdminMainInventoryScreen = () => {
-            if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden ver el inventario principal.');
-                setScreenAndRender('main');
-                return;
-            }
-
-            const mainInventoryDiv = document.createElement('div');
-            mainInventoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            mainInventoryDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO PRINCIPAL (ALMACÉN)</h2>
-                <p class="text-base text-center mb-4 text-gray-700">Mostrando inventario del almacén principal.</p>
-                <div class="table-container mb-5">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Rubro</th>
-                                <th>Sku</th>
-                                <th>Producto</th>
-                                <th>Presentación</th>
-                                <th>Cantidad</th>
-                                <th>Precio</th>
-                            </tr>
-                        </thead>
-                        <tbody id="main-inventory-display-body">
-                        </tbody>
-                    </table>
-                </div>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('adminInventorySelection')">Volver</button>
-            `;
-            appRoot.appendChild(mainInventoryDiv);
-
-            const mainInventoryDisplayBody = document.getElementById('main-inventory-display-body');
-            inventory.forEach(item => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${item.rubro}</td>
-                    <td>${item.sku}</td>
-                    <td>${item.producto}</td>
-                    <td>${item.presentacion}</td>
-                    <td>${item.cantidad}</td>
-                    <td>$${item.precio.toFixed(2)}</td>
-                `;
-                mainInventoryDisplayBody.appendChild(row);
-            });
-        };
-
-        // renderInventarioScreen ahora es para el usuario normal con filtro
-        const renderInventarioScreen = () => {
-            if (!isUser()) {
-                showMessageModal('Acceso denegado: Solo los usuarios pueden acceder a esta sección de inventario.');
-                setScreenAndRender('main');
-                return;
-            }
-
-            const inventarioDiv = document.createElement('div');
-            inventarioDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            inventarioDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO DE MI CAMIÓN</h2>
-                <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <label for="inventorySearchInputUser" class="block text-lg font-semibold text-blue-700 mb-2">Buscar Producto:</label>
-                    <input type="text" id="inventorySearchInputUser" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Buscar por SKU, Producto o Presentación..." value="${inventorySearchTermUser}" onkeyup="filterInventoryForUserScreen(this.value)">
-                </div>
-                <div id="inventory-content"></div>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
-            `;
-            appRoot.appendChild(inventarioDiv);
-
-            updateUserInventoryDisplayTable();
-        };
-
-        // NUEVO: Función para filtrar inventario del usuario
-        const filterInventoryForUserScreen = (term) => {
-            inventorySearchTermUser = term;
-            updateUserInventoryDisplayTable();
-        };
-
-        // Función auxiliar para actualizar la tabla de inventario del USUARIO
-        const updateUserInventoryDisplayTable = () => {
-            const inventoryContentDiv = document.getElementById('inventory-content');
-            if (!inventoryContentDiv) return;
-
-            if (!currentUserData.assignedTruckPlate) {
-                inventoryContentDiv.innerHTML = `
-                    <p class="text-center text-red-600 text-lg py-4">Todavía no tienes un vehículo asignado.</p>
-                    <p class="text-center text-gray-600 text-md">Por favor, contacta a un administrador para que te asigne uno.</p>
-                `;
-                return;
-            }
-
-            const filteredInventory = currentTruckInventory.filter(item =>
-                item.sku.toLowerCase().includes(inventorySearchTermUser.toLowerCase()) ||
-                item.producto.toLowerCase().includes(inventorySearchTermUser.toLowerCase()) ||
-                item.presentacion.toLowerCase().includes(inventorySearchTermUser.toLowerCase())
-            );
-
-            let tableHtml = `
-                <p class="text-base text-center mb-4 text-gray-700">Mostrando inventario de tu camión (${currentUserData.assignedTruckPlate})</p>
-                <div class="table-container mb-5">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Rubro</th>
-                                <th>Sku</th>
-                                <th>Producto</th>
-                                <th>Presentación</th>
-                                <th>Cantidad</th>
-                                <th>Precio</th>
-                            </tr>
-                        </thead>
-                        <tbody id="inventory-display-body">
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            inventoryContentDiv.innerHTML = tableHtml;
-
-            const inventoryDisplayBody = document.getElementById('inventory-display-body');
-            if (filteredInventory.length === 0) {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td colspan="6" class="text-center text-gray-500 py-4">No se encontraron productos que coincidan con la búsqueda.</td>`;
-                inventoryDisplayBody.appendChild(row);
-            } else {
-                filteredInventory.forEach(item => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${item.rubro}</td>
-                        <td>${item.sku}</td>
-                        <td>${item.producto}</td>
-                        <td>${item.presentacion}</td>
-                        <td>${item.quantity}</td>
-                        <td>$${item.price.toFixed(2)}</td>
-                    `;
-                    inventoryDisplayBody.appendChild(row);
-                });
-            }
-        };
-
-        // NUEVA: Pantalla para que el admin seleccione un vehículo para ver su inventario
-        const renderAdminVehicleInventoryScreen = async () => {
-            if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.');
-                setScreenAndRender('main');
-                return;
-            }
-
-            const adminVehicleInventoryDiv = document.createElement('div');
-            adminVehicleInventoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            adminVehicleInventoryDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO POR VEHÍCULO (ADMIN)</h2>
-
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <label for="adminVehicleSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión:</label>
-                    <select id="adminVehicleSelect" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="handleAdminVehicleSelection(this.value)">
-                        <option value="">-- Seleccione un camión --</option>
-                        ${vehicles.map(v => `<option value="${v.plate}" ${selectedAdminVehicleForInventory && selectedAdminVehicleForInventory.plate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
-                    </select>
-                </div>
-
-                <div id="selected-vehicle-inventory-display">
-                    ${selectedAdminVehicleForInventory ? `<p class="text-center text-gray-600 text-lg py-4">Cargando inventario para ${selectedAdminVehicleForInventory.name}...</p>` : '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>'}
-                </div>
-
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('adminInventorySelection')">Volver</button>
-            `;
-            appRoot.appendChild(adminVehicleInventoryDiv);
-
-            if (selectedAdminVehicleForInventory) {
-                // Llama a la función auxiliar para mostrar el inventario del camión seleccionado
-                await displayAdminSelectedTruckInventory(selectedAdminVehicleForInventory.plate);
-            }
-        };
-
-        // NUEVA: Función auxiliar para mostrar el inventario del camión seleccionado por el admin
-        const displayAdminSelectedTruckInventory = async (plate) => {
-            const displayDiv = document.getElementById('selected-vehicle-inventory-display');
-            if (!displayDiv) return;
-
-            displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Cargando inventario para ${plate}...</p>`;
-
-            try {
-                const truckInventoryDoc = await db.collection('truck_inventories').doc(plate).get();
-                const displayInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-                if (displayInventory.length === 0) {
-                     displayDiv.innerHTML = `
-                        <p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>
-                    `;
-                } else {
-                    let tableHtml = `
-                        <div class="table-container mb-5">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Rubro</th>
-                                        <th>Sku</th>
-                                        <th>Producto</th>
-                                        <th>Presentación</th>
-                                        <th>Cantidad</th>
-                                        <th>Precio</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="admin-truck-inventory-display-body">
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                    displayDiv.innerHTML = tableHtml;
-
-                    const adminTruckInventoryDisplayBody = document.getElementById('admin-truck-inventory-display-body');
-                    displayInventory.forEach(item => {
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td>${item.rubro}</td>
-                            <td>${item.sku}</td>
-                            <td>${item.producto}</td>
-                            <td>${item.presentacion}</td>
-                            <td>${item.quantity}</td>
-                            <td>$${item.price.toFixed(2)}</td>
-                        `;
-                        adminTruckInventoryDisplayBody.appendChild(row);
-                    });
-                }
-            } catch (error) {
-                console.error('Error al cargar inventario del camión para admin:', error);
-                showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
-                displayDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
-            }
-        };
-
-
-        // NUEVA: Manejador de selección de vehículo para el admin en la vista de inventario
-        const handleAdminVehicleSelection = (plate) => {
-            if (plate) {
-                selectedAdminVehicleForInventory = vehicles.find(v => v.plate === plate);
-                displayAdminSelectedTruckInventory(plate); // Llama a la función auxiliar para mostrar
-            } else {
-                selectedAdminVehicleForInventory = null;
-                // Limpiar el contenido si no hay camión seleccionado
-                document.getElementById('selected-vehicle-inventory-display').innerHTML = '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>';
-            }
-        };
-
-        // --- PANTALLA: ARCHIVOS ADMIN ---
-        const renderArchivosAdminScreen = () => {
-            if (!isAdmin()) {
-                showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.');
-                setScreenAndRender('main');
-                return;
-            }
-
-            const filesAdminDiv = document.createElement('div');
-            filesAdminDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            filesAdminDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ARCHIVOS DE ADMINISTRACIÓN</h2>
-                <p class="text-base text-center my-5 text-gray-600">
-                    Aquí puedes cargar y descargar archivos CSV para gestionar los datos maestros de la aplicación.
-                </p>
-
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Inventario Principal</h3>
-                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
-                        Cargar Inventario CSV
-                        <input type="file" onchange="handleFileUpload(event, 'inventory')" accept=".csv">
-                    </label>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCurrentData('inventory')">Descargar Inventario CSV</button>
-                </div>
-
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Vendedores</h3>
-                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
-                        Cargar Vendedores CSV
-                        <input type="file" onchange="handleFileUpload(event, 'vendors')" accept=".csv">
-                    </label>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCurrentData('vendors')">Descargar Vendedores CSV</button>
-                </div>
-
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <h3 class="text-xl font-bold mb-4 text-blue-700">Gestión de Vehículos</h3>
-                    <label class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 cursor-pointer file-input-wrapper mr-2">
-                        Cargar Vehículos CSV
-                        <input type="file" onchange="handleFileUpload(event, 'vehicles')" accept=".csv">
-                    </label>
-                    <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="downloadCurrentData('vehicles')">Descargar Vehículos CSV</button>
-                </div>
-
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
-            `;
-            appRoot.appendChild(filesAdminDiv);
-        };
-
-        // --- PANTALLA: ARCHIVOS DE VENTA (PARA USUARIOS NORMALES) ---
-        const renderArchivosVentaScreen = () => {
-            // No se requiere check de isAdmin() aquí, ya que es para usuarios normales.
-            if (!currentUser) { // Asegurarse de que haya un usuario logueado
-                showMessageModal('Acceso denegado: Debes iniciar sesión para ver tus archivos de venta.');
-                setScreenAndRender('login');
-                return;
-            }
-
-            const filesVentaDiv = document.createElement('div');
-            filesVentaDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
-            filesVentaDiv.innerHTML = `
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">MIS ARCHIVOS DE VENTA</h2>
-                <p class="text-base text-center my-5 text-gray-600">
-                    Aquí puedes ver y descargar tus archivos de venta individuales.
+                    Aquí puedes ver y descargar los archivos de cargas generados.
                 </p>
 
                 <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300">
-                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Mis Archivos de Venta Generados</h3>
-                    <div id="generated-sale-files-list"></div>
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Archivos de Carga Generados</h3>
+                    <div id="generated-load-files-list"></div>
                 </div>
 
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearLoadHistoryConfirmation()">Limpiar Historial</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Volver</button>
             `;
-            appRoot.appendChild(filesVentaDiv);
+            appRoot.appendChild(loadHistoryDiv);
 
-            const generatedSaleFilesListDiv = document.getElementById('generated-sale-files-list');
-            // Filtrar las ventas para mostrar solo las del usuario actual
-            // NOTA: Se asume que 'selectedVendor' refleja el vendedor logueado.
-            // Si un usuario puede cambiar su 'selectedVendor', esto podría no ser preciso.
-            // Una forma más robusta sería filtrar por currentUser.uid si el saleRecord.vendor guardara el UID.
-            const userSales = dailySales.filter(sale => sale.vendor === selectedVendor);
-
-            if (userSales.length === 0) {
-                generatedSaleFilesListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de venta generados para ti.</p>';
+            const generatedLoadFilesListDiv = document.getElementById('generated-load-files-list');
+            if (loadRecords.length === 0) {
+                generatedLoadFilesListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de carga generados.</p>';
             } else {
                 // Ordenar por fecha descendente
-                const sortedUserSales = [...userSales].sort((a, b) => {
+                const sortedLoadRecords = [...loadRecords].sort((a, b) => {
                     const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
                     const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
                     return dateB - dateA;
                 });
 
-                sortedUserSales.forEach(sale => {
+                sortedLoadRecords.forEach(record => {
                     const fileItemDiv = document.createElement('div');
                     fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
                     fileItemDiv.innerHTML = `
                         <span class="text-base text-yellow-800 mb-2 sm:mb-0">
-                            ${sale.fileName} <br>
+                            ${record.fileName} <br>
                             <span class="text-sm text-gray-600">
-                                Cliente: ${sale.client.nombreComercial} - Total: $${sale.total.toFixed(2)} - Fecha: ${sale.date}
+                                Camión: ${record.truckName} (${record.truckPlate}) - Cargador: ${record.loader} - Total: $${record.total.toFixed(2)}
                             </span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${sale.fileName}')">DESCARGAR CSV</button>
-                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR RECIBO</button>
-                            <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
                         </div>
                     `;
-                    generatedSaleFilesListDiv.appendChild(fileItemDiv);
+                    generatedLoadFilesListDiv.appendChild(fileItemDiv);
                 });
+            }
+        };
+
+        // Lógica para confirmar y limpiar el historial de cargas
+        const showClearLoadHistoryConfirmation = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de cargas.');
+                return;
+            }
+            showConfirmationModal('Confirma desea borrar el Historial de Cargas', clearLoadHistoryLogic);
+        };
+
+        // Lógica para borrar el historial de cargas
+        const clearLoadHistoryLogic = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de cargas.');
+                return;
+            }
+            try {
+                const batch = db.batch();
+                const loadRecordsSnapshot = await db.collection('loadRecords').get();
+                loadRecordsSnapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                // Después de la operación, re-fetch para actualizar el estado global
+                await fetchDataFromFirestore();
+                showMessageModal('Historial de cargas borrado exitosamente.');
+                setScreenAndRender('cargaSelection'); // Re-renderizar la pantalla
+            } catch (error) {
+                console.error('Error al limpiar el historial de cargas:', error);
+                showMessageModal('Error al limpiar el historial de cargas. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        // --- TRANSBORDO DE INVENTARIO ---
+        // Pantalla de solicitud de contraseña para Transbordo Inv.
+        const renderTransferInventoryPasswordScreen = () => {
+            if (!isUser()) { // Solo usuarios pueden hacer transbordo
+                showMessageModal('Acceso denegado: Solo los usuarios pueden realizar transbordo de inventario.');
+                setScreenAndRender('main');
+                return;
+            }
+            if (!currentUserData.assignedTruckPlate) {
+                 showMessageModal('No tienes un camión asignado para realizar transbordos. Contacta a un administrador.');
+                 setScreenAndRender('main');
+                 return;
+            }
+
+            const passwordScreenDiv = document.createElement('div');
+            passwordScreenDiv.className = 'screen-container bg-white rounded-xl shadow-md p-8 max-w-md mx-auto my-10';
+            passwordScreenDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6 text-center text-indigo-700">Confirmación de Seguridad</h2>
+                <p class="text-lg text-center mb-6 text-gray-700">Ingrese contraseña para confirmar la operación de transbordo.</p>
+                <input type="password" id="userPasswordForTransfer" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Contraseña">
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleTransferInventoryPassword()">Continuar</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Cancelar</button>
+            `;
+            appRoot.appendChild(passwordScreenDiv);
+        };
+
+        // Lógica para verificar la contraseña del usuario para Transbordo
+        const handleTransferInventoryPassword = async () => {
+            const password = document.getElementById('userPasswordForTransfer').value;
+
+            if (!password) {
+                showMessageModal('Por favor, ingresa tu contraseña.');
+                return;
+            }
+
+            try {
+                const credential = auth.EmailAuthProvider.credential(auth.currentUser.email, password);
+                await auth.currentUser.reauthenticateWithCredential(credential);
+
+                // Si la re-autenticación es exitosa, pasar a la pantalla de transbordo
+                selectedDestinationTruck = null; // Reiniciar selección de destino
+                transferQuantities = {}; // Reiniciar cantidades de transbordo
+                setScreenAndRender('transferInventory');
+
+            } catch (error) {
+                showMessageModal(`Error de autenticación: ${error.message}. Contraseña incorrecta o sesión expirada.`);
+                console.error("Error de re-autenticación para transbordo:", error);
+            }
+        };
+
+        // Pantalla principal de Transbordo de Inventario
+        const renderTransferInventoryScreen = () => {
+            if (!isUser() || !currentUserData.assignedTruckPlate) {
+                showMessageModal('Acceso denegado o no tienes un camión asignado.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const sourceTruck = vehicles.find(v => v.plate === currentUserData.assignedTruckPlate);
+            if (!sourceTruck) {
+                showMessageModal('No se encontró información para tu camión asignado.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const destinationTrucks = vehicles.filter(v => v.plate !== sourceTruck.plate);
+
+            const transferDiv = document.createElement('div');
+            transferDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            transferDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">TRANSBORDO DE INVENTARIO</h2>
+                <p class="text-lg text-center mb-4 text-gray-700">Camión de Origen: <strong>${sourceTruck.name} (${sourceTruck.plate})</strong></p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="destinationTruckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión de Destino:</label>
+                    <select id="destinationTruckSelect" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="handleDestinationTruckSelection(this.value)">
+                        <option value="">-- Seleccione un camión --</option>
+                        ${destinationTrucks.map(v => `<option value="${v.plate}" ${selectedDestinationTruck && selectedDestinationTruck.plate === v.plate ? 'selected' : ''}>${v.name} (${v.plate})</option>`).join('')}
+                    </select>
+                </div>
+
+                ${selectedDestinationTruck ? `
+                    <p class="text-base text-center mb-4 text-gray-700">Cantidad a trasladar del camión <strong>${sourceTruck.name}</strong> al camión <strong>${selectedDestinationTruck.name}</strong>.</p>
+                    <div class="table-container mb-5">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Imagen</th>
+                                    <th>SKU</th>
+                                    <th>Producto</th>
+                                    <th>Presentación</th>
+                                    <th>Disponible</th>
+                                    <th>Cantidad a Trasladar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="products-for-transfer-body">
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showTransferConfirmation()">Realizar Transbordo</button>
+                ` : `<p class="text-center text-gray-600">Por favor, seleccione un camión de destino para continuar.</p>`}
+
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300 mt-8">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Historial de Traslados</h3>
+                    <div id="user-transfer-history-list"></div>
+                </div>
+
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(transferDiv);
+
+            if (selectedDestinationTruck) {
+                const productsForTransferBody = document.getElementById('products-for-transfer-body');
+                currentTruckInventory.forEach(item => { // currentTruckInventory es el inventario del camión de origen del usuario
+                    const row = document.createElement('tr');
+                    // Aseguramos que 'transferQuantities' tenga un valor inicial de 0 si no existe
+                    if (transferQuantities[item.sku] === undefined) {
+                        transferQuantities[item.sku] = 0;
+                    }
+                    row.innerHTML = `
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>${item.quantity}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${transferQuantities[item.sku]}" onchange="handleTransferQuantityChange('${item.sku}', this.value)" min="0" max="${item.quantity}"></td>
+                    `;
+                    productsForTransferBody.appendChild(row);
+                });
+            }
+            updateUserTransferHistoryDisplay();
+        };
+
+        // Manejador de selección de camión de destino
+        const handleDestinationTruckSelection = (plate) => {
+            if (!plate) {
+                selectedDestinationTruck = null;
+            } else {
+                selectedDestinationTruck = vehicles.find(v => v.plate === plate);
+            }
+            transferQuantities = {}; // Reiniciar cantidades al cambiar el destino
+            render(); // Re-renderizar para actualizar la UI
+        };
+
+        // Manejador de cambio de cantidad a trasladar
+        const handleTransferQuantityChange = (sku, quantity) => {
+            transferQuantities[sku] = parseInt(quantity) || 0;
+        };
+
+        // Confirmación antes de realizar el transbordo
+        const showTransferConfirmation = () => {
+            showConfirmationModal('¿Estás seguro de que quieres realizar este transbordo de inventario? Esto modificará los inventarios de ambos camiones.', performInventoryTransfer);
+        };
+
+        // Lógica para realizar el transbordo de inventario
+        const performInventoryTransfer = async () => {
+            if (!isUser() || !currentUserData.assignedTruckPlate || !selectedDestinationTruck) {
+                showMessageModal('Error: No se puede realizar el transbordo. Asegúrate de tener un camión asignado y un camión de destino seleccionado.');
+                return;
+            }
+
+            const sourceTruckPlate = currentUserData.assignedTruckPlate;
+            const destinationTruckPlate = selectedDestinationTruck.plate;
+
+            let transferData = [];
+            let messages = [];
+            let hasPositiveTransferQuantity = false;
+
+            // Obtener copias de los inventarios de origen y destino
+            let sourceTruckInventoryCopy = JSON.parse(JSON.stringify(currentTruckInventory));
+            let destinationTruckInventoryCopy = [];
+            try {
+                const destTruckDoc = await db.collection('truck_inventories').doc(destinationTruckPlate).get();
+                destinationTruckInventoryCopy = destTruckDoc.exists ? (destTruckDoc.data().items || []) : [];
+            } catch (error) {
+                console.error('Error al cargar inventario del camión de destino:', error);
+                showMessageModal('Error al cargar el inventario del camión de destino. Intenta de nuevo.');
+                return;
+            }
+
+            for (const sku in transferQuantities) {
+                const quantityToTransfer = transferQuantities[sku];
+                if (quantityToTransfer <= 0) continue;
+
+                hasPositiveTransferQuantity = true;
+
+                const sourceItemIndex = sourceTruckInventoryCopy.findIndex(item => item.sku === sku);
+                const sourceItem = sourceItemIndex !== -1 ? sourceTruckInventoryCopy[sourceItemIndex] : null;
+
+                if (!sourceItem || quantityToTransfer > sourceItem.quantity) {
+                    messages.push(`Error: Cantidad insuficiente para SKU "${sku}" en el camión de origen. Disponible: ${sourceItem ? sourceItem.quantity : 0}, Intentado trasladar: ${quantityToTransfer}.`);
+                    continue;
+                }
+
+                // Deduce del camión de origen
+                sourceTruckInventoryCopy[sourceItemIndex].quantity -= quantityToTransfer;
+
+                // Añade al camión de destino
+                const destItemIndex = destinationTruckInventoryCopy.findIndex(item => item.sku === sku);
+                if (destItemIndex !== -1) {
+                    destinationTruckInventoryCopy[destItemIndex].quantity += quantityToTransfer;
+                } else {
+                    // Si el producto no existe en el camión de destino, añadirlo
+                    const productDetails = inventory.find(item => item.sku === sku); // Obtener detalles completos del producto
+                    if (productDetails) {
+                        destinationTruckInventoryCopy.push({
+                            sku: productDetails.sku,
+                            rubro: productDetails.rubro,
+                            segmento: productDetails.segmento,
+                            producto: productDetails.producto,
+                            presentacion: productDetails.presentacion,
+                            quantity: quantityToTransfer,
+                            price: productDetails.precio
+                        });
+                    } else {
+                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo añadir completamente al camión de destino.`);
+                    }
+                }
+
+                // Registrar para el CSV de traslado
+                transferData.push({
+                    sku: sku,
+                    producto: sourceItem.producto,
+                    presentacion: sourceItem.presentacion,
+                    cantidadTrasladada: quantityToTransfer,
+                    camionOrigen: sourceTruckPlate,
+                    camionDestino: destinationTruckPlate
+                });
+            }
+
+            if (messages.length > 0) {
+                showMessageModal(messages.join('\n'));
+                return;
+            }
+            if (!hasPositiveTransferQuantity) {
+                showMessageModal('Por favor, ingresa al menos una cantidad positiva para realizar el transbordo.');
+                return;
+            }
+
+            // Generar CSV del traslado
+            const transferFileName = `traslado_${sourceTruckPlate}_${destinationTruckPlate}_${getCurrentDateFormatted()}.csv`;
+            const transferCSVContent = `SKU,Producto,Presentacion,Cantidad Trasladada,Camion Origen,Camion Destino\n` +
+                                       transferData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadTrasladada},${item.camionOrigen},${item.camionDestino}`).join('\n');
+
+            const transferRecord = {
+                fileName: transferFileName,
+                date: getCurrentDateFormatted(),
+                sourceTruckPlate: sourceTruckPlate,
+                destinationTruckPlate: destinationTruckPlate,
+                userId: auth.currentUser.uid, // Guardar quién realizó el transbordo
+                items: transferData,
+                rawCSV: transferCSVContent
+            };
+
+            try {
+                const batch = db.batch();
+
+                // Actualizar inventario del camión de origen
+                const sourceTruckRef = db.collection('truck_inventories').doc(sourceTruckPlate);
+                batch.set(sourceTruckRef, { items: sourceTruckInventoryCopy });
+
+                // Actualizar inventario del camión de destino
+                const destinationTruckRef = db.collection('truck_inventories').doc(destinationTruckPlate);
+                batch.set(destinationTruckRef, { items: destinationTruckInventoryCopy });
+
+                // Guardar el registro de transbordo
+                const docRef = await db.collection('transferRecords').add(transferRecord);
+                transferRecord.docId = docRef.id; // Asignar el ID del documento para futuras referencias
+
+                await batch.commit();
+
+                // Actualizar el estado global después de un guardado exitoso
+                await fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+
+                showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
+                downloadCSV(transferFileName, transferCSVContent);
+                selectedDestinationTruck = null; // Limpiar selección de destino
+                transferQuantities = {}; // Limpiar cantidades de transbordo
+                setScreenAndRender('transferInventory'); // Re-renderizar para mostrar los cambios y el historial
+            } catch (error) {
+                console.error('Error al realizar transbordo de inventario:', error);
+                showMessageModal('Error al realizar transbordo. Revisa tu conexión y reglas de seguridad.');
+            }
+        };
+
+        // Función para actualizar la lista de historial de traslados del usuario
+        const updateUserTransferHistoryDisplay = () => {
+            const userTransferHistoryListDiv = document.getElementById('user-transfer-history-list');
+            if (!userTransferHistoryListDiv) return;
+
+            const userSpecificTransferRecords = transferRecords.filter(record => record.userId === auth.currentUser.uid);
+
+            if (userSpecificTransferRecords.length === 0) {
+                userTransferHistoryListDiv.innerHTML = '<p class="text-gray-600">No hay traslados registrados para tu usuario.</p>';
+            } else {
+                // Ordenar por fecha descendente
+                const sortedUserTransferRecords = [...userSpecificTransferRecords].sort((a, b) => {
+                    const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
+                    const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
+                    return dateB - dateA;
+                });
+
+                userTransferHistoryListDiv.innerHTML = ''; // Limpiar antes de añadir
+                sortedUserTransferRecords.forEach(record => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-yellow-800 mb-2 sm:mb-0">
+                            ${record.fileName} <br>
+                            <span class="text-sm text-gray-600">
+                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Fecha: ${record.date}
+                            </span>
+                        </span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                        </div>
+                    `;
+                    userTransferHistoryListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        // Pantalla de Historial de Transbordo para Administradores
+        const renderAdminTransferHistoryScreen = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de transbordos.');
+                setScreenAndRender('main');
+                return;
+            }
+
+            const adminTransferHistoryDiv = document.createElement('div');
+            adminTransferHistoryDiv.className = 'screen-container bg-white rounded-xl m-2 shadow-md';
+            adminTransferHistoryDiv.innerHTML = `
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE TRANSBORDOS</h2>
+                <p class="text-base text-center my-5 text-gray-600">
+                    Aquí puedes ver y descargar todos los archivos de transbordo generados.
+                </p>
+
+                <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-700">Archivos de Transbordo Generados</h3>
+                    <div id="admin-transfer-history-list"></div>
+                </div>
+
+                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearTransferHistoryConfirmation()">Limpiar Historial de Transbordo</button>
+                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Volver</button>
+            `;
+            appRoot.appendChild(adminTransferHistoryDiv);
+
+            const adminTransferHistoryListDiv = document.getElementById('admin-transfer-history-list');
+            if (transferRecords.length === 0) {
+                adminTransferHistoryListDiv.innerHTML = '<p class="text-gray-600">No hay archivos de transbordo generados.</p>';
+            } else {
+                // Ordenar por fecha descendente
+                const sortedTransferRecords = [...transferRecords].sort((a, b) => {
+                    const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
+                    const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
+                    return dateB - dateA;
+                });
+
+                adminTransferHistoryListDiv.innerHTML = ''; // Limpiar antes de añadir
+                sortedTransferRecords.forEach(record => {
+                    const fileItemDiv = document.createElement('div');
+                    fileItemDiv.className = 'bg-yellow-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-yellow-200';
+                    const userEmail = users.find(u => u.uid === record.userId)?.email || 'Desconocido';
+                    fileItemDiv.innerHTML = `
+                        <span class="text-base text-yellow-800 mb-2 sm:mb-0">
+                            ${record.fileName} <br>
+                            <span class="text-sm text-gray-600">
+                                Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}
+                            </span>
+                        </span>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}', '${record.rawCSV.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')">DESCARGAR CSV</button>
+                        </div>
+                    `;
+                    adminTransferHistoryListDiv.appendChild(fileItemDiv);
+                });
+            }
+        };
+
+        // Lógica para confirmar y limpiar el historial de transbordos (para admin)
+        const showClearTransferHistoryConfirmation = () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de transbordos.');
+                return;
+            }
+            showConfirmationModal('Confirma desea borrar el Historial de Transbordos (esto afectará a todos los usuarios).', clearTransferHistoryLogic);
+        };
+
+        // Lógica para borrar el historial de transbordos
+        const clearTransferHistoryLogic = async () => {
+            if (!isAdmin()) {
+                showMessageModal('Acceso denegado: Solo los administradores pueden limpiar el historial de transbordos.');
+                return;
+            }
+            try {
+                const batch = db.batch();
+                const transferRecordsSnapshot = await db.collection('transferRecords').get();
+                transferRecordsSnapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                // Después de la operación, re-fetch para actualizar el estado global
+                await fetchDataFromFirestore();
+                showMessageModal('Historial de transbordos borrado exitosamente.');
+                setScreenAndRender('adminTransferHistory'); // Re-renderizar la pantalla
+            } catch (error) {
+                console.error('Error al limpiar el historial de transbordos:', error);
+                showMessageModal('Error al limpiar el historial de transbordos. Revisa tu conexión y reglas de seguridad.');
             }
         };
 
@@ -1989,7 +3848,7 @@
             render();
         };
 
-        // Exponer funciones y variables globales necesarias para clients.js
+        // Exponer funciones y variables globales necesarias
         window.db = db;
         window.auth = auth;
         window.isAdmin = isAdmin;
@@ -2001,13 +3860,109 @@
         window.toCSV = toCSV;
         window.downloadCSV = downloadCSV;
         window.appRoot = appRoot;
-        window.clients = clients; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
-        window.zonesData = zonesData; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
-        window.sectorsData = sectorsData; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
-        window.firebase = firebase; // Necesario para firebase.firestore.FieldValue.serverTimestamp()
+        window.clients = clients;
+        window.zonesData = zonesData;
+        window.sectorsData = sectorsData;
+        window.firebase = firebase;
+        window.fetchDataFromFirestore = fetchDataFromFirestore; // Exponer para re-fetch
 
+        // Exponer funciones de CLIENTES
+        window.renderClientesScreen = renderClientesScreen;
+        window.filterClientsForClientesScreen = filterClientsForClientesScreen;
+        window.updateClientTableForClientesScreen = updateClientTableForClientesScreen;
+        window.toggleAddClientForm = toggleAddClientForm;
+        window.handleAddClient = handleAddClient;
+        window.openEditClientModal = openEditClientModal;
+        window.closeEditClientModal = closeEditClientModal;
+        window.handleEditClientChange = handleEditClientChange;
+        window.saveEditedClient = saveEditedClient;
+        window.renderEditClientModal = renderEditClientModal;
+
+        // Exponer funciones de VENTA
+        window.renderVentaScreen = renderVentaScreen;
+        window.updateVentaScreenContent = updateVentaScreenContent;
+        window.handleProductQuantityChange = handleProductQuantityChange;
+        window.showFinalizeSaleConfirmation = showFinalizeSaleConfirmation;
+        window.finalizeSaleLogic = finalizeSaleLogic;
+        window.toggleClientPickerModal = toggleClientPickerModal;
+        window.renderClientPickerModal = renderClientPickerModal;
+        window.updateClientPickerList = updateClientPickerList;
+        window.filterClientsForPicker = filterClientsForPicker;
+        window.resetVentaState = resetVentaState;
+        window.resetVentaStateAndGoToMain = resetVentaStateAndGoToMain;
+
+        // Exponer funciones de CIERRE DE VENTAS
+        window.renderCierreVentasScreen = renderCierreVentasScreen;
+        window.updateCierreVentasContent = updateCierreVentasContent;
+        window.showFinalizeDayConfirmation = showFinalizeDayConfirmation;
+        window.handleFinalizeDayLogic = handleFinalizeDayLogic;
+        window.printSaleReceipt = printSaleReceipt;
+        window.generateThermalReceiptHtml = generateThermalReceiptHtml;
+        window.openModifySaleModal = openModifySaleModal;
+        window.closeModifySaleModal = closeModifySaleModal;
+        window.handleModifiedQuantityChange = handleModifiedQuantityChange;
+        window.handleModificationReasonChange = handleModificationReasonChange;
+        window.saveModifiedSale = saveModifiedSale;
+        window.renderModifySaleModal = renderModifySaleModal;
+
+        // Exponer funciones de ARCHIVOS ADMIN
+        window.renderArchivosAdminScreen = renderArchivosAdminScreen;
+        window.handleFileUpload = handleFileUpload;
+
+        // Exponer funciones de ARCHIVOS VENTA
+        window.renderArchivosVentaScreen = renderArchivosVentaScreen;
+
+        // Exponer funciones de VEHÍCULOS
+        window.renderVehiclesScreen = renderVehiclesScreen;
+        window.updateVehicleTable = updateVehicleTable;
+        window.handleAddVehicle = handleAddVehicle;
+        window.openEditVehicleModal = openEditVehicleModal;
+        window.closeEditVehicleModal = closeEditVehicleModal;
+        window.handleEditVehicleChange = handleEditVehicleChange;
+        window.saveEditedVehicle = saveEditedVehicle;
+        window.renderEditVehicleModal = renderEditVehicleModal;
+        window.showDeleteVehicleConfirmation = showDeleteVehicleConfirmation;
+        window.deleteVehicleLogic = deleteVehicleLogic;
+
+        // Exponer funciones de ASIGNAR VEHÍCULO
+        window.renderAssignVehicleScreen = renderAssignVehicleScreen;
+        window.updateVehicleAssignmentDisplay = updateVehicleAssignmentDisplay;
+        window.assignVehicleToUser = assignVehicleToUser;
+
+        // Exponer funciones de RECEPCIÓN DE MERCANCÍA (CARGA) Y RESET
+        window.renderCargaSelectionScreen = renderCargaSelectionScreen;
+        window.renderResetCargasInicialesPasswordScreen = renderResetCargasInicialesPasswordScreen;
+        window.handleResetCargasInicialesPassword = handleResetCargasInicialesPassword;
+        window.renderResetCargasInicialesEditScreen = renderResetCargasInicialesEditScreen;
+        window.handleResetQuantityChange = handleResetQuantityChange;
+        window.saveResetCargasIniciales = saveResetCargasIniciales;
+        window.renderTruckReceivingScreen = renderTruckReceivingScreen;
+        window.handleTruckSelectionForReceiving = handleTruckSelectionForReceiving;
+        window.handleLoaderSelection = handleLoaderSelection;
+        window.handleReceivingQuantityChange = handleReceivingQuantityChange;
+        window.handleReceiveToTruckAndWarehouse = handleReceiveToTruckAndWarehouse;
+        window.renderLoadHistoryScreen = renderLoadHistoryScreen;
+        window.showClearLoadHistoryConfirmation = showClearLoadHistoryConfirmation;
+
+        // Exponer funciones de INVENTARIO (ADMIN)
+        window.renderAdminInventorySelection = renderAdminInventorySelection;
+        window.setAdminInventoryView = setAdminInventoryView;
+        window.renderAdminMainInventoryScreen = renderAdminMainInventoryScreen;
+        window.renderAdminVehicleInventoryScreen = renderAdminVehicleInventoryScreen;
+        window.handleAdminVehicleSelection = handleAdminVehicleSelection;
+        window.renderInventarioScreen = renderInventarioScreen; // Para usuarios normales también
+
+        // Exponer funciones de TRANSBORDO
+        window.renderTransferInventoryPasswordScreen = renderTransferInventoryPasswordScreen;
+        window.handleTransferInventoryPassword = handleTransferInventoryPassword;
+        window.renderTransferInventoryScreen = renderTransferInventoryScreen;
+        window.handleDestinationTruckSelection = handleDestinationTruckSelection;
+        window.handleTransferQuantityChange = handleTransferQuantityChange;
+        window.showTransferConfirmation = showTransferConfirmation;
+        window.performInventoryTransfer = performInventoryTransfer;
+        window.updateUserTransferHistoryDisplay = updateUserTransferHistoryDisplay;
+        window.renderAdminTransferHistoryScreen = renderAdminTransferHistoryScreen;
+        window.showClearTransferHistoryConfirmation = showClearTransferHistoryConfirmation;
     </script>
-    <!-- Importar el nuevo archivo de gestión de clientes -->
-    <script src="./clients.js" defer></script>
 </body>
 </html>
