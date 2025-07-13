@@ -766,9 +766,16 @@
                 console.log('[Firestore] Vehículos cargados:', vehicles);
 
                 // Cargar Usuarios (para asignación de vehículos)
-                const usersSnapshot = await db.collection('users').get();
-                users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-                console.log('[Firestore] Usuarios cargados:', users);
+                // Solo cargar la lista completa de usuarios si el usuario actual es un administrador.
+                // Los usuarios normales solo necesitan su propio perfil (que ya se carga en onAuthStateChanged).
+                if (isAdmin()) {
+                    const usersSnapshot = await db.collection('users').get();
+                    users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                    console.log('[Firestore] Usuarios cargados (Admin):', users);
+                } else {
+                    users = []; // Asegurarse de que esté vacío para usuarios no administradores
+                    console.log('[Firestore] No se cargan todos los usuarios para usuarios no administradores.');
+                }
 
                 // Cargar Zonas (solo para obtener los datos, no para gestionar desde aquí)
                 const zonesSnapshot = await db.collection('zones').get();
@@ -3637,6 +3644,24 @@
             console.log('[window.onload] Página cargada, esperando autenticación para cargar datos.');
             render();
         };
+
+        // Exponer funciones y variables globales necesarias para clients.js
+        window.db = db;
+        window.auth = auth;
+        window.isAdmin = isAdmin;
+        window.isUser = isUser;
+        window.setScreenAndRender = setScreenAndRender;
+        window.showMessageModal = showMessageModal;
+        window.showConfirmationModal = showConfirmationModal;
+        window.parseCSV = parseCSV;
+        window.toCSV = toCSV;
+        window.downloadCSV = downloadCSV;
+        window.appRoot = appRoot;
+        window.clients = clients; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
+        window.zonesData = zonesData; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
+        window.sectorsData = sectorsData; // Asegúrate de que esta variable se actualice en fetchDataFromFirestore
+        window.firebase = firebase; // Necesario para firebase.firestore.FieldValue.serverTimestamp()
+
     </script>
     <!-- Importar el nuevo archivo de gestión de clientes -->
     <script src="./clients.js" defer></script>
