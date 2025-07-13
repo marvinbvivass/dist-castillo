@@ -195,7 +195,7 @@
         }
         .thermal-receipt .total-line {
             display: flex;
-            justify: space-between;
+            justify-content: space-between;
             font-weight: bold;
             margin-top: 5px;
             font-size: 0.9rem;
@@ -764,6 +764,7 @@
                     }
                     clients = initialClients;
                 } else {
+                    // MODIFICADO: Asegurarse de que el ID del cliente siempre se tome del doc.id de Firestore
                     clients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }
                 console.log('[Firestore] Clientes cargados:', clients);
@@ -2065,7 +2066,8 @@
         const openEditClientModal = (client) => {
             // No se necesita check de rol aquí, ya que el botón de editar solo se muestra a los que pueden editar
             editingClient = JSON.parse(JSON.stringify(client)); // Copia profunda para no modificar el objeto original directamente
-            originalEditingClientId = client.id; // ALMACENAR EL ID ORIGINAL
+            // Asegurarse de que originalEditingClientId siempre tenga un valor válido
+            originalEditingClientId = client.id || ''; // Usar cadena vacía si client.id es null/undefined
             showEditClientModal = true;
             render();
         };
@@ -2105,6 +2107,13 @@
                     `Las ventas históricas asociadas al ID antiguo NO se actualizarán automáticamente. ` +
                     `¿Deseas continuar?`,
                     async () => { // THIS IS THE CALLBACK
+                        // MOVED THE GUARD CLAUSE HERE TO ENSURE originalEditingClientId IS VALID RIGHT BEFORE USE
+                        if (!originalEditingClientId || originalEditingClientId.trim() === '') {
+                            showMessageModal('Error interno: El ID del cliente original es inválido. No se puede realizar el cambio de ID.');
+                            console.error('Error: originalEditingClientId es nulo o vacío al intentar cambiar el ID. No se puede eliminar el cliente antiguo.');
+                            return; // Stop execution of the callback
+                        }
+
                         try {
                             const batch = db.batch();
 
@@ -2438,7 +2447,7 @@
                     // Aquí solo actualizamos el estado local.
                     clients = clients.map(client => client.sector === editingSector.name ? { ...client, sector: newName } : client);
                     // Actualizar Firestore para los clientes afectados
-                    const clientsWithOldSector = await db.collection('clients').where('sector', '==', editingSector.name).get();
+                    const clientsWithOldSector = await db.collection('clients').where('sector', '==', editingZone.name).get();
                     const batch = db.batch();
                     clientsWithOldSector.docs.forEach(doc => {
                         const clientRef = db.collection('clients').doc(doc.id);
