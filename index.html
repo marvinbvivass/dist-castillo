@@ -2078,32 +2078,35 @@
         const saveEditedClient = async () => {
             if (!editingClient) return;
 
+            // Captura el valor actual de editingClient en una constante local para el ámbito del callback
+            const clientToSave = editingClient; // <--- LÍNEA AÑADIDA
+
             // Basic validation (can be expanded)
-            if (!editingClient.nombreComercial || !editingClient.nombrePersonal || !editingClient.tlf) {
+            if (!clientToSave.nombreComercial || !clientToSave.nombrePersonal || !clientToSave.tlf) {
                 showMessageModal('Error: Nombre Comercial, Nombre Personal y Teléfono son obligatorios.');
                 return;
             }
 
             // Find the original client in the local 'clients' array to get its original ID
-            const originalClient = clients.find(c => c.id === editingClient.id);
+            const originalClient = clients.find(c => c.id === clientToSave.id);
             const originalClientId = originalClient ? originalClient.id : null;
 
             // Check if the ID has changed AND the current user is an admin
-            const isIdChanged = isAdmin() && editingClient.id !== originalClientId;
+            const isIdChanged = isAdmin() && clientToSave.id !== originalClientId;
 
             if (isIdChanged) {
                 showConfirmationModal(
-                    `El ID del cliente ha cambiado de "${originalClientId}" a "${editingClient.id}". ` +
+                    `El ID del cliente ha cambiado de "${originalClientId}" a "${clientToSave.id}". ` +
                     `Esto creará un nuevo cliente y eliminará el antiguo. ` +
                     `Las ventas históricas asociadas al ID antiguo NO se actualizarán automáticamente. ` +
                     `¿Deseas continuar?`,
-                    async () => {
+                    async () => { // THIS IS THE CALLBACK
                         try {
                             const batch = db.batch();
 
                             // 1. Create new client document with the new ID
-                            const newClientRef = db.collection('clients').doc(editingClient.id);
-                            batch.set(newClientRef, editingClient);
+                            const newClientRef = db.collection('clients').doc(clientToSave.id);
+                            batch.set(newClientRef, clientToSave);
 
                             // 2. Delete old client document
                             const oldClientRef = db.collection('clients').doc(originalClientId);
@@ -2113,7 +2116,7 @@
 
                             // Update local clients array
                             clients = clients.filter(c => c.id !== originalClientId); // Remove old client
-                            clients.push(editingClient); // Add new client
+                            clients.push(clientToSave); // Add new client
                             showMessageModal('Cliente actualizado exitosamente (ID cambiado). Las ventas históricas no se actualizaron.');
                             closeEditClientModal();
                             setScreenAndRender('clientes'); // Re-render the clients screen to show updates
@@ -2125,9 +2128,9 @@
                 );
             } else {
                 try {
-                    await db.collection('clients').doc(editingClient.id).set(editingClient);
+                    await db.collection('clients').doc(clientToSave.id).set(clientToSave);
                     // Update local clients array
-                    clients = clients.map(c => c.id === editingClient.id ? editingClient : c);
+                    clients = clients.map(c => c.id === clientToSave.id ? clientToSave : c);
                     showMessageModal('Cliente actualizado exitosamente.');
                     closeEditClientModal();
                     setScreenAndRender('clientes'); // Re-render the clients screen to show updates
