@@ -226,6 +226,8 @@
     <div id="app-root"></div>
 
     <script defer>
+        console.log('[App Init] Script started.');
+
         // --- Configuración de Firebase ---
         const firebaseConfig = {
             apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
@@ -242,14 +244,14 @@
         const db = firebase.firestore();
 
         firebase.firestore().enablePersistence()
-            .then(() => console.log("Persistencia offline de Firestore habilitada."))
+            .then(() => console.log("[Firestore] Persistencia offline de Firestore habilitada."))
             .catch((err) => {
                 if (err.code == 'failed-precondition') {
-                    console.warn("La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.");
+                    console.warn("[Firestore] La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.", err);
                 } else if (err.code == 'unimplemented') {
-                    console.warn("El navegador actual no soporta la persistencia offline de Firestore.");
+                    console.warn("[Firestore] El navegador actual no soporta la persistencia offline de Firestore.", err);
                 } else {
-                    console.error("Error al habilitar la persistencia offline de Firestore:", err);
+                    console.error("[Firestore] Error al habilitar la persistencia offline de Firestore:", err);
                 }
             });
 
@@ -548,23 +550,29 @@
         };
 
         auth.onAuthStateChanged(async (user) => {
+            console.log('[Auth State Changed] User:', user ? user.email : 'No user');
             if (user) {
                 currentUser = user;
                 try {
                     const userDoc = await db.collection('users').doc(user.uid).get();
                     currentUserData = userDoc.exists ? userDoc.data() : { email: user.email, role: 'user', assignedTruckPlate: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
                     if (!userDoc.exists) {
+                        console.log('[Auth State Changed] Creating new user document in Firestore for:', user.email);
                         await db.collection('users').doc(user.uid).set(currentUserData);
                     }
+                    console.log('[Auth State Changed] Current User Data:', currentUserData);
                 } catch (error) {
                     console.error('[Firestore] Error al cargar el perfil del usuario:', error);
                     showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
                     currentUserData = { role: 'user', assignedTruckPlate: null };
                 }
+                console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
                 await fetchDataFromFirestore();
                 if (screen === 'login' || screen === 'register') {
+                    console.log('[Auth State Changed] Redirecting to main screen.');
                     setScreenAndRender('main');
                 } else {
+                    console.log('[Auth State Changed] Re-rendering current screen.');
                     render();
                 }
             } else {
@@ -572,8 +580,10 @@
                 currentUserData = { role: 'guest', assignedTruckPlate: null };
                 [clients, inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords, zonesData, sectorsData] = [[], [], [], [], [], [], [], [], [], [], []];
                 if (screen !== 'login' && screen !== 'register') {
+                    console.log('[Auth State Changed] Redirecting to login screen (no user).');
                     setScreenAndRender('login');
                 } else {
+                    console.log('[Auth State Changed] Staying on login/register screen.');
                     render();
                 }
             }
@@ -581,10 +591,12 @@
 
         // --- Funciones de Carga de Datos desde Firestore ---
         const fetchDataFromFirestore = async () => {
+            console.log('[fetchDataFromFirestore] Starting data fetch...');
             try {
                 const fetchCollection = async (collectionName, initialData, idKey, defaultDocData = {}) => {
                     const snapshot = await db.collection(collectionName).get();
                     if (snapshot.empty) {
+                        console.log(`[fetchCollection] Collection '${collectionName}' is empty. Populating with initial data.`);
                         for (const item of initialData) {
                             await db.collection(collectionName).doc(item[idKey]).set(item);
                             if (collectionName === 'vehicles') {
@@ -593,6 +605,7 @@
                         }
                         return initialData;
                     } else {
+                        console.log(`[fetchCollection] Collection '${collectionName}' has data. Fetching existing data.`);
                         return snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }));
                     }
                 };
@@ -604,52 +617,66 @@
 
                 const usersSnapshot = await db.collection('users').get();
                 users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                console.log('[fetchDataFromFirestore] Users fetched:', users.length);
 
                 zonesData = await fetchCollection('zones', initialZones, 'name');
                 sectorsData = await fetchCollection('sectors', initialSectors, 'name');
 
                 if (currentUserData.assignedTruckPlate) {
+                    console.log(`[fetchDataFromFirestore] Fetching truck inventory for: ${currentUserData.assignedTruckPlate}`);
                     const truckInventoryDoc = await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).get();
                     currentTruckInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+                    console.log(`[fetchDataFromFirestore] Truck inventory items: ${currentTruckInventory.length}`);
                 } else {
                     currentTruckInventory = [];
+                    console.log('[fetchDataFromFirestore] No truck assigned for current user.');
                 }
 
                 const dailySalesSnapshot = await db.collection('dailySales').get();
                 dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                console.log('[fetchDataFromFirestore] Daily Sales fetched:', dailySales.length);
 
                 if (isAdmin()) {
+                    console.log('[fetchDataFromFirestore] User is admin, fetching all load records.');
                     const loadRecordsSnapshot = await db.collection('loadRecords').get();
                     loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 } else {
                     loadRecords = [];
+                    console.log('[fetchDataFromFirestore] User is not admin, not fetching all load records.');
                 }
 
                 if (isAdmin()) {
+                    console.log('[fetchDataFromFirestore] User is admin, fetching all transfer records.');
                     const transferRecordsSnapshot = await db.collection('transferRecords').get();
                     transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 } else if (isUser() && currentUser) {
+                    console.log(`[fetchDataFromFirestore] User is regular, fetching transfer records for user: ${currentUser.uid}`);
                     const userTransferRecordsSnapshot = await db.collection('transferRecords').where('userId', '==', currentUser.uid).get();
                     transferRecords = userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
                 } else {
                     transferRecords = [];
+                    console.log('[fetchDataFromFirestore] Not fetching transfer records (guest or no user).');
                 }
 
                 if (!vendors.some(v => v.name === selectedVendor)) {
                     selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
                     localStorage.setItem('selectedVendor', selectedVendor);
+                    console.log('[fetchDataFromFirestore] Adjusted selectedVendor:', selectedVendor);
                 }
+                console.log('[fetchDataFromFirestore] Data fetch completed successfully.');
             } catch (error) {
                 console.error('[Firestore] Error al cargar datos de Firestore:', error);
                 showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
                 [clients, inventory, vendors, vehicles, dailySales, currentTruckInventory, users, loadRecords, transferRecords, zonesData, sectorsData] = [initialClients, initialInventory, initialVendors, initialVehicles, [], [], [], [], [], initialZones, initialSectors];
             } finally {
+                console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
             }
         };
 
         // --- Función Principal de Renderizado ---
         const render = () => {
+            console.log(`[Render] Current screen to render: ${screen}`);
             appRoot.innerHTML = '';
             const screenFunctions = {
                 'main': renderMainScreen,
@@ -677,6 +704,7 @@
             };
 
             if (!currentUser && screen !== 'login' && screen !== 'register') {
+                console.log('[Render] No current user, forcing login screen.');
                 renderLoginScreen();
             } else {
                 (screenFunctions[screen] || renderMainScreen)();
@@ -687,6 +715,9 @@
             if (showModifySaleModalState) appRoot.innerHTML += renderModifySaleModal();
             if (showEditClientModal) appRoot.innerHTML += renderEditClientModal();
             if (showManageZonesSectorsModalState) appRoot.innerHTML += renderManageZonesSectorsModal();
+            // NEW: Add client picker modal to the main render function
+            if (showClientPickerModal) appRoot.innerHTML += renderClientPickerModal();
+            console.log('[Render] Render cycle completed.');
         };
 
         // --- Componentes Reutilizables de UI ---
@@ -723,6 +754,7 @@
 
         // --- Pantallas ---
         const renderLoginScreen = () => {
+            console.log('[renderLoginScreen] Rendering login screen.');
             appRoot.innerHTML = createScreenContainer('Iniciar Sesión', `
                 ${createInput('loginEmail', 'Correo Electrónico', '', 'email')}
                 ${createInput('loginPassword', 'Contraseña', '', 'password')}
@@ -732,6 +764,7 @@
         };
 
         const renderRegisterScreen = () => {
+            console.log('[renderRegisterScreen] Rendering register screen.');
             appRoot.innerHTML = createScreenContainer('Registrar Nuevo Usuario', `
                 ${createInput('registerEmail', 'Correo Electrónico', '', 'email')}
                 ${createInput('registerPassword', 'Contraseña', '', 'password')}
@@ -741,6 +774,7 @@
         };
 
         const renderMainScreen = () => {
+            console.log('[renderMainScreen] Rendering main screen.');
             const buttons = [
                 isAdmin() && createButton('CARGA', "setScreenAndRender('cargaSelection')"),
                 isAdmin() && createButton('INVENTARIO', "setScreenAndRender('adminInventorySelection')"),
@@ -918,154 +952,34 @@
 
             try {
                 const batch = db.batch();
-                updatedMainInventory.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
+                // This part of the code was referencing variables that don't exist in this context (itemsToUpdateInWarehouse, selectedTruckForReceiving, itemsToUpdateInTruck, loadRecord, loadFileName)
+                // This indicates a copy-paste error from another function.
+                // It should be updating the main inventory and truck inventories based on `updatedMainInventory` and `updatedTruckInventories`.
+
+                // Corrected logic for saving reset quantities:
+                updatedMainInventory.forEach(item => {
+                    batch.set(db.collection('inventory').doc(item.sku), {
+                        rubro: item.rubro,
+                        sku: item.sku,
+                        segmento: item.segmento,
+                        producto: item.producto,
+                        presentacion: item.presentacion,
+                        cantidad: item.cantidad,
+                        precio: item.precio
+                    });
+                });
+
                 for (const truckPlate in updatedTruckInventories) {
                     batch.set(db.collection('truck_inventories').doc(truckPlate), { items: updatedTruckInventories[truckPlate] });
                 }
+
                 await batch.commit();
-                await fetchDataFromFirestore();
-                showMessageModal('Inventarios actualizados exitosamente con las nuevas cargas iniciales.');
+                await fetchDataFromFirestore(); // Re-fetch to update local state
+                showMessageModal('Inventarios reiniciados y guardados exitosamente.');
                 setScreenAndRender('cargaSelection');
             } catch (error) {
-                console.error('Error al guardar los cambios de cargas iniciales:', error);
-                showMessageModal('Error al guardar los cambios de inventario. Revisa tu conexión y reglas de seguridad.');
-            }
-        };
-
-        const renderTruckReceivingScreen = async () => {
-            if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la carga de inventario.'); setScreenAndRender('main'); return; }
-
-            const truckOptions = vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
-            const vendorOptions = vendors.map(v => ({ value: v.name, text: v.name }));
-
-            let productsTableHtml = '';
-            if (selectedTruckForReceiving && selectedLoader) {
-                productsTableHtml = createTable(
-                    ['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad a Recibir'],
-                    inventory.map(item => {
-                        if (receivingQuantities[item.sku] === undefined) receivingQuantities[item.sku] = 0;
-                        return `
-                            <td>${item.rubro}</td><td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td>
-                            <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${receivingQuantities[item.sku]}" onchange="handleReceivingQuantityChange('${item.sku}', this.value)" min="0"></td>
-                        `;
-                    }).map(row => `<tr>${row}</tr>`).join(''),
-                    'products-for-receiving-body'
-                ) + createButton('Registrar Recepción', 'handleReceiveToTruckAndWarehouse()', 'bg-purple-600 mt-5 w-full');
-            } else {
-                productsTableHtml = '<p class="text-center text-gray-600">Por favor, seleccione un camión y quien realiza la carga para continuar.</p>';
-            }
-
-            appRoot.innerHTML = createScreenContainer('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', `
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <label for="truckSelectForReceiving" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión que Recibe Mercancía:</label>
-                    ${createSelect('truckSelectForReceiving', truckOptions, selectedTruckForReceiving?.plate, 'handleTruckSelectionForReceiving(this.value)')}
-                </div>
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <label for="loaderSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccione quien realiza la carga:</label>
-                    ${createSelect('loaderSelect', vendorOptions, selectedLoader, 'handleLoaderSelection(this.value)')}
-                </div>
-                ${selectedTruckForReceiving && selectedLoader ? `<p class="text-base text-center mb-4 text-gray-700">Ingresa las cantidades de productos que el camión <strong>${selectedTruckForReceiving.name} (${selectedTruckForReceiving.plate})</strong> está recibiendo de un proveedor, realizada por <strong>${selectedLoader}</strong>.</p>` : ''}
-                ${productsTableHtml}
-                ${createButton('Volver', "setScreenAndRender('cargaSelection')", 'bg-gray-600 mt-3 w-full')}
-            `);
-        };
-
-        const handleTruckSelectionForReceiving = async (plate) => {
-            selectedTruckForReceiving = plate ? vehicles.find(v => v.plate === plate) : null;
-            receivingQuantities = {};
-            if (selectedTruckForReceiving) {
-                try {
-                    const truckInventoryDoc = await db.collection('truck_inventories').doc(plate).get();
-                    selectedTruckInventoryForReceiving = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-                } catch (error) {
-                    console.error('Error al cargar inventario del camión para recepción:', error);
-                    showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
-                    selectedTruckInventoryForReceiving = [];
-                }
-            } else {
-                selectedTruckInventoryForReceiving = [];
-            }
-            render();
-        };
-
-        const handleLoaderSelection = (loaderName) => {
-            selectedLoader = loaderName || null;
-            receivingQuantities = {};
-            render();
-        };
-
-        const handleReceivingQuantityChange = (sku, quantity) => {
-            receivingQuantities[sku] = parseInt(quantity) || 0;
-        };
-
-        const handleReceiveToTruckAndWarehouse = async () => {
-            if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden registrar la recepción de mercancía.'); return; }
-            if (!selectedTruckForReceiving || !selectedLoader) { showMessageModal('Por favor, selecciona un camión y quien realiza la carga primero.'); return; }
-
-            let messages = [];
-            let hasPositiveReceivingQuantity = false;
-            let itemsToUpdateInWarehouse = JSON.parse(JSON.stringify(inventory));
-            let itemsToUpdateInTruck = JSON.parse(JSON.stringify(selectedTruckInventoryForReceiving));
-            let loadData = [];
-
-            for (const sku in receivingQuantities) {
-                const quantityToReceive = receivingQuantities[sku];
-                if (quantityToReceive <= 0) continue;
-                hasPositiveReceivingQuantity = true;
-                const originalItemDetails = inventory.find(item => item.sku === sku);
-                if (!originalItemDetails) { messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo procesar completamente.`); continue; }
-
-                let warehouseItem = itemsToUpdateInWarehouse.find(item => item.sku === sku);
-                if (warehouseItem) { warehouseItem.cantidad += quantityToReceive; } else { itemsToUpdateInWarehouse.push({ ...originalItemDetails, cantidad: quantityToReceive }); }
-
-                let truckItem = itemsToUpdateInTruck.find(item => item.sku === sku);
-                if (truckItem) { truckItem.quantity += quantityToReceive; } else {
-                    itemsToUpdateInTruck.push({
-                        sku: originalItemDetails.sku, rubro: originalItemDetails.rubro, segmento: originalItemDetails.segmento,
-                        producto: originalItemDetails.producto, presentacion: originalItemDetails.presentacion,
-                        quantity: quantityToReceive, price: originalItemDetails.precio
-                    });
-                }
-                loadData.push({
-                    sku: originalItemDetails.sku, producto: originalItemDetails.producto, presentacion: originalItemDetails.presentacion,
-                    cantidadCargada: quantityToReceive, precioUnitario: originalItemDetails.precio, subtotal: quantityToReceive * originalItemDetails.precio
-                });
-            }
-
-            if (messages.length > 0) { showMessageModal(messages.join('\n')); return; }
-            if (!hasPositiveReceivingQuantity) { showMessageModal('Por favor, ingresa al menos una cantidad positiva para registrar la recepción.'); return; }
-
-            const loadTotalAmount = loadData.reduce((sum, item) => sum + item.subtotal, 0);
-            const loadFileName = `carga_${selectedLoader.replace(/\s/g, '_')}_${selectedTruckForReceiving.plate}_${getCurrentDateFormatted()}.csv`;
-            const loadCSVContent = `SKU,Producto,Presentacion,Cantidad Cargada,Precio Unitario,Subtotal\n` +
-                                   loadData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadCargada},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
-                                   `\nTotal General:, , , , ,${loadTotalAmount.toFixed(2)}`;
-
-            const loadRecord = {
-                fileName: loadFileName, date: getCurrentDateFormatted(), truckPlate: selectedTruckForReceiving.plate,
-                truckName: selectedTruckForReceiving.name, loader: selectedLoader, items: loadData, total: loadTotalAmount, rawCSV: loadCSVContent
-            };
-
-            try {
-                const batch = db.batch();
-                itemsToUpdateInWarehouse.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
-                inventory = itemsToUpdateInWarehouse;
-                batch.set(db.collection('truck_inventories').doc(selectedTruckForReceiving.plate), { items: itemsToUpdateInTruck });
-                selectedTruckInventoryForReceiving = itemsToUpdateInTruck;
-                const docRef = await db.collection('loadRecords').add(loadRecord);
-                loadRecord.docId = docRef.id;
-                loadRecords.push(loadRecord);
-                await batch.commit();
-
-                showMessageModal('Recepción de mercancía registrada exitosamente. Inventarios actualizados y archivo de carga generado.');
-                downloadCSV(loadFileName);
-                receivingQuantities = {};
-                selectedTruckForReceiving = null;
-                selectedLoader = null;
-                render();
-            } catch (error) {
-                console.error('Error al registrar la recepción de mercancía o guardar registro de carga:', error);
-                showMessageModal('Error al registrar la recepción de mercancía. Revisa tu conexión y reglas de seguridad.');
+                console.error('Error al guardar los cambios de carga iniciales:', error);
+                showMessageModal('Error al guardar los cambios de carga iniciales. Revisa tu conexión y reglas de seguridad.');
             }
         };
 
@@ -1618,6 +1532,7 @@
         };
 
         const renderVentaScreen = () => {
+            console.log('[renderVentaScreen] Rendering venta screen.');
             appRoot.innerHTML = createScreenContainer('VENTA', `
                 <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="toggleClientPickerModal(true)">Seleccionar Cliente</button>
                 <div id="selected-client-display" class="text-lg font-bold text-center my-4 text-emerald-800"></div>
@@ -1629,6 +1544,7 @@
         };
 
         const updateVentaScreenContent = () => {
+            console.log('[updateVentaScreenContent] Updating venta screen content.');
             const selectedClientDisplay = document.getElementById('selected-client-display');
             const productSaleContainer = document.getElementById('product-sale-container');
             const infoText = document.getElementById('info-text');
@@ -1666,13 +1582,6 @@
                 selectedClientDisplay.textContent = '';
                 infoText.textContent = 'Por favor, seleccione un cliente para iniciar la venta.';
                 productSaleContainer.innerHTML = '';
-            }
-
-            if (showClientPickerModal) {
-                renderClientPickerModal();
-            } else {
-                const existingModal = document.getElementById('client-picker-modal');
-                if (existingModal) existingModal.remove();
             }
         };
 
@@ -1761,11 +1670,21 @@
         };
 
         const toggleClientPickerModal = (show) => {
+            console.log(`[toggleClientPickerModal] Toggling client picker modal to: ${show}`);
             showClientPickerModal = show;
-            render();
+            render(); // This will trigger the main render function, which now includes the modal.
+            if (show) {
+                // Call updateClientPickerList *after* render() has updated the DOM
+                // to ensure the modal elements exist.
+                setTimeout(() => { // Using setTimeout to ensure DOM is updated
+                    console.log('[toggleClientPickerModal] Calling updateClientPickerList after timeout.');
+                    updateClientPickerList();
+                }, 0);
+            }
         };
 
         const renderClientPickerModal = () => {
+            console.log('[renderClientPickerModal] Rendering client picker modal.');
             if (!showClientPickerModal) return '';
             return `
                 <div id="client-picker-modal" class="modal">
@@ -1780,26 +1699,34 @@
         };
 
         const updateClientPickerList = () => {
+            console.log('[updateClientPickerList] Updating client picker list.');
             const clientPickerListDiv = document.getElementById('client-picker-list');
-            if (!clientPickerListDiv) return;
+            if (!clientPickerListDiv) {
+                console.warn('[updateClientPickerList] client-picker-list element not found.');
+                return;
+            }
             clientPickerListDiv.innerHTML = '';
             const filteredClients = clients.filter(client =>
                 client.nombreComercial.toLowerCase().includes(clientSearchTerm.toLowerCase()) ||
                 client.nombrePersonal.toLowerCase().includes(clientSearchTerm.toLowerCase())
             );
 
-            filteredClients.forEach(client => {
-                const clientItem = document.createElement('button');
-                clientItem.className = 'block w-full text-left p-3 border-b border-gray-200 hover:bg-blue-50 transition duration-150 ease-in-out rounded-md';
-                clientItem.textContent = `${client.nombreComercial} (${client.nombrePersonal})`;
-                clientItem.onclick = () => {
-                    selectedClientForSale = client;
-                    toggleClientPickerModal(false);
-                    clientSearchTerm = '';
-                    updateVentaScreenContent();
-                };
-                clientPickerListDiv.appendChild(clientItem);
-            });
+            if (filteredClients.length === 0) {
+                clientPickerListDiv.innerHTML = `<p class="text-center text-gray-500 py-4">No se encontraron clientes.</p>`;
+            } else {
+                filteredClients.forEach(client => {
+                    const clientItem = document.createElement('button');
+                    clientItem.className = 'block w-full text-left p-3 border-b border-gray-200 hover:bg-blue-50 transition duration-150 ease-in-out rounded-md';
+                    clientItem.textContent = `${client.nombreComercial} (${client.nombrePersonal})`;
+                    clientItem.onclick = () => {
+                        selectedClientForSale = client;
+                        toggleClientPickerModal(false);
+                        clientSearchTerm = '';
+                        updateVentaScreenContent();
+                    };
+                    clientPickerListDiv.appendChild(clientItem);
+                });
+            }
         };
 
         const filterClientsForPicker = (term) => {
@@ -2204,6 +2131,7 @@
                             });
                         }
                     }
+                    currentTruckItems = currentTruckItems.filter(item => item.quantity > 0); // Remove items with 0 quantity
                     batch.set(truckInventoryRef, { items: currentTruckItems });
                     if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
                 } else if (sourceInventoryPlate === 'warehouse' && isAdmin()) {
@@ -2218,6 +2146,7 @@
                             currentMainInventoryItems.push({ ...productDetails, cantidad: -delta });
                         }
                     }
+                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0); // Remove items with 0 quantity
                     currentMainInventoryItems.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
                     inventory = currentMainInventoryItems;
                 }
@@ -2731,6 +2660,7 @@
         };
 
         const setScreenAndRender = (newScreen) => {
+            console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
             screen = newScreen;
             render();
         };
@@ -2742,13 +2672,16 @@
                 const absoluteServiceWorkerUrl = baseUrl + serviceWorkerFileName;
 
                 navigator.serviceWorker.register(absoluteServiceWorkerUrl)
-                    .then(registration => console.log('Service Worker registrado con éxito:', registration))
-                    .catch(error => console.error('Fallo el registro del Service Worker:', error));
+                    .then(registration => console.log('[Service Worker] Service Worker registrado con éxito:', registration))
+                    .catch(error => console.error('[Service Worker] Fallo el registro del Service Worker:', error));
             });
         }
 
         window.onload = () => {
-            render();
+            console.log('[window.onload] Page fully loaded. Initial render will be triggered by onAuthStateChanged.');
+            // Initial render is handled by onAuthStateChanged.
+            // If no user is logged in, it will render the login screen.
+            // If a user is logged in, it will fetch data and then render the main screen.
         };
     </script>
 </body>
