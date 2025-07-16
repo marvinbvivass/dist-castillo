@@ -315,7 +315,30 @@
             return `${day}${month}${year}`;
         };
 
-        const downloadCSV = (filename) => {
+        // Nueva función para disparar la descarga de un CSV con contenido dado
+        const triggerCSVDownload = (filename, csvContent) => {
+            if (!csvContent) {
+                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+                return;
+            }
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            } else {
+                showMessageModal('La descarga de archivos no es compatible con este navegador.');
+            }
+        };
+
+        // Función para descargar CSVs existentes (cambiado de downloadCSV a downloadExistingCSV)
+        const downloadExistingCSV = (filename) => {
             let csvContent = '';
             const findContent = (arr, key, val) => arr.find(record => record[key] === val);
 
@@ -355,26 +378,7 @@
                 }
                 csvContent = toCSV(dataToDownload, headers);
             }
-
-            if (!csvContent) {
-                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                return;
-            }
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            } else {
-                showMessageModal('La descarga de archivos no es compatible con este navegador.');
-            }
+            triggerCSVDownload(filename, csvContent);
         };
 
         const parseCSV = (csvString) => {
@@ -1834,7 +1838,7 @@
                 const combinedFileName = `venta_consolidada_${date}.csv`;
                 messages.push(`Cierre de Ventas para ${date}: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
                 console.log(`[handleCloseSalesLogic] Attempting to download consolidated CSV: ${combinedFileName}`);
-                downloadCSV(combinedFileName); // This will trigger a client-side download.
+                triggerCSVDownload(combinedFileName, combinedCSVContent); // Usar la nueva función para descargar
 
                 // Generate Client-specific CSV
                 const uniqueSKUs = new Set();
@@ -1865,7 +1869,7 @@
                 const clientFileName = `ventas_por_cliente_${date}.csv`;
                 messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
                 console.log(`[handleCloseSalesLogic] Attempting to download client-specific CSV: ${clientFileName}`);
-                downloadCSV(clientFileName); // This will trigger a client-side download.
+                triggerCSVDownload(clientFileName, clientCSVContent); // Usar la nueva función para descargar
 
                 // DEDUCT FROM MAIN INVENTORY
                 for (const sku in aggregatedSalesBySku) {
@@ -2024,10 +2028,10 @@
                 </div>
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('clientes.csv')">Descargar clientes.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('inventario.csv')">Descargar inventario.csv (Almacén Principal)</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('vendedor.csv')">Descargar vendedor.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadCSV('vehiculos.csv')">Descargar vehículos.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('clientes.csv')">Descargar clientes.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('inventario.csv')">Descargar inventario.csv (Almacén Principal)</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('vendedor.csv')">Descargar vendedor.csv</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('vehiculos.csv')">Descargar vehículos.csv</button>
                 </div>
                 ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
             `);
@@ -2475,7 +2479,7 @@
                             <span class="text-sm text-gray-600">Camión: ${record.truckName} (${record.truckPlate}) - Cargador: ${record.loader} - Total: $${record.total.toFixed(2)}</span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
                         </div>
                     </div>
                 `).join('');
@@ -2677,7 +2681,7 @@
                 transferRecords.push(transferRecord);
 
                 showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
-                downloadCSV(transferFileName);
+                triggerCSVDownload(transferFileName, transferCSVContent); // Usar la nueva función para descargar
                 selectedDestinationTruck = null;
                 transferQuantities = {};
                 render();
@@ -2710,7 +2714,7 @@
                                 <span class="text-sm text-gray-600">Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}</span>
                             </span>
                             <div class="flex flex-wrap gap-2">
-                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
+                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
                             </div>
                         </div>
                     `;
@@ -2737,7 +2741,7 @@
                                 <span class="text-sm text-gray-600">Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}</span>
                             </span>
                             <div class="flex flex-wrap gap-2">
-                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadCSV('${record.fileName}')">DESCARGAR CSV</button>
+                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
                             </div>
                         </div>
                     `;
