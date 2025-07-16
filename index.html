@@ -2072,7 +2072,8 @@
             const renderProductRow = (item, isNew = false) => {
                 const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku);
                 const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : (isNew ? 0 : item.cantidadVendida);
-                const price = item.price !== undefined ? item.price : item.precio;
+                // FIX: Prioritize precioUnitario for sale items, then check price/precio from inventory
+                const price = item.precioUnitario !== undefined ? item.precioUnitario : (item.price !== undefined ? item.price : item.precio);
                 return `
                     <tr>
                         <td><img src="${productImages[item.sku] || productImages['default']}" alt="Image of ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
@@ -2756,3 +2757,4 @@
     </script>
 </body>
 </html>
+
