@@ -681,7 +681,7 @@
             const screenFunctions = {
                 'main': renderMainScreen,
                 'cargaSelection': renderCargaSelectionScreen,
-                'truckLoading': renderTruckReceivingScreen,
+                'truckLoading': renderTruckReceivingScreen, // This function was missing
                 'loadHistory': renderLoadHistoryScreen,
                 'inventario': renderInventarioScreen,
                 'clientes': renderClientesScreen,
@@ -827,6 +827,16 @@
             `);
         };
 
+        // NEW: Placeholder for renderTruckReceivingScreen
+        const renderTruckReceivingScreen = () => {
+            if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); setScreenAndRender('main'); return; }
+            appRoot.innerHTML = createScreenContainer('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', `
+                <p class="text-lg text-center mb-6 text-gray-700">Esta sección está en construcción. Aquí podrás gestionar la recepción de mercancía en los camiones.</p>
+                ${createButton('Volver a Carga', "setScreenAndRender('cargaSelection')", 'bg-gray-600 mt-5 w-full')}
+            `, 'max-w-md mx-auto my-10');
+        };
+
+
         const renderResetCargasInicialesPasswordScreen = () => {
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); setScreenAndRender('main'); return; }
             appRoot.innerHTML = createScreenContainer('Confirmación de Seguridad', `
@@ -952,10 +962,6 @@
 
             try {
                 const batch = db.batch();
-                // This part of the code was referencing variables that don't exist in this context (itemsToUpdateInWarehouse, selectedTruckForReceiving, itemsToUpdateInTruck, loadRecord, loadFileName)
-                // This indicates a copy-paste error from another function.
-                // It should be updating the main inventory and truck inventories based on `updatedMainInventory` and `updatedTruckInventories`.
-
                 // Corrected logic for saving reset quantities:
                 updatedMainInventory.forEach(item => {
                     batch.set(db.collection('inventory').doc(item.sku), {
