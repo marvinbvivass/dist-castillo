@@ -681,7 +681,7 @@
             const screenFunctions = {
                 'main': renderMainScreen,
                 'cargaSelection': renderCargaSelectionScreen,
-                'truckLoading': renderTruckReceivingScreen, // This function was missing
+                'truckLoading': renderTruckReceivingScreen,
                 'loadHistory': renderLoadHistoryScreen,
                 'inventario': renderInventarioScreen,
                 'clientes': renderClientesScreen,
@@ -827,7 +827,6 @@
             `);
         };
 
-        // NEW: Placeholder for renderTruckReceivingScreen
         const renderTruckReceivingScreen = () => {
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); setScreenAndRender('main'); return; }
             appRoot.innerHTML = createScreenContainer('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', `
@@ -1619,6 +1618,7 @@
             }
 
             let updatedSourceInventory = JSON.parse(JSON.stringify(currentSourceInventoryData));
+            let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Make a copy of main inventory for updates
 
             for (const item of currentSourceInventoryData) {
                 const quantitySold = saleQuantities[item.sku] || 0;
@@ -1632,9 +1632,22 @@
                         const subtotal = quantitySold * price;
                         saleData.push({ sku: item.sku, producto: item.producto, presentacion: item.presentacion, cantidadVendida: quantitySold, precioUnitario: price, subtotal: subtotal });
                         totalSaleAmount += subtotal;
+
+                        // Deduct from the source inventory (truck or main)
                         updatedSourceInventory = updatedSourceInventory.map(invItem =>
                             invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold, cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold } : invItem
                         );
+
+                        // ALSO DEDUCT FROM MAIN INVENTORY IF THE SALE IS FROM A TRUCK
+                        if (sourceInventoryCollection === 'truck_inventories') {
+                            const mainInvItemIndex = updatedMainInventory.findIndex(mainItem => mainItem.sku === item.sku);
+                            if (mainInvItemIndex !== -1) {
+                                updatedMainInventory[mainInvItemIndex].cantidad = Math.max(0, updatedMainInventory[mainInvItemIndex].cantidad - quantitySold);
+                            } else {
+                                // This case should ideally not happen if data is consistent, but handle it.
+                                messages.push(`Advertencia: SKU ${item.sku} vendido desde camión no encontrado en inventario principal para deducción.`);
+                            }
+                        }
                     }
                 }
             }
@@ -1652,15 +1665,45 @@
             };
 
             try {
+                const batch = db.batch();
                 const docRef = await db.collection('dailySales').add(saleRecord);
                 saleRecord.docId = docRef.id;
                 dailySales.push(saleRecord);
 
                 if (sourceInventoryCollection === 'truck_inventories') {
-                    await db.collection('truck_inventories').doc(sourceInventoryDocId).set({ items: updatedSourceInventory });
-                    currentTruckInventory = updatedSourceInventory;
+                    // Update truck inventory
+                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: updatedSourceInventory });
+                    currentTruckInventory = updatedSourceInventory; // Update local state for truck
+                    // Update main inventory (already handled in the loop, now persist)
+                    updatedMainInventory.forEach(item => {
+                        batch.set(db.collection('inventory').doc(item.sku), {
+                            rubro: item.rubro,
+                            sku: item.sku,
+                            segmento: item.segmento,
+                            producto: item.producto,
+                            presentacion: item.presentacion,
+                            cantidad: item.cantidad,
+                            precio: item.precio
+                        });
+                    });
+                    inventory = updatedMainInventory; // Update local state for main inventory
+                } else {
+                    // If sale is directly from main warehouse (e.g., by admin)
+                    updatedSourceInventory.forEach(item => {
+                        batch.set(db.collection('inventory').doc(item.sku), {
+                            rubro: item.rubro,
+                            sku: item.sku,
+                            segmento: item.segmento,
+                            producto: item.producto,
+                            presentacion: item.presentacion,
+                            cantidad: item.cantidad,
+                            precio: item.precio
+                        });
+                    });
+                    inventory = updatedSourceInventory; // Update local state for main inventory
                 }
 
+                await batch.commit();
                 messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
                 messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
 
