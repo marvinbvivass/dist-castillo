@@ -1789,8 +1789,13 @@
         };
 
         const handleCloseSalesLogic = async () => {
+            console.log('[handleCloseSalesLogic] Initiating sales close logic.');
             let messages = [];
-            if (dailySales.length === 0) { showMessageModal('No hay Ventas: No hay ventas registradas para cerrar.'); return; }
+            if (dailySales.length === 0) {
+                showMessageModal('No hay Ventas: No hay ventas registradas para cerrar.');
+                console.log('[handleCloseSalesLogic] No daily sales found.');
+                return;
+            }
 
             const salesByDate = dailySales.reduce((acc, sale) => {
                 (acc[sale.date] = acc[sale.date] || []).push(sale);
@@ -1799,7 +1804,7 @@
 
             let allProcessedSaleDocIds = [];
             let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Obtener una copia del inventario principal actual
-            console.log('[handleCloseSalesLogic] Inventario Principal ANTES de procesar ventas:', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
+            console.log('[handleCloseSalesLogic] Initial Main Inventory (before processing sales):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
 
             for (const date in salesByDate) {
@@ -1819,6 +1824,7 @@
                     });
                 });
 
+                // Generate Consolidated CSV
                 let combinedCSVContent = `Venta General Consolidada - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nSKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
                 for (const sku in aggregatedSalesBySku) {
                     const item = aggregatedSalesBySku[sku];
@@ -1827,8 +1833,10 @@
                 combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
                 const combinedFileName = `venta_consolidada_${date}.csv`;
                 messages.push(`Cierre de Ventas para ${date}: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
-                downloadCSV(combinedFileName);
+                console.log(`[handleCloseSalesLogic] Attempting to download consolidated CSV: ${combinedFileName}`);
+                downloadCSV(combinedFileName); // This will trigger a client-side download.
 
+                // Generate Client-specific CSV
                 const uniqueSKUs = new Set();
                 const clientSalesData = {};
                 salesForThisDate.forEach(sale => {
@@ -1856,24 +1864,31 @@
                 clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
                 const clientFileName = `ventas_por_cliente_${date}.csv`;
                 messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
-                downloadCSV(clientFileName);
+                console.log(`[handleCloseSalesLogic] Attempting to download client-specific CSV: ${clientFileName}`);
+                downloadCSV(clientFileName); // This will trigger a client-side download.
 
-                // DEDUCIR DEL INVENTARIO PRINCIPAL AQUÍ (SOLO EN CIERRE DE VENTAS)
+                // DEDUCT FROM MAIN INVENTORY
                 for (const sku in aggregatedSalesBySku) {
                     const totalQuantitySold = aggregatedSalesBySku[sku].totalCantidad;
                     const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
                     if (mainInventoryItem) {
-                        console.log(`[handleCloseSalesLogic] Deduciendo ${totalQuantitySold} de SKU ${sku} del inventario principal. Antes: ${mainInventoryItem.cantidad}`);
+                        console.log(`[handleCloseSalesLogic] Deducting ${totalQuantitySold} of SKU ${sku} from main inventory. Before: ${mainInventoryItem.cantidad}`);
                         mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold);
-                        console.log(`[handleCloseSalesLogic] Después de la deducción: ${mainInventoryItem.cantidad}`);
+                        console.log(`[handleCloseSalesLogic] After deduction: ${mainInventoryItem.cantidad}`);
                     } else {
                         messages.push(`Advertencia: SKU ${sku} vendido no encontrado en el inventario principal para deducción durante el cierre.`);
+                        console.warn(`[handleCloseSalesLogic] SKU ${sku} not found in main inventory for deduction.`);
                     }
                 }
-                salesForThisDate.forEach(sale => { if (sale.docId) allProcessedSaleDocIds.push(sale.docId); });
+                salesForThisDate.forEach(sale => {
+                    if (sale.docId) {
+                        allProcessedSaleDocIds.push(sale.docId);
+                        console.log(`[handleCloseSalesLogic] Marking sale DOC ID ${sale.docId} for deletion.`);
+                    }
+                });
             }
 
-            console.log('[handleCloseSalesLogic] Inventario Principal DESPUÉS de procesar ventas (antes de commit):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
+            console.log('[handleCloseSalesLogic] Main Inventory AFTER processing sales (before commit):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
             messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
             messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
@@ -1881,21 +1896,26 @@
             try {
                 const batch = db.batch();
                 updatedMainInventory.forEach(item => {
-                    console.log(`[handleCloseSalesLogic] Enviando actualización para SKU ${item.sku} a cantidad ${item.cantidad} en inventario principal.`);
+                    console.log(`[handleCloseSalesLogic] Adding batch set for SKU ${item.sku} to quantity ${item.cantidad} in main inventory.`);
                     batch.set(db.collection('inventory').doc(item.sku), item);
                 });
-                inventory = updatedMainInventory; // Actualizar estado local del inventario principal
+                // Filter out any items that might have been reduced to 0 quantity if they were not originally in inventory
+                inventory = updatedMainInventory.filter(item => item.cantidad > 0); // Update local state
+                console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
+
                 allProcessedSaleDocIds.forEach(docId => {
-                    console.log(`[handleCloseSalesLogic] Eliminando venta diaria DOC ID ${docId}.`);
+                    console.log(`[handleCloseSalesLogic] Adding batch delete for daily sale DOC ID ${docId}.`);
                     batch.delete(db.collection('dailySales').doc(docId));
                 });
-                dailySales = dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId));
+                dailySales = dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId)); // Update local state
+                console.log('[handleCloseSalesLogic] Local daily sales updated. Remaining sales:', dailySales.length);
+
                 await batch.commit();
-                console.log('[handleCloseSalesLogic] Commit de lote de Firestore exitoso.');
+                console.log('[handleCloseSalesLogic] Firestore batch commit successful.');
                 messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
-                console.error('Error al actualizar inventario principal o eliminar ventas diarias de Firestore:', error);
+                console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
                 messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
             }
             setScreenAndRender('main');
