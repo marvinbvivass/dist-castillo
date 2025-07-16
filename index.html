@@ -2222,6 +2222,8 @@
                     inventory = currentMainInventoryItems;
                 }
                 await batch.commit();
+                // REVISIÓN: Llamada a fetchDataFromFirestore para asegurar que el estado local se actualice completamente
+                await fetchDataFromFirestore();
                 dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
                 showMessageModal('Venta modificada y guardada exitosamente en Firestore. Inventario de camión (y principal si aplica) actualizado.');
                 closeModifySaleModal();
@@ -2757,4 +2759,3 @@
     </script>
 </body>
 </html>
-
