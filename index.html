@@ -781,7 +781,7 @@
                 isUser() && createButton('INVENTARIO', "setScreenAndRender('inventario')"),
                 createButton('CLIENTES', "setScreenAndRender('clientes')"),
                 isUser() && createButton('VENTA', "setScreenAndRender('venta')"),
-                isUser() && createButton('CIERRE VENTAS', "setScreenAndRender('cierreVentas')"),
+                isUser() && createButton('CIERRE VENTAS', "setScreenAndRender('cierreVentas')"), // Accessible by user
                 isAdmin() && createButton('ARCHIVOS ADMIN', "setScreenAndRender('archivosAdmin')"),
                 !isAdmin() && currentUser && createButton('ARCHIVOS DE VENTA', "setScreenAndRender('archivosVenta')"),
                 isAdmin() && createButton('VEHÍCULOS DE CARGA', "setScreenAndRender('vehicles')"),
@@ -1572,7 +1572,7 @@
                     const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
                     const price = item.price !== undefined ? item.price : item.precio;
                     return `
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Image of ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td><Image of product></td>
                         <td>${item.sku}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${quantity}"></td>
                         <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
@@ -1618,7 +1618,8 @@
             }
 
             let updatedSourceInventory = JSON.parse(JSON.stringify(currentSourceInventoryData));
-            let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Make a copy of main inventory for updates
+            // NOTA: El inventario principal NO se deduce aquí para ventas de usuario.
+            // La deducción del inventario principal ocurre solo en "Cierre de Ventas".
 
             for (const item of currentSourceInventoryData) {
                 const quantitySold = saleQuantities[item.sku] || 0;
@@ -1633,21 +1634,10 @@
                         saleData.push({ sku: item.sku, producto: item.producto, presentacion: item.presentacion, cantidadVendida: quantitySold, precioUnitario: price, subtotal: subtotal });
                         totalSaleAmount += subtotal;
 
-                        // Deduct from the source inventory (truck or main)
+                        // Deducir del inventario de origen (camión o principal si es admin)
                         updatedSourceInventory = updatedSourceInventory.map(invItem =>
                             invItem.sku === item.sku ? { ...invItem, quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold, cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold } : invItem
                         );
-
-                        // ALSO DEDUCT FROM MAIN INVENTORY IF THE SALE IS FROM A TRUCK
-                        if (sourceInventoryCollection === 'truck_inventories') {
-                            const mainInvItemIndex = updatedMainInventory.findIndex(mainItem => mainItem.sku === item.sku);
-                            if (mainInvItemIndex !== -1) {
-                                updatedMainInventory[mainInvItemIndex].cantidad = Math.max(0, updatedMainInventory[mainInvItemIndex].cantidad - quantitySold);
-                            } else {
-                                // This case should ideally not happen if data is consistent, but handle it.
-                                messages.push(`Advertencia: SKU ${item.sku} vendido desde camión no encontrado en inventario principal para deducción.`);
-                            }
-                        }
                     }
                 }
             }
@@ -1671,24 +1661,11 @@
                 dailySales.push(saleRecord);
 
                 if (sourceInventoryCollection === 'truck_inventories') {
-                    // Update truck inventory
+                    // Actualizar inventario del camión
                     batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: updatedSourceInventory });
-                    currentTruckInventory = updatedSourceInventory; // Update local state for truck
-                    // Update main inventory (already handled in the loop, now persist)
-                    updatedMainInventory.forEach(item => {
-                        batch.set(db.collection('inventory').doc(item.sku), {
-                            rubro: item.rubro,
-                            sku: item.sku,
-                            segmento: item.segmento,
-                            producto: item.producto,
-                            presentacion: item.presentacion,
-                            cantidad: item.cantidad,
-                            precio: item.precio
-                        });
-                    });
-                    inventory = updatedMainInventory; // Update local state for main inventory
+                    currentTruckInventory = updatedSourceInventory; // Actualizar estado local del camión
                 } else {
-                    // If sale is directly from main warehouse (e.g., by admin)
+                    // Si la venta es directamente del almacén principal (ej. por admin)
                     updatedSourceInventory.forEach(item => {
                         batch.set(db.collection('inventory').doc(item.sku), {
                             rubro: item.rubro,
@@ -1700,7 +1677,7 @@
                             precio: item.precio
                         });
                     });
-                    inventory = updatedSourceInventory; // Update local state for main inventory
+                    inventory = updatedSourceInventory; // Actualizar estado local del inventario principal
                 }
 
                 await batch.commit();
@@ -1795,6 +1772,7 @@
         };
 
         const renderCierreVentasScreen = () => {
+            // No hay una verificación isAdmin() aquí, ya que el usuario ha especificado que es una función de tipo 'user'.
             appRoot.innerHTML = createScreenContainer('CIERRE DE VENTAS', `
                 <div class="mb-8 text-center">
                     <label class="block text-lg font-semibold text-gray-700 mb-2">Seleccionar Vendedor:</label>
@@ -1821,7 +1799,9 @@
             }, {});
 
             let allProcessedSaleDocIds = [];
-            let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
+            let updatedMainInventory = JSON.parse(JSON.stringify(inventory)); // Obtener una copia del inventario principal actual
+            console.log('[handleCloseSalesLogic] Inventario Principal ANTES de procesar ventas:', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
+
 
             for (const date in salesByDate) {
                 const salesForThisDate = salesByDate[date];
@@ -1879,24 +1859,40 @@
                 messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
                 downloadCSV(clientFileName);
 
+                // DEDUCIR DEL INVENTARIO PRINCIPAL AQUÍ (SOLO EN CIERRE DE VENTAS)
                 for (const sku in aggregatedSalesBySku) {
                     const totalQuantitySold = aggregatedSalesBySku[sku].totalCantidad;
                     const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
-                    if (mainInventoryItem) { mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold); }
+                    if (mainInventoryItem) {
+                        console.log(`[handleCloseSalesLogic] Deduciendo ${totalQuantitySold} de SKU ${sku} del inventario principal. Antes: ${mainInventoryItem.cantidad}`);
+                        mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold);
+                        console.log(`[handleCloseSalesLogic] Después de la deducción: ${mainInventoryItem.cantidad}`);
+                    } else {
+                        messages.push(`Advertencia: SKU ${sku} vendido no encontrado en el inventario principal para deducción durante el cierre.`);
+                    }
                 }
                 salesForThisDate.forEach(sale => { if (sale.docId) allProcessedSaleDocIds.push(sale.docId); });
             }
+
+            console.log('[handleCloseSalesLogic] Inventario Principal DESPUÉS de procesar ventas (antes de commit):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
             messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
             messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
 
             try {
                 const batch = db.batch();
-                updatedMainInventory.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
-                inventory = updatedMainInventory;
-                allProcessedSaleDocIds.forEach(docId => batch.delete(db.collection('dailySales').doc(docId)));
+                updatedMainInventory.forEach(item => {
+                    console.log(`[handleCloseSalesLogic] Enviando actualización para SKU ${item.sku} a cantidad ${item.cantidad} en inventario principal.`);
+                    batch.set(db.collection('inventory').doc(item.sku), item);
+                });
+                inventory = updatedMainInventory; // Actualizar estado local del inventario principal
+                allProcessedSaleDocIds.forEach(docId => {
+                    console.log(`[handleCloseSalesLogic] Eliminando venta diaria DOC ID ${docId}.`);
+                    batch.delete(db.collection('dailySales').doc(docId));
+                });
                 dailySales = dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId));
                 await batch.commit();
+                console.log('[handleCloseSalesLogic] Commit de lote de Firestore exitoso.');
                 messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
@@ -2183,7 +2179,32 @@
                     currentTruckItems = currentTruckItems.filter(item => item.quantity > 0); // Remove items with 0 quantity
                     batch.set(truckInventoryRef, { items: currentTruckItems });
                     if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
+
+                    // IMPORTANTE: Al modificar una venta desde un camión, también se actualiza el inventario principal.
+                    // Esto es crucial para la consistencia, ya que la venta inicial solo deducía del camión.
+                    let currentMainInventoryItems = JSON.parse(JSON.stringify(inventory));
+                    for (const sku in inventoryUpdates) {
+                        const delta = inventoryUpdates[sku]; // Este delta es relativo a la cantidad de venta *original*
+                        const mainItemIndex = currentMainInventoryItems.findIndex(item => item.sku === sku);
+                        if (mainItemIndex !== -1) {
+                            // Deducir el delta del inventario principal.
+                            // Si el delta es positivo (más vendido), el inventario principal disminuye.
+                            // Si el delta es negativo (menos vendido/devuelto), el inventario principal aumenta.
+                            currentMainInventoryItems[mainItemIndex].cantidad = Math.max(0, currentMainInventoryItems[mainItemIndex].cantidad - delta);
+                        } else {
+                            // Si se agregó un nuevo SKU a la venta modificada que no estaba en el inventario principal (improbable pero para robustez)
+                            const productDetails = inventory.find(item => item.sku === sku);
+                            if (productDetails && delta > 0) { // Si es un nuevo producto que se "vende" del principal
+                                currentMainInventoryItems.push({ ...productDetails, cantidad: -delta });
+                            }
+                        }
+                    }
+                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0);
+                    currentMainInventoryItems.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
+                    inventory = currentMainInventoryItems; // Actualizar estado local del inventario principal
+
                 } else if (sourceInventoryPlate === 'warehouse' && isAdmin()) {
+                    // Esta rama es para que el administrador modifique una venta que se originó en el almacén
                     let currentMainInventoryItems = JSON.parse(JSON.stringify(inventory));
                     for (const sku in inventoryUpdates) {
                         const delta = inventoryUpdates[sku];
@@ -2195,7 +2216,7 @@
                             currentMainInventoryItems.push({ ...productDetails, cantidad: -delta });
                         }
                     }
-                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0); // Remove items with 0 quantity
+                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0); // Eliminar elementos con cantidad 0
                     currentMainInventoryItems.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
                     inventory = currentMainInventoryItems;
                 }
