@@ -1605,6 +1605,7 @@
             const saleData = [];
             let totalSaleAmount = 0;
             let messages = [];
+            let validationErrors = []; // Added for validation
 
             const sourceInventoryCollection = currentUserData.assignedTruckPlate ? 'truck_inventories' : 'inventory';
             const sourceInventoryDocId = currentUserData.assignedTruckPlate;
@@ -1618,8 +1619,6 @@
             }
 
             let updatedSourceInventory = JSON.parse(JSON.stringify(currentSourceInventoryData));
-            // NOTA: El inventario principal NO se deduce aquí para ventas de usuario.
-            // La deducción del inventario principal ocurre solo en "Cierre de Ventas".
 
             for (const item of currentSourceInventoryData) {
                 const quantitySold = saleQuantities[item.sku] || 0;
@@ -1627,7 +1626,7 @@
 
                 if (quantitySold > 0) {
                     if (quantitySold > availableQuantity) {
-                        messages.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
+                        validationErrors.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
                     } else {
                         const price = item.price !== undefined ? item.price : item.precio;
                         const subtotal = quantitySold * price;
@@ -1642,7 +1641,7 @@
                 }
             }
 
-            if (messages.length > 0) { showMessageModal(messages.join('\n')); return; }
+            if (validationErrors.length > 0) { showMessageModal(validationErrors.join('\n')); return; } // Display validation errors
             if (saleData.length === 0) { showMessageModal('Error: No se ha ingresado ninguna cantidad para la venta.'); return; }
 
             const fileName = `venta_${selectedClientForSale.nombreComercial.replace(/\s/g, '_')}_${getCurrentDateFormatted()}.csv`;
@@ -2115,29 +2114,54 @@
             const newSaleItems = [];
             let newTotalSaleAmount = 0;
             let inventoryUpdates = {};
+            let validationErrors = []; // Added for validation
+
+            const sourceInventoryPlate = selectedSaleForModification.sourceInventory;
+            let currentInventoryData;
+
+            // Determine which inventory to check against for current stock
+            if (sourceInventoryPlate === 'warehouse' || isAdmin()) {
+                currentInventoryData = inventory;
+            } else {
+                // For user modifying a sale from their truck, fetch the current truck inventory from DB
+                try {
+                    const truckInventoryDoc = await db.collection('truck_inventories').doc(sourceInventoryPlate).get();
+                    currentInventoryData = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+                } catch (error) {
+                    console.error('Error al cargar el inventario del camión de origen para validación:', error);
+                    showMessageModal('Error al cargar el inventario del camión de origen para validar. Intenta de nuevo.');
+                    return;
+                }
+            }
 
             for (const sku in modifiedSaleQuantities) {
                 const newQty = modifiedSaleQuantities[sku];
                 const oldQty = oldSaleItemsMap.get(sku) || 0;
-                const delta = newQty - oldQty;
+                const requiredAdditionalStock = newQty - oldQty; // How much *more* stock is needed from current inventory
+
+                const productInInventory = currentInventoryData.find(invItem => invItem.sku === sku);
+                const availableQuantity = productInInventory ? (productInInventory.quantity !== undefined ? productInInventory.quantity : productInInventory.cantidad) : 0;
+
+                if (requiredAdditionalStock > 0 && requiredAdditionalStock > availableQuantity) {
+                    validationErrors.push(`Error: La cantidad adicional de "${sku}" (${requiredAdditionalStock}) excede el stock disponible (${availableQuantity}).`);
+                }
 
                 if (newQty > 0) {
-                    const product = (selectedSaleForModification.sourceInventory === 'warehouse' || isAdmin()) ? inventory.find(item => item.sku === sku) : currentTruckInventory.find(item => item.sku === sku);
+                    const product = (sourceInventoryPlate === 'warehouse' || isAdmin()) ? inventory.find(item => item.sku === sku) : currentTruckInventory.find(item => item.sku === sku);
                     if (product) {
                         const price = product.price !== undefined ? product.price : product.precio;
                         newSaleItems.push({ sku: product.sku, producto: product.producto, presentacion: product.presentacion, cantidadVendida: newQty, precioUnitario: price, subtotal: newQty * price });
                         newTotalSaleAmount += newQty * price;
                     }
                 }
-                if (delta !== 0) inventoryUpdates[sku] = (inventoryUpdates[sku] || 0) + delta;
+                if (requiredAdditionalStock !== 0) inventoryUpdates[sku] = (inventoryUpdates[sku] || 0) + requiredAdditionalStock;
             }
 
-            oldSaleItemsMap.forEach((oldQty, sku) => {
-                if (modifiedSaleQuantities[sku] === undefined || modifiedSaleQuantities[sku] === 0) {
-                    const delta = 0 - oldQty;
-                    if (delta !== 0) inventoryUpdates[sku] = (inventoryUpdates[sku] || 0) + delta;
-                }
-            });
+            // If there are validation errors, stop the process
+            if (validationErrors.length > 0) {
+                showMessageModal(validationErrors.join('\n'));
+                return;
+            }
 
             if (newSaleItems.length === 0 && Object.keys(inventoryUpdates).length === 0) {
                 showMessageModal('La venta modificada no puede estar vacía y no hay cambios de inventario. Ajusta las cantidades o cancela.'); return;
@@ -2156,7 +2180,6 @@
                 const batch = db.batch();
                 batch.set(db.collection('dailySales').doc(selectedSaleForModification.docId), selectedSaleForModification);
 
-                const sourceInventoryPlate = selectedSaleForModification.sourceInventory;
                 if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
                     const truckInventoryRef = db.collection('truck_inventories').doc(sourceInventoryPlate);
                     const truckInventoryDoc = await truckInventoryRef.get();
@@ -2169,11 +2192,11 @@
 
                         if (itemIndex !== -1) {
                             currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - delta);
-                        } else if (delta < 0 && productDetails) {
+                        } else if (delta > 0 && productDetails) { // If a new item is added to sale, and it's a positive delta (more sold)
                             currentTruckItems.push({
                                 sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
                                 producto: productDetails.producto, presentacion: productDetails.presentacion,
-                                quantity: -delta, price: productDetails.precio
+                                quantity: delta, price: productDetails.precio
                             });
                         }
                     }
@@ -2181,31 +2204,31 @@
                     batch.set(truckInventoryRef, { items: currentTruckItems });
                     if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
 
-                    // IMPORTANTE: Al modificar una venta desde un camión, también se actualiza el inventario principal.
-                    // Esto es crucial para la consistencia, ya que la venta inicial solo deducía del camión.
+                    // IMPORTANT: When modifying a sale from a truck, the main inventory is also updated.
+                    // This is crucial for consistency, as the initial sale only deducted from the truck.
                     let currentMainInventoryItems = JSON.parse(JSON.stringify(inventory));
                     for (const sku in inventoryUpdates) {
-                        const delta = inventoryUpdates[sku]; // Este delta es relativo a la cantidad de venta *original*
+                        const delta = inventoryUpdates[sku]; // This delta is relative to the *original* sale quantity
                         const mainItemIndex = currentMainInventoryItems.findIndex(item => item.sku === sku);
                         if (mainItemIndex !== -1) {
-                            // Deducir el delta del inventario principal.
-                            // Si el delta es positivo (más vendido), el inventario principal disminuye.
-                            // Si el delta es negativo (menos vendido/devuelto), el inventario principal aumenta.
+                            // Deduct the delta from the main inventory.
+                            // If the delta is positive (more sold), the main inventory decreases.
+                            // If the delta is negative (less sold/returned), the main inventory increases.
                             currentMainInventoryItems[mainItemIndex].cantidad = Math.max(0, currentMainInventoryItems[mainItemIndex].cantidad - delta);
                         } else {
-                            // Si se agregó un nuevo SKU a la venta modificada que no estaba en el inventario principal (improbable pero para robustez)
+                            // If a new SKU was added to the modified sale that was not in the main inventory (unlikely but for robustness)
                             const productDetails = inventory.find(item => item.sku === sku);
-                            if (productDetails && delta > 0) { // Si es un nuevo producto que se "vende" del principal
+                            if (productDetails && delta > 0) { // If it's a new product that is "sold" from the main
                                 currentMainInventoryItems.push({ ...productDetails, cantidad: -delta });
                             }
                         }
                     }
                     currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0);
                     currentMainInventoryItems.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
-                    inventory = currentMainInventoryItems; // Actualizar estado local del inventario principal
+                    inventory = currentMainInventoryItems; // Update local main inventory state
 
                 } else if (sourceInventoryPlate === 'warehouse' && isAdmin()) {
-                    // Esta rama es para que el administrador modifique una venta que se originó en el almacén
+                    // This branch is for the administrator to modify a sale that originated from the warehouse
                     let currentMainInventoryItems = JSON.parse(JSON.stringify(inventory));
                     for (const sku in inventoryUpdates) {
                         const delta = inventoryUpdates[sku];
@@ -2213,16 +2236,16 @@
                         const productDetails = inventory.find(item => item.sku === sku);
                         if (itemIndex !== -1) {
                             currentMainInventoryItems[itemIndex].cantidad = Math.max(0, currentMainInventoryItems[itemIndex].cantidad - delta);
-                        } else if (delta < 0 && productDetails) {
-                            currentMainInventoryItems.push({ ...productDetails, cantidad: -delta });
+                        } else if (delta > 0 && productDetails) { // If a new item is added to sale, and it's a positive delta (more sold)
+                            currentMainInventoryItems.push({ ...productDetails, cantidad: delta });
                         }
                     }
-                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0); // Eliminar elementos con cantidad 0
+                    currentMainInventoryItems = currentMainInventoryItems.filter(item => item.cantidad > 0); // Remove items with 0 quantity
                     currentMainInventoryItems.forEach(item => batch.set(db.collection('inventory').doc(item.sku), item));
                     inventory = currentMainInventoryItems;
                 }
                 await batch.commit();
-                // REVISIÓN: Llamada a fetchDataFromFirestore para asegurar que el estado local se actualice completamente
+                // REVISION: Call fetchDataFromFirestore to ensure local state is fully updated
                 await fetchDataFromFirestore();
                 dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
                 showMessageModal('Venta modificada y guardada exitosamente en Firestore. Inventario de camión (y principal si aplica) actualizado.');
