@@ -1909,6 +1909,8 @@
             let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
             console.log('[handleCloseSalesLogic] Initial Main Inventory (before processing sales):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
+            // New: Aggregate sales per truck
+            const truckSalesAggregates = {};
 
             for (const date in salesByDate) {
                 const salesForThisDate = salesByDate[date];
@@ -1925,6 +1927,17 @@
                         aggregatedSalesBySku[sku].totalSubtotal += subtotal;
                         totalOverallSale += subtotal;
                     });
+
+                    // Aggregate sales for each truck
+                    if (sale.sourceInventory && sale.sourceInventory !== 'warehouse') {
+                        const truckPlate = sale.sourceInventory;
+                        if (!truckSalesAggregates[truckPlate]) {
+                            truckSalesAggregates[truckPlate] = {};
+                        }
+                        sale.items.forEach(item => {
+                            truckSalesAggregates[truckPlate][item.sku] = (truckSalesAggregates[truckPlate][item.sku] || 0) + item.cantidadVendida;
+                        });
+                    }
                 });
 
                 // Generate Consolidated CSV
@@ -2006,6 +2019,33 @@
                 inventory = updatedMainInventory.filter(item => item.cantidad > 0); // Update local state
                 console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
+                // NEW: Update truck inventories based on aggregated sales
+                for (const truckPlate in truckSalesAggregates) {
+                    const truckSpecificSales = truckSalesAggregates[truckPlate];
+                    const truckInventoryDocRef = db.collection('truck_inventories').doc(truckPlate);
+                    const truckInventoryDoc = await truckInventoryDocRef.get();
+                    let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+
+                    console.log(`[handleCloseSalesLogic] Processing sales for truck: ${truckPlate}. Initial inventory:`, JSON.stringify(currentTruckItems));
+
+                    for (const sku in truckSpecificSales) {
+                        const quantitySoldFromTruck = truckSpecificSales[sku];
+                        const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
+                        if (itemIndex !== -1) {
+                            console.log(`[handleCloseSalesLogic] Deducting ${quantitySoldFromTruck} of SKU ${sku} from truck ${truckPlate}. Before: ${currentTruckItems[itemIndex].quantity}`);
+                            currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - quantitySoldFromTruck);
+                            console.log(`[handleCloseSalesLogic] After deduction: ${currentTruckItems[itemIndex].quantity}`);
+                        } else {
+                            messages.push(`Advertencia: SKU ${sku} vendido desde el camión ${truckPlate} no encontrado en su inventario durante el cierre.`);
+                            console.warn(`[handleCloseSalesLogic] SKU ${sku} sold from truck ${truckPlate} not found in its inventory during closure.`);
+                        }
+                    }
+                    // Filter out items with 0 quantity before saving
+                    batch.set(truckInventoryDocRef, { items: currentTruckItems.filter(item => item.quantity > 0) });
+                    console.log(`[handleCloseSalesLogic] Added batch set for truck ${truckPlate} inventory:`, JSON.stringify(currentTruckItems.filter(item => item.quantity > 0)));
+                }
+
+
                 allProcessedSaleDocIds.forEach(docId => {
                     console.log(`[handleCloseSalesLogic] Adding batch delete for daily sale DOC ID ${docId}.`);
                     batch.delete(db.collection('dailySales').doc(docId));
@@ -2016,6 +2056,7 @@
                 await batch.commit();
                 console.log('[handleCloseSalesLogic] Firestore batch commit successful.');
                 messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
+                messages.push('Inventarios de Camiones Actualizados: Los inventarios de los camiones afectados han sido actualizados.');
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
                 console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
