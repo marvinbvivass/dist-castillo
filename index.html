@@ -439,10 +439,10 @@
         let modifiedSaleQuantities = {};
         let modificationReason = '';
         let editingVehicle = null;
-        let selectedTruckForReceiving = null;
-        let selectedLoader = null;
-        let receivingQuantities = {};
-        let selectedTruckInventoryForReceiving = [];
+        let selectedTruckForReceiving = null; // Variable de estado para el camión seleccionado en recepción
+        let selectedLoader = null; // Variable de estado para el cargador/vendedor seleccionado en recepción
+        let receivingQuantities = {}; // Objeto para almacenar las cantidades a recibir por SKU
+        let selectedTruckInventoryForReceiving = []; // Inventario del camión seleccionado para la carga
         let selectedAdminVehicleForInventory = null;
         let resetQuantities = {};
         let allTruckInventories = {};
@@ -930,10 +930,242 @@
 
         const renderTruckReceivingScreen = () => {
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); setScreenAndRender('main'); return; }
+
+            // Opciones para el selector de cargadores (vendedores)
+            const loaderOptions = vendors.map(v => ({ value: v.name, text: v.name }));
+            // Opciones para el selector de camiones
+            const vehicleOptions = vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
+
             appRoot.innerHTML = createScreenContainer('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', `
-                <p class="text-lg text-center mb-6 text-gray-700">Esta sección está en construcción. Aquí podrás gestionar la recepción de mercancía en los camiones.</p>
+                <p class="text-lg text-center mb-6 text-gray-700">Selecciona un cargador y un camión, luego ingresa las cantidades a cargar.</p>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="loaderSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Cargador:</label>
+                    ${createSelect('loaderSelect', loaderOptions, selectedLoader, 'handleLoaderSelection(this.value)')}
+                </div>
+
+                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                    <label for="truckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión de Destino:</label>
+                    ${createSelect('truckSelect', vehicleOptions, selectedTruckForReceiving?.plate, 'handleTruckForReceivingSelection(this.value)')}
+                </div>
+
+                <div id="receiving-products-container">
+                    <p class="text-center text-gray-600 text-lg py-4">Seleccione un cargador y un camión para empezar a cargar mercancía.</p>
+                </div>
+
                 ${createButton('Volver a Carga', "setScreenAndRender('cargaSelection')", 'bg-gray-600 mt-5 w-full')}
             `, 'max-w-md mx-auto my-10');
+
+            // Actualizar el contenido de la tabla de productos si ya hay un camión y cargador seleccionados
+            if (selectedLoader && selectedTruckForReceiving) {
+                updateTruckReceivingScreenContent();
+            }
+        };
+
+        const handleLoaderSelection = (loaderName) => {
+            selectedLoader = loaderName;
+            // Si ya hay un camión seleccionado, actualiza el contenido
+            if (selectedTruckForReceiving) {
+                updateTruckReceivingScreenContent();
+            }
+        };
+
+        const handleTruckForReceivingSelection = async (truckPlate) => {
+            selectedTruckForReceiving = truckPlate ? vehicles.find(v => v.plate === truckPlate) : null;
+            receivingQuantities = {}; // Reset quantities when truck changes
+
+            if (selectedTruckForReceiving) {
+                // Fetch the current inventory of the selected truck
+                try {
+                    const truckInvDoc = await db.collection('truck_inventories').doc(selectedTruckForReceiving.plate).get();
+                    selectedTruckInventoryForReceiving = truckInvDoc.exists ? (truckInvDoc.data().items || []) : [];
+                    console.log(`[handleTruckForReceivingSelection] Inventario actual del camión ${selectedTruckForReceiving.plate}:`, selectedTruckInventoryForReceiving);
+                } catch (error) {
+                    console.error('Error al cargar el inventario del camión seleccionado:', error);
+                    showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
+                    selectedTruckInventoryForReceiving = [];
+                }
+            } else {
+                selectedTruckInventoryForReceiving = [];
+            }
+            updateTruckReceivingScreenContent();
+        };
+
+        const updateTruckReceivingScreenContent = () => {
+            const receivingProductsContainer = document.getElementById('receiving-products-container');
+            if (!receivingProductsContainer) return;
+
+            if (!selectedLoader || !selectedTruckForReceiving) {
+                receivingProductsContainer.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Seleccione un cargador y un camión para empezar a cargar mercancía.</p>`;
+                return;
+            }
+
+            // Crear una copia del inventario principal para mostrar y permitir la entrada de cantidades
+            const inventoryToDisplay = JSON.parse(JSON.stringify(inventory));
+
+            const tableRows = inventoryToDisplay.map(item => {
+                // Obtener la cantidad actual en el inventario principal
+                const currentMainQty = item.cantidad;
+                // Obtener la cantidad que se ha ingresado para recibir (si existe)
+                const qtyToReceive = receivingQuantities[item.sku] || 0;
+
+                return `
+                    <tr>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                        <td>${item.sku}</td>
+                        <td>${item.producto}</td>
+                        <td>${item.presentacion}</td>
+                        <td>${currentMainQty}</td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${qtyToReceive}" onchange="handleReceivingQuantityChange('${item.sku}', this.value)" min="0" max="${currentMainQty}"></td>
+                    </tr>
+                `;
+            }).join('');
+
+            receivingProductsContainer.innerHTML = `
+                <h3 class="text-xl font-bold mb-4 text-emerald-700">Productos a Cargar</h3>
+                ${createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Disponible (Principal)', 'Cantidad a Cargar'], tableRows, 'products-for-receiving-body')}
+                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showLoadMerchandiseConfirmation()">Cargar Mercancía</button>
+            `;
+        };
+
+        const handleReceivingQuantityChange = (sku, quantity) => {
+            receivingQuantities[sku] = parseInt(quantity) || 0;
+            // No re-render here to avoid losing focus on input. Will re-render on action.
+        };
+
+        const showLoadMerchandiseConfirmation = () => {
+            showConfirmationModal('¿Estás seguro de que quieres realizar esta carga de mercancía? Esto actualizará los inventarios y registrará la carga.', performLoadMerchandise);
+        };
+
+        const performLoadMerchandise = async () => {
+            if (!selectedLoader || !selectedTruckForReceiving) {
+                showMessageModal('Error: Por favor, selecciona un cargador y un camión antes de cargar mercancía.');
+                return;
+            }
+
+            const loadData = [];
+            let totalLoadAmount = 0;
+            let validationErrors = [];
+            let hasPositiveLoadQuantity = false;
+
+            // Copias de los inventarios para modificaciones
+            let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
+            let updatedTruckInventory = JSON.parse(JSON.stringify(selectedTruckInventoryForReceiving));
+
+            for (const sku in receivingQuantities) {
+                const quantityToLoad = receivingQuantities[sku];
+                if (quantityToLoad <= 0) continue; // Skip items with 0 or negative quantities
+
+                hasPositiveLoadQuantity = true;
+
+                const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
+                if (!mainInventoryItem) {
+                    validationErrors.push(`Error: SKU "${sku}" no encontrado en el inventario principal.`);
+                    continue;
+                }
+
+                if (quantityToLoad > mainInventoryItem.cantidad) {
+                    validationErrors.push(`Error: La cantidad a cargar de "${mainInventoryItem.producto}" (${quantityToLoad}) excede el stock disponible en el inventario principal (${mainInventoryItem.cantidad}).`);
+                    continue;
+                }
+
+                // Deduct from main inventory
+                mainInventoryItem.cantidad -= quantityToLoad;
+                totalLoadAmount += quantityToLoad * mainInventoryItem.precio; // Sumar al total de la carga
+
+                // Add to truck inventory
+                const truckItemIndex = updatedTruckInventory.findIndex(item => item.sku === sku);
+                if (truckItemIndex !== -1) {
+                    updatedTruckInventory[truckItemIndex].quantity += quantityToLoad;
+                } else {
+                    updatedTruckInventory.push({
+                        sku: mainInventoryItem.sku,
+                        rubro: mainInventoryItem.rubro,
+                        segmento: mainInventoryItem.segmento,
+                        producto: mainInventoryItem.producto,
+                        presentacion: mainInventoryItem.presentacion,
+                        quantity: quantityToLoad,
+                        price: mainInventoryItem.precio
+                    });
+                }
+
+                loadData.push({
+                    sku: mainInventoryItem.sku,
+                    producto: mainInventoryItem.producto,
+                    presentacion: mainInventoryItem.presentacion,
+                    cantidadCargada: quantityToLoad,
+                    precioUnitario: mainInventoryItem.precio,
+                    subtotal: quantityToLoad * mainInventoryItem.precio
+                });
+            }
+
+            if (validationErrors.length > 0) {
+                showMessageModal(validationErrors.join('\n'));
+                return;
+            }
+            if (!hasPositiveLoadQuantity) {
+                showMessageModal('Por favor, ingresa al menos una cantidad positiva para cargar.');
+                return;
+            }
+
+            const fileName = `carga_${selectedTruckForReceiving.plate}_${getCurrentDateFormatted()}.csv`;
+            const loadCSVContent = `SKU,Producto,Presentacion,Cantidad Cargada,Precio Unitario,Subtotal\n` +
+                                   loadData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadCargada},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
+                                   `\nTotal General:, , , , ,${totalLoadAmount.toFixed(2)}`;
+
+            const loadRecord = {
+                fileName: fileName,
+                date: getCurrentDateFormatted(),
+                truckPlate: selectedTruckForReceiving.plate,
+                truckName: selectedTruckForReceiving.name,
+                loader: selectedLoader,
+                total: totalLoadAmount,
+                items: loadData,
+                rawCSV: loadCSVContent,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                const batch = db.batch();
+
+                // Update main inventory documents
+                updatedMainInventory.forEach(item => {
+                    batch.set(db.collection('inventory').doc(item.sku), {
+                        rubro: item.rubro, sku: item.sku, segmento: item.segmento,
+                        producto: item.producto, presentacion: item.presentacion,
+                        cantidad: item.cantidad, precio: item.precio
+                    });
+                });
+
+                // Update truck inventory document
+                batch.set(db.collection('truck_inventories').doc(selectedTruckForReceiving.plate), { items: updatedTruckInventory.filter(item => item.quantity > 0) });
+
+                // Add new load record
+                const loadDocRef = db.collection('loadRecords').doc(); // Let Firestore generate ID
+                batch.set(loadDocRef, loadRecord);
+
+                await batch.commit();
+
+                // Update local state after successful commit
+                inventory = updatedMainInventory; // Update local main inventory
+                loadRecords.push({ docId: loadDocRef.id, ...loadRecord }); // Add to local load records
+                selectedTruckInventoryForReceiving = updatedTruckInventory; // Update local truck inventory for next operation
+
+                showMessageModal('Mercancía cargada exitosamente. Archivo de carga generado.');
+                triggerCSVDownload(fileName, loadCSVContent); // Descargar el CSV
+                
+                // Reset state for next load
+                selectedLoader = null;
+                selectedTruckForReceiving = null;
+                receivingQuantities = {};
+                selectedTruckInventoryForReceiving = [];
+
+                await fetchDataFromFirestore(); // Re-fetch all data to ensure consistency and update UI
+                setScreenAndRender('cargaSelection'); // Go back to carga selection screen
+            } catch (error) {
+                console.error('Error al realizar la carga de mercancía:', error);
+                showMessageModal('Error al cargar mercancía. Revisa tu conexión y las reglas de seguridad.');
+            }
         };
 
 
@@ -2672,9 +2904,10 @@
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de cargas.'); setScreenAndRender('main'); return; }
 
             const sortedLoadRecords = [...loadRecords].sort((a, b) => {
+                // Assuming date is in DDMMYYYY format for sorting
                 const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
                 const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
-                return dateB - dateA;
+                return dateB - dateA; // Sort descending by date
             });
 
             const loadFilesHtml = sortedLoadRecords.length === 0 ? '<p class="text-gray-600">No hay archivos de carga generados.</p>' :
