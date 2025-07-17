@@ -2129,7 +2129,7 @@
         };
 
         const renderCierreVentasScreen = () => {
-            // No hay una verificación isAdmin() aquí, ya que el usuario ha especificado que es una función de tipo 'user'.
+            // Esta función no tiene una verificación isAdmin() para que sea accesible por usuarios 'user'.
             appRoot.innerHTML = createScreenContainer('CIERRE DE VENTAS', `
                 <div class="mb-8 text-center">
                     <label class="block text-lg font-semibold text-gray-700 mb-2">Seleccionar Vendedor:</label>
@@ -2277,7 +2277,7 @@
             try {
                 const batch = db.batch();
                 updatedMainInventory.forEach(item => {
-                    console.log(`[handleCloseSalesLogic] Adding batch set for SKU ${item.sku} to quantity ${item.cantidad} in main inventory.`);
+                    console.log(`[handleCloseSalesLogic] Adding batch set for main inventory SKU: ${item.sku}, new quantity: ${item.cantidad}`);
                     batch.set(db.collection('inventory').doc(item.sku), {
                         rubro: item.rubro,
                         sku: item.sku,
@@ -2329,6 +2329,7 @@
                                                `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
 
                     const generalSaleDocRef = db.collection('historicalConsolidatedGeneralSales').doc(); // Firestore auto-ID
+                    console.log(`[handleCloseSalesLogic] Adding batch set for historical general sales: ${generalSaleDocRef.id}, data: ${JSON.stringify({ date: date, vendor: selectedVendor, totalOverallSale: totalOverallSale, itemsSoldSummary: itemsSoldSummary })}`);
                     batch.set(generalSaleDocRef, {
                         date: date,
                         vendor: selectedVendor,
@@ -2376,6 +2377,7 @@
 
 
                     const clientSaleDocRef = db.collection('historicalConsolidatedClientSales').doc(); // Firestore auto-ID
+                    console.log(`[handleCloseSalesLogic] Adding batch set for historical client sales: ${clientSaleDocRef.id}, data: ${JSON.stringify({ date: date, vendor: selectedVendor, grandTotalClients: grandTotalClients, clientSalesDetails: clientSalesDetails })}`);
                     batch.set(clientSaleDocRef, {
                         date: date,
                         vendor: selectedVendor,
@@ -2408,8 +2410,9 @@
                         }
                     }
                     // Filter out items with 0 quantity before saving
-                    batch.set(truckInventoryDocRef, { items: currentTruckItems.filter(item => item.quantity > 0) });
-                    console.log(`[handleCloseSalesLogic] Added batch set for truck ${truckPlate} inventory:`, JSON.stringify(currentTruckItems.filter(item => item.quantity > 0)));
+                    const filteredTruckItems = currentTruckItems.filter(item => item.quantity > 0);
+                    console.log(`[handleCloseSalesLogic] Adding batch set for truck ${truckPlate} inventory: ${JSON.stringify(filteredTruckItems)}`);
+                    batch.set(truckInventoryDocRef, { items: filteredTruckItems });
                 }
 
 
@@ -2427,9 +2430,10 @@
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
                 console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
+                console.error(`[handleCloseSalesLogic] Firestore Error Code: ${error.code}, Message: ${error.message}`);
                 // Check if the error is due to network issues
-                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition') {
-                    messages.push('Error de Conexión: No se pudo completar el cierre de ventas debido a problemas de red. Por favor, verifica tu conexión y vuelve a intentarlo. Los datos no se han borrado.');
+                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition' || error.code === 'permission-denied') {
+                    messages.push(`Error de Conexión/Permisos: No se pudo completar el cierre de ventas debido a problemas de red o reglas de seguridad. Por favor, verifica tu conexión y las reglas de seguridad de Firestore. Los datos no se han borrado de la nube.`);
                     // IMPORTANT: If network error, do NOT clear local dailySales, as they are still pending sync.
                     // The local state `dailySales` was already modified at the beginning, so no need to revert.
                 } else {
