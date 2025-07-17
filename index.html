@@ -1016,7 +1016,7 @@
                         <td>${item.producto}</td>
                         <td>${item.presentacion}</td>
                         <td>${currentMainQty}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${qtyToReceive}" onchange="handleReceivingQuantityChange('${item.sku}', this.value)" min="0" max="${currentMainQty}"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${qtyToReceive}" onchange="handleReceivingQuantityChange('${item.sku}', this.value)" min="0"></td>
                     </tr>
                 `;
             }).join('');
@@ -1049,7 +1049,9 @@
             let hasPositiveLoadQuantity = false;
 
             // Copias de los inventarios para modificaciones
+            // Clonar el inventario principal actual para modificarlo
             let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
+            // Clonar el inventario del camión seleccionado para modificarlo
             let updatedTruckInventory = JSON.parse(JSON.stringify(selectedTruckInventoryForReceiving));
 
             for (const sku in receivingQuantities) {
@@ -1058,44 +1060,44 @@
 
                 hasPositiveLoadQuantity = true;
 
+                // Encuentra el producto en el inventario principal para obtener sus detalles y actualizar su cantidad
                 const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
                 if (!mainInventoryItem) {
-                    validationErrors.push(`Error: SKU "${sku}" no encontrado en el inventario principal.`);
-                    continue;
+                    // Si el producto no existe en el inventario principal, lo creamos con la cantidad cargada
+                    const productDetails = inventory.find(item => item.sku === sku) || { rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${sku}`, presentacion: 'Unidad', precio: 0 };
+                    updatedMainInventory.push({ ...productDetails, sku: sku, cantidad: quantityToLoad });
+                    // No se necesita `mainInventoryItem.cantidad += quantityToLoad;` aquí porque es un nuevo item.
+                } else {
+                    // Si el producto ya existe, sumamos la cantidad cargada al inventario principal
+                    mainInventoryItem.cantidad += quantityToLoad;
                 }
 
-                if (quantityToLoad > mainInventoryItem.cantidad) {
-                    validationErrors.push(`Error: La cantidad a cargar de "${mainInventoryItem.producto}" (${quantityToLoad}) excede el stock disponible en el inventario principal (${mainInventoryItem.cantidad}).`);
-                    continue;
-                }
-
-                // Deduct from main inventory
-                mainInventoryItem.cantidad -= quantityToLoad;
-                totalLoadAmount += quantityToLoad * mainInventoryItem.precio; // Sumar al total de la carga
+                totalLoadAmount += quantityToLoad * (mainInventoryItem ? mainInventoryItem.precio : 0); // Sumar al total de la carga
 
                 // Add to truck inventory
                 const truckItemIndex = updatedTruckInventory.findIndex(item => item.sku === sku);
                 if (truckItemIndex !== -1) {
                     updatedTruckInventory[truckItemIndex].quantity += quantityToLoad;
                 } else {
-                    updatedTruckInventory.push({
-                        sku: mainInventoryItem.sku,
-                        rubro: mainInventoryItem.rubro,
-                        segmento: mainInventoryItem.segmento,
-                        producto: mainInventoryItem.producto,
-                        presentacion: mainInventoryItem.presentacion,
-                        quantity: quantityToLoad,
-                        price: mainInventoryItem.precio
-                    });
+                    const productDetails = inventory.find(item => item.sku === sku);
+                    if (productDetails) {
+                        updatedTruckInventory.push({
+                            sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
+                            producto: productDetails.producto, presentacion: productDetails.presentacion,
+                            quantity: quantityToLoad, price: productDetails.precio
+                        });
+                    } else {
+                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo añadir completamente al camión de destino.`);
+                    }
                 }
 
                 loadData.push({
-                    sku: mainInventoryItem.sku,
-                    producto: mainInventoryItem.producto,
-                    presentacion: mainInventoryItem.presentacion,
+                    sku: sku,
+                    producto: (mainInventoryItem ? mainInventoryItem.producto : (inventory.find(item => item.sku === sku)?.producto || `Producto ${sku}`)),
+                    presentacion: (mainInventoryItem ? mainInventoryItem.presentacion : (inventory.find(item => item.sku === sku)?.presentacion || 'Unidad')),
                     cantidadCargada: quantityToLoad,
-                    precioUnitario: mainInventoryItem.precio,
-                    subtotal: quantityToLoad * mainInventoryItem.precio
+                    precioUnitario: (mainInventoryItem ? mainInventoryItem.precio : (inventory.find(item => item.sku === sku)?.precio || 0)),
+                    subtotal: quantityToLoad * (mainInventoryItem ? mainInventoryItem.precio : (inventory.find(item => item.sku === sku)?.precio || 0))
                 });
             }
 
@@ -2245,7 +2247,15 @@
                 const batch = db.batch();
                 updatedMainInventory.forEach(item => {
                     console.log(`[handleCloseSalesLogic] Adding batch set for SKU ${item.sku} to quantity ${item.cantidad} in main inventory.`);
-                    batch.set(db.collection('inventory').doc(item.sku), item);
+                    batch.set(db.collection('inventory').doc(item.sku), {
+                        rubro: item.rubro,
+                        sku: item.sku,
+                        segmento: item.segmento,
+                        producto: item.producto,
+                        presentacion: item.presentacion,
+                        cantidad: item.cantidad,
+                        precio: item.precio
+                    });
                 });
                 // Filter out any items that might have been reduced to 0 quantity if they were not originally in inventory
                 inventory = updatedMainInventory.filter(item => item.cantidad > 0); // Update local state
