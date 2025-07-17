@@ -1061,12 +1061,15 @@
                 hasPositiveLoadQuantity = true;
 
                 // Encuentra el producto en el inventario principal para obtener sus detalles y actualizar su cantidad
-                const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
+                let mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
+                let productDetailsFromInventory = inventory.find(item => item.sku === sku);
+
                 if (!mainInventoryItem) {
                     // Si el producto no existe en el inventario principal, lo creamos con la cantidad cargada
-                    const productDetails = inventory.find(item => item.sku === sku) || { rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${sku}`, presentacion: 'Unidad', precio: 0 };
-                    updatedMainInventory.push({ ...productDetails, sku: sku, cantidad: quantityToLoad });
-                    // No se necesita `mainInventoryItem.cantidad += quantityToLoad;` aquí porque es un nuevo item.
+                    // Usamos los detalles del producto si existen en el inventario general, o valores por defecto
+                    const newProductDetails = productDetailsFromInventory || { rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${sku}`, presentacion: 'Unidad', precio: 0 };
+                    updatedMainInventory.push({ ...newProductDetails, sku: sku, cantidad: quantityToLoad });
+                    mainInventoryItem = updatedMainInventory.find(item => item.sku === sku); // Get the newly added item
                 } else {
                     // Si el producto ya existe, sumamos la cantidad cargada al inventario principal
                     mainInventoryItem.cantidad += quantityToLoad;
@@ -1079,25 +1082,29 @@
                 if (truckItemIndex !== -1) {
                     updatedTruckInventory[truckItemIndex].quantity += quantityToLoad;
                 } else {
-                    const productDetails = inventory.find(item => item.sku === sku);
-                    if (productDetails) {
+                    // Use product details from main inventory for consistency in truck inventory
+                    if (productDetailsFromInventory) {
                         updatedTruckInventory.push({
-                            sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
-                            producto: productDetails.producto, presentacion: productDetails.presentacion,
-                            quantity: quantityToLoad, price: productDetails.precio
+                            sku: productDetailsFromInventory.sku, rubro: productDetailsFromInventory.rubro, segmento: productDetailsFromInventory.segmento,
+                            producto: productDetailsFromInventory.producto, presentacion: productDetailsFromInventory.presentacion,
+                            quantity: quantityToLoad, price: productDetailsFromInventory.precio
                         });
                     } else {
-                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. No se pudo añadir completamente al camión de destino.`);
+                        // If product not found in main inventory, use default details
+                        messages.push(`Advertencia: Producto con SKU ${sku} no encontrado en el inventario principal. Se añadió al camión con detalles por defecto.`);
+                        updatedTruckInventory.push({
+                            sku: sku, rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${sku}`, presentacion: 'Unidad', quantity: quantityToLoad, price: 0
+                        });
                     }
                 }
 
                 loadData.push({
                     sku: sku,
-                    producto: (mainInventoryItem ? mainInventoryItem.producto : (inventory.find(item => item.sku === sku)?.producto || `Producto ${sku}`)),
-                    presentacion: (mainInventoryItem ? mainInventoryItem.presentacion : (inventory.find(item => item.sku === sku)?.presentacion || 'Unidad')),
+                    producto: (mainInventoryItem ? mainInventoryItem.producto : `Producto ${sku}`),
+                    presentacion: (mainInventoryItem ? mainInventoryItem.presentacion : 'Unidad'),
                     cantidadCargada: quantityToLoad,
-                    precioUnitario: (mainInventoryItem ? mainInventoryItem.precio : (inventory.find(item => item.sku === sku)?.precio || 0)),
-                    subtotal: quantityToLoad * (mainInventoryItem ? mainInventoryItem.precio : (inventory.find(item => item.sku === sku)?.precio || 0))
+                    precioUnitario: (mainInventoryItem ? mainInventoryItem.precio : 0),
+                    subtotal: quantityToLoad * (mainInventoryItem ? mainInventoryItem.precio : 0)
                 });
             }
 
@@ -1185,7 +1192,10 @@
             const password = document.getElementById('adminPasswordForReset').value;
             if (!password) { showMessageModal('Por favor, ingresa la contraseña.'); return; }
             try {
-                await firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                // Re-authenticate the current user with the provided password
+                const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                await currentUser.reauthenticateWithCredential(credential);
+
                 await loadAllInventoriesForReset();
                 setScreenAndRender('resetCargasInicialesEdit');
             } catch (error) {
@@ -2126,6 +2136,15 @@
 
         const handleCloseSalesLogic = async () => {
             console.log('[handleCloseSalesLogic] Initiating sales close logic.');
+
+            // --- NEW: Check for internet connection ---
+            if (!navigator.onLine) {
+                showMessageModal('Error de Conexión: No se puede realizar el cierre de ventas sin conexión a internet. Por favor, verifica tu conexión y vuelve a intentarlo.');
+                console.warn('[handleCloseSalesLogic] Aborting sales closure due to no internet connection.');
+                return;
+            }
+            // --- END NEW ---
+
             let messages = [];
             if (dailySales.length === 0) {
                 showMessageModal('No hay Ventas: No hay ventas registradas para cerrar.');
@@ -2396,7 +2415,14 @@
                 messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
             } catch (error) {
                 console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
-                messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
+                // Check if the error is due to network issues
+                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition') {
+                    messages.push('Error de Conexión: No se pudo completar el cierre de ventas debido a problemas de red. Por favor, verifica tu conexión y vuelve a intentarlo. Los datos no se han borrado.');
+                    // IMPORTANT: If network error, do NOT clear local dailySales, as they are still pending sync.
+                    // The local state `dailySales` was already modified at the beginning, so no need to revert.
+                } else {
+                    messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
+                }
             }
             setScreenAndRender('main');
             showMessageModal(messages.join('\n'));
@@ -2981,7 +3007,10 @@
             const password = document.getElementById('userPasswordForTransfer').value;
             if (!password) { showMessageModal('Por favor, ingresa tu contraseña.'); return; }
             try {
-                await firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                // Re-authenticate the current user with the provided password
+                const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                await currentUser.reauthenticateWithCredential(credential);
+
                 selectedDestinationTruck = null;
                 transferQuantities = {};
                 setScreenAndRender('transferInventory');
