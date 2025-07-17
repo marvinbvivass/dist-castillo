@@ -261,12 +261,15 @@
         let vendors = [];
         let dailySales = [];
         let vehicles = [];
-        let currentTruckInventory = [];
+        let currentTruckInventory = []; // This will be updated by the onSnapshot listener
         let users = [];
         let loadRecords = [];
         let transferRecords = [];
         let zonesData = [];
         let sectorsData = [];
+
+        // Global variable to hold the unsubscribe function for the truck inventory listener
+        let truckInventoryUnsubscribe = null;
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         // (Se mantienen para referencia, pero se asume que Firestore los manejará)
@@ -571,7 +574,9 @@
                     currentUserData = { role: 'user', assignedTruckPlate: null };
                 }
                 console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
-                await fetchDataFromFirestore();
+                await fetchDataFromFirestore(); // Fetch other data
+                setupTruckInventoryListener(); // Setup real-time listener for truck inventory
+
                 if (screen === 'login' || screen === 'register') {
                     console.log('[Auth State Changed] Redirecting to main screen.');
                     setScreenAndRender('main');
@@ -582,6 +587,12 @@
             } else {
                 currentUser = null;
                 currentUserData = { role: 'guest', assignedTruckPlate: null };
+                // Unsubscribe when user logs out
+                if (truckInventoryUnsubscribe) {
+                    truckInventoryUnsubscribe();
+                    truckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from truck inventory listener on logout.');
+                }
                 [clients, inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords, zonesData, sectorsData] = [[], [], [], [], [], [], [], [], [], [], []];
                 if (screen !== 'login' && screen !== 'register') {
                     console.log('[Auth State Changed] Redirecting to login screen (no user).');
@@ -604,7 +615,11 @@
                         for (const item of initialData) {
                             await db.collection(collectionName).doc(item[idKey]).set(item);
                             if (collectionName === 'vehicles') {
-                                await db.collection('truck_inventories').doc(item.plate).set({ items: [] });
+                                // Ensure truck_inventories are initialized only once per vehicle
+                                const truckInvDoc = await db.collection('truck_inventories').doc(item.plate).get();
+                                if (!truckInvDoc.exists) {
+                                    await db.collection('truck_inventories').doc(item.plate).set({ items: [] });
+                                }
                             }
                         }
                         return initialData;
@@ -626,15 +641,7 @@
                 zonesData = await fetchCollection('zones', initialZones, 'name');
                 sectorsData = await fetchCollection('sectors', initialSectors, 'name');
 
-                if (currentUserData.assignedTruckPlate) {
-                    console.log(`[fetchDataFromFirestore] Fetching truck inventory for: ${currentUserData.assignedTruckPlate}`);
-                    const truckInventoryDoc = await db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate).get();
-                    currentTruckInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-                    console.log(`[fetchDataFromFirestore] Truck inventory items: ${currentTruckInventory.length}`);
-                } else {
-                    currentTruckInventory = [];
-                    console.log('[fetchDataFromFirestore] No truck assigned for current user.');
-                }
+                // currentTruckInventory is now managed by the onSnapshot listener, not fetched here.
 
                 const dailySalesSnapshot = await db.collection('dailySales').get();
                 dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
@@ -674,9 +681,44 @@
                 [clients, inventory, vendors, vehicles, dailySales, currentTruckInventory, users, loadRecords, transferRecords, zonesData, sectorsData] = [initialClients, initialInventory, initialVendors, initialVehicles, [], [], [], [], [], initialZones, initialSectors];
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
-                render();
+                render(); // Initial render after main data fetch
             }
         };
+
+        const setupTruckInventoryListener = () => {
+            // Unsubscribe from any existing listener
+            if (truckInventoryUnsubscribe) {
+                truckInventoryUnsubscribe();
+                truckInventoryUnsubscribe = null;
+                console.log('[Firestore Listener] Unsubscribed from previous truck inventory listener.');
+            }
+
+            if (currentUserData.assignedTruckPlate) {
+                const truckInventoryDocRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
+                console.log(`[Firestore Listener] Setting up onSnapshot for truck inventory: ${currentUserData.assignedTruckPlate}`);
+
+                truckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
+                    if (docSnapshot.exists) {
+                        currentTruckInventory = docSnapshot.data().items || [];
+                        console.log(`[Firestore Listener] Truck inventory updated via snapshot for ${currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
+                    } else {
+                        currentTruckInventory = [];
+                        console.log(`[Firestore Listener] Truck inventory document for ${currentUserData.assignedTruckPlate} does not exist or is empty.`);
+                    }
+                    // Re-render only if on a screen that displays truck inventory, or if it's the main screen
+                    if (screen === 'inventario' || screen === 'venta' || screen === 'transferInventory' || screen === 'main') {
+                        render();
+                    }
+                }, error => {
+                    console.error('[Firestore Listener] Error listening to truck inventory:', error);
+                    showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
+                });
+            } else {
+                currentTruckInventory = [];
+                console.log('[Firestore Listener] No truck assigned for current user, no listener set up.');
+            }
+        };
+
 
         // --- Función Principal de Renderizado ---
         const render = () => {
@@ -1530,7 +1572,7 @@
             try {
                 await db.collection('sectors').doc(name).delete();
                 sectorsData = sectorsData.filter(s => s.name !== name);
-                showMessageModal('Sector eliminado exitosamente.');
+                showMessageModal('Sector eliminada exitosamente.');
                 updateSectorsList();
                 setScreenAndRender('clientes');
                 openManageZonesSectorsModal();
@@ -1616,9 +1658,10 @@
             const sourceInventoryDocId = currentUserData.assignedTruckPlate;
 
             let currentSourceInventoryData;
+            // When offline, currentTruckInventory will already reflect local changes due to onSnapshot.
+            // For validation, we should use the current local state.
             if (sourceInventoryDocId) {
-                const truckInventoryDoc = await db.collection(sourceInventoryCollection).doc(sourceInventoryDocId).get();
-                currentSourceInventoryData = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
+                currentSourceInventoryData = JSON.parse(JSON.stringify(currentTruckInventory)); // Use the current local state for validation
             } else {
                 currentSourceInventoryData = JSON.parse(JSON.stringify(inventory));
             }
@@ -1667,7 +1710,7 @@
             dailySales.push(saleRecord);
 
             if (sourceInventoryDocId) {
-                // Update local truck inventory
+                // Update local truck inventory directly. The onSnapshot listener will then reflect this.
                 currentTruckInventory = updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0);
             }
             // No update to main inventory here. It will be updated during Cierre de Ventas.
@@ -1697,7 +1740,7 @@
                 if (index !== -1) {
                     dailySales[index].docId = docRef.id;
                 }
-                // Re-fetch data to ensure full consistency after successful online commit
+                // Re-fetch other data (not truck inventory, as onSnapshot handles it)
                 await fetchDataFromFirestore();
 
             } catch (error) {
@@ -2104,6 +2147,7 @@
             let productsHtml = '';
             let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
             // The inventory to compare against for current stock should be the source of the original sale
+            // Use currentTruckInventory (which is real-time via onSnapshot) or main inventory
             const inventoryToCompare = (selectedSaleForModification.sourceInventory === 'warehouse') ? inventory : currentTruckInventory;
 
             const renderProductRow = (item, isNew = false) => {
@@ -2161,14 +2205,8 @@
             if (sourceInventoryPlate === 'warehouse') {
                 currentInventoryDataForValidation = inventory;
             } else {
-                try {
-                    const truckInventoryDoc = await db.collection('truck_inventories').doc(sourceInventoryPlate).get();
-                    currentInventoryDataForValidation = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-                } catch (error) {
-                    console.error('Error al cargar el inventario del camión de origen para validación:', error);
-                    showMessageModal('Error al cargar el inventario del camión de origen para validar. Intenta de nuevo.');
-                    return;
-                }
+                // Use the current local truck inventory for validation, as it's real-time
+                currentInventoryDataForValidation = JSON.parse(JSON.stringify(currentTruckInventory));
             }
 
             for (const sku in modifiedSaleQuantities) {
@@ -2179,9 +2217,11 @@
                 const productInInventory = currentInventoryDataForValidation.find(invItem => invItem.sku === sku);
                 const availableQuantity = productInInventory ? (productInInventory.quantity !== undefined ? productInInventory.quantity : productInInventory.cantidad) : 0;
 
-                if (netChange > 0 && netChange > availableQuantity) {
+                // If increasing quantity (netChange > 0), ensure enough stock
+                if (netChange > 0 && netChange > availableQuantity + oldQty) { // Corrected validation: available + old_sold should be >= new_sold
                     validationErrors.push(`Error: La cantidad adicional de "${sku}" (${netChange}) excede el stock disponible (${availableQuantity}).`);
                 }
+                // If decreasing quantity (netChange < 0), no stock check needed.
 
                 if (newQty > 0) {
                     const productDetails = inventory.find(item => item.sku === sku) || currentTruckInventory.find(item => item.sku === sku);
@@ -2218,13 +2258,13 @@
             if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
                 let currentTruckItems = JSON.parse(JSON.stringify(currentTruckInventory)); // Use current local truck inventory
                 for (const sku in inventoryUpdates) {
-                    const delta = inventoryUpdates[sku];
+                    const delta = inventoryUpdates[sku]; // This delta is (newQty - oldQty)
                     const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
-                    const productDetails = inventory.find(item => item.sku === sku);
+                    const productDetails = inventory.find(item => item.sku === sku); // Fallback to main inventory for product details
 
                     if (itemIndex !== -1) {
                         currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - delta);
-                    } else if (delta > 0 && productDetails) {
+                    } else if (delta > 0 && productDetails) { // If adding a new item to truck inventory
                         currentTruckItems.push({
                             sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
                             producto: productDetails.producto, presentacion: productDetails.presentacion,
@@ -2233,9 +2273,10 @@
                     }
                 }
                 currentTruckItems = currentTruckItems.filter(item => item.quantity > 0);
+                // Update the global currentTruckInventory. The onSnapshot listener will then reflect this.
                 if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
             }
-            // No update to main inventory here.
+            // No main inventory update here.
 
             // 2. Render UI immediately to reflect changes
             closeModifySaleModal(); // This will re-render and close the modal
@@ -2254,7 +2295,7 @@
                 await batch.commit(); // Await the commit for proper error handling
                 console.log('Firestore commit successful for modified sale:', selectedSaleForModification.fileName);
 
-                // Re-fetch data to ensure full consistency after successful online commit
+                // Re-fetch other data (not truck inventory, as onSnapshot handles it)
                 await fetchDataFromFirestore();
 
             } catch (error) {
@@ -2437,7 +2478,10 @@
             try {
                 await db.collection('users').doc(userId).update({ assignedTruckPlate: newAssignedTruckPlate });
                 users = users.map(u => u.uid === userId ? { ...u, assignedTruckPlate: newAssignedTruckPlate } : u);
-                if (currentUser && currentUser.uid === userId) currentUserData.assignedTruckPlate = newAssignedTruckPlate;
+                if (currentUser && currentUser.uid === userId) {
+                    currentUserData.assignedTruckPlate = newAssignedTruckPlate;
+                    setupTruckInventoryListener(); // Re-setup listener if current user's truck changed
+                }
                 showMessageModal(`Vehículo asignado exitosamente al usuario ${users.find(u => u.uid === userId).email}.`);
                 render();
             } catch (error) {
@@ -2595,9 +2639,11 @@
             let messages = [];
             let hasPositiveTransferQuantity = false;
 
+            // Use the current local state for source truck inventory
             let sourceTruckInventoryCopy = JSON.parse(JSON.stringify(currentTruckInventory));
             let destinationTruckInventoryCopy = [];
             try {
+                // Fetch destination truck inventory from Firestore (it might be managed by another user/admin)
                 const destTruckDoc = await db.collection('truck_inventories').doc(destinationTruckPlate).get();
                 destinationTruckInventoryCopy = destTruckDoc.exists ? (destTruckDoc.data().items || []) : [];
             } catch (error) {
@@ -2661,8 +2707,9 @@
                 transferRecord.docId = docRef.id;
                 await batch.commit();
 
+                // Update local currentTruckInventory, which will be reflected by onSnapshot
                 currentTruckInventory = sourceTruckInventoryCopy;
-                transferRecords.push(transferRecord);
+                transferRecords.push(transferRecord); // Add to local list
 
                 showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
                 triggerCSVDownload(transferFileName, transferCSVContent); // Usar la nueva función para descargar
