@@ -261,15 +261,17 @@
         let vendors = [];
         let dailySales = [];
         let vehicles = [];
-        let currentTruckInventory = []; // This will be updated by the onSnapshot listener
+        let currentTruckInventory = []; // This will be updated by the onSnapshot listener for user's assigned truck
         let users = [];
         let loadRecords = [];
         let transferRecords = [];
         let zonesData = [];
         let sectorsData = [];
 
-        // Global variable to hold the unsubscribe function for the truck inventory listener
+        // Global variable to hold the unsubscribe function for the user's truck inventory listener
         let truckInventoryUnsubscribe = null;
+        // Global variable to hold the unsubscribe function for the admin's selected truck inventory listener
+        let adminTruckInventoryUnsubscribe = null;
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
         // (Se mantienen para referencia, pero se asume que Firestore los manejará)
@@ -575,7 +577,7 @@
                 }
                 console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
                 await fetchDataFromFirestore(); // Fetch other data
-                setupTruckInventoryListener(); // Setup real-time listener for truck inventory
+                setupTruckInventoryListener(); // Setup real-time listener for user's truck inventory
 
                 if (screen === 'login' || screen === 'register') {
                     console.log('[Auth State Changed] Redirecting to main screen.');
@@ -591,7 +593,12 @@
                 if (truckInventoryUnsubscribe) {
                     truckInventoryUnsubscribe();
                     truckInventoryUnsubscribe = null;
-                    console.log('[Firestore Listener] Unsubscribed from truck inventory listener on logout.');
+                    console.log('[Firestore Listener] Unsubscribed from user truck inventory listener on logout.');
+                }
+                if (adminTruckInventoryUnsubscribe) { // Also unsubscribe admin listener on general logout
+                    adminTruckInventoryUnsubscribe();
+                    adminTruckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
                 }
                 [clients, inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords, zonesData, sectorsData] = [[], [], [], [], [], [], [], [], [], [], []];
                 if (screen !== 'login' && screen !== 'register') {
@@ -686,36 +693,84 @@
         };
 
         const setupTruckInventoryListener = () => {
-            // Unsubscribe from any existing listener
+            // Unsubscribe from any existing user listener
             if (truckInventoryUnsubscribe) {
                 truckInventoryUnsubscribe();
                 truckInventoryUnsubscribe = null;
-                console.log('[Firestore Listener] Unsubscribed from previous truck inventory listener.');
+                console.log('[Firestore Listener] Unsubscribed from previous user truck inventory listener.');
             }
 
             if (currentUserData.assignedTruckPlate) {
                 const truckInventoryDocRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
-                console.log(`[Firestore Listener] Setting up onSnapshot for truck inventory: ${currentUserData.assignedTruckPlate}`);
+                console.log(`[Firestore Listener] Setting up onSnapshot for user truck inventory: ${currentUserData.assignedTruckPlate}`);
 
                 truckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
                     if (docSnapshot.exists) {
                         currentTruckInventory = docSnapshot.data().items || [];
-                        console.log(`[Firestore Listener] Truck inventory updated via snapshot for ${currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
+                        console.log(`[Firestore Listener] User truck inventory updated via snapshot for ${currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
                     } else {
                         currentTruckInventory = [];
-                        console.log(`[Firestore Listener] Truck inventory document for ${currentUserData.assignedTruckPlate} does not exist or is empty.`);
+                        console.log(`[Firestore Listener] User truck inventory document for ${currentUserData.assignedTruckPlate} does not exist or is empty.`);
                     }
                     // Re-render only if on a screen that displays truck inventory, or if it's the main screen
                     if (screen === 'inventario' || screen === 'venta' || screen === 'transferInventory' || screen === 'main') {
                         render();
                     }
                 }, error => {
-                    console.error('[Firestore Listener] Error listening to truck inventory:', error);
+                    console.error('[Firestore Listener] Error listening to user truck inventory:', error);
                     showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
                 });
             } else {
                 currentTruckInventory = [];
                 console.log('[Firestore Listener] No truck assigned for current user, no listener set up.');
+            }
+        };
+
+        const setupAdminTruckInventoryListener = (plate) => {
+            // Unsubscribe from any existing admin listener
+            if (adminTruckInventoryUnsubscribe) {
+                adminTruckInventoryUnsubscribe();
+                adminTruckInventoryUnsubscribe = null;
+                console.log('[Firestore Listener] Unsubscribed from previous admin truck inventory listener.');
+            }
+
+            if (plate) {
+                const truckInventoryDocRef = db.collection('truck_inventories').doc(plate);
+                console.log(`[Firestore Listener] Setting up onSnapshot for admin selected truck inventory: ${plate}`);
+
+                adminTruckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
+                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
+                    if (!displayDiv) {
+                        console.warn('[Firestore Listener] Display div for admin truck inventory not found.');
+                        return;
+                    }
+
+                    if (docSnapshot.exists) {
+                        const displayInventory = docSnapshot.data().items || [];
+                        console.log(`[Firestore Listener] Admin selected truck inventory updated via snapshot for ${plate}:`, displayInventory.length, 'items.');
+                        if (displayInventory.length === 0) {
+                            displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>`;
+                        } else {
+                            const tableRows = displayInventory.map(item => `
+                                <td>${item.rubro}</td><td>${item.sku}</td><td>${item.producto}</td>
+                                <td>${item.presentacion}</td><td>${item.quantity}</td><td>$${item.price.toFixed(2)}</td>
+                            `).map(row => `<tr>${row}</tr>`).join('');
+                            displayDiv.innerHTML = createTable(['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad', 'Precio'], tableRows, 'admin-truck-inventory-display-body');
+                        }
+                    } else {
+                        displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} no existe o está vacío.</p>`;
+                        console.log(`[Firestore Listener] Admin selected truck inventory document for ${plate} does not exist or is empty.`);
+                    }
+                }, error => {
+                    console.error('[Firestore Listener] Error listening to admin selected truck inventory:', error);
+                    showMessageModal('Error en la sincronización del inventario del camión para el administrador. Puede que los datos no estén actualizados.');
+                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
+                    if (displayDiv) {
+                        displayDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
+                    }
+                });
+            } else {
+                console.log('[Firestore Listener] No truck selected for admin, no listener set up.');
             }
         };
 
@@ -1109,7 +1164,7 @@
             `;
         };
 
-        const renderAdminVehicleInventoryScreen = async () => {
+        const renderAdminVehicleInventoryScreen = () => {
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); setScreenAndRender('main'); return; }
 
             const vehicleOptions = vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
@@ -1124,41 +1179,29 @@
                 ${createButton('Volver', "setScreenAndRender('adminInventorySelection')", 'bg-gray-600 mt-5 w-full')}
             `);
 
+            // If a vehicle is already selected, set up the listener immediately
             if (selectedAdminVehicleForInventory) {
-                await displayAdminSelectedTruckInventory(selectedAdminVehicleForInventory.plate);
-            }
-        };
-
-        const displayAdminSelectedTruckInventory = async (plate) => {
-            const displayDiv = document.getElementById('selected-vehicle-inventory-display');
-            if (!displayDiv) return;
-            displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Cargando inventario para ${plate}...</p>`;
-
-            try {
-                const truckInventoryDoc = await db.collection('truck_inventories').doc(plate).get();
-                const displayInventory = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-                if (displayInventory.length === 0) {
-                    displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>`;
-                } else {
-                    const tableRows = displayInventory.map(item => `
-                        <td>${item.rubro}</td><td>${item.sku}</td><td>${item.producto}</td>
-                        <td>${item.presentacion}</td><td>${item.quantity}</td><td>$${item.price.toFixed(2)}</td>
-                    `).map(row => `<tr>${row}</tr>`).join('');
-                    displayDiv.innerHTML = createTable(['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad', 'Precio'], tableRows, 'admin-truck-inventory-display-body');
+                setupAdminTruckInventoryListener(selectedAdminVehicleForInventory.plate);
+            } else {
+                // Ensure no listener is active if no truck is selected
+                if (adminTruckInventoryUnsubscribe) {
+                    adminTruckInventoryUnsubscribe();
+                    adminTruckInventoryUnsubscribe = null;
                 }
-            } catch (error) {
-                console.error('Error al cargar inventario del camión para admin:', error);
-                showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
-                displayDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
             }
         };
 
         const handleAdminVehicleSelection = (plate) => {
             selectedAdminVehicleForInventory = plate ? vehicles.find(v => v.plate === plate) : null;
             if (selectedAdminVehicleForInventory) {
-                displayAdminSelectedTruckInventory(plate);
+                setupAdminTruckInventoryListener(plate); // Set up listener for the selected truck
             } else {
+                // If no truck is selected, unsubscribe and clear display
+                if (adminTruckInventoryUnsubscribe) {
+                    adminTruckInventoryUnsubscribe();
+                    adminTruckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener (no truck selected).');
+                }
                 document.getElementById('selected-vehicle-inventory-display').innerHTML = '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>';
             }
         };
@@ -2812,6 +2855,12 @@
 
         const setScreenAndRender = (newScreen) => {
             console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
+            // Clean up admin truck inventory listener if navigating away from admin inventory screens
+            if (adminTruckInventoryUnsubscribe && newScreen !== 'adminVehicleInventory') {
+                adminTruckInventoryUnsubscribe();
+                adminTruckInventoryUnsubscribe = null;
+                console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
+            }
             screen = newScreen;
             render();
         };
