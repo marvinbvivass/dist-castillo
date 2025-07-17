@@ -2019,11 +2019,105 @@
                 inventory = updatedMainInventory.filter(item => item.cantidad > 0); // Update local state
                 console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
-                // NEW: Update truck inventories based on aggregated sales
+                // NEW: Add historical consolidated general sales to batch
+                for (const date in salesByDate) {
+                    const salesForThisDate = salesByDate[date];
+                    const aggregatedSalesBySku = {};
+                    let totalOverallSale = 0;
+                    salesForThisDate.forEach(sale => {
+                        sale.items.forEach(item => {
+                            const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
+                            if (!aggregatedSalesBySku[sku]) {
+                                aggregatedSalesBySku[sku] = { producto, presentacion, totalCantidad: 0, totalSubtotal: 0 };
+                            }
+                            aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
+                            aggregatedSalesBySku[sku].totalSubtotal += subtotal;
+                            totalOverallSale += subtotal;
+                        });
+                    });
+
+                    const itemsSoldSummary = [];
+                    for (const sku in aggregatedSalesBySku) {
+                        const item = aggregatedSalesBySku[sku];
+                        itemsSoldSummary.push({
+                            sku: sku,
+                            producto: item.producto,
+                            presentacion: item.presentacion,
+                            totalCantidad: item.totalCantidad,
+                            totalSubtotal: item.totalSubtotal
+                        });
+                    }
+
+                    const combinedCSVContent = `Venta General Consolidada - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nSKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n` +
+                                               Object.keys(aggregatedSalesBySku).map(sku => {
+                                                   const item = aggregatedSalesBySku[sku];
+                                                   return `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}`;
+                                               }).join('\n') +
+                                               `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
+
+                    const generalSaleDocRef = db.collection('historicalConsolidatedGeneralSales').doc(); // Firestore auto-ID
+                    batch.set(generalSaleDocRef, {
+                        date: date,
+                        vendor: selectedVendor,
+                        totalOverallSale: totalOverallSale,
+                        itemsSoldSummary: itemsSoldSummary,
+                        rawCSV: combinedCSVContent,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // NEW: Add historical consolidated client sales to batch
+                    const uniqueSKUs = new Set();
+                    const clientSalesData = {};
+                    salesForThisDate.forEach(sale => {
+                        if (!clientSalesData[sale.client.id]) {
+                            clientSalesData[sale.client.id] = { clientName: sale.client.nombreComercial, total: 0, skus: {} };
+                        }
+                        sale.items.forEach(item => {
+                            uniqueSKUs.add(item.sku);
+                            clientSalesData[sale.client.id].skus[item.sku] = (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
+                            clientSalesData[sale.client.id].total += item.subtotal;
+                        });
+                    });
+
+                    const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
+                    let clientCSVContent = `Venta General por Clientes - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nCliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
+                    let grandTotalClients = 0;
+                    const clientSalesDetails = [];
+
+                    for (const clientId in clientSalesData) {
+                        const clientData = clientSalesData[clientId];
+                        let clientRow = `"${clientData.clientName}"`;
+                        sortedUniqueSKUs.forEach(sku => { clientRow += `,${clientData.skus[sku] || 0}`; });
+                        clientRow += `,${clientData.total.toFixed(2)}\n`;
+                        clientCSVContent += clientRow;
+                        grandTotalClients += clientData.total;
+
+                        clientSalesDetails.push({
+                            clientId: clientId,
+                            clientName: clientData.clientName,
+                            total: clientData.total,
+                            skusSold: clientData.skus
+                        });
+                    }
+                    clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
+
+
+                    const clientSaleDocRef = db.collection('historicalConsolidatedClientSales').doc(); // Firestore auto-ID
+                    batch.set(clientSaleDocRef, {
+                        date: date,
+                        vendor: selectedVendor,
+                        grandTotalClients: grandTotalClients,
+                        clientSalesDetails: clientSalesDetails,
+                        rawCSV: clientCSVContent,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                // Update truck inventories based on aggregated sales
                 for (const truckPlate in truckSalesAggregates) {
                     const truckSpecificSales = truckSalesAggregates[truckPlate];
                     const truckInventoryDocRef = db.collection('truck_inventories').doc(truckPlate);
-                    const truckInventoryDoc = await truckInventoryDocRef.get();
+                    const truckInventoryDoc = await truckInventoryDocRef.get(); // Fetch current state from Firestore
                     let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
 
                     console.log(`[handleCloseSalesLogic] Processing sales for truck: ${truckPlate}. Initial inventory:`, JSON.stringify(currentTruckItems));
