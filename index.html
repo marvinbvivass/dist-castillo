@@ -1577,7 +1577,7 @@
                     const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
                     const price = item.price !== undefined ? item.price : item.precio;
                     return `
-                        <td><Image of product></td>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${quantity}"></td>
                         <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
@@ -1612,15 +1612,14 @@
             let messages = [];
             let validationErrors = [];
 
-            // Determine the source inventory based on whether a truck is assigned
             const sourceInventoryCollection = currentUserData.assignedTruckPlate ? 'truck_inventories' : 'inventory';
-            const sourceInventoryDocId = currentUserData.assignedTruckPlate; // This will be null if no truck is assigned (admin selling from warehouse)
+            const sourceInventoryDocId = currentUserData.assignedTruckPlate;
 
             let currentSourceInventoryData;
-            if (sourceInventoryDocId) { // If a truck is assigned, fetch its inventory
+            if (sourceInventoryDocId) {
                 const truckInventoryDoc = await db.collection(sourceInventoryCollection).doc(sourceInventoryDocId).get();
                 currentSourceInventoryData = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-            } else { // If no truck is assigned (admin selling from warehouse), use the local main inventory for validation
+            } else {
                 currentSourceInventoryData = JSON.parse(JSON.stringify(inventory));
             }
 
@@ -1628,7 +1627,7 @@
 
             for (const item of currentSourceInventoryData) {
                 const quantitySold = saleQuantities[item.sku] || 0;
-                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad; // Use 'quantity' for truck, 'cantidad' for main
+                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad;
 
                 if (quantitySold > 0) {
                     if (quantitySold > availableQuantity) {
@@ -1639,12 +1638,11 @@
                         saleData.push({ sku: item.sku, producto: item.producto, presentacion: item.presentacion, cantidadVendida: quantitySold, precioUnitario: price, subtotal: subtotal });
                         totalSaleAmount += subtotal;
 
-                        // Deduct from the source inventory (truck inventory if assigned, otherwise conceptually from main for recording)
                         updatedSourceInventory = updatedSourceInventory.map(invItem =>
                             invItem.sku === item.sku ? {
                                 ...invItem,
                                 quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold,
-                                cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold // Update both for consistency
+                                cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold
                             } : invItem
                         );
                     }
@@ -1657,39 +1655,59 @@
             const fileName = `venta_${selectedClientForSale.nombreComercial.replace(/\s/g, '_')}_${getCurrentDateFormatted()}.csv`;
             const saleRecord = {
                 fileName: fileName, client: selectedClientForSale, date: getCurrentDateFormatted(), items: saleData,
-                total: totalSaleAmount, vendor: selectedVendor, sourceInventory: currentUserData.assignedTruckPlate || 'warehouse', // Record actual source
+                total: totalSaleAmount, vendor: selectedVendor, sourceInventory: currentUserData.assignedTruckPlate || 'warehouse',
                 rawCSV: `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
                         saleData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
                         `\nTotal General:, , , , ,${totalSaleAmount.toFixed(2)}`
             };
 
-            try {
-                const batch = db.batch();
-                const docRef = await db.collection('dailySales').add(saleRecord);
-                saleRecord.docId = docRef.id;
-                dailySales.push(saleRecord);
+            // 1. Update local state immediately for UI responsiveness
+            // Assign a temporary ID for local display until Firestore provides a real one
+            saleRecord.docId = `temp_${Date.now()}`;
+            dailySales.push(saleRecord);
 
-                // ONLY UPDATE TRUCK INVENTORY IF A TRUCK IS ASSIGNED
-                if (sourceInventoryDocId) {
-                    // Actualizar inventario del camión
-                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0) });
-                    currentTruckInventory = updatedSourceInventory; // Actualizar estado local del camión
-                }
-                // DO NOT update main inventory here. It will be updated during Cierre de Ventas.
-
-                await batch.commit();
-                messages.push(`Venta Completada: Archivo de venta "${fileName}" generado y guardado en Firestore.`);
-                messages.push(`Imprimiendo: Simulando impresión de la venta para ${selectedClientForSale.nombreComercial}.`);
-
-            } catch (error) {
-                console.error('Error al finalizar la venta y guardar en Firestore:', error);
-                showMessageModal('Error al finalizar la venta. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                return;
+            if (sourceInventoryDocId) {
+                // Update local truck inventory
+                currentTruckInventory = updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0);
             }
+            // No update to main inventory here. It will be updated during Cierre de Ventas.
 
+            // 2. Render UI immediately to reflect changes
             resetVentaState();
             setScreenAndRender('main');
-            showMessageModal(messages.join('\n'));
+            showMessageModal(`Venta registrada localmente para ${selectedClientForSale.nombreComercial}. Se sincronizará cuando haya conexión a internet.`);
+
+            // 3. Perform Firestore write in background (non-blocking)
+            try {
+                const batch = db.batch();
+                // Let Firestore generate a real ID for the new document
+                const docRef = db.collection('dailySales').doc();
+                batch.set(docRef, saleRecord); // Use the new docRef for the actual DB write
+
+                if (sourceInventoryDocId) {
+                    // Update truck inventory in Firestore
+                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: currentTruckInventory });
+                }
+
+                await batch.commit(); // Await the commit for proper error handling and real ID assignment
+                console.log('Firestore commit successful for sale:', saleRecord.fileName);
+
+                // Update the local saleRecord with the real docId after successful commit
+                const index = dailySales.findIndex(s => s.docId === saleRecord.docId);
+                if (index !== -1) {
+                    dailySales[index].docId = docRef.id;
+                }
+                // Re-fetch data to ensure full consistency after successful online commit
+                await fetchDataFromFirestore();
+
+            } catch (error) {
+                console.error('Error al guardar la venta en Firestore (puede ser por falta de conexión):', error);
+                // If it's a network error, Firestore handles queuing. If it's another error, notify.
+                if (error.code !== 'unavailable' && error.code !== 'internal' && error.code !== 'failed-precondition') { // Common codes for network issues
+                    showMessageModal('Error al guardar la venta en la nube. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+                }
+                // If it's a network error, the sale is still locally present, so no need to revert UI.
+            }
         };
 
         const toggleClientPickerModal = (show) => {
@@ -2095,7 +2113,7 @@
                 const price = item.precioUnitario !== undefined ? item.precioUnitario : (productInInventory?.price !== undefined ? productInInventory.price : productInInventory?.precio);
                 return `
                     <tr>
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Image of ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
                         <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
@@ -2134,17 +2152,15 @@
             const oldSaleItemsMap = new Map(selectedSaleForModification.items.map(item => [item.sku, item.cantidadVendida]));
             const newSaleItems = [];
             let newTotalSaleAmount = 0;
-            let inventoryUpdates = {}; // This will store the net change for the *source* inventory (truck or main)
+            let inventoryUpdates = {};
             let validationErrors = [];
 
             const sourceInventoryPlate = selectedSaleForModification.sourceInventory;
-            let currentInventoryDataForValidation; // This is the inventory to check against for current stock
+            let currentInventoryDataForValidation;
 
-            // Determine which inventory to check against for current stock
             if (sourceInventoryPlate === 'warehouse') {
-                currentInventoryDataForValidation = inventory; // If original sale was from warehouse, validate against main inventory
+                currentInventoryDataForValidation = inventory;
             } else {
-                // If original sale was from a truck, fetch the current truck inventory from DB for validation
                 try {
                     const truckInventoryDoc = await db.collection('truck_inventories').doc(sourceInventoryPlate).get();
                     currentInventoryDataForValidation = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
@@ -2158,18 +2174,16 @@
             for (const sku in modifiedSaleQuantities) {
                 const newQty = modifiedSaleQuantities[sku];
                 const oldQty = oldSaleItemsMap.get(sku) || 0;
-                const netChange = newQty - oldQty; // Positive if more sold, negative if less sold/returned
+                const netChange = newQty - oldQty;
 
                 const productInInventory = currentInventoryDataForValidation.find(invItem => invItem.sku === sku);
                 const availableQuantity = productInInventory ? (productInInventory.quantity !== undefined ? productInInventory.quantity : productInInventory.cantidad) : 0;
 
-                // Validate if there's enough stock for *additional* sales
                 if (netChange > 0 && netChange > availableQuantity) {
                     validationErrors.push(`Error: La cantidad adicional de "${sku}" (${netChange}) excede el stock disponible (${availableQuantity}).`);
                 }
 
                 if (newQty > 0) {
-                    // Find product details from either main inventory or current truck inventory (for display)
                     const productDetails = inventory.find(item => item.sku === sku) || currentTruckInventory.find(item => item.sku === sku);
                     if (productDetails) {
                         const price = productDetails.price !== undefined ? productDetails.price : productDetails.precio;
@@ -2177,11 +2191,9 @@
                         newTotalSaleAmount += newQty * price;
                     }
                 }
-                // Record the net change for the source inventory
                 if (netChange !== 0) inventoryUpdates[sku] = (inventoryUpdates[sku] || 0) + netChange;
             }
 
-            // If there are validation errors, stop the process
             if (validationErrors.length > 0) {
                 showMessageModal(validationErrors.join('\n'));
                 return;
@@ -2200,48 +2212,56 @@
                 `\nTotal General:, , , , ,${newTotalSaleAmount.toFixed(2)}\n` +
                 `Motivo de Modificación:,${modificationReason.trim()}`;
 
+            // 1. Update local state immediately for UI responsiveness
+            dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
+
+            if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
+                let currentTruckItems = JSON.parse(JSON.stringify(currentTruckInventory)); // Use current local truck inventory
+                for (const sku in inventoryUpdates) {
+                    const delta = inventoryUpdates[sku];
+                    const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
+                    const productDetails = inventory.find(item => item.sku === sku);
+
+                    if (itemIndex !== -1) {
+                        currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - delta);
+                    } else if (delta > 0 && productDetails) {
+                        currentTruckItems.push({
+                            sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
+                            producto: productDetails.producto, presentacion: productDetails.presentacion,
+                            quantity: delta, price: productDetails.precio
+                        });
+                    }
+                }
+                currentTruckItems = currentTruckItems.filter(item => item.quantity > 0);
+                if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
+            }
+            // No update to main inventory here.
+
+            // 2. Render UI immediately to reflect changes
+            closeModifySaleModal(); // This will re-render and close the modal
+            showMessageModal('Venta modificada y guardada localmente. Se sincronizará cuando haya conexión a internet.');
+
+            // 3. Perform Firestore write in background (non-blocking)
             try {
                 const batch = db.batch();
                 batch.set(db.collection('dailySales').doc(selectedSaleForModification.docId), selectedSaleForModification);
 
-                // ONLY UPDATE TRUCK INVENTORY IF THE SALE ORIGINATED FROM A TRUCK
                 if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
-                    const truckInventoryRef = db.collection('truck_inventories').doc(sourceInventoryPlate);
-                    const truckInventoryDoc = await truckInventoryRef.get();
-                    let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-                    for (const sku in inventoryUpdates) {
-                        const delta = inventoryUpdates[sku]; // This delta is the net change (new - old)
-                        const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
-                        const productDetails = inventory.find(item => item.sku === sku); // Get full product details from main inventory
-
-                        if (itemIndex !== -1) {
-                            currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - delta);
-                        } else if (delta > 0 && productDetails) { // If a new item is added to sale (positive delta)
-                            currentTruckItems.push({
-                                sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
-                                producto: productDetails.producto, presentacion: productDetails.presentacion,
-                                quantity: delta, price: productDetails.precio
-                            });
-                        }
-                    }
-                    currentTruckItems = currentTruckItems.filter(item => item.quantity > 0); // Remove items with 0 quantity
-                    batch.set(truckInventoryRef, { items: currentTruckItems });
-                    if (currentUserData.assignedTruckPlate === sourceInventoryPlate) currentTruckInventory = currentTruckItems;
+                    batch.set(db.collection('truck_inventories').doc(sourceInventoryPlate), { items: currentTruckInventory });
                 }
-                // DO NOT update main inventory here, regardless of sourceInventoryPlate.
-                // Main inventory is ONLY updated during Cierre de Ventas.
+                // No main inventory update here.
 
-                await batch.commit();
-                // REVISION: Call fetchDataFromFirestore to ensure local state is fully updated
+                await batch.commit(); // Await the commit for proper error handling
+                console.log('Firestore commit successful for modified sale:', selectedSaleForModification.fileName);
+
+                // Re-fetch data to ensure full consistency after successful online commit
                 await fetchDataFromFirestore();
-                dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
-                showMessageModal('Venta modificada y guardada exitosamente en Firestore. Inventario de camión (si aplica) actualizado.');
-                closeModifySaleModal();
-                render();
+
             } catch (error) {
-                console.error('Error al modificar venta en Firestore:', error);
-                showMessageModal('Error al modificar venta. Por favor, revisa tu conexión y las reglas de seguridad.');
+                console.error('Error al modificar venta en Firestore (puede ser por falta de conexión):', error);
+                if (error.code !== 'unavailable' && error.code !== 'internal' && error.code !== 'failed-precondition') {
+                    showMessageModal('Error al guardar la modificación de venta en la nube. Por favor, revisa tu conexión y las reglas de seguridad.');
+                }
             }
         };
 
@@ -2518,7 +2538,7 @@
                 const tableRows = currentTruckInventory.map(item => {
                     if (transferQuantities[item.sku] === undefined) transferQuantities[item.sku] = 0;
                     return `
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Image of ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>${item.quantity}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${transferQuantities[item.sku]}" onchange="handleTransferQuantityChange('${item.sku}', this.value)" min="0" max="${item.quantity}"></td>
                     `;
