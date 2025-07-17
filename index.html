@@ -1217,7 +1217,11 @@
                 const items = doc.data().items || [];
                 allTruckInventories[truckPlate] = items;
                 items.forEach(item => {
-                    if (!resetQuantities[item.sku]) resetQuantities[item.sku] = { main: 0, trucks: {} };
+                    if (!resetQuantities[item.sku]) {
+                        // If a product exists only in a truck inventory but not main, add it to resetQuantities with 0 main qty
+                        const productDetails = inventory.find(invItem => invItem.sku === item.sku) || { rubro: 'Desconocido', segmento: 'Desconocido', producto: `Producto ${item.sku}`, presentacion: 'Unidad', precio: 0 };
+                        resetQuantities[item.sku] = { main: 0, trucks: {} };
+                    }
                     resetQuantities[item.sku].trucks[truckPlate] = item.quantity;
                 });
             });
@@ -1274,7 +1278,12 @@
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden guardar cambios en esta función.'); return; }
             let validationErrors = [];
             let updatedMainInventory = [];
-            let updatedTruckInventories = vehicles.reduce((acc, v) => ({ ...acc, [v.plate]: [] }), {});
+            let truckItemsToSave = {}; // This will hold the items array for each truck's document
+
+            // Initialize truckItemsToSave for all vehicles with empty arrays
+            vehicles.forEach(v => {
+                truckItemsToSave[v.plate] = [];
+            });
 
             for (const sku of Object.keys(resetQuantities)) {
                 const mainQty = resetQuantities[sku].main;
@@ -1289,10 +1298,10 @@
 
                 for (const truckPlate in resetQuantities[sku].trucks) {
                     const truckQty = resetQuantities[sku].trucks[truckPlate];
-                    if (truckQty > 0) {
+                    if (truckQty > 0) { // Only add to the list if quantity is positive
                         const productDetails = inventory.find(item => item.sku === sku) || originalItemDetails;
                         if (productDetails) {
-                            updatedTruckInventories[truckPlate].push({
+                            truckItemsToSave[truckPlate].push({
                                 sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
                                 producto: productDetails.producto, presentacion: productDetails.presentacion,
                                 quantity: truckQty, price: productDetails.precio
@@ -1304,26 +1313,27 @@
 
             if (validationErrors.length > 0) { showMessageModal(`Errores de validación:\n${validationErrors.join('\n')}`); return; }
 
+            console.log('[saveResetCargasIniciales] Datos finales para el inventario principal:', JSON.stringify(updatedMainInventory));
+            console.log('[saveResetCargasIniciales] Datos finales para los inventarios de camiones:', JSON.stringify(truckItemsToSave));
+
             try {
                 const batch = db.batch();
-                // Corrected logic for saving reset quantities:
+                // Update main inventory documents
                 updatedMainInventory.forEach(item => {
                     batch.set(db.collection('inventory').doc(item.sku), {
-                        rubro: item.rubro,
-                        sku: item.sku,
-                        segmento: item.segmento,
-                        producto: item.producto,
-                        presentacion: item.presentacion,
-                        cantidad: item.cantidad,
-                        precio: item.precio
+                        rubro: item.rubro, sku: item.sku, segmento: item.segmento,
+                        producto: item.producto, presentacion: item.presentacion,
+                        cantidad: item.cantidad, precio: item.precio
                     });
                 });
 
-                for (const truckPlate in updatedTruckInventories) {
-                    batch.set(db.collection('truck_inventories').doc(truckPlate), { items: updatedTruckInventories[truckPlate] });
+                // Update truck inventory documents
+                for (const truckPlate in truckItemsToSave) {
+                    batch.set(db.collection('truck_inventories').doc(truckPlate), { items: truckItemsToSave[truckPlate] });
                 }
 
                 await batch.commit();
+                console.log('[saveResetCargasIniciales] Batch commit exitoso.');
                 await fetchDataFromFirestore(); // Re-fetch to update local state
                 showMessageModal('Inventarios reiniciados y guardados exitosamente.');
                 setScreenAndRender('cargaSelection');
@@ -1431,7 +1441,9 @@
                 if (adminTruckInventoryUnsubscribe) {
                     adminTruckInventoryUnsubscribe();
                     adminTruckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener (no truck selected).');
                 }
+                document.getElementById('selected-vehicle-inventory-display').innerHTML = '<p class="text-center text-gray-600 text-lg py-4">Seleccione un camión para ver su inventario.</p>';
             }
         };
 
