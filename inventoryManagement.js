@@ -10,6 +10,7 @@ let _inventory; // This will be the global inventory array from index.html
 let _users; // This will be the global users array from index.html
 let _vendors; // This will be the global vendors array from index.html
 let _productImages; // This will be the global productImages object from index.html
+let _allTruckInventories; // NEW: To store all truck inventories for admin view, passed from index.html
 let _showMessageModal;
 let _showConfirmationModal;
 let _createTable;
@@ -32,7 +33,6 @@ let receivingQuantities = {};
 let selectedTruckInventoryForReceiving = [];
 let selectedAdminVehicleForInventory = null;
 let resetQuantities = {};
-let allTruckInventories = {};
 let selectedDestinationTruck = null;
 let transferQuantities = {};
 // let inventorySearchTermUser = ''; // Removed as per user request
@@ -60,7 +60,7 @@ const initialVehicles = [
 ];
 
 // --- Initialization function ---
-export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton, setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown) => {
+export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, allTruckInventories, showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton, setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown) => {
     _db = db;
     _currentUserData = currentUserData;
     _isAdmin = isAdmin;
@@ -70,6 +70,7 @@ export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, 
     _inventory = Array.isArray(inventory) ? inventory : [];
     _users = Array.isArray(users) ? users : [];
     _vendors = Array.isArray(vendors) ? vendors : [];
+    _allTruckInventories = allTruckInventories; // Assign the new global reference
 
     _productImages = productImages;
     _showMessageModal = showMessageModal;
@@ -248,12 +249,20 @@ export const handleTruckForReceivingSelection = async (truckPlate) => {
 
     if (truckPlate) {
         try {
-            const truckInventoryDoc = await _db.collection('truck_inventories').doc(truckPlate).get();
-            if (truckInventoryDoc.exists) {
-                selectedTruckInventoryForReceiving = truckInventoryDoc.data().items || [];
-                console.log(`[Inventory Management] Fetched existing inventory for ${truckPlate}:`, selectedTruckInventoryForReceiving);
+            // Use _allTruckInventories for initial display if available, otherwise fetch
+            selectedTruckInventoryForReceiving = _allTruckInventories[truckPlate] || [];
+            if (selectedTruckInventoryForReceiving.length === 0) {
+                const truckInventoryDoc = await _db.collection('truck_inventories').doc(truckPlate).get();
+                if (truckInventoryDoc.exists) {
+                    selectedTruckInventoryForReceiving = truckInventoryDoc.data().items || [];
+                    // Update _allTruckInventories if fetched
+                    _allTruckInventories[truckPlate] = selectedTruckInventoryForReceiving;
+                    console.log(`[Inventory Management] Fetched existing inventory for ${truckPlate}:`, selectedTruckInventoryForReceiving);
+                } else {
+                    console.log(`[Inventory Management] No existing inventory found for ${truckPlate}. Starting fresh.`);
+                }
             } else {
-                console.log(`[Inventory Management] No existing inventory found for ${truckPlate}. Starting fresh.`);
+                console.log(`[Inventory Management] Using pre-fetched inventory for ${truckPlate}:`, selectedTruckInventoryForReceiving);
             }
         } catch (error) {
             console.error('[Inventory Management] Error fetching truck inventory for receiving:', error);
@@ -331,6 +340,7 @@ const loadMerchandise = async () => {
         });
         batch.set(_db.collection('truck_inventories').doc(selectedTruckForReceiving), { items: currentTruckItems });
         selectedTruckInventoryForReceiving = currentTruckItems; // Update local state
+        _allTruckInventories[selectedTruckForReceiving] = currentTruckItems; // Update global cache
 
         // 3. Record Load History
         const loadRecord = {
@@ -617,36 +627,8 @@ export const renderAdminVehicleInventoryScreen = () => {
 
     const vehicleOptions = _vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
 
-    // Fetch all truck inventories to display in the dropdown
-    const fetchAllTruckInventories = async () => {
-        try {
-            const snapshot = await _db.collection('truck_inventories').get();
-            allTruckInventories = {}; // Reset
-            snapshot.docs.forEach(doc => {
-                allTruckInventories[doc.id] = doc.data().items || [];
-            });
-            console.log('[Inventory Management] All truck inventories fetched:', Object.keys(allTruckInventories).length, 'trucks');
-            // If a truck was previously selected, ensure its listener is active
-            if (selectedAdminVehicleForInventory) {
-                setupAdminTruckInventoryListener(selectedAdminVehicleForInventory);
-            }
-            _setScreenAndRender('adminVehicleInventory'); // Re-render after fetching all truck inventories
-        } catch (error) {
-            console.error('Error fetching all truck inventories:', error);
-            _showMessageModal('Error al cargar inventarios de camiones. Revisa tu conexión y las reglas de seguridad.');
-            allTruckInventories = {};
-        }
-    };
-
-    // Call fetchAllTruckInventories if it hasn't been called or if data is stale
-    // Only fetch if the screen is being rendered for the first time or if data is explicitly needed
-    // This prevents infinite loops with _setScreenAndRender
-    if (Object.keys(allTruckInventories).length === 0 || !selectedAdminVehicleForInventory) { // Re-fetch if no truck selected yet
-        fetchAllTruckInventories();
-    }
-
-
-    const currentVehicleInventory = selectedAdminVehicleForInventory ? (allTruckInventories[selectedAdminVehicleForInventory] || []) : [];
+    // Use _allTruckInventories which is populated by fetchDataFromFirestore in index.html
+    const currentVehicleInventory = selectedAdminVehicleForInventory ? (_allTruckInventories[selectedAdminVehicleForInventory] || []) : [];
 
     const inventoryRows = currentVehicleInventory.map(item => `
         <tr>
@@ -693,15 +675,15 @@ export const setupAdminTruckInventoryListener = (truckPlate) => {
             .onSnapshot(docSnapshot => {
                 if (docSnapshot.exists) {
                     const data = docSnapshot.data();
-                    allTruckInventories[truckPlate] = data.items || [];
-                    console.log(`[Firestore Listener] Real-time update for admin truck ${truckPlate}:`, allTruckInventories[truckPlate].length, 'items');
+                    _allTruckInventories[truckPlate] = data.items || []; // Update the global cache
+                    console.log(`[Firestore Listener] Real-time update for admin truck ${truckPlate}:`, _allTruckInventories[truckPlate].length, 'items');
                 } else {
-                    allTruckInventories[truckPlate] = [];
+                    _allTruckInventories[truckPlate] = []; // Clear from cache if document doesn't exist
                     console.log(`[Firestore Listener] Admin truck ${truckPlate} inventory document does not exist.`);
                 }
-                // Only re-render if the current screen is 'adminVehicleInventory'
+                // Only re-render if the current screen is 'adminVehicleInventory' AND the updated truck is the one currently selected
                 const currentScreen = document.getElementById('app-root').dataset.currentScreen;
-                if (currentScreen === 'adminVehicleInventory') {
+                if (currentScreen === 'adminVehicleInventory' && selectedAdminVehicleForInventory === truckPlate) {
                     _setScreenAndRender(currentScreen);
                 }
             }, error => {
@@ -1028,7 +1010,8 @@ export const renderResetCargasInicialesEditScreen = () => {
     `).join('');
 
     const allTrucksHtml = _vehicles.map(vehicle => {
-        const truckInventory = allTruckInventories[vehicle.plate] || [];
+        // Use _allTruckInventories for initial display
+        const truckInventory = _allTruckInventories[vehicle.plate] || [];
         const truckInventoryRows = truckInventory.map(item => `
             <tr>
                 <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.product}" class="w-10 h-10 rounded-md object-cover"></td>
@@ -1093,8 +1076,8 @@ export const saveResetCargasIniciales = async () => {
         _inventory.splice(0, _inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global inventory in place
 
         // Update truck inventories
-        for (const truckPlate in allTruckInventories) {
-            let currentTruckItems = JSON.parse(JSON.stringify(allTruckInventories[truckPlate]));
+        for (const truckPlate in _allTruckInventories) { // Iterate through the global cache
+            let currentTruckItems = JSON.parse(JSON.stringify(_allTruckInventories[truckPlate]));
             let truckInventoryChanged = false;
 
             // Update existing items in the truck
@@ -1129,8 +1112,9 @@ export const saveResetCargasIniciales = async () => {
             }
 
             const filteredTruckItems = currentTruckItems.filter(item => item.quantity > 0);
-            if (truckInventoryChanged || filteredTruckItems.length !== allTruckInventories[truckPlate].length) { // Check if something actually changed or if items were removed
+            if (truckInventoryChanged || filteredTruckItems.length !== _allTruckInventories[truckPlate].length) { // Check if something actually changed or if items were removed
                 batch.set(_db.collection('truck_inventories').doc(truckPlate), { items: filteredTruckItems });
+                _allTruckInventories[truckPlate] = filteredTruckItems; // Update global cache
             }
         }
 
@@ -1290,11 +1274,12 @@ const performTransfer = async () => {
         updatedSourceTruckItems = updatedSourceTruckItems.filter(item => item.quantity > 0);
         batch.set(_db.collection('truck_inventories').doc(sourceTruckPlate), { items: updatedSourceTruckItems });
         setCurrentTruckInventory(updatedSourceTruckItems); // Update local state for source truck
+        _allTruckInventories[sourceTruckPlate] = updatedSourceTruckItems; // Update global cache
 
         // 2. Update Destination Truck Inventory
         const destinationTruckDocRef = _db.collection('truck_inventories').doc(selectedDestinationTruck);
-        const destinationTruckDoc = await destinationTruckDocRef.get();
-        let currentDestinationTruckItems = destinationTruckDoc.exists ? (destinationTruckDoc.data().items || []) : [];
+        // Use the cached _allTruckInventories data for the destination truck if available
+        let currentDestinationTruckItems = _allTruckInventories[selectedDestinationTruck] ? JSON.parse(JSON.stringify(_allTruckInventories[selectedDestinationTruck])) : [];
 
         itemsToTransfer.forEach(itemToTransfer => {
             const itemIndex = currentDestinationTruckItems.findIndex(item => item.sku === itemToTransfer.sku);
@@ -1305,6 +1290,7 @@ const performTransfer = async () => {
             }
         });
         batch.set(destinationTruckDocRef, { items: currentDestinationTruckItems });
+        _allTruckInventories[selectedDestinationTruck] = currentDestinationTruckItems; // Update global cache
 
         // 3. Record Transfer History
         const transferRecord = {
