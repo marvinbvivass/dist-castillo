@@ -89,6 +89,12 @@ export const selectClientForSale = (client) => {
     if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('venta'); // Volver a la pantalla de venta
 };
 
+// Nueva función para resetear selectedClientForSale
+export const resetSelectedClientForSale = () => {
+    selectedClientForSale = null;
+    console.log('[Client Management] selectedClientForSale has been reset.');
+};
+
 
 // --- Funciones de Ayuda Generales (replicadas o adaptadas del index.html si son necesarias aquí) ---
 const createButton = (text, id, className = '', dataAttributes = {}) => {
@@ -641,4 +647,3 @@ export const downloadClientsCSV = () => {
 
 // Los event listeners para los modales de cliente se han movido a index.html
 // para centralizar el manejo de eventos a través de delegación.
-
