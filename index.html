@@ -1031,7 +1031,7 @@
                         precio: item.precio
                     });
                 });
-                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update in place
+                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global inventory in place
                 console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
                 for (const date in salesByDate) {
@@ -1077,6 +1077,53 @@
                         totalOverallSale: totalOverallSale,
                         itemsSoldSummary: itemsSoldSummary,
                         rawCSV: combinedCSVContent,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    const uniqueSKUs = new Set();
+                    const clientSalesData = {};
+                    salesForThisDate.forEach(sale => {
+                        if (!clientSalesData[sale.client.id]) {
+                            clientSalesData[sale.client.id] = { clientName: sale.client.nombreComercial, total: 0, skus: {} };
+                        }
+                        sale.items.forEach(item => {
+                            uniqueSKUs.add(item.sku);
+                            clientSalesData[sale.client.id].skus[item.sku] = (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
+                            clientSalesData[sale.client.id].total += item.subtotal;
+                        });
+                    });
+
+                    const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
+                    let clientCSVContent = `Venta General por Clientes - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nCliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
+                    let grandTotalClients = 0;
+                    const clientSalesDetails = [];
+
+                    for (const clientId in clientSalesData) {
+                        const clientData = clientSalesData[clientId];
+                        let clientRow = `"${clientData.clientName}"`;
+                        sortedUniqueSKUs.forEach(sku => { clientRow += `,${clientData.skus[sku] || 0}`; });
+                        clientRow += `,${clientData.total.toFixed(2)}\n`;
+                        clientCSVContent += clientRow;
+                        grandTotalClients += clientData.total;
+
+                        clientSalesDetails.push({
+                            clientId: clientId,
+                            clientName: clientData.clientName,
+                            total: clientData.total,
+                            skusSold: clientData.skus
+                        });
+                    }
+                    clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
+
+
+                    const clientSaleDocRef = db.collection('historicalConsolidatedClientSales').doc();
+                    console.log(`[handleCloseSalesLogic] Adding batch set for historical client sales: ${clientSaleDocRef.id}, data: ${JSON.stringify({ date: date, vendor: selectedVendor, grandTotalClients: grandTotalClients, clientSalesDetails: clientSalesDetails })}`);
+                    batch.set(clientSaleDocRef, {
+                        date: date,
+                        vendor: selectedVendor,
+                        grandTotalClients: grandTotalClients,
+                        clientSalesDetails: clientSalesDetails,
+                        rawCSV: clientCSVContent,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 }
@@ -1469,7 +1516,7 @@
                         }
                     } else {
                         // Delegate to inventoryManagement for 'inventory' and 'vehicles'
-                        await inventoryManagement.handleFileUpload(event, type);
+                        await inventoryManagement.handleFileUpload(e, type);
                     }
                     await fetchDataFromFirestore();
                     render();
@@ -1541,6 +1588,7 @@
             });
 
         // --- Initialize modules with necessary data and functions (MOVED HERE) ---
+        // These need to be initialized regardless of auth state to ensure functions are available
         clientManagement.init(
             db, setScreenAndRender,
             createButton, createInput, createSelect, createTable, // Pass UI helper functions
@@ -1698,11 +1746,6 @@
                     showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
                     currentUserData = { role: 'user', assignedTruckPlate: null };
                 }
-
-                // --- DIAGNOSTIC LOGS ---
-                console.log('Type of inventoryManagement:', typeof inventoryManagement);
-                console.log('Type of inventoryManagement.updateCurrentUserData:', typeof inventoryManagement.updateCurrentUserData);
-                // --- END DIAGNOSTIC LOGS ---
 
                 // Update currentUserData in inventoryManagement after it's fetched
                 inventoryManagement.updateCurrentUserData(currentUserData); // Use the setter function
@@ -2162,13 +2205,16 @@
                 manageZonesSectorsButton.onclick = () => clientManagement.openManageZonesSectorsModal();
             }
 
-            document.querySelectorAll('.edit-client-button').forEach(button => {
-                button.onclick = (e) => clientManagement.editClient(e.target.dataset.clientid);
-            });
+            // Client Searchable Dropdown (new)
+            const clientSearchDropdownContainer = document.getElementById('clientListSearch');
+            if (clientSearchDropdownContainer) {
+                // The createSearchableDropdown function already attaches event listeners internally
+                // We just need to ensure it's rendered.
+            }
 
-            document.querySelectorAll('.delete-client-button').forEach(button => {
-                button.onclick = (e) => clientManagement.showDeleteClientConfirmation(e.target.dataset.clientid);
-            });
+            // These buttons will now be rendered conditionally based on selectedClientInClientsScreen
+            // so their event listeners need to be attached dynamically after client selection.
+            // No need to query them directly here.
 
             const backToMainFromClientsButton = document.getElementById('backToMainFromClientsButton');
             if (backToMainFromClientsButton) {
