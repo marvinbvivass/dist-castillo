@@ -1969,10 +1969,11 @@
             });
 
             // User Inventory Screen
-            const inventorySearchInputUser = document.getElementById('inventorySearchInputUser');
-            if (inventorySearchInputUser) {
-                inventorySearchInputUser.oninput = (e) => inventoryManagement.filterInventoryForUserScreen(e.target.value);
-            }
+            // Removed inventorySearchInputUser as search bar is removed from user inventory screen.
+            // const inventorySearchInputUser = document.getElementById('inventorySearchInputUser');
+            // if (inventorySearchInputUser) {
+            //     inventorySearchInputUser.oninput = (e) => inventoryManagement.filterInventoryForUserScreen(e.target.value);
+            // }
 
             const backToMainFromUserInventoryButton = document.getElementById('backToMainFromUserInventoryButton');
             if (backToMainFromUserInventoryButton) {
@@ -2248,8 +2249,11 @@
                 addZoneButton.onclick = () => clientManagement.handleAddZone();
             }
 
-            document.querySelectorAll('.delete-zone-button').forEach(button => {
-                button.onclick = (e) => clientManagement.showDeleteZoneConfirmation(e.target.dataset.zonename);
+            // Event delegation for delete-zone-button
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-zone-button')) {
+                    clientManagement.showDeleteZoneConfirmation(e.target.dataset.zonename);
+                }
             });
 
             const selectZoneForSector = document.getElementById('selectZoneForSector');
@@ -2262,8 +2266,11 @@
                 addSectorButton.onclick = () => clientManagement.handleAddSector();
             }
 
-            document.querySelectorAll('.delete-sector-button').forEach(button => {
-                button.onclick = (e) => clientManagement.showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
+            // Event delegation for delete-sector-button
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-sector-button')) {
+                    clientManagement.showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
+                }
             });
 
             // Venta Screen
