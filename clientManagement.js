@@ -131,8 +131,8 @@ export const renderClientesScreen = () => {
             <p class="text-sm text-gray-600">Zona: ${selectedClientInClientsScreen.zona}</p>
             <p class="text-sm text-gray-600">Sector: ${selectedClientInClientsScreen.sector}</p>
             <div class="flex justify-end gap-2 mt-3">
-                ${_createButton('Editar', 'editClientButton', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm', { clientid: selectedClientInClientsScreen.id })}
-                ${_createButton('Eliminar', 'deleteClientButton', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm', { clientid: selectedClientInClientsScreen.id })}
+                ${_createButton('Editar', 'editClientButton', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm edit-client-button', { clientid: selectedClientInClientsScreen.id })}
+                ${_createButton('Eliminar', 'deleteClientButton', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-client-button', { clientid: selectedClientInClientsScreen.id })}
             </div>
         </div>
     ` : '<p class="text-center text-gray-500 mt-4">Selecciona un cliente para ver sus detalles.</p>';
@@ -311,19 +311,23 @@ export const renderManageZonesSectorsModal = () => {
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Gestionar Zonas y Sectores</h3>
 
-                <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
-                    <h4 class="text-xl font-bold mb-3 text-blue-700">Gestionar Zonas</h4>
-                    ${_createInput('newZoneName', 'Nueva Zona', '')}
-                    ${_createButton('Agregar Zona', 'addZoneButton', 'bg-emerald-600 w-full mb-4')}
-                    <div id="zones-list">${zonesHtml}</div>
-                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="p-4 bg-blue-50 rounded-lg border border-blue-300">
+                        <h4 class="text-xl font-bold mb-3 text-blue-700">Gestionar Zonas</h4>
+                        <p class="text-sm text-gray-600 mb-4">Añade o elimina zonas geográficas para tus clientes.</p>
+                        ${_createInput('newZoneName', 'Nueva Zona', '')}
+                        ${_createButton('Agregar Zona', 'addZoneButton', 'bg-emerald-600 w-full mb-4')}
+                        <div id="zones-list" class="max-h-48 overflow-y-auto">${zonesHtml}</div>
+                    </div>
 
-                <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-300">
-                    <h4 class="text-xl font-bold mb-3 text-green-700">Gestionar Sectores</h4>
-                    ${_createSelect('selectZoneForSector', zoneOptions, selectedZoneForSector || '', 'mb-4', '-- Seleccione Zona para Sectores --')}
-                    ${_createInput('newSectorName', 'Nuevo Sector', '')}
-                    ${_createButton('Agregar Sector', 'addSectorButton', 'bg-emerald-600 w-full mb-4')}
-                    <div id="sectors-list">${sectorsHtml}</div>
+                    <div class="p-4 bg-green-50 rounded-lg border border-green-300">
+                        <h4 class="text-xl font-bold mb-3 text-green-700">Gestionar Sectores</h4>
+                        <p class="text-sm text-gray-600 mb-4">Selecciona una zona y luego añade o elimina sectores dentro de ella.</p>
+                        ${_createSelect('selectZoneForSector', zoneOptions, selectedZoneForSector || '', 'mb-4', '-- Seleccione Zona --')}
+                        ${_createInput('newSectorName', 'Nuevo Sector', '')}
+                        ${_createButton('Agregar Sector', 'addSectorButton', 'bg-emerald-600 w-full mb-4')}
+                        <div id="sectors-list" class="max-h-48 overflow-y-auto">${sectorsHtml}</div>
+                    </div>
                 </div>
 
                 ${_createButton('Cerrar', 'closeManageZonesSectorsModalButton', 'bg-gray-600 mt-5 w-full')}
