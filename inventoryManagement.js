@@ -21,8 +21,8 @@ let _fetchDataFromFirestore; // Reference to the main data fetching function in 
 
 // --- Data specific to inventory management ---
 let currentTruckInventory = []; // Changed to 'let' without export directly for internal management
-export let loadRecords = [];
-export let transferRecords = [];
+let loadRecords = []; // Changed to 'let' without export directly for internal management
+let transferRecords = []; // Changed to 'let' without export directly for internal management
 
 // State variables for various inventory screens
 let selectedTruckForReceiving = null;
@@ -76,13 +76,23 @@ export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, 
     console.log('[inventoryManagement.js] Initialized with dependencies.');
 };
 
-// --- Getter for currentTruckInventory (for external modules to read) ---
+// --- Getters and Setters for module-scoped variables ---
 export const getCurrentTruckInventory = () => currentTruckInventory;
-
-// --- Setter for currentTruckInventory (for external modules to update) ---
 export const setCurrentTruckInventory = (newInventory) => {
     currentTruckInventory = newInventory;
     console.log('[inventoryManagement.js] currentTruckInventory updated internally.');
+};
+
+export const getLoadRecords = () => loadRecords;
+export const setLoadRecords = (newRecords) => {
+    loadRecords = newRecords;
+    console.log('[inventoryManagement.js] loadRecords updated internally.');
+};
+
+export const getTransferRecords = () => transferRecords;
+export const setTransferRecords = (newRecords) => {
+    transferRecords = newRecords;
+    console.log('[inventoryManagement.js] transferRecords updated internally.');
 };
 
 
@@ -374,7 +384,7 @@ export const performLoadMerchandise = async () => {
 
         // Update the _inventory reference in this module (which is passed from index.html)
         _inventory.splice(0, _inventory.length, ...updatedMainInventory); // Update in place
-        loadRecords.push({ docId: loadDocRef.id, ...loadRecord });
+        setLoadRecords([...getLoadRecords(), { docId: loadDocRef.id, ...loadRecord }]); // Use setter
         selectedTruckInventoryForReceiving = updatedTruckInventory;
 
         _showMessageModal('Mercancía cargada exitosamente. Archivo de carga generado.');
@@ -858,7 +868,8 @@ export const handleAssignVehicle = async (userId) => {
 export const renderLoadHistoryScreen = () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de cargas.'); _setScreenAndRender('main'); return; }
 
-    const sortedLoadRecords = [...loadRecords].sort((a, b) => {
+    // Use getter for loadRecords
+    const sortedLoadRecords = [...getLoadRecords()].sort((a, b) => {
         const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
         const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
         return dateB - dateA;
@@ -903,7 +914,7 @@ export const clearLoadHistoryLogic = async () => {
         const loadRecordsSnapshot = await _db.collection('loadRecords').get();
         loadRecordsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
-        loadRecords = [];
+        setLoadRecords([]); // Use setter
         _showMessageModal('Historial de cargas borrado exitosamente.');
         _setScreenAndRender('loadHistory');
     } catch (error) {
@@ -952,10 +963,11 @@ export const renderTransferInventoryScreen = () => {
 
     let productsTableHtml = '';
     if (selectedDestinationTruck) {
-        const tableRows = currentTruckInventory.map(item => {
+        // Use getter for currentTruckInventory
+        const tableRows = getCurrentTruckInventory().map(item => {
             if (transferQuantities[item.sku] === undefined) transferQuantities[item.sku] = 0;
             return `
-                <td><Image of ${item.producto}></td>
+                <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                 <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>${item.quantity}</td>
                 <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 transfer-quantity-input" value="${transferQuantities[item.sku]}" data-sku="${item.sku}" min="0" max="${item.quantity}"></td>
             `;
@@ -1015,7 +1027,7 @@ export const performInventoryTransfer = async () => {
     let messages = [];
     let hasPositiveTransferQuantity = false;
 
-    let sourceTruckInventoryCopy = JSON.parse(JSON.stringify(currentTruckInventory));
+    let sourceTruckInventoryCopy = JSON.parse(JSON.stringify(getCurrentTruckInventory())); // Use getter
     let destinationTruckInventoryCopy = [];
     try {
         const destTruckDoc = await _db.collection('truck_inventories').doc(destinationTruckPlate).get();
@@ -1082,7 +1094,7 @@ export const performInventoryTransfer = async () => {
         await batch.commit();
 
         setCurrentTruckInventory(sourceTruckInventoryCopy); // Use the setter function
-        transferRecords.push(transferRecord);
+        setTransferRecords([...getTransferRecords(), transferRecord]); // Use setter
         
         _showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
         triggerCSVDownload(transferFileName, transferCSVContent);
@@ -1099,7 +1111,8 @@ export const updateUserTransferHistoryDisplay = () => {
     const userTransferHistoryListDiv = document.getElementById('user-transfer-history-list');
     if (!userTransferHistoryListDiv) return;
 
-    const userSpecificTransferRecords = transferRecords.filter(record => record.userId === _currentUserData.uid);
+    // Use getter for transferRecords
+    const userSpecificTransferRecords = getTransferRecords().filter(record => record.userId === _currentUserData.uid);
     const sortedUserTransferRecords = [...userSpecificTransferRecords].sort((a, b) => {
         const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
         const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
@@ -1129,7 +1142,8 @@ export const updateUserTransferHistoryDisplay = () => {
 export const renderAdminTransferHistoryScreen = () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden ver el historial de transbordos.'); _setScreenAndRender('main'); return; }
 
-    const sortedTransferRecords = [...transferRecords].sort((a, b) => {
+    // Use getter for transferRecords
+    const sortedTransferRecords = [...getTransferRecords()].sort((a, b) => {
         const dateA = parseInt(a.date.substring(4, 8) + a.date.substring(2, 4) + a.date.substring(0, 2));
         const dateB = parseInt(b.date.substring(4, 8) + b.date.substring(2, 4) + b.date.substring(0, 2));
         return dateB - dateA;
@@ -1177,7 +1191,7 @@ export const clearTransferHistoryLogic = async () => {
         const transferRecordsSnapshot = await _db.collection('transferRecords').get();
         transferRecordsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
-        transferRecords = [];
+        setTransferRecords([]); // Use setter
         _showMessageModal('Historial de transbordos borrado exitosamente.');
         _setScreenAndRender('adminTransferHistory');
     } catch (error) {
@@ -1223,22 +1237,22 @@ export const fetchInventoryRelatedData = async () => {
         if (_isAdmin()) {
             console.log('[inventoryManagement] User is admin, fetching all load records.');
             const loadRecordsSnapshot = await _db.collection('loadRecords').get();
-            loadRecords.splice(0, loadRecords.length, ...loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
+            setLoadRecords(loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Use setter
         } else {
-            loadRecords.splice(0, loadRecords.length); // Clear in place
+            setLoadRecords([]); // Use setter to clear
             console.log('[inventoryManagement] User is not admin, not fetching all load records.');
         }
 
         if (_isAdmin()) {
             console.log('[inventoryManagement] User is admin, fetching all transfer records.');
             const transferRecordsSnapshot = await _db.collection('transferRecords').get();
-            transferRecords.splice(0, transferRecords.length, ...transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
+            setTransferRecords(transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Use setter
         } else if (_isUser() && _currentUserData) {
             console.log(`[inventoryManagement] User is regular, fetching transfer records for user: ${_currentUserData.uid}`);
             const userTransferRecordsSnapshot = await _db.collection('transferRecords').where('userId', '==', _currentUserData.uid).get();
-            transferRecords.splice(0, transferRecords.length, ...userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
+            setTransferRecords(userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Use setter
         } else {
-            transferRecords.splice(0, transferRecords.length); // Clear in place
+            setTransferRecords([]); // Use setter to clear
             console.log('[inventoryManagement] Not fetching transfer records (guest or no user).');
         }
 
@@ -1248,8 +1262,8 @@ export const fetchInventoryRelatedData = async () => {
         _showMessageModal('Error al cargar datos de inventario. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
         _inventory.splice(0, _inventory.length, ...initialInventory); // Fallback in place
         _vehicles.splice(0, _vehicles.length, ...initialVehicles); // Fallback in place
-        loadRecords.splice(0, loadRecords.length); // Clear in place
-        transferRecords.splice(0, transferRecords.length); // Clear in place
+        setLoadRecords([]); // Use setter for fallback
+        setTransferRecords([]); // Use setter for fallback
     }
 };
 
@@ -1266,10 +1280,10 @@ export const setupTruckInventoryListener = () => {
 
         truckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
             if (docSnapshot.exists) {
-                currentTruckInventory = docSnapshot.data().items || [];
-                console.log(`[Firestore Listener] User truck inventory updated via snapshot for ${_currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
+                setCurrentTruckInventory(docSnapshot.data().items || []); // Use setter
+                console.log(`[Firestore Listener] User truck inventory updated via snapshot for ${_currentUserData.assignedTruckPlate}:`, getCurrentTruckInventory().length, 'items.');
             } else {
-                currentTruckInventory = [];
+                setCurrentTruckInventory([]); // Use setter
                 console.log(`[Firestore Listener] User truck inventory document for ${_currentUserData.assignedTruckPlate} does not exist or is empty.`);
             }
             // Trigger a re-render in index.html if on a relevant screen
@@ -1281,7 +1295,7 @@ export const setupTruckInventoryListener = () => {
             _showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
         });
     } else {
-        currentTruckInventory = [];
+        setCurrentTruckInventory([]); // Use setter
         console.log('[Firestore Listener] No truck assigned for current user, no listener set up.');
     }
 };
@@ -1382,8 +1396,8 @@ export const downloadExistingCSV = (filename) => {
     let csvContent = '';
     const findContent = (arr, key, val) => arr.find(record => record[key] === val);
 
-    const loadRecord = findContent(loadRecords, 'fileName', filename);
-    const transferRecord = findContent(transferRecords, 'fileName', filename);
+    const loadRecord = findContent(getLoadRecords(), 'fileName', filename); // Use getter
+    const transferRecord = findContent(getTransferRecords(), 'fileName', filename); // Use getter
     // Note: dailySales is in index.html, not here. If needed, it must be passed in init.
     // For now, only handle load and transfer records from this module.
 
