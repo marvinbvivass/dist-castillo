@@ -286,7 +286,7 @@
 
         // Importar módulos
         import * as clientManagement from './clientManagement.js';
-        import * as inventoryManagement from './inventoryManagement.js';
+        import * * as inventoryManagement from './inventoryManagement.js';
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
         // Estas variables ahora son gestionadas por inventoryManagement y clientManagement
@@ -1745,7 +1745,7 @@
                 }
 
                 // Update currentUserData in inventoryManagement after it's fetched
-                inventoryManagement._currentUserData = currentUserData; // Direct update
+                inventoryManagement.updateCurrentUserData(currentUserData); // Use the setter function
 
                 console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
                 await fetchDataFromFirestore();
@@ -1761,7 +1761,7 @@
             } else {
                 currentUser = null;
                 currentUserData = { role: 'guest', assignedTruckPlate: null };
-                inventoryManagement._currentUserData = currentUserData; // Also update on logout
+                inventoryManagement.updateCurrentUserData(currentUserData); // Also update on logout
 
                 if (inventoryManagement.getTruckInventoryUnsubscribe()) { // Use getter
                     inventoryManagement.getTruckInventoryUnsubscribe()();
