@@ -259,38 +259,7 @@ export const renderClientesScreen = () => {
             ${createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    addClientScreenEventListeners();
-};
-
-// --- Event Listeners para la pantalla de Clientes ---
-const addClientScreenEventListeners = () => {
-    const appRoot = document.getElementById('app-root');
-
-    appRoot.querySelectorAll('.edit-client-button').forEach(button => {
-        button.onclick = (e) => {
-            const clientId = e.target.dataset.clientid;
-            const clientToEdit = clients.find(c => c.id === clientId);
-            openEditClientModal(clientToEdit);
-        };
-    });
-
-    appRoot.querySelectorAll('.delete-client-button').forEach(button => {
-        button.onclick = (e) => {
-            const clientId = e.target.dataset.clientid;
-            showConfirmationModal(`¿Estás seguro de que quieres eliminar al cliente con ID ${clientId}?`, () => deleteClient(clientId));
-        };
-    });
-
-    const addClientBtn = document.getElementById('addClientButton');
-    if (addClientBtn) addClientBtn.onclick = () => openEditClientModal();
-
-    const manageZonesSectorsBtn = document.getElementById('manageZonesSectorsButton');
-    if (manageZonesSectorsBtn) manageZonesSectorsBtn.onclick = () => openManageZonesSectorsModal();
-
-    const backToMainBtn = document.getElementById('backToMainFromClientsButton');
-    if (backToMainBtn) backToMainBtn.onclick = () => {
-        if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('main');
-    };
+    // Removed addClientScreenEventListeners() call from here
 };
 
 // --- Funciones CRUD de Clientes ---
@@ -459,31 +428,33 @@ export const updateManageZonesSectorsModalContent = () => {
     if (sectorsTableBody) sectorsTableBody.innerHTML = sectorRows;
 
     // Re-attach event listeners for dynamically added buttons
-    addManageZonesSectorsModalEventListeners();
+    // This function is now called from index.html's DOMContentLoaded for delegation
+    // addManageZonesSectorsModalEventListeners(); // Removed direct call
 };
 
-const addManageZonesSectorsModalEventListeners = () => {
-    const modal = document.getElementById('manage-zones-sectors-modal');
-    if (!modal) return;
+// This function is no longer needed as event listeners are handled by delegation in index.html
+// const addManageZonesSectorsModalEventListeners = () => {
+//     const modal = document.getElementById('manage-zones-sectors-modal');
+//     if (!modal) return;
 
-    modal.querySelector('#addZoneButton').onclick = () => addZone();
-    modal.querySelector('#addSectorButton').onclick = () => addSector();
-    modal.querySelector('#closeManageZonesSectorsButton').onclick = () => closeManageZonesSectorsModal();
+//     modal.querySelector('#addZoneButton').onclick = () => addZone();
+//     modal.querySelector('#addSectorButton').onclick = () => addSector();
+//     modal.querySelector('#closeManageZonesSectorsButton').onclick = () => closeManageZonesSectorsModal();
 
-    modal.querySelectorAll('.delete-zone-button').forEach(button => {
-        button.onclick = (e) => {
-            const zoneName = e.target.dataset.zonename;
-            showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${zoneName}"? Esto no eliminará clientes asociados, pero la zona dejará de estar disponible.`, () => deleteZone(zoneName));
-        };
-    });
+//     modal.querySelectorAll('.delete-zone-button').forEach(button => {
+//         button.onclick = (e) => {
+//             const zoneName = e.target.dataset.zonename;
+//             showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${zoneName}"? Esto no eliminará clientes asociados, pero la zona dejará de estar disponible.`, () => deleteZone(zoneName));
+//         };
+//     });
 
-    modal.querySelectorAll('.delete-sector-button').forEach(button => {
-        button.onclick = (e) => {
-            const sectorName = e.target.dataset.sectorname;
-            showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${sectorName}"? Esto no eliminará clientes asociados, pero el sector dejará de estar disponible.`, () => deleteSector(sectorName));
-        };
-    });
-};
+//     modal.querySelectorAll('.delete-sector-button').forEach(button => {
+//         button.onclick = (e) => {
+//             const sectorName = e.target.dataset.sectorname;
+//             showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${sectorName}"? Esto no eliminará clientes asociados, pero el sector dejará de estar disponible.`, () => deleteSector(sectorName));
+//         };
+//     });
+// };
 
 export const renderClientPickerModal = () => {
     if (!showClientPickerModal) return '';
@@ -604,7 +575,6 @@ export const deleteSector = async (sectorName) => {
         await _db.collection('sectors').doc(sectorName).delete();
         sectors = sectors.filter(s => s.name !== sectorName);
         showMessageModal('Sector eliminado exitosamente.');
-        updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     }
     catch (error) {
         console.error('Error al eliminar sector:', error);
@@ -687,39 +657,40 @@ export const downloadClientsCSV = () => {
 };
 
 // --- Event Delegation para los modales de cliente ---
-document.addEventListener('click', (event) => {
-    const target = event.target;
+// Moved to index.html to centralize event handling on app-root
+// document.addEventListener('click', (event) => {
+//     const target = event.target;
 
-    // Edit Client Modal
-    if (target.id === 'saveClientButton') {
-        saveClient();
-    } else if (target.id === 'cancelEditClientButton') {
-        closeEditClientModal();
-    }
-    // Manage Zones/Sectors Modal
-    else if (target.id === 'addZoneButton') {
-        addZone();
-    } else if (target.id === 'addSectorButton') {
-        addSector();
-    } else if (target.id === 'closeManageZonesSectorsButton') {
-        closeManageZonesSectorsModal();
-    }
-    // Client Picker Modal
-    else if (target.id === 'closeClientPickerButton') {
-        toggleClientPickerModal(false);
-    }
-});
+//     // Edit Client Modal
+//     if (target.id === 'saveClientButton') {
+//         saveClient();
+//     } else if (target.id === 'cancelEditClientButton') {
+//         closeEditClientModal();
+//     }
+//     // Manage Zones/Sectors Modal
+//     else if (target.id === 'addZoneButton') {
+//         addZone();
+//     } else if (target.id === 'addSectorButton') {
+//         addSector();
+//     } else if (target.id === 'closeManageZonesSectorsButton') {
+//         closeManageZonesSectorsModal();
+//     }
+//     // Client Picker Modal
+//     else if (target.id === 'closeClientPickerButton') {
+//         toggleClientPickerModal(false);
+//     }
+// });
 
-document.addEventListener('change', (event) => {
-    const target = event.target;
+// document.addEventListener('change', (event) => {
+//     const target = event.target;
 
-    // Client Picker Modal Filters
-    if (target.id === 'clientPickerSearchInput') {
-        handleClientPickerSearchChange(target.value);
-    } else if (target.id === 'clientPickerFilterZone') {
-        handleClientPickerFilterChange('zone', target.value);
-    } else if (target.id === 'clientPickerFilterSector') {
-        handleClientPickerFilterChange('sector', target.value);
-    }
-});
+//     // Client Picker Modal Filters
+//     if (target.id === 'clientPickerSearchInput') {
+//         handleClientPickerSearchChange(target.value);
+//     } else if (target.id === 'clientPickerFilterZone') {
+//         handleClientPickerFilterChange('zone', target.value);
+//     } else if (target.id === 'clientPickerFilterSector') {
+//         handleClientPickerFilterChange('sector', target.value);
+//     }
+// });
 
