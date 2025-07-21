@@ -2618,7 +2618,7 @@
                 console.error('[Firestore] Error al cargar datos de Firestore:', error);
                 showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
                 // Revert to initial data for non-client related collections
-                [inventory, vendors, vehicles, dailySales, currentTruckInventory, users, loadRecords, transferRecords] = [initialInventory, initialVendors, initialVehicles, [], [], [], [], []];
+                [inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords] = [initialInventory, initialVendors, initialVehicles, [], [], [], [], []];
                 // clientManagement.js handles its own initial data if fetch fails
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
@@ -2833,7 +2833,8 @@
                 } else if (target.id === 'userInventoryButton') {
                     setScreenAndRender('inventario');
                 } else if (target.id === 'clientsButton') {
-                    clientManagement.setScreenAndRenderClientes();
+                    // CORRECCIÓN CLAVE AQUÍ: Usar setScreenAndRender directamente
+                    setScreenAndRender('clientes');
                 } else if (target.id === 'ventaButton') {
                     setScreenAndRender('venta');
                 } else if (target.id === 'cierreVentasButton') {
