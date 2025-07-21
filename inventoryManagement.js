@@ -101,6 +101,14 @@ export const setTruckInventoryUnsubscribe = (func) => { _truckInventoryUnsubscri
 export const getAdminTruckInventoryUnsubscribe = () => _adminTruckInventoryUnsubscribe;
 export const setAdminTruckInventoryUnsubscribe = (func) => { _adminTruckInventoryUnsubscribe = func; };
 
+// --- Function to update _currentUserData (called from index.html) ---
+export const updateCurrentUserData = (data) => {
+    console.log('[inventoryManagement.js] updateCurrentUserData function called.');
+    Object.assign(_currentUserData, data);
+    console.log('[inventoryManagement.js] _currentUserData updated:', _currentUserData);
+};
+console.log('[inventoryManagement.js] updateCurrentUserData is defined and exported.'); // Log when module loads
+
 
 // --- Helper Functions (copied from index.html if specific to inventory) ---
 const getCurrentDateFormatted = () => {
@@ -1438,4 +1446,38 @@ export const handleFileUpload = async (event, type) => {
         }
     };
     reader.readAsText(file);
+};
+
+// --- Data Fetching for Inventory Management (called from index.html) ---
+export const fetchInventoryRelatedData = async () => {
+    console.log('[inventoryManagement.js] Fetching inventory-related data...');
+    try {
+        const fetchCollection = async (collectionName, targetArray, initialData, idKey) => {
+            const snapshot = await _db.collection(collectionName).get();
+            if (snapshot.empty) {
+                console.log(`[inventoryManagement.js] Collection '${collectionName}' is empty. Populating with initial data.`);
+                const batch = _db.batch();
+                for (const item of initialData) {
+                    batch.set(_db.collection(collectionName).doc(item[idKey]), item);
+                }
+                await batch.commit();
+                targetArray.splice(0, targetArray.length, ...initialData); // Update in place
+            } else {
+                console.log(`[inventoryManagement.js] Collection '${collectionName}' has data. Fetching existing data.`);
+                targetArray.splice(0, targetArray.length, ...snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }))); // Update in place
+            }
+        };
+
+        await fetchCollection('inventory', _inventory, initialInventory, 'sku');
+        await fetchCollection('vehicles', _vehicles, initialVehicles, 'plate');
+
+        console.log('[inventoryManagement.js] Inventory fetched:', _inventory.length);
+        console.log('[inventoryManagement.js] Vehicles fetched:', _vehicles.length);
+
+    } catch (error) {
+        console.error('[inventoryManagement.js] Error fetching inventory-related data:', error);
+        _showMessageModal('Error al cargar datos de inventario o vehículos. Usando datos de ejemplo. Revisa tu conexión y las reglas de seguridad.');
+        _inventory.splice(0, _inventory.length, ...initialInventory);
+        _vehicles.splice(0, _vehicles.length, ...initialVehicles);
+    }
 };
