@@ -1599,7 +1599,11 @@
                 }
 
                 // Initialize modules with necessary data and functions
-                clientManagement.init(db, setScreenAndRender);
+                clientManagement.init(
+                    db, setScreenAndRender,
+                    createButton, createInput, createSelect, createTable, // Pass UI helper functions
+                    showMessageModal, showConfirmationModal // Pass modal functions
+                );
                 inventoryManagement.init(
                     db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
                     showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
