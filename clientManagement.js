@@ -721,4 +721,3 @@ document.addEventListener('change', (event) => {
         handleClientPickerFilterChange('sector', target.value);
     }
 });
-
