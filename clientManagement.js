@@ -605,7 +605,8 @@ export const deleteSector = async (sectorName) => {
         sectors = sectors.filter(s => s.name !== sectorName);
         showMessageModal('Sector eliminado exitosamente.');
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error al eliminar sector:', error);
         showMessageModal('Error al eliminar sector. Revisa tu conexión y reglas de seguridad.');
     }
@@ -721,3 +722,4 @@ document.addEventListener('change', (event) => {
         handleClientPickerFilterChange('sector', target.value);
     }
 });
+
