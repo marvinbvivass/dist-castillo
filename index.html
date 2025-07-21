@@ -313,20 +313,28 @@
             </div>
         `;
 
-        const createButton = (text, onClick, className = '') => `
-            <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" onclick="${onClick}">${text}</button>
-        `;
+        // Modificado: Ahora acepta un ID y un objeto de atributos de datos
+        const createButton = (text, id, className = '', dataAttributes = {}) => {
+            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
+            return `<button id="${id}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" ${dataAttrs}>${text}</button>`;
+        };
 
-        const createInput = (id, placeholder, value = '', type = 'text', disabled = false, onChange = '') => `
-            <input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} onchange="${onChange}">
-        `;
+        // Modificado: Ahora acepta un ID y un objeto de atributos de datos
+        const createInput = (id, placeholder, value = '', type = 'text', disabled = false, className = '', dataAttributes = {}) => {
+            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
+            return `<input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${className}" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} ${dataAttrs}>`;
+        };
 
-        const createSelect = (id, options, selectedValue, onChange = '', placeholder = '-- Seleccione --') => `
-            <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="${onChange}">
-                <option value="">${placeholder}</option>
-                ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
-            </select>
-        `;
+        // Modificado: Ahora acepta un ID y un objeto de atributos de datos
+        const createSelect = (id, options, selectedValue, className = '', placeholder = '-- Seleccione --', dataAttributes = {}) => {
+            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
+            return `
+                <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}" ${dataAttrs}>
+                    <option value="">${placeholder}</option>
+                    ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
+                </select>
+            `;
+        };
 
         const createTable = (headers, rowsHtml, id = '') => `
             <div class="table-container mb-5">
@@ -356,7 +364,7 @@
                 <div id="custom-message-modal" class="modal">
                     <div class="modal-content">
                         <p class="text-lg text-center mb-4">${messageModalText}</p>
-                        <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideMessageModal()">Cerrar</button>
+                        <button id="messageModalCloseButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105">Cerrar</button>
                     </div>
                 </div>
             `;
@@ -385,8 +393,8 @@
                     <div class="modal-content">
                         <p class="text-lg text-center mb-6">${confirmationModalMessage}</p>
                         <div class="flex justify-around gap-4">
-                            <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(true)">Confirmar</button>
-                            <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="hideConfirmationModal(false)">Cancelar</button>
+                            <button id="confirmationModalConfirmButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105">Confirmar</button>
+                            <button id="confirmationModalCancelButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105">Cancelar</button>
                         </div>
                     </div>
                 </div>
@@ -472,7 +480,8 @@
 
         const render = () => {
             console.log(`[Render] Current screen to render: ${screen}`);
-            appRoot.innerHTML = '';
+            appRoot.innerHTML = ''; // Clear existing content
+
             const screenFunctions = {
                 'main': renderMainScreen,
                 'cargaSelection': renderCargaSelectionScreen,
@@ -529,8 +538,8 @@
             appRoot.innerHTML = createScreenContainer('Iniciar Sesión', `
                 ${createInput('loginEmail', 'Correo Electrónico', '', 'email')}
                 ${createInput('loginPassword', 'Contraseña', '', 'password')}
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleAuth(false)">Iniciar Sesión</button>
-                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('register')">Regístrate aquí</a></p>
+                ${createButton('Iniciar Sesión', 'loginButton', 'w-full')}
+                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" id="registerLink" class="text-indigo-600 hover:underline font-semibold">Regístrate aquí</a></p>
             `, 'max-w-md mx-auto my-10');
         };
 
@@ -539,26 +548,26 @@
             appRoot.innerHTML = createScreenContainer('Registrar Nuevo Usuario', `
                 ${createInput('registerEmail', 'Correo Electrónico', '', 'email')}
                 ${createInput('registerPassword', 'Contraseña', '', 'password')}
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleAuth(true)">Registrar</button>
-                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" class="text-indigo-600 hover:underline font-semibold" onclick="setScreenAndRender('login')">Inicia sesión aquí</a></p>
+                ${createButton('Registrar', 'registerButton', 'w-full')}
+                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" id="loginLink" class="text-indigo-600 hover:underline font-semibold">Inicia sesión aquí</a></p>
             `, 'max-w-md mx-auto my-10');
         };
 
         const renderMainScreen = () => {
             console.log('[renderMainScreen] Rendering main screen.');
             const buttons = [
-                isAdmin() && createButton('CARGA', "setScreenAndRender('cargaSelection')"),
-                isAdmin() && createButton('INVENTARIO', "setScreenAndRender('adminInventorySelection')"),
-                isUser() && createButton('INVENTARIO', "setScreenAndRender('inventario')"),
-                createButton('CLIENTES', "clientManagement.setScreenAndRenderClientes()"), // Llama a la función del módulo
-                isUser() && createButton('VENTA', "setScreenAndRender('venta')"),
-                isUser() && createButton('CIERRE VENTAS', "setScreenAndRender('cierreVentas')"), // Accessible by user
-                isAdmin() && createButton('ARCHIVOS ADMIN', "setScreenAndRender('archivosAdmin')"),
-                !isAdmin() && currentUser && createButton('ARCHIVOS DE VENTA', "setScreenAndRender('archivosVenta')"),
-                isAdmin() && createButton('VEHÍCULOS DE CARGA', "setScreenAndRender('vehicles')"),
-                isAdmin() && createButton('ASIGNAR VEHÍCULO', "setScreenAndRender('assignVehicle')"),
-                isUser() && createButton('TRANSBORDO INV.', "setScreenAndRender('transferInventoryPassword')"),
-                isAdmin() && createButton('HISTORIAL TRANSBORDOS', "setScreenAndRender('adminTransferHistory')"),
+                isAdmin() && createButton('CARGA', 'cargaSelectionButton'),
+                isAdmin() && createButton('INVENTARIO', 'adminInventorySelectionButton'),
+                isUser() && createButton('INVENTARIO', 'userInventoryButton'),
+                createButton('CLIENTES', 'clientsButton'), // Llama a la función del módulo
+                isUser() && createButton('VENTA', 'ventaButton'),
+                isUser() && createButton('CIERRE VENTAS', 'cierreVentasButton'), // Accessible by user
+                isAdmin() && createButton('ARCHIVOS ADMIN', 'archivosAdminButton'),
+                !isAdmin() && currentUser && createButton('ARCHIVOS DE VENTA', 'archivosVentaButton'),
+                isAdmin() && createButton('VEHÍCULOS DE CARGA', 'vehiclesButton'),
+                isAdmin() && createButton('ASIGNAR VEHÍCULO', 'assignVehicleButton'),
+                isUser() && createButton('TRANSBORDO INV.', 'transferInventoryPasswordButton'),
+                isAdmin() && createButton('HISTORIAL TRANSBORDOS', 'adminTransferHistoryButton'),
             ].filter(Boolean).join(''); // Filter out false values and join
 
             appRoot.innerHTML = `
@@ -566,7 +575,7 @@
                     <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
                     ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role}) ${currentUserData.assignedTruckPlate ? ` - Camión: ${currentUserData.assignedTruckPlate}` : ''}</p>` : ''}
                     <div class="flex flex-wrap justify-center">${buttons}</div>
-                    <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-8 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleLogout()">Cerrar Sesión</button>
+                    ${createButton('Cerrar Sesión', 'logoutButton', 'bg-red-600 mt-8 w-full')}
                 </div>
             `;
         };
@@ -575,7 +584,7 @@
             const vendorRadioGroup = document.getElementById('vendor-radio-group');
             if (!vendorRadioGroup) return;
             vendorRadioGroup.innerHTML = vendors.map(vendor => `
-                <input type="radio" id="vendor-${vendor.name.replace(/\s/g, '-')}" name="vendor" value="${vendor.name}" class="radio-button-input" ${selectedVendor === vendor.name ? 'checked' : ''} onchange="handleVendorChange(this.value)">
+                <input type="radio" id="vendor-${vendor.name.replace(/\s/g, '-')}" name="vendor" value="${vendor.name}" class="radio-button-input" ${selectedVendor === vendor.name ? 'checked' : ''}>
                 <label for="vendor-${vendor.name.replace(/\s/g, '-')}" class="radio-button-label">${vendor.name}</label>
             `).join('');
         };
@@ -590,11 +599,11 @@
             appRoot.innerHTML = createScreenContainer('SECCIÓN DE CARGA', `
                 <p class="text-base text-center my-5 text-gray-600">Selecciona una opción para la gestión de cargas.</p>
                 <div class="flex flex-wrap justify-center gap-4">
-                    ${createButton('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', "setScreenAndRender('truckLoading')", 'bg-indigo-600')}
-                    ${createButton('HISTORIAL DE CARGAS', "setScreenAndRender('loadHistory')", 'bg-indigo-600')}
-                    ${createButton('RESET CARGAS INICIALES', "setScreenAndRender('resetCargasInicialesPassword')", 'bg-red-600 border-red-700')}
+                    ${createButton('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', 'truckLoadingButton', 'bg-indigo-600')}
+                    ${createButton('HISTORIAL DE CARGAS', 'loadHistoryButton', 'bg-indigo-600')}
+                    ${createButton('RESET CARGAS INICIALES', 'resetCargasInicialesPasswordButton', 'bg-red-600 border-red-700')}
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromCargaSelection', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -611,19 +620,19 @@
 
                 <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <label for="loaderSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Cargador:</label>
-                    ${createSelect('loaderSelect', loaderOptions, selectedLoader, 'handleLoaderSelection(this.value)')}
+                    ${createSelect('loaderSelect', loaderOptions, selectedLoader)}
                 </div>
 
                 <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <label for="truckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión de Destino:</label>
-                    ${createSelect('truckSelect', vehicleOptions, selectedTruckForReceiving?.plate, 'handleTruckForReceivingSelection(this.value)')}
+                    ${createSelect('truckSelect', vehicleOptions, selectedTruckForReceiving?.plate)}
                 </div>
 
                 <div id="receiving-products-container">
                     <p class="text-center text-gray-600 text-lg py-4">Seleccione un cargador y un camión para empezar a cargar mercancía.</p>
                 </div>
 
-                ${createButton('Volver a Carga', "setScreenAndRender('cargaSelection')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver a Carga', 'backToCargaSelectionButton', 'bg-gray-600 mt-5 w-full')}
             `, 'max-w-md mx-auto my-10');
 
             // Actualizar el contenido de la tabla de productos si ya hay un camión y cargador seleccionados
@@ -686,7 +695,7 @@
                         <td>${item.producto}</td>
                         <td>${item.presentacion}</td>
                         <td>${currentMainQty}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${qtyToReceive}" onchange="handleReceivingQuantityChange('${item.sku}', this.value)" min="0"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 receiving-quantity-input" value="${qtyToReceive}" data-sku="${item.sku}" min="0"></td>
                     </tr>
                 `;
             }).join('');
@@ -694,7 +703,7 @@
             receivingProductsContainer.innerHTML = `
                 <h3 class="text-xl font-bold mb-4 text-emerald-700">Productos a Cargar</h3>
                 ${createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Disponible (Principal)', 'Cantidad a Cargar'], tableRows, 'products-for-receiving-body')}
-                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showLoadMerchandiseConfirmation()">Cargar Mercancía</button>
+                ${createButton('Cargar Mercancía', 'loadMerchandiseButton', 'bg-emerald-600 mt-5 w-full')}
             `;
         };
 
@@ -852,9 +861,9 @@
             if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); setScreenAndRender('main'); return; }
             appRoot.innerHTML = createScreenContainer('Confirmación de Seguridad', `
                 <p class="text-lg text-center mb-6 text-gray-700">Esta función altera directamente los diversos inventarios (Principal y por vehículo) de la empresa, necesitamos confirmación si desea continuar.</p>
-                ${createInput('adminPasswordForReset', 'Contraseña de Administrador', '', 'password', false, '')}
-                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleResetCargasInicialesPassword()">Continuar</button>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Cancelar</button>
+                ${createInput('adminPasswordForReset', 'Contraseña de Administrador', '', 'password')}
+                ${createButton('Continuar', 'adminPasswordForResetButton', 'w-full')}
+                ${createButton('Cancelar', 'cancelResetCargasInicialesButton', 'bg-gray-600 mt-3 w-full')}
             `, 'max-w-md mx-auto my-10');
         };
 
@@ -915,13 +924,13 @@
                 const productDetails = inventory.find(item => item.sku === sku) || { producto: 'Desconocido', presentacion: '' };
                 let truckInputs = vehicles.map(v => {
                     const truckQty = resetQuantities[sku].trucks[v.plate] !== undefined ? resetQuantities[sku].trucks[v.plate] : 0;
-                    return `<td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${truckQty}" onchange="handleResetQuantityChange('${sku}', '${v.plate}', this.value)" min="0"></td>`;
+                    return `<td><input type="number" class="border border-gray-300 rounded-md text-center w-20 reset-quantity-input-truck" value="${truckQty}" data-sku="${sku}" data-truckplate="${v.plate}" min="0"></td>`;
                 }).join('');
                 return `
                     <tr>
                         <td>${sku}</td>
                         <td>${productDetails.producto}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${resetQuantities[sku].main}" onchange="handleResetQuantityChange('${sku}', 'main', this.value)" min="0"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 reset-quantity-input-main" value="${resetQuantities[sku].main}" data-sku="${sku}" min="0"></td>
                         ${truckInputs}
                     </tr>
                 `;
@@ -930,8 +939,8 @@
             appRoot.innerHTML = createScreenContainer('RESET DE CARGAS INICIALES', `
                 <p class="text-base text-center my-5 text-gray-600">Modifica las cantidades del inventario principal y de cada camión. Asegúrate de que la suma de las cantidades de un SKU en todos los camiones no exceda la cantidad en el inventario principal.</p>
                 ${createTable([tableHeaders], tableRows, 'reset-inventories-body')}
-                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveResetCargasIniciales()">Guardar Cambios de Inventario</button>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('cargaSelection')">Cancelar y Volver</button>
+                ${createButton('Guardar Cambios de Inventario', 'saveResetCargasInicialesButton', 'bg-red-600 mt-5 w-full')}
+                ${createButton('Cancelar y Volver', 'cancelAndBackToCargaSelectionButton', 'bg-gray-600 mt-3 w-full')}
             `);
         };
 
@@ -1018,10 +1027,10 @@
             appRoot.innerHTML = createScreenContainer('SELECCIÓN DE INVENTARIO (ADMIN)', `
                 <p class="text-base text-center my-5 text-gray-600">Selecciona qué inventario deseas visualizar o gestionar.</p>
                 <div class="flex flex-wrap justify-center gap-4">
-                    ${createButton('INVENTARIO PRINCIPAL', "setScreenAndRender('adminMainInventory')")}
-                    ${createButton('INVENTARIO POR VEHÍCULO', "setScreenAndRender('adminVehicleInventory')")}
+                    ${createButton('INVENTARIO PRINCIPAL', 'adminMainInventoryButton')}
+                    ${createButton('INVENTARIO POR VEHÍCULO', 'adminVehicleInventoryButton')}
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromAdminInventorySelection', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -1035,7 +1044,7 @@
             appRoot.innerHTML = createScreenContainer('INVENTARIO PRINCIPAL (ALMACÉN)', `
                 <p class="text-base text-center mb-4 text-gray-700">Mostrando inventario del almacén principal.</p>
                 ${createTable(['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad', 'Precio'], tableRows, 'main-inventory-display-body')}
-                ${createButton('Volver', "setScreenAndRender('adminInventorySelection')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToAdminInventorySelectionButton', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -1044,10 +1053,10 @@
             appRoot.innerHTML = createScreenContainer('INVENTARIO DE MI CAMIÓN', `
                 <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <label for="inventorySearchInputUser" class="block text-lg font-semibold text-blue-700 mb-2">Buscar Producto:</label>
-                    ${createInput('inventorySearchInputUser', 'Buscar por SKU, Producto o Presentación...', inventorySearchTermUser, 'text', false, 'filterInventoryForUserScreen(this.value)')}
+                    ${createInput('inventorySearchInputUser', 'Buscar por SKU, Producto o Presentación...')}
                 </div>
                 <div id="inventory-content"></div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromUserInventoryButton', 'bg-gray-600 mt-5 w-full')}
             `);
             updateUserInventoryDisplayTable();
         };
@@ -1097,10 +1106,10 @@
             appRoot.innerHTML = createScreenContainer('INVENTARIO POR VEHÍCULO (ADMIN)', `
                 <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <label for="adminVehicleSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión:</label>
-                    ${createSelect('adminVehicleSelect', vehicleOptions, selectedAdminVehicleForInventory?.plate, 'handleAdminVehicleSelection(this.value)')}
+                    ${createSelect('adminVehicleSelect', vehicleOptions, selectedAdminVehicleForInventory?.plate)}
                 </div>
                 <div id="selected-vehicle-inventory-display">${displayContent}</div>
-                ${createButton('Volver', "setScreenAndRender('adminInventorySelection')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToAdminInventorySelectionFromVehicleInventoryButton', 'bg-gray-600 mt-5 w-full')}
             `);
 
             // If a vehicle is already selected, set up the listener immediately
@@ -1135,11 +1144,11 @@
         const renderVentaScreen = () => {
             console.log('[renderVentaScreen] Rendering venta screen.');
             appRoot.innerHTML = createScreenContainer('VENTA', `
-                <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="clientManagement.toggleClientPickerModal(true)">Seleccionar Cliente</button>
+                ${createButton('Seleccionar Cliente', 'selectClientButton', 'bg-purple-600')}
                 <div id="selected-client-display" class="text-lg font-bold text-center my-4 text-emerald-800"></div>
                 <div id="product-sale-container"></div>
                 <div id="info-text" class="text-base text-center my-5 text-gray-600"></div>
-                ${createButton('Volver al Menú Principal', "resetVentaStateAndGoToMain()", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver al Menú Principal', 'resetVentaStateAndGoToMainButton', 'bg-gray-600 mt-5 w-full')}
             `);
             updateVentaScreenContent();
         };
@@ -1171,14 +1180,14 @@
                     return `
                         <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center" value="${saleQuantities[item.sku] || ''}" onchange="handleProductQuantityChange('${item.sku}', this.value)" min="0" max="${quantity}"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center sale-quantity-input" value="${saleQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${quantity}"></td>
                         <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
                     `;
                 }).map(row => `<tr>${row}</tr>`).join('');
 
                 productSaleContainer.innerHTML = `
                     ${createTable(['Imagen', 'SKU', 'Cantidad a Vender', 'Producto', 'Presentación', 'Precio', 'Disponible'], tableRows, 'products-for-sale-body')}
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showFinalizeSaleConfirmation()">Finalizar Venta</button>
+                    ${createButton('Finalizar Venta', 'finalizeSaleButton', 'bg-emerald-600 mt-3 w-full')}
                 `;
             } else {
                 selectedClientDisplay.textContent = '';
@@ -1322,8 +1331,8 @@
                     <div class="radio-button-group" id="vendor-radio-group"></div>
                 </div>
                 <p class="text-base text-center my-5 text-gray-600">Esta sección permite consolidar y cerrar las ventas del día.</p>
-                <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showCloseSalesConfirmation()">Cerrar Ventas del Día</button>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Cerrar Ventas del Día', 'closeSalesButton', 'bg-emerald-600 mt-3 w-full')}
+                ${createButton('Volver', 'backToMainFromCierreVentasButton', 'bg-gray-600 mt-5 w-full')}
             `);
             updateVendorSelectionDisplay();
         };
@@ -1647,29 +1656,29 @@
             ` : '';
 
             return `
-                <div style="font-family: 'monospace', 'Courier New', Courier, monospace; font-size: 0.75rem; width: 250px; margin: 0 auto; padding: 10px; border: 1px dashed #ccc; background-color: #fff; color: #000; text-align: left; box-shadow: 0 0 5px rgba(0,0,0,0.1);">
-                    <h3 style="text-align: center; margin-bottom: 5px; font-size: 0.85rem;">Dist Castillo Ventas</h3>
-                    <h4 style="text-align: center; margin-bottom: 5px; font-size: 0.85rem;">Recibo de Venta</h4>
-                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                <div class="thermal-receipt">
+                    <h3>Dist Castillo Ventas</h3>
+                    <h4>Recibo de Venta</h4>
+                    <div class="divider"></div>
                     <p>Fecha: ${saleRecord.date}</p>
                     <p>Cliente: ${saleRecord.client.nombreComercial}</p>
                     <p>Vendedor: ${saleRecord.vendor || selectedVendor}</p>
-                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <div class="divider"></div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                        <span style="width: 20%; text-align: left;">Cant.</span>
-                        <span style="width: 50%; text-align: left;">Producto</span>
-                        <span style="width: 30%; text-align: right;">Total</span>
+                        <span class="item-qty">Cant.</span>
+                        <span class="item-desc">Producto</span>
+                        <span class="item-price">Total</span>
                     </div>
-                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
+                    <div class="divider"></div>
                     ${itemsHtml}
-                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
-                    <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px; font-size: 0.9rem;">
+                    <div class="divider"></div>
+                    <div class="total-line">
                         <span>TOTAL:</span>
                         <span>$${saleRecord.total.toFixed(2)}</span>
                     </div>
                     ${modificationReasonHtml}
-                    <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
-                    <p style="text-align: center; margin-top: 10px; font-size: 0.7rem;">¡Gracias por tu compra!</p>
+                    <div class="divider"></div>
+                    <p class="footer-text">¡Gracias por tu compra!</p>
                 </div>
             `;
         };
@@ -1725,19 +1734,19 @@
                 <p class="text-base text-center my-5 text-gray-600">Esta sección permite cargar y descargar archivos de datos maestros.</p>
                 <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
                     <h3 class="text-xl font-bold mb-4 text-sky-700">Cargar Archivos CSV</h3>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadClientsCsv" accept=".csv" onchange="handleClientFileUpload(event)"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadInventoryCsv" accept=".csv" onchange="handleFileUpload(event, 'inventory')"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadVendorsCsv" accept=".csv" onchange="handleFileUpload(event, 'vendors')"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadVehiclesCsv" accept=".csv" onchange="handleFileUpload(event, 'vehicles')"></div></div>
+                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadClientsCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadClientsCsv" accept=".csv"></div></div>
+                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadInventoryCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadInventoryCsv" accept=".csv" data-type="inventory"></div></div>
+                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadVendorsCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadVendorsCsv" accept=".csv" data-type="vendors"></div></div>
+                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadVehiclesCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadVehiclesCsv" accept=".csv" data-type="vehicles"></div></div>
                 </div>
                 <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
                     <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('clientes.csv')">Descargar clientes.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('inventario.csv')">Descargar inventario.csv (Almacén Principal)</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('vendedor.csv')">Descargar vendedor.csv</button>
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-md w-full mb-2" onclick="downloadExistingCSV('vehiculos.csv')">Descargar vehículos.csv</button>
+                    ${createButton('Descargar clientes.csv', 'downloadClientsCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'clientes.csv' })}
+                    ${createButton('Descargar inventario.csv (Almacén Principal)', 'downloadInventoryCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'inventario.csv' })}
+                    ${createButton('Descargar vendedor.csv', 'downloadVendorsCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'vendedor.csv' })}
+                    ${createButton('Descargar vehículos.csv', 'downloadVehiclesCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'vehiculos.csv' })}
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromArchivosAdminButton', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -1748,8 +1757,8 @@
                     <div class="bg-cyan-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-cyan-200">
                         <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="printSaleReceipt(${JSON.stringify(sale).replace(/"/g, '&quot;')})">IMPRIMIR</button>
-                            ${currentUser ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="openModifySaleModal(${JSON.stringify(sale).replace(/"/g, '&quot;')})">MODIFICAR</button>` : ''}
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out print-receipt-button" data-sale='${JSON.stringify(sale)}'>IMPRIMIR</button>
+                            ${currentUser ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out modify-sale-button" data-sale='${JSON.stringify(sale)}'>MODIFICAR</button>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -1760,7 +1769,7 @@
                     <h3 class="text-xl font-bold mb-4 text-cyan-700">Archivos de Venta Generados</h3>
                     <div id="generated-sale-files-list">${saleFilesHtml}</div>
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromArchivosVentaButton', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -1807,7 +1816,7 @@
                     <tr>
                         <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${currentQuantity}" onchange="handleModifiedSaleQuantityChange('${item.sku}', this.value)" min="0"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 modified-sale-quantity-input" value="${currentQuantity}" data-sku="${item.sku}" min="0"></td>
                         <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
                     </tr>
                 `;
@@ -1827,11 +1836,11 @@
                         ${createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Precio Unitario', 'Cantidad', 'Disp. Actual'], productsHtml, 'modify-sale-products-body')}
                         <div class="mb-4 text-left">
                             <label for="modificationReason" class="block text-gray-700 text-sm font-bold mb-2">Motivo de la Modificación:</label>
-                            <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3" onchange="handleModificationReasonChange(this.value)">${modificationReason}</textarea>
+                            <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3">${modificationReason}</textarea>
                         </div>
                         <div class="flex justify-around gap-4 mt-5">
-                            <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="saveModifiedSale()">Guardar Modificación</button>
-                            <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="closeModifySaleModal()">Cancelar</button>
+                            ${createButton('Guardar Modificación', 'modifySaleModalSaveButton', 'bg-emerald-600 flex-1')}
+                            ${createButton('Cancelar', 'modifySaleModalCancelButton', 'bg-gray-600 flex-1')}
                         </div>
                     </div>
                 </div>
@@ -1980,7 +1989,7 @@
                     await fetchDataFromFirestore();
                     showMessageModal(`${type}.csv cargado y guardado exitosamente en Firestore.`);
                     if (type === 'vendors' && vendors.length > 0 && selectedVendor === 'Ninguno') {
-                        selectedVendor = vendors[0].name;
+                        selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
                         localStorage.setItem('selectedVendor', selectedVendor);
                     }
                     render();
@@ -2042,8 +2051,8 @@
             const tableRows = vehicles.map(vehicle => `
                 <td>${vehicle.plate}</td><td>${vehicle.name}</td><td>${vehicle.brand || 'N/A'}</td><td>${vehicle.model || 'N/A'}</td>
                 <td>
-                    <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-2" onclick="editVehicle('${vehicle.plate}')">Editar</button>
-                    <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm" onclick="showDeleteVehicleConfirmation('${vehicle.plate}')">Eliminar</button>
+                    <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded-md text-sm mr-2 edit-vehicle-button" data-plate="${vehicle.plate}">Editar</button>
+                    <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded-md text-sm delete-vehicle-button" data-plate="${vehicle.plate}">Eliminar</button>
                 </td>
             `).map(row => `<tr>${row}</tr>`).join('');
 
@@ -2058,10 +2067,10 @@
                     ${createInput('vehicleName', 'Nombre (ej. Volswaguen Worker 220)', editingVehicle?.name)}
                     ${createInput('vehicleBrand', 'Marca', editingVehicle?.brand)}
                     ${createInput('vehicleModel', 'Modelo', editingVehicle?.model)}
-                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="${editingVehicle ? 'saveEditedVehicle()' : 'handleAddVehicle()'}">${editingVehicle ? 'Guardar Cambios' : 'Agregar Vehículo'}</button>
-                    ${editingVehicle ? `<button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="cancelEditVehicle()">Cancelar Edición</button>` : ''}
+                    ${editingVehicle ? createButton('Guardar Cambios', 'saveEditedVehicleButton', 'bg-purple-600 mt-3 w-full') : createButton('Agregar Vehículo', 'addVehicleButton', 'bg-purple-600 mt-3 w-full')}
+                    ${editingVehicle ? createButton('Cancelar Edición', 'cancelEditVehicleButton', 'bg-gray-600 mt-3 w-full') : ''}
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromVehiclesButton', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -2147,8 +2156,8 @@
             const vehicleOptions = vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
             const tableRows = users.map(user => `
                 <td>${user.email}</td><td>${user.role}</td><td>${user.assignedTruckPlate || 'Ninguno'}</td>
-                <td>${createSelect(`assignTruck-${user.uid}`, vehicleOptions, user.assignedTruckPlate, `handleAssignVehicle('${user.uid}')`, '-- No asignar --')}</td>
-                <td><button class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-1 px-3 rounded-md text-sm" onclick="handleAssignVehicle('${user.uid}')">Guardar</button></td>
+                <td>${createSelect(`assignTruck-${user.uid}`, vehicleOptions, user.assignedTruckPlate, '', '-- No asignar --', { userid: user.uid, class: 'assign-truck-select' })}</td>
+                <td>${createButton('Guardar', `saveAssignVehicle-${user.uid}`, 'bg-indigo-500 text-sm assign-vehicle-save-button', { userid: user.uid })}</td>
             `).map(row => `<tr>${row}</tr>`).join('');
 
             appRoot.innerHTML = createScreenContainer('ASIGNAR VEHÍCULO A VENDEDOR', `
@@ -2156,7 +2165,7 @@
                     <h3 class="text-xl font-bold mb-4 text-blue-700">Asignar Camión a Usuarios</h3>
                     ${createTable(['Correo Electrónico', 'Rol', 'Camión Asignado', 'Asignar Nuevo Camión', 'Acciones'], tableRows, 'user-assignment-table-body')}
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromAssignVehicleButton', 'bg-gray-600 mt-5 w-full')}
             `);
         };
 
@@ -2198,7 +2207,7 @@
                             <span class="text-sm text-gray-600">Camión: ${record.truckName} (${record.truckPlate}) - Cargador: ${record.loader} - Total: $${record.total.toFixed(2)}</span>
                         </span>
                         <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
+                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out download-csv-button" data-filename="${record.fileName}">DESCARGAR CSV</button>
                         </div>
                     </div>
                 `).join('');
@@ -2209,8 +2218,8 @@
                     <h3 class="text-xl font-bold mb-4 text-yellow-700">Archivos de Carga Generados</h3>
                     <div id="generated-load-files-list">${loadFilesHtml}</div>
                 </div>
-                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearLoadHistoryConfirmation()">Limpiar Historial</button>
-                ${createButton('Volver', "setScreenAndRender('cargaSelection')", 'bg-gray-600 mt-3 w-full')}
+                ${createButton('Limpiar Historial', 'clearLoadHistoryButton', 'bg-red-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToCargaSelectionFromLoadHistoryButton', 'bg-gray-600 mt-3 w-full')}
             `);
         };
 
@@ -2242,8 +2251,8 @@
             appRoot.innerHTML = createScreenContainer('Confirmación de Seguridad', `
                 <p class="text-lg text-center mb-6 text-gray-700">Ingrese contraseña para confirmar la operación de transbordo.</p>
                 ${createInput('userPasswordForTransfer', 'Contraseña', '', 'password')}
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="handleTransferInventoryPassword()">Continuar</button>
-                <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg mt-3 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="setScreenAndRender('main')">Cancelar</button>
+                ${createButton('Continuar', 'userPasswordForTransferButton', 'w-full')}
+                ${createButton('Cancelar', 'cancelTransferInventoryPasswordButton', 'bg-gray-600 mt-3 w-full')}
             `, 'max-w-md mx-auto my-10');
         };
 
@@ -2278,14 +2287,14 @@
                     return `
                         <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>${item.quantity}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20" value="${transferQuantities[item.sku]}" onchange="handleTransferQuantityChange('${item.sku}', this.value)" min="0" max="${item.quantity}"></td>
+                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 transfer-quantity-input" value="${transferQuantities[item.sku]}" data-sku="${item.sku}" min="0" max="${item.quantity}"></td>
                     `;
                 }).map(row => `<tr>${row}</tr>`).join('');
 
                 productsTableHtml = `
                     <p class="text-base text-center mb-4 text-gray-700">Cantidad a trasladar del camión <strong>${sourceTruck.name}</strong> al camión <strong>${selectedDestinationTruck.name}</strong>.</p>
                     ${createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Disponible', 'Cantidad a Trasladar'], tableRows, 'products-for-transfer-body')}
-                    <button class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showTransferConfirmation()">Realizar Transbordo</button>
+                    ${createButton('Realizar Transbordo', 'performTransferButton', 'bg-emerald-600 mt-5 w-full')}
                 `;
             } else {
                 productsTableHtml = '<p class="text-center text-gray-600">Por favor, seleccione un camión de destino para continuar.</p>';
@@ -2295,14 +2304,14 @@
                 <p class="text-lg text-center mb-4 text-gray-700">Camión de Origen: <strong>${sourceTruck.name} (${sourceTruck.plate})</strong></p>
                 <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <label for="destinationTruckSelect" class="block text-lg font-semibold text-blue-700 mb-2">Seleccionar Camión de Destino:</label>
-                    ${createSelect('destinationTruckSelect', destinationOptions, selectedDestinationTruck?.plate, 'handleDestinationTruckSelection(this.value)')}
+                    ${createSelect('destinationTruckSelect', destinationOptions, selectedDestinationTruck?.plate)}
                 </div>
                 ${productsTableHtml}
                 <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-300 mt-8">
                     <h3 class="text-xl font-bold mb-4 text-yellow-700">Historial de Traslados</h3>
                     <div id="user-transfer-history-list"></div>
                 </div>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromTransferInventoryButton', 'bg-gray-600 mt-5 w-full')}
             `);
             updateUserTransferHistoryDisplay();
         };
@@ -2439,7 +2448,7 @@
                                 <span class="text-sm text-gray-600">Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}</span>
                             </span>
                             <div class="flex flex-wrap gap-2">
-                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
+                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out download-csv-button" data-filename="${record.fileName}">DESCARGAR CSV</button>
                             </div>
                         </div>
                     `;
@@ -2466,7 +2475,7 @@
                                 <span class="text-sm text-gray-600">Origen: ${record.sourceTruckPlate} - Destino: ${record.destinationTruckPlate} - Realizado por: ${userEmail} - Fecha: ${record.date}</span>
                             </span>
                             <div class="flex flex-wrap gap-2">
-                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out" onclick="downloadExistingCSV('${record.fileName}')">DESCARGAR CSV</button>
+                                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out download-csv-button" data-filename="${record.fileName}">DESCARGAR CSV</button>
                             </div>
                         </div>
                     `;
@@ -2478,8 +2487,8 @@
                     <h3 class="text-xl font-bold mb-4 text-yellow-700">Archivos de Transbordo Generados</h3>
                     <div id="admin-transfer-history-list">${transferFilesHtml}</div>
                 </div>
-                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg mt-5 w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105" onclick="showClearTransferHistoryConfirmation()">Limpiar Historial de Transbordo</button>
-                ${createButton('Volver', "setScreenAndRender('main')", 'bg-gray-600 mt-3 w-full')}
+                ${createButton('Limpiar Historial de Transbordo', 'clearTransferHistoryButton', 'bg-red-600 mt-5 w-full')}
+                ${createButton('Volver', 'backToMainFromAdminTransferHistoryButton', 'bg-gray-600 mt-3 w-full')}
             `);
         };
 
@@ -2518,55 +2527,6 @@
         const app = firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
-
-        // Hacer que estas funciones sean globales para que clientManagement.js pueda llamarlas
-        window.createScreenContainer = createScreenContainer;
-        window.createButton = createButton;
-        window.createInput = createInput;
-        window.createSelect = createSelect;
-        window.createTable = createTable;
-        window.showMessageModal = showMessageModal;
-        window.showConfirmationModal = showConfirmationModal;
-        window.setScreenAndRender = setScreenAndRender;
-        window.productImages = productImages; // Necesario para imágenes de productos en tablas
-        window.updateVentaScreenContent = updateVentaScreenContent; // Necesario para que clientManagement actualice la pantalla de venta
-        window.triggerCSVDownload = triggerCSVDownload; // Necesario para que clientManagement descargue CSVs
-        window.handleAuth = handleAuth; // Hacer handleAuth global
-        window.handleLogout = handleLogout; // Hacer handleLogout global
-        window.handleFileUpload = handleFileUpload; // Hacer handleFileUpload global
-        window.downloadExistingCSV = downloadExistingCSV; // Hacer downloadExistingCSV global
-        window.handleLoadMerchandiseConfirmation = showLoadMerchandiseConfirmation; // Hacer showLoadMerchandiseConfirmation global
-        window.handleLoaderSelection = handleLoaderSelection; // Hacer handleLoaderSelection global
-        window.handleTruckForReceivingSelection = handleTruckForReceivingSelection; // Hacer handleTruckForReceivingSelection global
-        window.handleReceivingQuantityChange = handleReceivingQuantityChange; // Hacer handleReceivingQuantityChange global
-        window.showLoadMerchandiseConfirmation = showLoadMerchandiseConfirmation; // Hacer showLoadMerchandiseConfirmation global
-        window.handleResetCargasInicialesPassword = handleResetCargasInicialesPassword; // Hacer handleResetCargasInicialesPassword global
-        window.handleResetQuantityChange = handleResetQuantityChange; // Hacer handleResetQuantityChange global
-        window.saveResetCargasIniciales = saveResetCargasIniciales; // Hacer saveResetCargasIniciales global
-        window.handleAdminVehicleSelection = handleAdminVehicleSelection; // Hacer handleAdminVehicleSelection global
-        window.filterInventoryForUserScreen = filterInventoryForUserScreen; // Hacer filterInventoryForUserScreen global
-        window.handleProductQuantityChange = handleProductQuantityChange; // Hacer handleProductQuantityChange global
-        window.showFinalizeSaleConfirmation = showFinalizeSaleConfirmation; // Hacer showFinalizeSaleConfirmation global
-        window.resetVentaStateAndGoToMain = resetVentaStateAndGoToMain; // Hacer resetVentaStateAndGoToMain global
-        window.showCloseSalesConfirmation = showCloseSalesConfirmation; // Hacer showCloseSalesConfirmation global
-        window.printSaleReceipt = printSaleReceipt; // Hacer printSaleReceipt global
-        window.openModifySaleModal = openModifySaleModal; // Hacer openModifySaleModal global
-        window.handleModifiedSaleQuantityChange = handleModifiedSaleQuantityChange; // Hacer handleModifiedSaleQuantityChange global
-        window.handleModificationReasonChange = handleModificationReasonChange; // Hacer handleModificationReasonChange global
-        window.saveModifiedSale = saveModifiedSale; // Hacer saveModifiedSale global
-        window.handleAddVehicle = handleAddVehicle; // Hacer handleAddVehicle global
-        window.editVehicle = editVehicle; // Hacer editVehicle global
-        window.cancelEditVehicle = cancelEditVehicle; // Hacer cancelEditVehicle global
-        window.saveEditedVehicle = saveEditedVehicle; // Hacer saveEditedVehicle global
-        window.showDeleteVehicleConfirmation = showDeleteVehicleConfirmation; // Hacer showDeleteVehicleConfirmation global
-        window.handleAssignVehicle = handleAssignVehicle; // Hacer handleAssignVehicle global
-        window.showClearLoadHistoryConfirmation = showClearLoadHistoryConfirmation; // Hacer showClearLoadHistoryConfirmation global
-        window.handleTransferInventoryPassword = handleTransferInventoryPassword; // Hacer handleTransferInventoryPassword global
-        window.handleDestinationTruckSelection = handleDestinationTruckSelection; // Hacer handleDestinationTruckSelection global
-        window.handleTransferQuantityChange = handleTransferQuantityChange; // Hacer handleTransferQuantityChange global
-        window.showTransferConfirmation = showTransferConfirmation; // Hacer showTransferConfirmation global
-        window.showClearTransferHistoryConfirmation = showClearTransferHistoryConfirmation; // Hacer showClearTransferHistoryConfirmation global
-
 
         // Inicializar el módulo de gestión de clientes con la instancia de Firestore
         clientManagement.init(db);
@@ -2841,6 +2801,259 @@
                     render();
                 }
             }
+        });
+
+        // --- Event Delegation for the entire app-root ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const appRoot = document.getElementById('app-root');
+
+            appRoot.addEventListener('click', (event) => {
+                const target = event.target;
+
+                // Authentication buttons/links
+                if (target.id === 'loginButton') {
+                    handleAuth(false);
+                } else if (target.id === 'registerLink') {
+                    event.preventDefault(); // Prevent default link behavior
+                    setScreenAndRender('register');
+                } else if (target.id === 'registerButton') {
+                    handleAuth(true);
+                } else if (target.id === 'loginLink') {
+                    event.preventDefault(); // Prevent default link behavior
+                    setScreenAndRender('login');
+                } else if (target.id === 'logoutButton') {
+                    handleLogout();
+                }
+                // Main screen navigation
+                else if (target.id === 'cargaSelectionButton') {
+                    setScreenAndRender('cargaSelection');
+                } else if (target.id === 'adminInventorySelectionButton') {
+                    setScreenAndRender('adminInventorySelection');
+                } else if (target.id === 'userInventoryButton') {
+                    setScreenAndRender('inventario');
+                } else if (target.id === 'clientsButton') {
+                    clientManagement.setScreenAndRenderClientes();
+                } else if (target.id === 'ventaButton') {
+                    setScreenAndRender('venta');
+                } else if (target.id === 'cierreVentasButton') {
+                    setScreenAndRender('cierreVentas');
+                } else if (target.id === 'archivosAdminButton') {
+                    setScreenAndRender('archivosAdmin');
+                } else if (target.id === 'archivosVentaButton') {
+                    setScreenAndRender('archivosVenta');
+                } else if (target.id === 'vehiclesButton') {
+                    setScreenAndRender('vehicles');
+                } else if (target.id === 'assignVehicleButton') {
+                    setScreenAndRender('assignVehicle');
+                } else if (target.id === 'transferInventoryPasswordButton') {
+                    setScreenAndRender('transferInventoryPassword');
+                } else if (target.id === 'adminTransferHistoryButton') {
+                    setScreenAndRender('adminTransferHistory');
+                }
+                // Modals
+                else if (target.id === 'messageModalCloseButton') {
+                    hideMessageModal();
+                } else if (target.id === 'confirmationModalConfirmButton') {
+                    hideConfirmationModal(true);
+                } else if (target.id === 'confirmationModalCancelButton') {
+                    hideConfirmationModal(false);
+                } else if (target.id === 'modifySaleModalSaveButton') {
+                    saveModifiedSale();
+                } else if (target.id === 'modifySaleModalCancelButton') {
+                    closeModifySaleModal();
+                }
+                // Carga Selection
+                else if (target.id === 'truckLoadingButton') {
+                    setScreenAndRender('truckLoading');
+                } else if (target.id === 'loadHistoryButton') {
+                    setScreenAndRender('loadHistory');
+                } else if (target.id === 'resetCargasInicialesPasswordButton') {
+                    setScreenAndRender('resetCargasInicialesPassword');
+                } else if (target.id === 'backToMainFromCargaSelection') {
+                    setScreenAndRender('main');
+                }
+                // Truck Receiving
+                else if (target.id === 'loadMerchandiseButton') {
+                    showLoadMerchandiseConfirmation();
+                } else if (target.id === 'backToCargaSelectionButton') {
+                    setScreenAndRender('cargaSelection');
+                }
+                // Reset Cargas Iniciales
+                else if (target.id === 'adminPasswordForResetButton') {
+                    handleResetCargasInicialesPassword();
+                } else if (target.id === 'saveResetCargasInicialesButton') {
+                    saveResetCargasIniciales();
+                } else if (target.id === 'cancelResetCargasInicialesButton' || target.id === 'cancelAndBackToCargaSelectionButton') {
+                    setScreenAndRender('cargaSelection');
+                }
+                // Admin Inventory Selection
+                else if (target.id === 'adminMainInventoryButton') {
+                    setScreenAndRender('adminMainInventory');
+                } else if (target.id === 'adminVehicleInventoryButton') {
+                    setScreenAndRender('adminVehicleInventory');
+                } else if (target.id === 'backToMainFromAdminInventorySelection') {
+                    setScreenAndRender('main');
+                }
+                // Admin Main Inventory
+                else if (target.id === 'backToAdminInventorySelectionButton') {
+                    setScreenAndRender('adminInventorySelection');
+                }
+                // Inventario (User)
+                else if (target.id === 'backToMainFromUserInventoryButton') {
+                    setScreenAndRender('main');
+                }
+                // Admin Vehicle Inventory
+                else if (target.id === 'backToAdminInventorySelectionFromVehicleInventoryButton') {
+                    setScreenAndRender('adminInventorySelection');
+                }
+                // Venta
+                else if (target.id === 'selectClientButton') {
+                    clientManagement.toggleClientPickerModal(true);
+                } else if (target.id === 'finalizeSaleButton') {
+                    showFinalizeSaleConfirmation();
+                } else if (target.id === 'resetVentaStateAndGoToMainButton') {
+                    resetVentaStateAndGoToMain();
+                }
+                // Cierre Ventas
+                else if (target.id === 'closeSalesButton') {
+                    showCloseSalesConfirmation();
+                } else if (target.id === 'backToMainFromCierreVentasButton') {
+                    setScreenAndRender('main');
+                }
+                // Archivos Venta
+                else if (target.classList.contains('print-receipt-button')) { // Use class for dynamically created buttons
+                    const saleData = JSON.parse(target.dataset.sale);
+                    printSaleReceipt(saleData);
+                } else if (target.classList.contains('modify-sale-button')) { // Use class for dynamically created buttons
+                    const saleData = JSON.parse(target.dataset.sale);
+                    openModifySaleModal(saleData);
+                } else if (target.id === 'backToMainFromArchivosVentaButton') {
+                    setScreenAndRender('main');
+                }
+                // Archivos Admin
+                else if (target.classList.contains('download-csv-button')) { // Use class for dynamically created buttons
+                    const filename = target.dataset.filename;
+                    downloadExistingCSV(filename);
+                } else if (target.id === 'backToMainFromArchivosAdminButton') {
+                    setScreenAndRender('main');
+                }
+                // Vehicles
+                else if (target.id === 'addVehicleButton') {
+                    handleAddVehicle();
+                } else if (target.id === 'saveEditedVehicleButton') {
+                    saveEditedVehicle();
+                } else if (target.id === 'cancelEditVehicleButton') {
+                    cancelEditVehicle();
+                } else if (target.classList.contains('edit-vehicle-button')) {
+                    const plate = target.dataset.plate;
+                    editVehicle(plate);
+                } else if (target.classList.contains('delete-vehicle-button')) {
+                    const plate = target.dataset.plate;
+                    showDeleteVehicleConfirmation(plate);
+                } else if (target.id === 'backToMainFromVehiclesButton') {
+                    setScreenAndRender('main');
+                }
+                // Assign Vehicle
+                else if (target.classList.contains('assign-vehicle-save-button')) {
+                    const userId = target.dataset.userid;
+                    handleAssignVehicle(userId);
+                } else if (target.id === 'backToMainFromAssignVehicleButton') {
+                    setScreenAndRender('main');
+                }
+                // Load History
+                else if (target.id === 'clearLoadHistoryButton') {
+                    showClearLoadHistoryConfirmation();
+                } else if (target.id === 'backToCargaSelectionFromLoadHistoryButton') {
+                    setScreenAndRender('cargaSelection');
+                }
+                // Transfer Inventory Password
+                else if (target.id === 'userPasswordForTransferButton') {
+                    handleTransferInventoryPassword();
+                } else if (target.id === 'cancelTransferInventoryPasswordButton') {
+                    setScreenAndRender('main');
+                }
+                // Transfer Inventory
+                else if (target.id === 'performTransferButton') {
+                    showTransferConfirmation();
+                } else if (target.id === 'backToMainFromTransferInventoryButton') {
+                    setScreenAndRender('main');
+                }
+                // Admin Transfer History
+                else if (target.id === 'clearTransferHistoryButton') {
+                    showClearTransferHistoryConfirmation();
+                } else if (target.id === 'backToMainFromAdminTransferHistoryButton') {
+                    setScreenAndRender('main');
+                }
+            });
+
+            appRoot.addEventListener('change', (event) => {
+                const target = event.target;
+
+                // File Uploads
+                if (target.id === 'uploadClientsCsv') {
+                    clientManagement.handleClientFileUpload(event); // This is in clientManagement.js
+                } else if (target.id === 'uploadInventoryCsv' && target.dataset.type === 'inventory') {
+                    handleFileUpload(event, 'inventory');
+                } else if (target.id === 'uploadVendorsCsv' && target.dataset.type === 'vendors') {
+                    handleFileUpload(event, 'vendors');
+                } else if (target.id === 'uploadVehiclesCsv' && target.dataset.type === 'vehicles') {
+                    handleFileUpload(event, 'vehicles');
+                }
+                // Truck Receiving
+                else if (target.id === 'loaderSelect') {
+                    handleLoaderSelection(target.value);
+                } else if (target.id === 'truckSelect') {
+                    handleTruckForReceivingSelection(target.value);
+                } else if (target.classList.contains('receiving-quantity-input')) { // Use class for dynamically created inputs
+                    const sku = target.dataset.sku;
+                    handleReceivingQuantityChange(sku, target.value);
+                }
+                // Reset Cargas Iniciales
+                else if (target.classList.contains('reset-quantity-input-main')) {
+                    const sku = target.dataset.sku;
+                    handleResetQuantityChange(sku, 'main', target.value);
+                } else if (target.classList.contains('reset-quantity-input-truck')) {
+                    const sku = target.dataset.sku;
+                    const truckPlate = target.dataset.truckplate;
+                    handleResetQuantityChange(sku, truckPlate, target.value);
+                }
+                // Admin Vehicle Inventory
+                else if (target.id === 'adminVehicleSelect') {
+                    handleAdminVehicleSelection(target.value);
+                }
+                // Inventario (User)
+                else if (target.id === 'inventorySearchInputUser') {
+                    filterInventoryForUserScreen(target.value);
+                }
+                // Venta
+                else if (target.classList.contains('sale-quantity-input')) {
+                    const sku = target.dataset.sku;
+                    handleProductQuantityChange(sku, target.value);
+                }
+                // Cierre Ventas
+                else if (target.name === 'vendor') { // Radio buttons for vendor selection
+                    handleVendorChange(target.value);
+                }
+                // Modify Sale Modal
+                else if (target.classList.contains('modified-sale-quantity-input')) {
+                    const sku = target.dataset.sku;
+                    handleModifiedSaleQuantityChange(sku, target.value);
+                } else if (target.id === 'modificationReason') {
+                    handleModificationReasonChange(target.value);
+                }
+                // Assign Vehicle
+                else if (target.classList.contains('assign-truck-select')) {
+                    const userId = target.dataset.userid;
+                    handleAssignVehicle(userId);
+                }
+                // Transfer Inventory
+                else if (target.id === 'destinationTruckSelect') {
+                    handleDestinationTruckSelection(target.value);
+                } else if (target.classList.contains('transfer-quantity-input')) {
+                    const sku = target.dataset.sku;
+                    handleTransferQuantityChange(sku, target.value);
+                }
+            });
         });
 
         if ('serviceWorker' in navigator) {
