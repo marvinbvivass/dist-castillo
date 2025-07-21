@@ -1529,9 +1529,9 @@
                 inventoryManagement.setTransferRecords([]); // Use setter for fallback
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.clients = [];
-                clientManagement.zones = [];
-                clientManagement.sectors = [];
+                clientManagement.setClients([]); // Use setter for clearing
+                clientManagement.setZones([]); // Use setter for clearing
+                clientManagement.setSectors([]); // Use setter for clearing
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
@@ -1640,9 +1640,9 @@
                 inventoryManagement.setTransferRecords([]);
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.clients = [];
-                clientManagement.zones = [];
-                clientManagement.sectors = [];
+                clientManagement.setClients([]); // Use setter for clearing
+                clientManagement.setZones([]); // Use setter for clearing
+                clientManagement.setSectors([]); // Use setter for clearing
 
                 if (screen !== 'login' && screen !== 'register') {
                     console.log('[Auth State Changed] Redirecting to login screen (no user).');
@@ -1840,7 +1840,7 @@
                     clientManagement.openManageZonesSectorsModal();
                 } else if (target.classList.contains('edit-client-button')) {
                     const clientId = target.dataset.clientid;
-                    const clientToEdit = clientManagement.clients.find(c => c.id === clientId);
+                    const clientToEdit = clientManagement.getClients().find(c => c.id === clientId); // Use getter
                     clientManagement.openEditClientModal(clientToEdit);
                 } else if (target.classList.contains('delete-client-button')) {
                     const clientId = target.dataset.clientid;
