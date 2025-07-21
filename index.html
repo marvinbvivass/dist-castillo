@@ -1584,6 +1584,20 @@
                 }
             });
 
+        // --- Initialize modules with necessary data and functions (MOVED HERE) ---
+        // These need to be initialized regardless of auth state to ensure functions are available
+        clientManagement.init(
+            db, setScreenAndRender,
+            createButton, createInput, createSelect, createTable, // Pass UI helper functions
+            showMessageModal, showConfirmationModal, createSearchableDropdown // Pass modal functions and new dropdown helper
+        );
+        inventoryManagement.init(
+            db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
+            showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
+            setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown // Pass new dropdown helper
+        );
+
+
         // --- Funciones de Carga de Datos desde Firestore ---
         const fetchDataFromFirestore = async () => {
             console.log('[fetchDataFromFirestore] Starting data fetch...');
@@ -1612,8 +1626,6 @@
                 // The global 'inventory' and 'vehicles' arrays are passed by reference to inventoryManagement.init
                 // so inventoryManagement directly modifies them. No need to re-assign here.
                 await inventoryManagement.fetchInventoryRelatedData();
-                // REMOVED THE LINE BELOW AS IT WAS REDUNDANT AND CAUSING THE ERROR
-                // inventory.splice(0, inventory.length, ...inventoryManagement._inventory); // THIS LINE IS THE PROBLEM
                 // vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // This was already removed in previous iteration
 
 
@@ -1732,17 +1744,8 @@
                     currentUserData = { role: 'user', assignedTruckPlate: null };
                 }
 
-                // Initialize modules with necessary data and functions
-                clientManagement.init(
-                    db, setScreenAndRender,
-                    createButton, createInput, createSelect, createTable, // Pass UI helper functions
-                    showMessageModal, showConfirmationModal, createSearchableDropdown // Pass modal functions and new dropdown helper
-                );
-                inventoryManagement.init(
-                    db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
-                    showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
-                    setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown // Pass new dropdown helper
-                );
+                // Update currentUserData in inventoryManagement after it's fetched
+                inventoryManagement._currentUserData = currentUserData; // Direct update
 
                 console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
                 await fetchDataFromFirestore();
@@ -1758,6 +1761,8 @@
             } else {
                 currentUser = null;
                 currentUserData = { role: 'guest', assignedTruckPlate: null };
+                inventoryManagement._currentUserData = currentUserData; // Also update on logout
+
                 if (inventoryManagement.getTruckInventoryUnsubscribe()) { // Use getter
                     inventoryManagement.getTruckInventoryUnsubscribe()();
                     inventoryManagement.setTruckInventoryUnsubscribe(null); // Use setter
@@ -1769,6 +1774,11 @@
                     console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
                 }
                 // Clear local data
+                clientManagement.closeAllClientModals();
+                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
+                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
+                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
+
                 inventory.splice(0, inventory.length);
                 vendors.splice(0, vendors.length);
                 dailySales.splice(0, dailySales.length);
@@ -1778,10 +1788,6 @@
                 inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
                 inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
 
-                clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
-                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
-                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
 
                 if (screen !== 'login' && screen !== 'register') {
                     console.log('[Auth State Changed] Redirecting to login screen (no user).');
@@ -1793,302 +1799,9 @@
             }
         });
 
-        // --- Event Delegation for the entire app-root ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const appRoot = document.getElementById('app-root');
-
-            appRoot.addEventListener('click', (event) => {
-                const target = event.target;
-
-                // Authentication buttons/links
-                if (target.id === 'loginButton') {
-                    handleAuth(false);
-                } else if (target.id === 'registerLink') {
-                    event.preventDefault();
-                    setScreenAndRender('register');
-                } else if (target.id === 'registerButton') {
-                    handleAuth(true);
-                } else if (target.id === 'loginLink') {
-                    event.preventDefault();
-                    setScreenAndRender('login');
-                } else if (target.id === 'logoutButton') {
-                    handleLogout();
-                }
-                // Main screen navigation
-                else if (target.id === 'cargaSelectionButton') {
-                    setScreenAndRender('cargaSelection');
-                } else if (target.id === 'adminInventorySelectionButton') {
-                    setScreenAndRender('adminInventorySelection');
-                } else if (target.id === 'userInventoryButton') {
-                    setScreenAndRender('inventario');
-                } else if (target.id === 'clientsButton') {
-                    setScreenAndRender('clientes');
-                } else if (target.id === 'ventaButton') {
-                    setScreenAndRender('venta');
-                } else if (target.id === 'cierreVentasButton') {
-                    showCloseSalesConfirmation();
-                } else if (target.id === 'archivosAdminButton') {
-                    setScreenAndRender('archivosAdmin');
-                } else if (target.id === 'archivosVentaButton') {
-                    setScreenAndRender('archivosVenta');
-                } else if (target.id === 'vehiclesButton') {
-                    setScreenAndRender('vehicles');
-                } else if (target.id === 'assignVehicleButton') {
-                    setScreenAndRender('assignVehicle');
-                } else if (target.id === 'transferInventoryPasswordButton') {
-                    setScreenAndRender('transferInventoryPassword');
-                } else if (target.id === 'adminTransferHistoryButton') {
-                    setScreenAndRender('adminTransferHistory');
-                }
-                // Modals
-                else if (target.id === 'messageModalCloseButton') {
-                    hideMessageModal();
-                } else if (target.id === 'confirmationModalConfirmButton') {
-                    hideConfirmationModal(true);
-                } else if (target.id === 'confirmationModalCancelButton') {
-                    hideConfirmationModal(false);
-                } else if (target.id === 'modifySaleModalSaveButton') {
-                    saveModifiedSale();
-                } else if (target.id === 'modifySaleModalCancelButton') {
-                    closeModifySaleModal();
-                }
-                // Carga Selection (delegated to inventoryManagement)
-                else if (target.id === 'truckLoadingButton') {
-                    setScreenAndRender('truckLoading');
-                } else if (target.id === 'loadHistoryButton') {
-                    setScreenAndRender('loadHistory');
-                } else if (target.id === 'resetCargasInicialesPasswordButton') {
-                    setScreenAndRender('resetCargasInicialesPassword');
-                } else if (target.id === 'backToMainFromCargaSelection') {
-                    setScreenAndRender('main');
-                }
-                // Truck Receiving (delegated to inventoryManagement)
-                else if (target.id === 'loadMerchandiseButton') {
-                    inventoryManagement.showLoadMerchandiseConfirmation();
-                } else if (target.id === 'backToCargaSelectionButton') {
-                    setScreenAndRender('cargaSelection');
-                }
-                // Reset Cargas Iniciales (delegated to inventoryManagement)
-                else if (target.id === 'adminPasswordForResetButton') {
-                    inventoryManagement.handleResetCargasInicialesPassword();
-                } else if (target.id === 'saveResetCargasInicialesButton') {
-                    showConfirmationModal('¿Estás seguro de que quieres guardar estos cambios de inventario? Esto sobrescribirá las cantidades actuales.', inventoryManagement.saveResetCargasIniciales);
-                } else if (target.id === 'cancelResetCargasInicialesButton' || target.id === 'cancelAndBackToCargaSelectionButton') {
-                    setScreenAndRender('cargaSelection');
-                }
-                // Admin Inventory Selection (delegated to inventoryManagement)
-                else if (target.id === 'adminMainInventoryButton') {
-                    setScreenAndRender('adminMainInventory');
-                } else if (target.id === 'adminVehicleInventoryButton') {
-                    setScreenAndRender('adminVehicleInventory');
-                } else if (target.id === 'backToMainFromAdminInventorySelection') {
-                    setScreenAndRender('main');
-                }
-                // Admin Main Inventory (delegated to inventoryManagement)
-                else if (target.id === 'backToAdminInventorySelectionButton') {
-                    setScreenAndRender('adminInventorySelection');
-                }
-                // Inventario (User) (delegated to inventoryManagement)
-                else if (target.id === 'backToMainFromUserInventoryButton') {
-                    setScreenAndRender('main');
-                }
-                // Admin Vehicle Inventory (delegated to inventoryManagement)
-                else if (target.id === 'backToAdminInventorySelectionFromVehicleInventoryButton') {
-                    setScreenAndRender('adminInventorySelection');
-                }
-                // Venta
-                else if (target.id === 'selectClientButton') {
-                    clientManagement.toggleClientPickerModal(true);
-                } else if (target.id === 'finalizeSaleButton') {
-                    showFinalizeSaleConfirmation();
-                } else if (target.id === 'resetVentaStateAndGoToMainButton') {
-                    resetVentaStateAndGoToMain();
-                }
-                // Cierre Ventas
-                else if (target.id === 'backToMainFromCierreVentasButton') {
-                    setScreenAndRender('main');
-                }
-                // Archivos Venta
-                else if (target.classList.contains('print-receipt-button')) {
-                    const saleData = JSON.parse(target.dataset.sale);
-                    printSaleReceipt(saleData);
-                } else if (target.classList.contains('modify-sale-button')) {
-                    const saleData = JSON.parse(target.dataset.sale);
-                    openModifySaleModal(saleData);
-                } else if (target.id === 'backToMainFromArchivosVentaButton') {
-                    setScreenAndRender('main');
-                }
-                // Archivos Admin
-                else if (target.classList.contains('download-csv-button')) {
-                    const filename = target.dataset.filename;
-                    downloadExistingCSV(filename);
-                } else if (target.id === 'backToMainFromArchivosAdminButton') {
-                    setScreenAndRender('main');
-                }
-                // Vehicles (delegated to inventoryManagement)
-                else if (target.id === 'addVehicleButton') {
-                    inventoryManagement.handleAddVehicle();
-                } else if (target.id === 'saveEditedVehicleButton') {
-                    inventoryManagement.saveEditedVehicle();
-                } else if (target.id === 'cancelEditVehicleButton') {
-                    inventoryManagement.cancelEditVehicle();
-                } else if (target.classList.contains('edit-vehicle-button')) {
-                    const plate = target.dataset.plate;
-                    inventoryManagement.editVehicle(plate);
-                } else if (target.classList.contains('delete-vehicle-button')) {
-                    const plate = target.dataset.plate;
-                    inventoryManagement.showDeleteVehicleConfirmation(plate);
-                } else if (target.id === 'backToMainFromVehiclesButton') {
-                    setScreenAndRender('main');
-                }
-                // Assign Vehicle (delegated to inventoryManagement)
-                else if (target.classList.contains('assign-vehicle-save-button')) {
-                    const userId = target.dataset.userid;
-                    inventoryManagement.handleAssignVehicle(userId);
-                } else if (target.id === 'backToMainFromAssignVehicleButton') {
-                    setScreenAndRender('main');
-                }
-                // Load History (delegated to inventoryManagement)
-                else if (target.id === 'clearLoadHistoryButton') {
-                    inventoryManagement.showClearLoadHistoryConfirmation();
-                } else if (target.id === 'backToCargaSelectionFromLoadHistoryButton') {
-                    setScreenAndRender('cargaSelection');
-                }
-                // Transfer Inventory Password (delegated to inventoryManagement)
-                else if (target.id === 'userPasswordForTransferButton') {
-                    inventoryManagement.handleTransferInventoryPassword();
-                } else if (target.id === 'cancelTransferInventoryPasswordButton') {
-                    setScreenAndRender('main');
-                }
-                // Transfer Inventory (delegated to inventoryManagement)
-                else if (target.id === 'performTransferButton') {
-                    inventoryManagement.showTransferConfirmation();
-                } else if (target.id === 'backToMainFromTransferInventoryButton') {
-                    setScreenAndRender('main');
-                }
-                // Admin Transfer History (delegated to inventoryManagement)
-                else if (target.id === 'clearTransferHistoryButton') {
-                    inventoryManagement.showClearTransferHistoryConfirmation();
-                } else if (target.id === 'backToMainFromAdminTransferHistoryButton') {
-                    setScreenAndRender('main');
-                }
-                // Client Management (main buttons on client screen)
-                else if (target.id === 'addClientButton') {
-                    clientManagement.openEditClientModal();
-                } else if (target.id === 'manageZonesSectorsButton') {
-                    clientManagement.openManageZonesSectorsModal();
-                } else if (target.classList.contains('edit-client-button')) {
-                    const clientId = target.dataset.clientid;
-                    const clientToEdit = clientManagement.clients.find(c => c.id === clientId);
-                    clientManagement.openEditClientModal(clientToEdit);
-                } else if (target.classList.contains('delete-client-button')) {
-                    const clientId = target.dataset.clientid;
-                    showConfirmationModal(`¿Estás seguro de que quieres eliminar al cliente con ID ${clientId}?`, () => clientManagement.deleteClient(clientId));
-                } else if (target.id === 'backToMainFromClientsButton') {
-                    setScreenAndRender('main');
-                }
-                // Client Management (buttons inside modals)
-                else if (target.id === 'saveClientButton') {
-                    clientManagement.saveClient();
-                } else if (target.id === 'cancelEditClientButton') {
-                    clientManagement.closeEditClientModal();
-                } else if (target.id === 'addZoneButton') {
-                    clientManagement.addZone();
-                } else if (target.id === 'addSectorButton') {
-                    clientManagement.addSector();
-                } else if (target.classList.contains('delete-zone-button')) {
-                    const zoneName = target.dataset.zonename;
-                    showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${zoneName}"? Esto no eliminará clientes asociados, pero la zona dejará de estar disponible.`, () => clientManagement.deleteZone(zoneName));
-                } else if (target.classList.contains('delete-sector-button')) {
-                    const sectorName = target.dataset.sectorname;
-                    showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${sectorName}"? Esto no eliminará clientes asociados, pero el sector dejará de estar disponible.`, () => clientManagement.deleteSector(sectorName));
-                } else if (target.id === 'closeManageZonesSectorsButton') {
-                    clientManagement.closeManageZonesSectorsModal();
-                } else if (target.id === 'closeClientPickerButton') {
-                    clientManagement.toggleClientPickerModal(false);
-                } else if (target.classList.contains('select-client-item')) {
-                    const clientData = JSON.parse(target.dataset.client);
-                    clientManagement.selectClientForSale(clientData);
-                }
-            });
-
-            appRoot.addEventListener('change', (event) => {
-                const target = event.target;
-
-                // File Uploads
-                if (target.id === 'uploadClientsCsv') {
-                    clientManagement.handleClientFileUpload(event);
-                } else if (target.id === 'uploadInventoryCsv' && target.dataset.type === 'inventory') {
-                    handleFileUpload(event, 'inventory');
-                } else if (target.id === 'uploadVendorsCsv' && target.dataset.type === 'vendors') {
-                    handleFileUpload(event, 'vendors');
-                } else if (target.id === 'uploadVehiclesCsv' && target.dataset.type === 'vehicles') {
-                    handleFileUpload(event, 'vehicles');
-                }
-                // Truck Receiving (delegated to inventoryManagement)
-                else if (target.id === 'loaderSelect') {
-                    inventoryManagement.handleLoaderSelection(target.value);
-                } else if (target.id === 'truckSelect') {
-                    inventoryManagement.handleTruckForReceivingSelection(target.value);
-                } else if (target.classList.contains('receiving-quantity-input')) {
-                    const sku = target.dataset.sku;
-                    inventoryManagement.handleReceivingQuantityChange(sku, target.value);
-                }
-                // Reset Cargas Iniciales (delegated to inventoryManagement)
-                else if (target.classList.contains('reset-quantity-input-main')) {
-                    const sku = target.dataset.sku;
-                    inventoryManagement.handleResetQuantityChange(sku, 'main', target.value);
-                } else if (target.classList.contains('reset-quantity-input-truck')) {
-                    const sku = target.dataset.sku;
-                    const truckPlate = target.dataset.truckplate;
-                    inventoryManagement.handleResetQuantityChange(sku, truckPlate, target.value);
-                }
-                // Admin Vehicle Inventory (delegated to inventoryManagement)
-                else if (target.id === 'adminVehicleSelect') {
-                    inventoryManagement.handleAdminVehicleSelection(target.value);
-                }
-                // Inventario (User) (delegated to inventoryManagement)
-                else if (target.id === 'inventorySearchInputUser') {
-                    inventoryManagement.filterInventoryForUserScreen(target.value);
-                }
-                // Venta
-                else if (target.classList.contains('sale-quantity-input')) {
-                    const sku = target.dataset.sku;
-                    handleProductQuantityChange(sku, target.value);
-                }
-                // Cierre Ventas
-                else if (target.name === 'vendor') {
-                    handleVendorChange(target.value);
-                }
-                // Modify Sale Modal
-                else if (target.classList.contains('modified-sale-quantity-input')) {
-                    const sku = target.dataset.sku;
-                    handleModifiedSaleQuantityChange(sku, target.value);
-                } else if (target.id === 'modificationReason') {
-                    handleModificationReasonChange(target.value);
-                }
-                // Assign Vehicle (delegated to inventoryManagement)
-                else if (target.classList.contains('assign-truck-select')) {
-                    const userId = target.dataset.userid;
-                    inventoryManagement.handleAssignVehicle(userId);
-                }
-                // Transfer Inventory (delegated to inventoryManagement)
-                else if (target.id === 'destinationTruckSelect') {
-                    inventoryManagement.handleDestinationTruckSelection(target.value);
-                } else if (target.classList.contains('transfer-quantity-input')) {
-                    const sku = target.dataset.sku;
-                    inventoryManagement.handleTransferQuantityChange(sku, target.value);
-                }
-                // Client Management (modal inputs)
-                else if (target.id === 'clientPickerSearchInput') {
-                    clientManagement.handleClientPickerSearchChange(target.value);
-                } else if (target.id === 'clientPickerFilterZone') {
-                    clientManagement.handleClientPickerFilterChange('zone', target.value);
-                } else if (target.id === 'clientPickerFilterSector') {
-                    clientManagement.handleClientPickerFilterChange('sector', target.value);
-                }
-            });
-        });
+        // Initial render when the page loads.
+        // fetchDataFromFirestore will be called by onAuthStateChanged for the first time.
+        render();
 
         if ('serviceWorker' in navigator) {
             document.addEventListener('DOMContentLoaded', () => {
@@ -2103,8 +1816,9 @@
         }
 
         window.onload = () => {
-            console.log('[window.onload] Page fully loaded. Initial render will be triggered by onAuthStateChanged.');
+            console.log('[window.onload] Page fully loaded. Initial render should have been triggered by direct call or onAuthStateChanged.');
         };
     </script>
 </body>
 </html>
+
