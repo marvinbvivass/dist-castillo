@@ -24,6 +24,7 @@ export let selectedZoneForSector = null; // For managing sectors within a zone
 export let showClientPickerModal = false;
 export let selectedClientForSale = null; // Client selected for a sale transaction
 export let selectedClientInClientsScreen = null; // Client selected in the main clients screen
+export let manageSection = 'none'; // 'zones' or 'sectors' - NEW state for managing zones/sectors
 
 // State for searchable dropdowns
 let clientSearchTerm = ''; // For the client list screen's search dropdown
@@ -131,8 +132,8 @@ export const renderClientesScreen = () => {
             <p class="text-sm text-gray-600">Zona: ${selectedClientInClientsScreen.zona}</p>
             <p class="text-sm text-gray-600">Sector: ${selectedClientInClientsScreen.sector}</p>
             <div class="flex justify-end gap-2 mt-3">
-                ${_createButton('Editar', 'editClientButton', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm edit-client-button', { clientid: selectedClientInClientsScreen.id })}
-                ${_createButton('Eliminar', 'deleteClientButton', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-client-button', { clientid: selectedClientInClientsScreen.id })}
+                ${_createButton('Editar', '', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm edit-client-button', { clientid: selectedClientInClientsScreen.id })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-client-button', { clientid: selectedClientInClientsScreen.id })}
             </div>
         </div>
     ` : '<p class="text-center text-gray-500 mt-4">Selecciona un cliente para ver sus detalles.</p>';
@@ -291,45 +292,61 @@ export const renderManageZonesSectorsModal = () => {
     if (!showManageZonesSectorsModalState) return '';
 
     const zoneOptions = zones.map(z => ({ value: z.name, text: z.name }));
+    const sectorOptions = sectors.filter(s => s.zone === selectedZoneForSector).map(s => ({ value: s.name, text: s.name }));
 
-    const zonesHtml = zones.map(zone => `
-        <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
-            <span>${zone.name}</span>
-            ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
-        </div>
-    `).join('');
+    let contentHtml = '';
+    if (manageSection === 'none') {
+        contentHtml = `
+            <p class="text-base text-gray-700 mb-6">Selecciona qué deseas gestionar:</p>
+            <div class="flex flex-col gap-4">
+                ${_createButton('Gestionar Zonas', 'selectManageZonesButton', 'bg-blue-600 w-full')}
+                ${_createButton('Gestionar Sectores', 'selectManageSectorsButton', 'bg-green-600 w-full')}
+            </div>
+        `;
+    } else if (manageSection === 'zones') {
+        const zonesHtml = zones.map(zone => `
+            <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
+                <span>${zone.name}</span>
+                <div class="flex gap-2">
+                    ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
+                </div>
+            </div>
+        `).join('');
 
-    const sectorsHtml = sectors.filter(s => s.zone === selectedZoneForSector).map(sector => `
-        <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
-            <span>${sector.name}</span>
-            ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-sector-button', { sectorname: sector.name, zone: sector.zone })}
-        </div>
-    `).join('');
+        contentHtml = `
+            <h4 class="text-xl font-bold mb-3 text-blue-700">Gestionar Zonas</h4>
+            <p class="text-sm text-gray-600 mb-4">Añade o elimina zonas geográficas para tus clientes.</p>
+            ${_createInput('newZoneName', 'Nueva Zona', '')}
+            ${_createButton('Agregar Zona', 'addZoneButton', 'bg-emerald-600 w-full mb-4')}
+            <div id="zones-list" class="max-h-48 overflow-y-auto border border-gray-300 rounded-md p-2">${zonesHtml}</div>
+            ${_createButton('Volver a Selección', 'backToManageSelectionButton', 'bg-gray-600 mt-5 w-full')}
+        `;
+    } else if (manageSection === 'sectors') {
+        const sectorsHtml = sectors.filter(s => s.zone === selectedZoneForSector).map(sector => `
+            <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
+                <span>${sector.name}</span>
+                <div class="flex gap-2">
+                    ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-sector-button', { sectorname: sector.name, zone: sector.zone })}
+                </div>
+            </div>
+        `).join('');
+
+        contentHtml = `
+            <h4 class="text-xl font-bold mb-3 text-green-700">Gestionar Sectores</h4>
+            <p class="text-sm text-gray-600 mb-4">Selecciona una zona y luego añade o elimina sectores dentro de ella.</p>
+            ${_createSelect('selectZoneForSector', zoneOptions, selectedZoneForSector || '', 'mb-4', '-- Seleccione Zona --')}
+            ${_createInput('newSectorName', 'Nuevo Sector', '')}
+            ${_createButton('Agregar Sector', 'addSectorButton', 'bg-emerald-600 w-full mb-4')}
+            <div id="sectors-list" class="max-h-48 overflow-y-auto border border-gray-300 rounded-md p-2">${sectorsHtml}</div>
+            ${_createButton('Volver a Selección', 'backToManageSelectionButton', 'bg-gray-600 mt-5 w-full')}
+        `;
+    }
 
     return `
         <div id="manage-zones-sectors-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Gestionar Zonas y Sectores</h3>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="p-4 bg-blue-50 rounded-lg border border-blue-300">
-                        <h4 class="text-xl font-bold mb-3 text-blue-700">Gestionar Zonas</h4>
-                        <p class="text-sm text-gray-600 mb-4">Añade o elimina zonas geográficas para tus clientes.</p>
-                        ${_createInput('newZoneName', 'Nueva Zona', '')}
-                        ${_createButton('Agregar Zona', 'addZoneButton', 'bg-emerald-600 w-full mb-4')}
-                        <div id="zones-list" class="max-h-48 overflow-y-auto">${zonesHtml}</div>
-                    </div>
-
-                    <div class="p-4 bg-green-50 rounded-lg border border-green-300">
-                        <h4 class="text-xl font-bold mb-3 text-green-700">Gestionar Sectores</h4>
-                        <p class="text-sm text-gray-600 mb-4">Selecciona una zona y luego añade o elimina sectores dentro de ella.</p>
-                        ${_createSelect('selectZoneForSector', zoneOptions, selectedZoneForSector || '', 'mb-4', '-- Seleccione Zona --')}
-                        ${_createInput('newSectorName', 'Nuevo Sector', '')}
-                        ${_createButton('Agregar Sector', 'addSectorButton', 'bg-emerald-600 w-full mb-4')}
-                        <div id="sectors-list" class="max-h-48 overflow-y-auto">${sectorsHtml}</div>
-                    </div>
-                </div>
-
+                ${contentHtml}
                 ${_createButton('Cerrar', 'closeManageZonesSectorsModalButton', 'bg-gray-600 mt-5 w-full')}
             </div>
         </div>
@@ -338,46 +355,58 @@ export const renderManageZonesSectorsModal = () => {
 
 export const openManageZonesSectorsModal = () => {
     showManageZonesSectorsModalState = true;
-    selectedZoneForSector = zones.length > 0 ? zones[0].name : null; // Select first zone by default
+    manageSection = 'none'; // Start with selection screen
+    selectedZoneForSector = zones.length > 0 ? zones[0].name : null; // Default select first zone if any
     _setScreenAndRender('clientes'); // Re-render to show modal
 };
 
 export const closeManageZonesSectorsModal = () => {
     showManageZonesSectorsModalState = false;
+    manageSection = 'none';
     selectedZoneForSector = null;
     _setScreenAndRender('clientes'); // Re-render to hide modal
 };
 
+export const setManageSection = (section) => {
+    manageSection = section;
+    _setScreenAndRender('clientes'); // Re-render to show the selected section
+};
+
+export const backToManageSelection = () => {
+    manageSection = 'none';
+    _setScreenAndRender('clientes'); // Re-render to go back to the selection screen
+};
+
+
 export const updateManageZonesSectorsModalContent = () => {
     // This function is called after rendering the modal to update dynamic content
     // and re-attach event listeners.
-    const zonesListDiv = document.getElementById('zones-list');
-    if (zonesListDiv) {
-        zonesListDiv.innerHTML = zones.map(zone => `
-            <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
-                <span>${zone.name}</span>
-                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
-            </div>
-        `).join('');
+    if (manageSection === 'zones') {
+        const zonesListDiv = document.getElementById('zones-list');
+        if (zonesListDiv) {
+            zonesListDiv.innerHTML = zones.map(zone => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
+                    <span>${zone.name}</span>
+                    <div class="flex gap-2">
+                        ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
+                    </div>
+                </div>
+            `).join('');
+        }
+    } else if (manageSection === 'sectors') {
+        const sectorsListDiv = document.getElementById('sectors-list');
+        if (sectorsListDiv) {
+            sectorsListDiv.innerHTML = sectors.filter(s => s.zone === selectedZoneForSector).map(sector => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
+                    <span>${sector.name}</span>
+                    <div class="flex gap-2">
+                        ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-sector-button', { sectorname: sector.name, zone: sector.zone })}
+                    </div>
+                </div>
+            `).join('');
+        }
     }
-
-    const sectorsListDiv = document.getElementById('sectors-list');
-    if (sectorsListDiv) {
-        sectorsListDiv.innerHTML = sectors.filter(s => s.zone === selectedZoneForSector).map(sector => `
-            <div class="flex justify-between items-center bg-gray-50 p-2 rounded-md mb-2 border border-gray-200">
-                <span>${sector.name}</span>
-                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-sector-button', { sectorname: sector.name, zone: sector.zone })}
-            </div>
-        `).join('');
-    }
-
-    // Re-attach event listeners for dynamically added buttons
-    document.querySelectorAll('.delete-zone-button').forEach(button => {
-        button.onclick = (e) => showDeleteZoneConfirmation(e.target.dataset.zonename);
-    });
-    document.querySelectorAll('.delete-sector-button').forEach(button => {
-        button.onclick = (e) => showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
-    });
+    // Event listeners are now handled by delegation in index.html for these dynamic buttons
 };
 
 export const handleAddZone = async () => {
@@ -492,6 +521,7 @@ export const closeAllClientModals = () => {
     showClientPickerModal = false;
     editingClient = null;
     selectedZoneForSector = null;
+    manageSection = 'none'; // Reset manage section state
     // Do NOT reset selectedClientForSale or selectedClientInClientsScreen here,
     // as they might be needed by the calling screen (e.g., venta screen)
 };
