@@ -2,70 +2,75 @@
 
 // --- Module-scoped variables (will be initialized via init function) ---
 let _db;
-let _currentUserData; // Will be updated by index.html on auth state change
-let _isAdmin; // Function reference from index.html
-let _isUser; // Function reference from index.html
-let _vehicles; // Global vehicles array from index.html (passed by reference)
-let _inventory; // Global inventory array from index.html (passed by reference)
-let _users; // Global users array from index.html (passed by reference)
-let _vendors; // Global vendors array from index.html (passed by reference)
-let _productImages; // Global productImages object from index.html
-let _showMessageModal; // Function reference from index.html
-let _showConfirmationModal; // Function reference from index.html
-let _createTable; // Function reference from index.html
-let _createInput; // Function reference from index.html
-let _createSelect; // Function reference from index.html
-let _createButton; // Function reference from index.html
-let _setScreenAndRender; // Function reference from index.html
-let _fetchDataFromFirestore; // Function reference from index.html
-let _createSearchableDropdown; // Function reference from index.html
+let _currentUserData;
+let _isAdmin;
+let _isUser;
+let _vehicles; // This will be the global vehicles array from index.html
+let _inventory; // This will be the global inventory array from index.html
+let _users; // This will be the global users array from index.html
+let _vendors; // This will be the global vendors array from index.html
+let _productImages; // This will be the global productImages object from index.html
+let _showMessageModal;
+let _showConfirmationModal;
+let _createTable;
+let _createInput;
+let _createSelect;
+let _createButton;
+let _setScreenAndRender;
+let _fetchDataFromFirestore; // Reference to the main data fetching function in index.html
+let _createSearchableDropdown; // New dependency
 
 // --- Data specific to inventory management ---
-export let currentTruckInventory = []; // Inventory for the currently assigned truck
-export let loadRecords = []; // History of merchandise loads
-export let transferRecords = []; // History of inventory transfers
+let currentTruckInventory = []; // Changed to 'let' without export directly for internal management
+export let loadRecords = [];
+export let transferRecords = [];
 
-// State variables for inventory screens
-export let selectedLoader = null;
-export let selectedTruckForReceiving = null;
-export let receivingQuantities = {};
-export let editingVehicle = null;
-export let selectedAdminVehicle = null;
-export let resetQuantities = {}; // For initial load reset
-export let transferQuantities = {}; // For inventory transfer
+// State variables for various inventory screens
+let selectedTruckForReceiving = null;
+let selectedLoader = null;
+let receivingQuantities = {};
+let selectedTruckInventoryForReceiving = [];
+let selectedAdminVehicleForInventory = null;
+let resetQuantities = {};
+let allTruckInventories = {};
+let selectedDestinationTruck = null;
+let transferQuantities = {};
+let inventorySearchTermUser = '';
 
-// Firestore unsubscribe functions for real-time listeners
-let truckInventoryUnsubscribe = null;
-let adminTruckInventoryUnsubscribe = null;
+// State for searchable dropdowns in inventory management
+let assignVehicleSearchTerm = ''; // For the assign vehicle screen's search dropdown
+let vehiclesSearchTerm = ''; // For the vehicles screen's search dropdown
+
+// Unsubscribe functions for Firestore listeners (now internal and managed by getters/setters)
+let _truckInventoryUnsubscribe = null; // For user's assigned truck
+let _adminTruckInventoryUnsubscribe = null; // For admin's selected truck
 
 // Initial data for populating Firestore if collections are empty
 const initialInventory = [
-    { sku: '2364', rubro: 'Alimentos', segmento: 'Snacks', producto: 'Galletas Saladas', presentacion: 'Paquete 150g', cantidad: 100, precio: 1.50 },
-    { sku: '7458', rubro: 'Bebidas', segmento: 'Refrescos', producto: 'Refresco Cola', presentacion: 'Botella 2L', cantidad: 50, precio: 2.00 },
-    { sku: '1001', rubro: 'Alimentos', segmento: 'Lácteos', producto: 'Leche Entera', presentacion: 'Litro', cantidad: 75, precio: 1.20 },
-    { sku: '1002', rubro: 'Alimentos', segmento: 'Panadería', producto: 'Pan de Molde', presentacion: '500g', cantidad: 40, precio: 2.10 },
-    { sku: '9876', rubro: 'Limpieza', segmento: 'Hogar', producto: 'Detergente Líquido', presentacion: '1L', cantidad: 30, precio: 3.50 }
+    { rubro: 'Cerveceria', sku: '2364', segmento: 'cerveza', producto: 'solera verde', presentacion: '1/4', cantidad: 180, precio: 23 },
+    { rubro: 'Cerveceria', sku: '7458', segmento: 'cerveza', producto: 'ligth', presentacion: '1/4', cantidad: 180, precio: 19.8 },
+    { rubro: 'Alimentos', sku: '1001', segmento: 'panaderia', producto: 'pan de molde', presentacion: 'unidad', cantidad: 50, precio: 3.5 },
+    { rubro: 'Alimentos', sku: '1002', segmento: 'lacteos', producto: 'leche entera', presentacion: 'litro', cantidad: 100, precio: 2.8 },
+    { rubro: 'Cerveceria', sku: '9876', segmento: 'cerveza', producto: 'polar pilsen', presentacion: 'tercio', cantidad: 200, precio: 1.5 },
 ];
-
 const initialVehicles = [
-    { plate: 'ABC-123', model: 'Ford F-150', capacity: 500, assignedUser: null },
-    { plate: 'XYZ-789', model: 'Chevrolet Silverado', capacity: 600, assignedUser: null },
-    { plate: 'DEF-456', model: 'Toyota Hilux', capacity: 450, assignedUser: null }
+    { plate: 'ABC-123', name: 'Volswaguen Worker 220', brand: 'Volswaguen', model: 'Worker 220' },
+    { plate: 'DEF-456', name: 'Chevrolet FVR 300', brand: 'Chevrolet', model: 'FVR 300' },
+    { plate: 'GHI-789', name: 'Chevrolet NPR 250', brand: 'Chevrolet', model: 'NPR 250' },
 ];
-
 
 // --- Initialization function ---
-export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
-    showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
-    setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown) => {
+export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton, setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown) => {
     _db = db;
     _currentUserData = currentUserData;
     _isAdmin = isAdmin;
     _isUser = isUser;
-    _vehicles = vehicles; // Reference to global array
-    _inventory = inventory; // Reference to global array
-    _users = users; // Reference to global array
-    _vendors = vendors; // Reference to global array
+    // Ensure these are arrays, even if initially undefined or null
+    _vehicles = Array.isArray(vehicles) ? vehicles : [];
+    _inventory = Array.isArray(inventory) ? inventory : [];
+    _users = Array.isArray(users) ? users : [];
+    _vendors = Array.isArray(vendors) ? vendors : [];
+
     _productImages = productImages;
     _showMessageModal = showMessageModal;
     _showConfirmationModal = showConfirmationModal;
@@ -75,162 +80,140 @@ export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, 
     _createButton = createButton;
     _setScreenAndRender = setScreenAndRender;
     _fetchDataFromFirestore = fetchDataFromFirestore;
-    _createSearchableDropdown = createSearchableDropdown;
+    _createSearchableDropdown = createSearchableDropdown; // Assign the new dependency
     console.log('[inventoryManagement.js] Initialized with dependencies.');
 };
 
-// --- Getters and Setters for Module-Scoped Variables (if needed by index.html) ---
+// --- Getter for currentTruckInventory (for external modules to read) ---
 export const getCurrentTruckInventory = () => currentTruckInventory;
+
+// --- Setter for currentTruckInventory (for external modules to update) ---
 export const setCurrentTruckInventory = (newInventory) => {
     currentTruckInventory = newInventory;
-};
-export const getTruckInventoryUnsubscribe = () => truckInventoryUnsubscribe;
-export const setTruckInventoryUnsubscribe = (func) => { truckInventoryUnsubscribe = func; };
-export const getAdminTruckInventoryUnsubscribe = () => adminTruckInventoryUnsubscribe;
-export const setAdminTruckInventoryUnsubscribe = (func) => { adminTruckInventoryUnsubscribe = func; };
-export const updateCurrentUserData = (data) => {
-    // This function is called by index.html's onAuthStateChanged
-    // to keep the module's _currentUserData in sync with the main app's currentUserData
-    Object.assign(_currentUserData, data);
-    console.log('[inventoryManagement.js] _currentUserData updated:', _currentUserData);
+    console.log('[inventoryManagement.js] currentTruckInventory updated internally.');
 };
 
+// --- Getter/Setter for truckInventoryUnsubscribe ---
+export const getTruckInventoryUnsubscribe = () => _truckInventoryUnsubscribe;
+export const setTruckInventoryUnsubscribe = (func) => { _truckInventoryUnsubscribe = func; };
 
-// --- Data Fetching Functions ---
-export const fetchInventoryRelatedData = async () => {
-    console.log('[inventoryManagement.js] Fetching inventory-related data...');
-    try {
-        const fetchCollection = async (collectionName, targetArray, initialData, idKey) => {
-            const snapshot = await _db.collection(collectionName).get();
-            if (snapshot.empty) {
-                console.log(`[inventoryManagement.js] Collection '${collectionName}' is empty. Populating with initial data.`);
-                const batch = _db.batch();
-                for (const item of initialData) {
-                    batch.set(_db.collection(collectionName).doc(item[idKey]), item);
-                }
-                await batch.commit();
-                targetArray.splice(0, targetArray.length, ...initialData); // Update in place
-            } else {
-                console.log(`[inventoryManagement.js] Collection '${collectionName}' has data. Fetching existing data.`);
-                targetArray.splice(0, targetArray.length, ...snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }))); // Update in place
-            }
-        };
+// --- Getter/Setter for adminTruckInventoryUnsubscribe ---
+export const getAdminTruckInventoryUnsubscribe = () => _adminTruckInventoryUnsubscribe;
+export const setAdminTruckInventoryUnsubscribe = (func) => { _adminTruckInventoryUnsubscribe = func; };
 
-        await fetchCollection('inventory', _inventory, initialInventory, 'sku');
-        await fetchCollection('vehicles', _vehicles, initialVehicles, 'plate');
 
-        const loadRecordsSnapshot = await _db.collection('loadRecords').get();
-        loadRecords.splice(0, loadRecords.length, ...loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })));
-        console.log('[inventoryManagement.js] Load Records fetched:', loadRecords.length);
+// --- Helper Functions (copied from index.html if specific to inventory) ---
+const getCurrentDateFormatted = () => {
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${day}${month}${year}`;
+};
 
-        const transferRecordsSnapshot = await _db.collection('transferRecords').get();
-        transferRecords.splice(0, transferRecords.length, ...transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() })));
-        console.log('[inventoryManagement.js] Transfer Records fetched:', transferRecords.length);
-
-        if (_currentUserData.assignedTruckPlate) {
-            const truckInventoryDoc = await _db.collection('truck_inventories').doc(_currentUserData.assignedTruckPlate).get();
-            if (truckInventoryDoc.exists) {
-                currentTruckInventory.splice(0, currentTruckInventory.length, ...(truckInventoryDoc.data().items || []));
-                console.log(`[inventoryManagement.js] Truck Inventory for ${_currentUserData.assignedTruckPlate} fetched:`, currentTruckInventory.length);
-            } else {
-                currentTruckInventory.splice(0, currentTruckInventory.length); // Clear if no truck inventory
-                console.log(`[inventoryManagement.js] No truck inventory found for assigned truck: ${_currentUserData.assignedTruckPlate}.`);
-            }
-        } else {
-            currentTruckInventory.splice(0, currentTruckInventory.length); // Clear if no truck assigned
-            console.log('[inventoryManagement.js] No truck assigned, clearing currentTruckInventory.');
-        }
-
-        console.log('[inventoryManagement.js] Inventory-related data fetch completed successfully.');
-    } catch (error) {
-        console.error('[inventoryManagement.js] Error fetching inventory-related data from Firestore:', error);
-        _showMessageModal('Error al cargar datos de inventario, vehículos, cargas o transbordos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-        // Fallback to initial data if error occurs
-        _inventory.splice(0, _inventory.length, ...initialInventory);
-        _vehicles.splice(0, _vehicles.length, ...initialVehicles);
-        loadRecords.splice(0, loadRecords.length);
-        transferRecords.splice(0, transferRecords.length);
-        currentTruckInventory.splice(0, currentTruckInventory.length);
+const triggerCSVDownload = (filename, csvContent) => {
+    if (!csvContent) {
+        _showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+        return;
     }
-};
-
-// --- Real-time Listeners ---
-export const setupTruckInventoryListener = () => {
-    if (truckInventoryUnsubscribe) {
-        truckInventoryUnsubscribe(); // Unsubscribe from previous listener if exists
-        console.log('[Firestore Listener] Unsubscribed from previous user truck inventory listener.');
-    }
-
-    if (_currentUserData.assignedTruckPlate && _isUser()) {
-        const docRef = _db.collection('truck_inventories').doc(_currentUserData.assignedTruckPlate);
-        truckInventoryUnsubscribe = docRef.onSnapshot(docSnapshot => {
-            if (docSnapshot.exists) {
-                currentTruckInventory.splice(0, currentTruckInventory.length, ...(docSnapshot.data().items || []));
-                console.log(`[Firestore Listener] Real-time update for truck inventory (${_currentUserData.assignedTruckPlate}):`, currentTruckInventory.length);
-            } else {
-                currentTruckInventory.splice(0, currentTruckInventory.length);
-                console.log(`[Firestore Listener] Truck inventory document for ${_currentUserData.assignedTruckPlate} does not exist.`);
-            }
-            _setScreenAndRender(document.getElementById('app-root').dataset.currentScreen || 'main'); // Re-render current screen
-        }, error => {
-            console.error('[Firestore Listener] Error listening to truck inventory:', error);
-            _showMessageModal('Error en la escucha en tiempo real del inventario del camión. Revisa tu conexión.');
-        });
-        console.log(`[Firestore Listener] Subscribed to real-time updates for truck inventory: ${_currentUserData.assignedTruckPlate}`);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     } else {
-        console.log('[Firestore Listener] No truck assigned or not a user, not setting up truck inventory listener.');
+        _showMessageModal('La descarga de archivos no es compatible con este navegador.');
     }
 };
 
-export const setupAdminTruckInventoryListener = (truckPlate) => {
-    if (adminTruckInventoryUnsubscribe) {
-        adminTruckInventoryUnsubscribe(); // Unsubscribe from previous listener if exists
-        console.log('[Firestore Listener] Unsubscribed from previous admin truck inventory listener.');
-    }
+const parseCSV = (csvString) => {
+    const lines = csvString.split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) return [];
+    const headers = lines[0].split(',').map(header => header.trim());
+    return lines.slice(1).map(currentLine => {
+        const data = currentLine.split(',');
+        return headers.reduce((obj, header, j) => {
+            obj[header] = data[j] ? data[j].trim() : '';
+            return obj;
+        }, {});
+    });
+};
 
-    if (truckPlate && _isAdmin()) {
-        const docRef = _db.collection('truck_inventories').doc(truckPlate);
-        adminTruckInventoryUnsubscribe = docRef.onSnapshot(docSnapshot => {
-            if (docSnapshot.exists) {
-                currentTruckInventory.splice(0, currentTruckInventory.length, ...(docSnapshot.data().items || []));
-                console.log(`[Firestore Listener] Real-time update for admin selected truck inventory (${truckPlate}):`, currentTruckInventory.length);
-            } else {
-                currentTruckInventory.splice(0, currentTruckInventory.length);
-                console.log(`[Firestore Listener] Truck inventory document for ${truckPlate} does not exist.`);
+const toCSV = (data, headers) => {
+    if (!data || data.length === 0) return '';
+    const actualHeaders = headers || Object.keys(data[0]);
+    const csvRows = [actualHeaders.join(',')];
+    for (const row of data) {
+        const values = actualHeaders.map(header => {
+            const val = row[header];
+            if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+                return `"${val.replace(/"/g, '""')}"`;
             }
-            _setScreenAndRender('adminVehicleInventory'); // Re-render admin vehicle inventory screen
-        }, error => {
-            console.error('[Firestore Listener] Error listening to admin truck inventory:', error);
-            _showMessageModal('Error en la escucha en tiempo real del inventario del camión (Admin). Revisa tu conexión.');
+            return typeof val === 'number' ? val.toString() : val;
         });
-        console.log(`[Firestore Listener] Subscribed to real-time updates for admin selected truck inventory: ${truckPlate}`);
-    } else {
-        console.log('[Firestore Listener] No truck selected or not an admin, not setting up admin truck inventory listener.');
+        csvRows.push(values.join(','));
     }
+    return csvRows.join('\n');
 };
-
 
 // --- Screen Rendering Functions ---
+
 export const renderCargaSelectionScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a la sección de Carga.'); _setScreenAndRender('main'); return; }
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">SELECCIÓN DE CARGA</h2>
-            <div class="flex flex-wrap justify-center">
-                ${_createButton('CARGA DE MERCANCÍA A CAMIÓN', 'truckLoadingButton')}
-                ${_createButton('HISTORIAL DE CARGAS', 'loadHistoryButton')}
-                ${_createButton('REINICIAR CARGAS INICIALES', 'resetCargasInicialesPasswordButton')}
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">SECCIÓN DE CARGA</h2>
+            <p class="text-base text-center my-5 text-gray-600">Selecciona una opción para la gestión de cargas.</p>
+            <div class="flex flex-wrap justify-center gap-4">
+                ${_createButton('RECEPCIÓN DE MERCANCÍA EN CAMIÓN', 'truckLoadingButton', 'bg-indigo-600')}
+                ${_createButton('HISTORIAL DE CARGAS', 'loadHistoryButton', 'bg-indigo-600')}
+                ${_createButton('RESET CARGAS INICIALES', 'resetCargasInicialesPasswordButton', 'bg-red-600 border-red-700')}
             </div>
-            ${_createButton('Volver al Menú Principal', 'backToMainFromCargaSelection', 'bg-gray-600 mt-5 w-full')}
+            ${_createButton('Volver', 'backToMainFromCargaSelection', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
 };
 
 export const renderTruckReceivingScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
 
-    const loaderOptions = _users.filter(u => u.role === 'user').map(user => ({ value: user.uid, text: user.email }));
-    const truckOptions = _vehicles.map(v => ({ value: v.plate, text: v.plate }));
+    const loaderOptions = _vendors.map(v => ({ value: v.name, text: v.name }));
+    const vehicleOptions = _vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md max-w-md mx-auto my-10">
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">RECEPCIÓN DE MERCANCÍA EN CAMIÓN</h2>
+            <p class="text-lg text-center mb-6 text-gray-700">Selecciona un cargador y un camión, luego ingresa las cantidades a cargar.</p>
+
+            <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                <label for="loaderSelect" class="block text-gray-700 text-sm font-bold mb-2">Cargador:</label>
+                ${_createSelect('loaderSelect', loaderOptions, selectedLoader || '', 'w-full')}
+            </div>
+
+            <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                <label for="truckSelect" class="block text-gray-700 text-sm font-bold mb-2">Camión a Cargar:</label>
+                ${_createSelect('truckSelect', vehicleOptions, selectedTruckForReceiving || '', 'w-full')}
+            </div>
+
+            <div id="receiving-products-container" class="mb-6">
+                <!-- Products to receive will be rendered here -->
+                ${selectedTruckForReceiving ? renderReceivingProductsTable() : '<p class="text-center text-gray-500">Selecciona un camión para ver los productos.</p>'}
+            </div>
+
+            ${_createButton('Cargar Mercancía', 'loadMerchandiseButton', 'bg-emerald-600 w-full')}
+            ${_createButton('Volver', 'backToCargaSelectionButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
+};
+
+const renderReceivingProductsTable = () => {
+    if (!selectedTruckForReceiving) return '';
 
     const productsHtml = _inventory.map(item => `
         <tr>
@@ -239,42 +222,157 @@ export const renderTruckReceivingScreen = () => {
             <td>${item.producto}</td>
             <td>${item.presentacion}</td>
             <td><input type="number" class="border border-gray-300 rounded-md text-center receiving-quantity-input" value="${receivingQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0"></td>
-            <td>${item.cantidad}</td>
         </tr>
     `).join('');
 
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">CARGA DE MERCANCÍA A CAMIÓN</h2>
-            <div class="mb-4">
-                <label for="loaderSelect" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Cargador:</label>
-                ${_createSelect('loaderSelect', loaderOptions, selectedLoader || '', 'w-full')}
-            </div>
-            <div class="mb-4">
-                <label for="truckSelect" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Camión:</label>
-                ${_createSelect('truckSelect', truckOptions, selectedTruckForReceiving || '', 'w-full')}
-            </div>
-            <p class="text-base text-center my-5 text-gray-600">Inventario Principal:</p>
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad a Cargar', 'Disponible'], productsHtml, 'receiving-products-body')}
-            ${_createButton('Cargar Mercancía', 'loadMerchandiseButton', 'bg-emerald-600 mt-3 w-full')}
-            ${_createButton('Volver', 'backToCargaSelectionButton', 'bg-gray-600 mt-5 w-full')}
-        </div>
-    `;
+    return _createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad a Cargar'], productsHtml, 'receiving-products-table-body');
 };
 
-export const renderLoadHistoryScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+export const handleLoaderSelection = (loaderName) => {
+    selectedLoader = loaderName;
+    _setScreenAndRender('truckLoading'); // Re-render to update the screen
+};
 
-    const loadHistoryRows = loadRecords.map(record => {
-        const itemsSummary = record.items.map(item => `${item.producto} (${item.cantidadCargada})`).join(', ');
+export const handleTruckForReceivingSelection = async (truckPlate) => {
+    selectedTruckForReceiving = truckPlate;
+    receivingQuantities = {}; // Reset quantities for new truck
+    selectedTruckInventoryForReceiving = []; // Reset inventory for new truck
+
+    if (truckPlate) {
+        try {
+            const truckInventoryDoc = await _db.collection('truck_inventories').doc(truckPlate).get();
+            if (truckInventoryDoc.exists) {
+                selectedTruckInventoryForReceiving = truckInventoryDoc.data().items || [];
+                console.log(`[Inventory Management] Fetched existing inventory for ${truckPlate}:`, selectedTruckInventoryForReceiving);
+            } else {
+                console.log(`[Inventory Management] No existing inventory found for ${truckPlate}. Starting fresh.`);
+            }
+        } catch (error) {
+            console.error('[Inventory Management] Error fetching truck inventory for receiving:', error);
+            _showMessageModal('Error al cargar el inventario del camión. Revisa tu conexión y las reglas de seguridad.');
+        }
+    }
+    _setScreenAndRender('truckLoading'); // Re-render to update the screen
+};
+
+export const handleReceivingQuantityChange = (sku, quantity) => {
+    receivingQuantities[sku] = parseInt(quantity) || 0;
+};
+
+export const showLoadMerchandiseConfirmation = () => {
+    _showConfirmationModal('¿Estás seguro de que quieres cargar la mercancía en el camión seleccionado? Esto actualizará el inventario del camión y el inventario principal.', loadMerchandise);
+};
+
+const loadMerchandise = async () => {
+    if (!selectedTruckForReceiving || !selectedLoader) {
+        _showMessageModal('Por favor, selecciona un cargador y un camión.');
+        return;
+    }
+
+    const itemsToLoad = [];
+    for (const sku in receivingQuantities) {
+        const quantity = receivingQuantities[sku];
+        if (quantity > 0) {
+            const mainInventoryItem = _inventory.find(item => item.sku === sku);
+            if (!mainInventoryItem) {
+                _showMessageModal(`Error: SKU ${sku} no encontrado en el inventario principal.`);
+                return;
+            }
+            if (quantity > mainInventoryItem.cantidad) {
+                _showMessageModal(`Error: No hay suficiente stock de ${mainInventoryItem.producto} (${mainInventoryItem.cantidad}) en el inventario principal para cargar ${quantity}.`);
+                return;
+            }
+            itemsToLoad.push({ sku, quantity, product: mainInventoryItem.producto, presentacion: mainInventoryItem.presentacion, price: mainInventoryItem.precio });
+        }
+    }
+
+    if (itemsToLoad.length === 0) {
+        _showMessageModal('No se ha ingresado ninguna cantidad para cargar.');
+        return;
+    }
+
+    try {
+        const batch = _db.batch();
+
+        // 1. Update Main Inventory
+        const updatedMainInventory = JSON.parse(JSON.stringify(_inventory));
+        itemsToLoad.forEach(itemToLoad => {
+            const mainItemIndex = updatedMainInventory.findIndex(item => item.sku === itemToLoad.sku);
+            if (mainItemIndex !== -1) {
+                updatedMainInventory[mainItemIndex].cantidad -= itemToLoad.quantity;
+                batch.update(_db.collection('inventory').doc(itemToLoad.sku), { cantidad: updatedMainInventory[mainItemIndex].cantidad });
+            }
+        });
+        _inventory.splice(0, _inventory.length, ...updatedMainInventory); // Update global inventory in place
+
+        // 2. Update Truck Inventory
+        let currentTruckItems = JSON.parse(JSON.stringify(selectedTruckInventoryForReceiving));
+        itemsToLoad.forEach(itemToLoad => {
+            const truckItemIndex = currentTruckItems.findIndex(item => item.sku === itemToLoad.sku);
+            if (truckItemIndex !== -1) {
+                currentTruckItems[truckItemIndex].quantity += itemToLoad.quantity;
+            } else {
+                currentTruckItems.push({
+                    sku: itemToLoad.sku,
+                    product: itemToLoad.product,
+                    presentacion: itemToLoad.presentacion,
+                    quantity: itemToLoad.quantity,
+                    price: itemToLoad.price
+                });
+            }
+        });
+        batch.set(_db.collection('truck_inventories').doc(selectedTruckForReceiving), { items: currentTruckItems });
+        selectedTruckInventoryForReceiving = currentTruckItems; // Update local state
+
+        // 3. Record Load History
+        const loadRecord = {
+            date: getCurrentDateFormatted(),
+            truckPlate: selectedTruckForReceiving,
+            loader: selectedLoader,
+            items: itemsToLoad,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        batch.add(_db.collection('loadRecords'), loadRecord);
+
+        await batch.commit();
+        _showMessageModal('Mercancía cargada exitosamente.');
+
+        // Reset state after successful load
+        selectedTruckForReceiving = null;
+        selectedLoader = null;
+        receivingQuantities = {};
+        selectedTruckInventoryForReceiving = [];
+
+        await _fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+        _setScreenAndRender('cargaSelection');
+    } catch (error) {
+        console.error('Error al cargar mercancía:', error);
+        _showMessageModal('Error al cargar mercancía. Revisa tu conexión y las reglas de seguridad.');
+    }
+};
+
+export const renderLoadHistoryScreen = async () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering load history screen.');
+    try {
+        const snapshot = await _db.collection('loadRecords').orderBy('createdAt', 'desc').get();
+        loadRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error('Error fetching load history:', error);
+        _showMessageModal('Error al cargar el historial de cargas. Revisa tu conexión y las reglas de seguridad.');
+        loadRecords = []; // Fallback to empty array on error
+    }
+
+    const loadRows = loadRecords.map(record => {
+        const itemsSummary = record.items.map(item => `${item.product} (${item.quantity})`).join(', ');
         return `
             <tr>
                 <td>${record.date}</td>
                 <td>${record.truckPlate}</td>
-                <td>${record.loaderEmail}</td>
+                <td>${record.loader}</td>
                 <td>${itemsSummary}</td>
                 <td>
-                    ${_createButton('Descargar CSV', '', 'bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md text-sm download-load-csv-button', { recordid: record.docId })}
+                    ${_createButton('Descargar CSV', '', 'bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded-md text-sm download-load-csv-button', { recordid: record.id })}
                 </td>
             </tr>
         `;
@@ -283,51 +381,197 @@ export const renderLoadHistoryScreen = () => {
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
             <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE CARGAS</h2>
-            ${_createTable(['Fecha', 'Camión', 'Cargador', 'Items Cargados', 'Acciones'], loadHistoryRows, 'load-history-body')}
-            ${_createButton('Limpiar Historial', 'clearLoadHistoryButton', 'bg-red-600 mt-3 w-full')}
-            ${_createButton('Volver', 'backToCargaSelectionFromLoadHistoryButton', 'bg-gray-600 mt-5 w-full')}
+            <div class="table-container mb-5">
+                ${_createTable(['Fecha', 'Camión', 'Cargador', 'Artículos Cargados', 'Acciones'], loadRows, 'load-history-table-body')}
+            </div>
+            <div class="flex justify-center mb-6 gap-4">
+                ${_createButton('Borrar Historial de Cargas', 'clearLoadHistoryButton', 'bg-red-600')}
+            </div>
+            ${_createButton('Volver a Selección de Carga', 'backToCargaSelectionFromLoadHistoryButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
 };
 
-export const renderInventarioScreen = () => {
-    // This screen is for regular users to view their assigned truck's inventory
-    // or main inventory if no truck is assigned.
-    if (!_isUser() && !_isAdmin()) { _showMessageModal('Acceso denegado.'); _setScreenAndRender('main'); return; }
+export const showClearLoadHistoryConfirmation = () => {
+    _showConfirmationModal('¿Estás seguro de que quieres borrar TODO el historial de cargas? Esta acción es irreversible.', clearLoadHistory);
+};
 
-    const inventoryToDisplay = _currentUserData.assignedTruckPlate ? currentTruckInventory : _inventory;
-    const inventorySourceText = _currentUserData.assignedTruckPlate ? ` (Camión: ${_currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
+const clearLoadHistory = async () => {
+    try {
+        const batch = _db.batch();
+        const snapshot = await _db.collection('loadRecords').get();
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        _showMessageModal('Historial de cargas borrado exitosamente.');
+        loadRecords = []; // Clear local state
+        _setScreenAndRender('loadHistory'); // Re-render to show empty history
+    } catch (error) {
+        console.error('Error al borrar historial de cargas:', error);
+        _showMessageModal('Error al borrar historial de cargas. Revisa tu conexión y las reglas de seguridad.');
+    }
+};
+
+export const downloadExistingCSV = (filename) => {
+    let csvContent = '';
+    if (filename.startsWith('carga_')) {
+        const recordId = filename.replace('carga_', '').replace('.csv', '');
+        const record = loadRecords.find(r => r.id === recordId);
+        if (record) {
+            const headers = ['SKU', 'Producto', 'Presentacion', 'Cantidad'];
+            const dataToDownload = record.items.map(item => ({
+                SKU: item.sku,
+                Producto: item.product,
+                Presentacion: item.presentacion,
+                Cantidad: item.quantity
+            }));
+            csvContent = toCSV(dataToDownload, headers);
+            triggerCSVDownload(filename, csvContent);
+        } else {
+            _showMessageModal(`No se encontró el registro de carga para descargar: ${filename}`);
+        }
+    } else if (filename.startsWith('traslado_')) {
+        const recordId = filename.replace('traslado_', '').replace('.csv', '');
+        const record = transferRecords.find(r => r.id === recordId);
+        if (record) {
+            const headers = ['SKU', 'Producto', 'Presentacion', 'Cantidad'];
+            const dataToDownload = record.items.map(item => ({
+                SKU: item.sku,
+                Producto: item.product,
+                Presentacion: item.presentacion,
+                Cantidad: item.quantity
+            }));
+            csvContent = toCSV(dataToDownload, headers);
+            triggerCSVDownload(filename, csvContent);
+        } else {
+            _showMessageModal(`No se encontró el registro de transbordo para descargar: ${filename}`);
+        }
+    } else if (filename === 'inventario.csv') {
+        const headers = ['Rubro', 'SKU', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
+        const dataToDownload = _inventory.map(item => ({
+            Rubro: item.rubro,
+            SKU: item.sku,
+            Segmento: item.segmento,
+            Producto: item.producto,
+            Presentacion: item.presentacion,
+            Cantidad: item.cantidad,
+            Precio: item.precio
+        }));
+        csvContent = toCSV(dataToDownload, headers);
+        triggerCSVDownload(filename, csvContent);
+    } else if (filename === 'vehiculos.csv') {
+        const headers = ['Plate', 'Name', 'Brand', 'Model'];
+        const dataToDownload = _vehicles.map(v => ({
+            Plate: v.plate,
+            Name: v.name,
+            Brand: v.brand,
+            Model: v.model
+        }));
+        csvContent = toCSV(dataToDownload, headers);
+        triggerCSVDownload(filename, csvContent);
+    } else {
+        _showMessageModal(`Tipo de archivo no reconocido para descarga: ${filename}`);
+    }
+};
+
+export const renderInventarioScreen = () => {
+    console.log('[Inventory Management] Rendering user inventory screen.');
+    if (!_isUser() || !_currentUserData.assignedTruckPlate) {
+        document.getElementById('app-root').innerHTML = `
+            <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO DE CAMIÓN</h2>
+                <p class="text-center text-gray-600 my-5">No tienes un camión asignado o no eres un usuario válido.</p>
+                <p class="text-center text-gray-600 my-5">Por favor, contacta a un administrador para que te asigne uno.</p>
+                ${_createButton('Volver al Menú Principal', 'backToMainFromUserInventoryButton', 'bg-gray-600 mt-5 w-full')}
+            </div>
+        `;
+        return;
+    }
+
+    const truckPlate = _currentUserData.assignedTruckPlate;
+    const inventoryToDisplay = currentTruckInventory.filter(item => {
+        const matchesSearch = inventorySearchTermUser === '' ||
+            item.product.toLowerCase().includes(inventorySearchTermUser.toLowerCase()) ||
+            item.sku.toLowerCase().includes(inventorySearchTermUser.toLowerCase());
+        return matchesSearch;
+    });
 
     const inventoryRows = inventoryToDisplay.map(item => `
         <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.product}" class="w-10 h-10 rounded-md object-cover"></td>
             <td>${item.sku}</td>
-            <td>${item.producto}</td>
+            <td>${item.product}</td>
             <td>${item.presentacion}</td>
-            <td>${item.quantity !== undefined ? item.quantity : item.cantidad}</td>
-            <td>$${(item.price !== undefined ? item.price : item.precio).toFixed(2)}</td>
+            <td>${item.quantity}</td>
+            <td>$${item.price.toFixed(2)}</td>
         </tr>
     `).join('');
 
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO${inventorySourceText}</h2>
-            ${_createInput('inventorySearchInputUser', 'Buscar por SKU o Producto', '', 'text', false, '', { oninput: 'inventoryManagement.filterInventoryForUserScreen(this.value)' })}
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'user-inventory-body')}
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO DE CAMIÓN</h2>
+            <p class="text-lg font-bold text-center mb-4 text-gray-800">Camión Asignado: ${truckPlate}</p>
+            <div class="mb-4">
+                ${_createInput('inventorySearchInputUser', 'Buscar por producto o SKU...', inventorySearchTermUser, 'text', false, 'w-full')}
+            </div>
+            <div class="table-container mb-5">
+                ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'user-inventory-table-body')}
+            </div>
             ${_createButton('Volver al Menú Principal', 'backToMainFromUserInventoryButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    filterInventoryForUserScreen(document.getElementById('inventorySearchInputUser').value); // Apply initial filter
 };
+
+export const filterInventoryForUserScreen = (searchTerm) => {
+    inventorySearchTermUser = searchTerm;
+    _setScreenAndRender('inventario'); // Re-render the inventory screen with filtered results
+};
+
+export const setupTruckInventoryListener = () => {
+    if (_truckInventoryUnsubscribe) {
+        _truckInventoryUnsubscribe(); // Unsubscribe from any existing listener
+        _truckInventoryUnsubscribe = null;
+        console.log('[Firestore Listener] Existing user truck inventory listener unsubscribed.');
+    }
+
+    if (_isUser() && _currentUserData.assignedTruckPlate) {
+        const truckPlate = _currentUserData.assignedTruckPlate;
+        console.log(`[Firestore Listener] Setting up real-time listener for truck inventory: ${truckPlate}`);
+        _truckInventoryUnsubscribe = _db.collection('truck_inventories').doc(truckPlate)
+            .onSnapshot(docSnapshot => {
+                if (docSnapshot.exists) {
+                    const data = docSnapshot.data();
+                    setCurrentTruckInventory(data.items || []);
+                    console.log(`[Firestore Listener] Real-time update for truck ${truckPlate}:`, currentTruckInventory.length, 'items');
+                } else {
+                    setCurrentTruckInventory([]);
+                    console.log(`[Firestore Listener] Truck ${truckPlate} inventory document does not exist.`);
+                }
+                // Only re-render if the current screen is 'inventario' or 'venta' to avoid unnecessary renders
+                const currentScreen = document.getElementById('app-root').dataset.currentScreen;
+                if (currentScreen === 'inventario' || currentScreen === 'venta') {
+                    _setScreenAndRender(currentScreen);
+                }
+            }, error => {
+                console.error('[Firestore Listener] Error listening to truck inventory:', error);
+                _showMessageModal('Error de conexión en tiempo real con el inventario del camión.');
+            });
+    } else {
+        console.log('[Firestore Listener] Not setting up user truck inventory listener: Not a user or no truck assigned.');
+    }
+};
+
 
 export const renderAdminInventorySelection = () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
             <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">SELECCIÓN DE INVENTARIO (ADMIN)</h2>
-            <div class="flex flex-wrap justify-center">
-                ${_createButton('INVENTARIO PRINCIPAL', 'adminMainInventoryButton')}
-                ${_createButton('INVENTARIO DE CAMIONES', 'adminVehicleInventoryButton')}
+            <p class="text-base text-center my-5 text-gray-600">Selecciona el tipo de inventario que deseas gestionar.</p>
+            <div class="flex flex-wrap justify-center gap-4">
+                ${_createButton('INVENTARIO PRINCIPAL', 'adminMainInventoryButton', 'bg-indigo-600')}
+                ${_createButton('INVENTARIO POR VEHÍCULO', 'adminVehicleInventoryButton', 'bg-indigo-600')}
             </div>
             ${_createButton('Volver al Menú Principal', 'backToMainFromAdminInventorySelection', 'bg-gray-600 mt-5 w-full')}
         </div>
@@ -335,7 +579,8 @@ export const renderAdminInventorySelection = () => {
 };
 
 export const renderAdminMainInventoryScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering admin main inventory screen.');
 
     const inventoryRows = _inventory.map(item => `
         <tr>
@@ -350,25 +595,54 @@ export const renderAdminMainInventoryScreen = () => {
 
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO PRINCIPAL (ADMIN)</h2>
-            ${_createInput('inventorySearchInputAdminMain', 'Buscar por SKU o Producto', '', 'text', false, '', { oninput: 'inventoryManagement.filterInventoryForAdminMainScreen(this.value)' })}
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'admin-main-inventory-body')}
-            ${_createButton('Volver', 'backToAdminInventorySelectionButton', 'bg-gray-600 mt-5 w-full')}
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO PRINCIPAL (ALMACÉN)</h2>
+            <div class="table-container mb-5">
+                ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'admin-main-inventory-table-body')}
+            </div>
+            ${_createButton('Volver a Selección de Inventario', 'backToAdminInventorySelectionButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    filterInventoryForAdminMainScreen(document.getElementById('inventorySearchInputAdminMain').value); // Apply initial filter
 };
 
 export const renderAdminVehicleInventoryScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering admin vehicle inventory screen.');
 
-    const truckOptions = _vehicles.map(v => ({ value: v.plate, text: v.plate }));
+    const vehicleOptions = _vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
 
-    const inventoryRows = currentTruckInventory.map(item => `
+    // Fetch all truck inventories to display in the dropdown
+    const fetchAllTruckInventories = async () => {
+        try {
+            const snapshot = await _db.collection('truck_inventories').get();
+            allTruckInventories = {}; // Reset
+            snapshot.docs.forEach(doc => {
+                allTruckInventories[doc.id] = doc.data().items || [];
+            });
+            console.log('[Inventory Management] All truck inventories fetched:', Object.keys(allTruckInventories).length, 'trucks');
+            // If a truck was previously selected, ensure its listener is active
+            if (selectedAdminVehicleForInventory) {
+                setupAdminTruckInventoryListener(selectedAdminVehicleForInventory);
+            }
+            _setScreenAndRender('adminVehicleInventory'); // Re-render after fetching all truck inventories
+        } catch (error) {
+            console.error('Error fetching all truck inventories:', error);
+            _showMessageModal('Error al cargar inventarios de camiones. Revisa tu conexión y las reglas de seguridad.');
+            allTruckInventories = {};
+        }
+    };
+
+    // Call fetchAllTruckInventories if it hasn't been called or if data is stale
+    if (Object.keys(allTruckInventories).length === 0) {
+        fetchAllTruckInventories();
+    }
+
+    const currentVehicleInventory = selectedAdminVehicleForInventory ? (allTruckInventories[selectedAdminVehicleForInventory] || []) : [];
+
+    const inventoryRows = currentVehicleInventory.map(item => `
         <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.product}" class="w-10 h-10 rounded-md object-cover"></td>
             <td>${item.sku}</td>
-            <td>${item.producto}</td>
+            <td>${item.product}</td>
             <td>${item.presentacion}</td>
             <td>${item.quantity}</td>
             <td>$${item.price.toFixed(2)}</td>
@@ -377,458 +651,130 @@ export const renderAdminVehicleInventoryScreen = () => {
 
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO DE CAMIONES (ADMIN)</h2>
-            <div class="mb-4">
-                <label for="adminVehicleSelect" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Camión:</label>
-                ${_createSelect('adminVehicleSelect', truckOptions, selectedAdminVehicle || '', 'w-full')}
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO POR VEHÍCULO (ADMIN)</h2>
+            <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                <label for="adminVehicleSelect" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Vehículo:</label>
+                ${_createSelect('adminVehicleSelect', vehicleOptions, selectedAdminVehicleForInventory || '', 'w-full')}
             </div>
-            <p class="text-base text-center my-5 text-gray-600">Inventario del Camión Seleccionado:</p>
-            ${_createInput('inventorySearchInputAdminTruck', 'Buscar por SKU o Producto', '', 'text', false, '', { oninput: 'inventoryManagement.filterInventoryForAdminTruckScreen(this.value)' })}
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'admin-truck-inventory-body')}
-            ${_createButton('Volver', 'backToAdminInventorySelectionFromVehicleInventoryButton', 'bg-gray-600 mt-5 w-full')}
+            <div class="table-container mb-5">
+                ${currentVehicleInventory.length > 0 ? _createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'admin-vehicle-inventory-table-body') : '<p class="text-center text-gray-500">Selecciona un vehículo para ver su inventario o no hay inventario para este vehículo.</p>'}
+            </div>
+            ${_createButton('Volver a Selección de Inventario', 'backToAdminInventorySelectionFromVehicleInventoryButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    filterInventoryForAdminTruckScreen(document.getElementById('inventorySearchInputAdminTruck').value); // Apply initial filter
 };
 
-export const renderVehiclesScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
+export const handleAdminVehicleSelection = (truckPlate) => {
+    selectedAdminVehicleForInventory = truckPlate;
+    setupAdminTruckInventoryListener(truckPlate); // Setup listener for the newly selected truck
+    _setScreenAndRender('adminVehicleInventory'); // Re-render to show selected truck's inventory
+};
 
-    const vehicleRows = _vehicles.map(vehicle => {
-        const assignedUserEmail = _users.find(u => u.uid === vehicle.assignedUser)?.email || 'N/A';
-        return `
-            <tr>
-                <td>${vehicle.plate}</td>
-                <td>${vehicle.model}</td>
-                <td>${vehicle.capacity}</td>
-                <td>${assignedUserEmail}</td>
-                <td>
-                    ${_createButton('Editar', '', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm edit-vehicle-button', { plate: vehicle.plate })}
-                    ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-vehicle-button', { plate: vehicle.plate })}
-                </td>
-            </tr>
-        `;
-    }).join('');
+export const setupAdminTruckInventoryListener = (truckPlate) => {
+    if (_adminTruckInventoryUnsubscribe) {
+        _adminTruckInventoryUnsubscribe(); // Unsubscribe from any existing listener
+        _adminTruckInventoryUnsubscribe = null;
+        console.log('[Firestore Listener] Existing admin truck inventory listener unsubscribed.');
+    }
+
+    if (truckPlate) {
+        console.log(`[Firestore Listener] Setting up real-time listener for admin truck inventory: ${truckPlate}`);
+        _adminTruckInventoryUnsubscribe = _db.collection('truck_inventories').doc(truckPlate)
+            .onSnapshot(docSnapshot => {
+                if (docSnapshot.exists) {
+                    const data = docSnapshot.data();
+                    allTruckInventories[truckPlate] = data.items || [];
+                    console.log(`[Firestore Listener] Real-time update for admin truck ${truckPlate}:`, allTruckInventories[truckPlate].length, 'items');
+                } else {
+                    allTruckInventories[truckPlate] = [];
+                    console.log(`[Firestore Listener] Admin truck ${truckPlate} inventory document does not exist.`);
+                }
+                // Only re-render if the current screen is 'adminVehicleInventory'
+                const currentScreen = document.getElementById('app-root').dataset.currentScreen;
+                if (currentScreen === 'adminVehicleInventory') {
+                    _setScreenAndRender(currentScreen);
+                }
+            }, error => {
+                console.error('[Firestore Listener] Error listening to admin truck inventory:', error);
+                _showMessageModal('Error de conexión en tiempo real con el inventario del camión (Admin).');
+            });
+    } else {
+        console.log('[Firestore Listener] Not setting up admin truck inventory listener: No truck selected.');
+    }
+};
+
+
+export const renderVehiclesScreen = () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering vehicles screen.');
+
+    const vehicleOptions = _vehicles.map(vehicle => ({
+        value: vehicle.plate,
+        text: `${vehicle.name} (${vehicle.plate}) - ${vehicle.brand} ${vehicle.model}`
+    }));
+
+    // Filtered list for display below the dropdown
+    const filteredVehicles = _vehicles.filter(vehicle =>
+        vehiclesSearchTerm === '' ||
+        vehicle.name.toLowerCase().includes(vehiclesSearchTerm.toLowerCase()) ||
+        vehicle.plate.toLowerCase().includes(vehiclesSearchTerm.toLowerCase()) ||
+        vehicle.brand.toLowerCase().includes(vehiclesSearchTerm.toLowerCase()) ||
+        vehicle.model.toLowerCase().includes(vehiclesSearchTerm.toLowerCase())
+    );
 
     document.getElementById('app-root').innerHTML = `
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">GESTIÓN DE VEHÍCULOS DE CARGA</h2>
-            ${_createButton('Agregar Nuevo Vehículo', 'addVehicleButton', 'bg-emerald-600 mb-4')}
-            ${_createTable(['Placa', 'Modelo', 'Capacidad', 'Usuario Asignado', 'Acciones'], vehicleRows, 'vehicles-table-body')}
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">GESTIÓN DE VEHÍCULOS</h2>
+            <div class="flex justify-center mb-6 gap-4">
+                ${_createButton('Agregar Nuevo Vehículo', 'addVehicleButton', 'bg-emerald-600')}
+            </div>
+
+            <h3 class="text-xl font-bold mb-4 text-gray-700">Lista de Vehículos</h3>
+            <div class="mb-4">
+                ${_createSearchableDropdown('vehicleListSearch', 'Buscar vehículo por placa, nombre, marca o modelo...', vehicleOptions, vehiclesSearchTerm, (value) => { vehiclesSearchTerm = value; _setScreenAndRender('vehicles'); }, 'text')}
+            </div>
+
+            <div id="vehicles-list-display" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${filteredVehicles.length === 0 ? '<p class="text-center text-gray-500 col-span-full">No hay vehículos registrados o no coinciden con la búsqueda.</p>' :
+                    filteredVehicles.map(vehicle => {
+                        const assignedUser = _users.find(u => u.assignedTruckPlate === vehicle.plate);
+                        return `
+                            <div class="bg-gray-100 p-4 rounded-lg shadow-sm border border-gray-200">
+                                <p class="font-semibold text-lg text-indigo-800">${vehicle.name} (${vehicle.plate})</p>
+                                <p class="text-sm text-gray-600">Marca: ${vehicle.brand}</p>
+                                <p class="text-sm text-gray-600">Modelo: ${vehicle.model}</p>
+                                <p class="text-sm text-gray-600">Asignado a: ${assignedUser ? assignedUser.email : 'N/A'}</p>
+                                <div class="flex justify-end gap-2 mt-3">
+                                    ${_createButton('Editar', '', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md text-sm edit-vehicle-button', { plate: vehicle.plate })}
+                                    ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm delete-vehicle-button', { plate: vehicle.plate })}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')
+                }
+            </div>
+
             ${_createButton('Volver al Menú Principal', 'backToMainFromVehiclesButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
 };
 
-export const renderAssignVehicleScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-
-    const userOptions = _users.map(user => ({ value: user.uid, text: user.email }));
-    const vehicleOptions = _vehicles.map(vehicle => ({ value: vehicle.plate, text: vehicle.plate }));
-
-    const assignmentRows = _users.map(user => {
-        const assignedVehicle = _vehicles.find(v => v.assignedUser === user.uid);
-        return `
-            <tr>
-                <td>${user.email}</td>
-                <td>${assignedVehicle ? assignedVehicle.plate : 'Ninguno'}</td>
-                <td>
-                    <div class="flex gap-2">
-                        ${_createSelect(`assignVehicle-${user.uid}`, vehicleOptions, assignedVehicle ? assignedVehicle.plate : '', 'w-full', '-- Asignar Camión --', { userid: user.uid, currentvehicle: assignedVehicle ? assignedVehicle.plate : '' })}
-                        ${_createButton('Guardar', '', 'bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md text-sm save-assignment-button', { userid: user.uid })}
-                        ${assignedVehicle ? _createButton('Quitar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm remove-assignment-button', { userid: user.uid }) : ''}
-                    </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ASIGNAR VEHÍCULO A USUARIO</h2>
-            ${_createTable(['Usuario', 'Camión Asignado', 'Acciones'], assignmentRows, 'assign-vehicle-table-body')}
-            ${_createButton('Volver al Menú Principal', 'backToMainFromAssignVehicleButton', 'bg-gray-600 mt-5 w-full')}
-        </div>
-    `;
-    attachAssignVehicleEventListeners(); // Attach event listeners for dynamic selects and buttons
+export const handleVehicleSearch = (term) => {
+    vehiclesSearchTerm = term;
+    _setScreenAndRender('vehicles'); // Re-render to update the filtered list
 };
 
-export const renderResetCargasInicialesPasswordScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md max-w-md mx-auto my-10">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">REINICIAR CARGAS INICIALES</h2>
-            <p class="text-base text-center my-4 text-gray-600">Esta acción es irreversible y requiere confirmación de administrador.</p>
-            ${_createInput('adminPasswordForReset', 'Contraseña de Administrador', '', 'password')}
-            ${_createButton('Confirmar y Continuar', 'adminPasswordForResetButton', 'bg-red-600 w-full')}
-            ${_createButton('Cancelar y Volver', 'cancelAndBackToCargaSelectionButton', 'bg-gray-600 mt-4 w-full')}
-        </div>
-    `;
-};
-
-export const renderResetCargasInicialesEditScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-
-    resetQuantities = {}; // Reset quantities when entering this screen
-
-    const mainInventoryRows = _inventory.map(item => {
-        resetQuantities[`main-${item.sku}`] = item.cantidad; // Initialize with current quantity
-        return `
-            <tr>
-                <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-                <td>${item.sku}</td>
-                <td>${item.producto}</td>
-                <td><input type="number" class="border border-gray-300 rounded-md text-center reset-quantity-input-main" value="${item.cantidad}" data-sku="${item.sku}" min="0"></td>
-            </tr>
-        `;
-    }).join('');
-
-    let truckInventorySections = _vehicles.map(vehicle => {
-        const truckItems = currentTruckInventory.filter(item => item.assignedTruckPlate === vehicle.plate);
-        if (truckItems.length === 0) return ''; // Skip if truck has no inventory
-
-        const truckRows = truckItems.map(item => {
-            resetQuantities[`truck-${vehicle.plate}-${item.sku}`] = item.quantity; // Initialize
-            return `
-                <tr>
-                    <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-                    <td>${item.sku}</td>
-                    <td>${item.producto}</td>
-                    <td><input type="number" class="border border-gray-300 rounded-md text-center reset-quantity-input-truck" value="${item.quantity}" data-sku="${item.sku}" data-truckplate="${vehicle.plate}" min="0"></td>
-                </tr>
-            `;
-        }).join('');
-        return `
-            <h3 class="text-xl font-bold mt-6 mb-3 text-indigo-600">Inventario del Camión: ${vehicle.plate}</h3>
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Cantidad'], truckRows, `reset-truck-inventory-body-${vehicle.plate}`)}
-        `;
-    }).join('');
-
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">EDITAR CARGAS INICIALES</h2>
-            <p class="text-base text-center my-4 text-red-600 font-semibold">¡ADVERTENCIA! Modificar estas cantidades afectará directamente el inventario. Procede con precaución.</p>
-
-            <h3 class="text-xl font-bold mb-3 text-indigo-600">Inventario Principal</h3>
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Cantidad'], mainInventoryRows, 'reset-main-inventory-body')}
-
-            ${truckInventorySections}
-
-            ${_createButton('Guardar Cambios de Cargas Iniciales', 'saveResetCargasInicialesButton', 'bg-emerald-600 mt-5 w-full')}
-            ${_createButton('Cancelar y Volver', 'cancelResetCargasInicialesButton', 'bg-gray-600 mt-4 w-full')}
-        </div>
-    `;
-};
-
-export const renderTransferInventoryPasswordScreen = () => {
-    if (!_isUser()) { _showMessageModal('Acceso denegado: Solo los usuarios pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md max-w-md mx-auto my-10">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">TRANSBORDO DE INVENTARIO</h2>
-            <p class="text-base text-center my-4 text-gray-600">Para realizar un transbordo, ingresa tu contraseña.</p>
-            ${_createInput('userPasswordForTransfer', 'Tu Contraseña', '', 'password')}
-            ${_createButton('Confirmar y Continuar', 'userPasswordForTransferButton', 'bg-blue-600 w-full')}
-            ${_createButton('Cancelar y Volver', 'cancelTransferInventoryPasswordButton', 'bg-gray-600 mt-4 w-full')}
-        </div>
-    `;
-};
-
-export const renderTransferInventoryScreen = () => {
-    if (!_isUser()) { _showMessageModal('Acceso denegado: Solo los usuarios pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-    if (!_currentUserData.assignedTruckPlate) { _showMessageModal('No tienes un camión asignado para realizar transbordos.'); _setScreenAndRender('main'); return; }
-
-    const availableTrucks = _vehicles.filter(v => v.plate !== _currentUserData.assignedTruckPlate);
-    const destinationTruckOptions = availableTrucks.map(v => ({ value: v.plate, text: v.plate }));
-
-    const productsHtml = currentTruckInventory.map(item => `
-        <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-            <td>${item.sku}</td>
-            <td>${item.producto}</td>
-            <td>${item.presentacion}</td>
-            <td><input type="number" class="border border-gray-300 rounded-md text-center transfer-quantity-input" value="${transferQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${item.quantity}"></td>
-            <td>${item.quantity}</td>
-        </tr>
-    `).join('');
-
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">REALIZAR TRANSBORDO</h2>
-            <p class="text-lg font-bold text-center my-4 text-emerald-800">Tu Camión: ${_currentUserData.assignedTruckPlate}</p>
-            <div class="mb-4">
-                <label for="destinationTruckSelect" class="block text-gray-700 text-sm font-bold mb-2">Seleccionar Camión de Destino:</label>
-                ${_createSelect('destinationTruckSelect', destinationTruckOptions, '', 'w-full')}
-            </div>
-            <p class="text-base text-center my-5 text-gray-600">Inventario de tu Camión (${_currentUserData.assignedTruckPlate}):</p>
-            ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad a Transferir', 'Disponible'], productsHtml, 'transfer-products-body')}
-            ${_createButton('Realizar Transbordo', 'performTransferButton', 'bg-emerald-600 mt-3 w-full')}
-            ${_createButton('Volver', 'backToMainFromTransferInventoryButton', 'bg-gray-600 mt-5 w-full')}
-        </div>
-    `;
-};
-
-export const renderAdminTransferHistoryScreen = () => {
-    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); _setScreenAndRender('main'); return; }
-
-    const transferHistoryRows = transferRecords.map(record => {
-        const itemsSummary = record.items.map(item => `${item.producto} (${item.cantidadTransferida})`).join(', ');
-        return `
-            <tr>
-                <td>${record.date}</td>
-                <td>${record.sourceTruckPlate}</td>
-                <td>${record.destinationTruckPlate}</td>
-                <td>${record.transferringUserEmail}</td>
-                <td>${itemsSummary}</td>
-                <td>
-                    ${_createButton('Descargar CSV', '', 'bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md text-sm download-transfer-csv-button', { recordid: record.docId })}
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE TRANSBORDOS (ADMIN)</h2>
-            ${_createTable(['Fecha', 'Camión Origen', 'Camión Destino', 'Usuario', 'Items Transferidos', 'Acciones'], transferHistoryRows, 'transfer-history-body')}
-            ${_createButton('Limpiar Historial', 'clearTransferHistoryButton', 'bg-red-600 mt-3 w-full')}
-            ${_createButton('Volver', 'backToMainFromAdminTransferHistoryButton', 'bg-gray-600 mt-5 w-full')}
-        </div>
-    `;
-};
-
-// --- Event Listener Attachments (for dynamic content) ---
-const attachAssignVehicleEventListeners = () => {
-    document.querySelectorAll('select[id^="assignVehicle-"]').forEach(select => {
-        select.onchange = async (e) => {
-            const userId = e.target.dataset.userid;
-            const newPlate = e.target.value;
-            const currentVehicle = e.target.dataset.currentvehicle;
-            await assignVehicleToUser(userId, newPlate, currentVehicle);
-        };
-    });
-
-    document.querySelectorAll('.remove-assignment-button').forEach(button => {
-        button.onclick = async (e) => {
-            const userId = e.target.dataset.userid;
-            await removeVehicleAssignment(userId);
-        };
-    });
-};
-
-// --- Logic Functions ---
-export const handleLoaderSelection = (userId) => {
-    selectedLoader = userId;
-};
-
-export const handleTruckForReceivingSelection = (plate) => {
-    selectedTruckForReceiving = plate;
-};
-
-export const handleReceivingQuantityChange = (sku, quantity) => {
-    receivingQuantities[sku] = parseInt(quantity) || 0;
-};
-
-export const showLoadMerchandiseConfirmation = () => {
-    _showConfirmationModal('¿Estás seguro de que quieres cargar la mercancía al camión? Esto actualizará el inventario principal y el del camión.', loadMerchandiseLogic);
-};
-
-const loadMerchandiseLogic = async () => {
-    if (!selectedLoader) { _showMessageModal('Por favor, selecciona un cargador.'); return; }
-    if (!selectedTruckForReceiving) { _showMessageModal('Por favor, selecciona un camión.'); return; }
-
-    const itemsToLoad = [];
-    let validationErrors = [];
-
-    // Filter out items with 0 or invalid quantities
-    for (const sku in receivingQuantities) {
-        const quantity = receivingQuantities[sku];
-        if (quantity > 0) {
-            const mainInventoryItem = _inventory.find(item => item.sku === sku);
-            if (!mainInventoryItem) {
-                validationErrors.push(`Error: El SKU ${sku} no se encontró en el inventario principal.`);
-                continue;
-            }
-            if (quantity > mainInventoryItem.cantidad) {
-                validationErrors.push(`Error: Cantidad a cargar de "${mainInventoryItem.producto}" (${quantity}) excede el stock disponible (${mainInventoryItem.cantidad}).`);
-            } else {
-                itemsToLoad.push({
-                    sku: sku,
-                    producto: mainInventoryItem.producto,
-                    presentacion: mainInventoryItem.presentacion,
-                    cantidadCargada: quantity,
-                    precio: mainInventoryItem.precio // Include price for truck inventory
-                });
-            }
-        }
-    }
-
-    if (validationErrors.length > 0) { _showMessageModal(validationErrors.join('\n')); return; }
-    if (itemsToLoad.length === 0) { _showMessageModal('No se ha ingresado ninguna cantidad para cargar.'); return; }
-
-    try {
-        const batch = _db.batch();
-
-        // 1. Update Main Inventory
-        const updatedMainInventory = JSON.parse(JSON.stringify(_inventory));
-        itemsToLoad.forEach(loadedItem => {
-            const mainItem = updatedMainInventory.find(item => item.sku === loadedItem.sku);
-            if (mainItem) {
-                mainItem.cantidad -= loadedItem.cantidadCargada;
-                batch.set(_db.collection('inventory').doc(mainItem.sku), mainItem);
-            }
-        });
-        _inventory.splice(0, _inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global array in place
-
-        // 2. Update Truck Inventory
-        const truckInventoryRef = _db.collection('truck_inventories').doc(selectedTruckForReceiving);
-        const truckInventoryDoc = await truckInventoryRef.get();
-        let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-        itemsToLoad.forEach(loadedItem => {
-            const existingTruckItemIndex = currentTruckItems.findIndex(item => item.sku === loadedItem.sku);
-            if (existingTruckItemIndex !== -1) {
-                currentTruckItems[existingTruckItemIndex].quantity += loadedItem.cantidadCargada;
-            } else {
-                currentTruckItems.push({
-                    sku: loadedItem.sku,
-                    producto: loadedItem.producto,
-                    presentacion: loadedItem.presentacion,
-                    quantity: loadedItem.cantidadCargada,
-                    price: loadedItem.precio // Use 'price' for truck inventory for consistency
-                });
-            }
-        });
-        batch.set(truckInventoryRef, { items: currentTruckItems });
-        currentTruckInventory.splice(0, currentTruckInventory.length, ...currentTruckItems); // Update local truck inventory
-
-        // 3. Record Load History
-        const loaderUser = _users.find(u => u.uid === selectedLoader);
-        const loadRecord = {
-            date: new Date().toLocaleDateString('es-ES'),
-            truckPlate: selectedTruckForReceiving,
-            loaderId: selectedLoader,
-            loaderEmail: loaderUser ? loaderUser.email : 'Desconocido',
-            items: itemsToLoad,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        const loadDocRef = _db.collection('loadRecords').doc();
-        batch.set(loadDocRef, loadRecord);
-        loadRecords.push({ docId: loadDocRef.id, ...loadRecord }); // Update local loadRecords
-
-        await batch.commit();
-        _showMessageModal('Mercancía cargada exitosamente.');
-        selectedLoader = null;
-        selectedTruckForReceiving = null;
-        receivingQuantities = {};
-        await _fetchDataFromFirestore(); // Re-fetch all data to ensure UI consistency
-        _setScreenAndRender('cargaSelection');
-    } catch (error) {
-        console.error('Error al cargar mercancía:', error);
-        _showMessageModal('Error al cargar mercancía. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-    }
-};
-
-export const showClearLoadHistoryConfirmation = () => {
-    _showConfirmationModal('¿Estás seguro de que quieres limpiar todo el historial de cargas? Esta acción es irreversible.', clearLoadHistoryLogic);
-};
-
-const clearLoadHistoryLogic = async () => {
-    try {
-        const batch = _db.batch();
-        loadRecords.forEach(record => {
-            batch.delete(_db.collection('loadRecords').doc(record.docId));
-        });
-        await batch.commit();
-        loadRecords = []; // Clear local array
-        _showMessageModal('Historial de cargas limpiado exitosamente.');
-        _setScreenAndRender('cargaSelection');
-    } catch (error) {
-        console.error('Error al limpiar historial de cargas:', error);
-        _showMessageModal('Error al limpiar historial de cargas. Revisa tu conexión y reglas de seguridad.');
-    }
-};
-
-export const filterInventoryForUserScreen = (searchTerm) => {
-    const tableBody = document.getElementById('user-inventory-body');
-    if (!tableBody) return;
-
-    const inventoryToFilter = _currentUserData.assignedTruckPlate ? currentTruckInventory : _inventory;
-    const filteredItems = inventoryToFilter.filter(item =>
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.producto.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    tableBody.innerHTML = filteredItems.map(item => `
-        <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-            <td>${item.sku}</td>
-            <td>${item.producto}</td>
-            <td>${item.presentacion}</td>
-            <td>${item.quantity !== undefined ? item.quantity : item.cantidad}</td>
-            <td>$${(item.price !== undefined ? item.price : item.precio).toFixed(2)}</td>
-        </tr>
-    `).join('');
-};
-
-export const filterInventoryForAdminMainScreen = (searchTerm) => {
-    const tableBody = document.getElementById('admin-main-inventory-body');
-    if (!tableBody) return;
-
-    const filteredItems = _inventory.filter(item =>
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.producto.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    tableBody.innerHTML = filteredItems.map(item => `
-        <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-            <td>${item.sku}</td>
-            <td>${item.producto}</td>
-            <td>${item.presentacion}</td>
-            <td>${item.cantidad}</td>
-            <td>$${item.precio.toFixed(2)}</td>
-        </tr>
-    `).join('');
-};
-
-export const handleAdminVehicleSelection = async (plate) => {
-    selectedAdminVehicle = plate;
-    if (plate) {
-        setupAdminTruckInventoryListener(plate); // Setup real-time listener for admin view
-    } else {
-        if (adminTruckInventoryUnsubscribe) {
-            adminTruckInventoryUnsubscribe();
-            adminTruckInventoryUnsubscribe = null;
-        }
-        currentTruckInventory = []; // Clear displayed inventory if no truck selected
-    }
-    _setScreenAndRender('adminVehicleInventory'); // Re-render to update the displayed inventory
+export const selectVehicleFromDropdown = (plate) => {
+    vehiclesSearchTerm = plate; // Set the search term to the selected plate to filter the list
+    _setScreenAndRender('vehicles');
 };
 
 
-export const filterInventoryForAdminTruckScreen = (searchTerm) => {
-    const tableBody = document.getElementById('admin-truck-inventory-body');
-    if (!tableBody) return;
-
-    const filteredItems = currentTruckInventory.filter(item =>
-        item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.producto.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    tableBody.innerHTML = filteredItems.map(item => `
-        <tr>
-            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-            <td>${item.sku}</td>
-            <td>${item.producto}</td>
-            <td>${item.presentacion}</td>
-            <td>${item.quantity}</td>
-            <td>$${item.price.toFixed(2)}</td>
-        </tr>
-    `).join('');
-};
+// State for editing vehicle
+let editingVehicle = null;
 
 export const handleAddVehicle = () => {
-    editingVehicle = { plate: '', model: '', capacity: 0, assignedUser: null };
+    editingVehicle = { plate: '', name: '', brand: '', model: '' };
     renderEditVehicleModal();
 };
 
@@ -842,22 +788,17 @@ export const cancelEditVehicle = () => {
     _setScreenAndRender('vehicles'); // Re-render to close modal
 };
 
-const renderEditVehicleModal = () => {
+export const renderEditVehicleModal = () => {
     if (!editingVehicle) return '';
     const isNew = !editingVehicle.plate;
-    const userOptions = _users.map(user => ({ value: user.uid, text: user.email }));
-
     const modalHtml = `
         <div id="edit-vehicle-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">${isNew ? 'Agregar Nuevo Vehículo' : 'Editar Vehículo'}</h3>
-                ${_createInput('vehiclePlate', 'Placa del Vehículo', editingVehicle.plate, 'text', !isNew)}
+                ${_createInput('vehiclePlate', 'Placa', editingVehicle.plate, 'text', !isNew)}
+                ${_createInput('vehicleName', 'Nombre', editingVehicle.name)}
+                ${_createInput('vehicleBrand', 'Marca', editingVehicle.brand)}
                 ${_createInput('vehicleModel', 'Modelo', editingVehicle.model)}
-                ${_createInput('vehicleCapacity', 'Capacidad (kg)', editingVehicle.capacity, 'number')}
-                <div class="mb-4">
-                    <label for="assignedUserSelect" class="block text-gray-700 text-sm font-bold mb-2">Usuario Asignado:</label>
-                    ${_createSelect('assignedUserSelect', userOptions, editingVehicle.assignedUser || '', 'w-full', '-- Ninguno --')}
-                </div>
                 <div class="flex justify-around gap-4 mt-5">
                     ${_createButton('Guardar Vehículo', 'saveEditedVehicleButton', 'bg-emerald-600 flex-1')}
                     ${_createButton('Cancelar', 'cancelEditVehicleButton', 'bg-gray-600 flex-1')}
@@ -865,10 +806,11 @@ const renderEditVehicleModal = () => {
             </div>
         </div>
     `;
+    // Append modal to app-root, then call render to update the main screen
     const appRoot = document.getElementById('app-root');
     if (appRoot) {
         const existingModal = document.getElementById('edit-vehicle-modal');
-        if (existingModal) existingModal.remove();
+        if (existingModal) existingModal.remove(); // Remove old modal if exists
         appRoot.insertAdjacentHTML('beforeend', modalHtml);
     }
 };
@@ -877,42 +819,22 @@ export const saveEditedVehicle = async () => {
     const isNew = !editingVehicle.plate;
     const vehicleData = {
         plate: document.getElementById('vehiclePlate').value.trim(),
+        name: document.getElementById('vehicleName').value.trim(),
+        brand: document.getElementById('vehicleBrand').value.trim(),
         model: document.getElementById('vehicleModel').value.trim(),
-        capacity: parseInt(document.getElementById('vehicleCapacity').value) || 0,
-        assignedUser: document.getElementById('assignedUserSelect').value || null,
     };
 
-    if (!vehicleData.plate || !vehicleData.model || vehicleData.capacity <= 0) {
-        _showMessageModal('Placa, Modelo y Capacidad son campos obligatorios y la capacidad debe ser mayor a 0.');
+    if (!vehicleData.plate || !vehicleData.name) {
+        _showMessageModal('Placa y Nombre son campos obligatorios.');
+        return;
+    }
+
+    if (isNew && _vehicles.some(v => v.plate === vehicleData.plate)) {
+        _showMessageModal('Ya existe un vehículo con esta placa.');
         return;
     }
 
     try {
-        const batch = _db.batch();
-
-        // Handle previous assignment if a user was assigned to this vehicle
-        const oldVehicleData = _vehicles.find(v => v.plate === editingVehicle.plate);
-        if (oldVehicleData && oldVehicleData.assignedUser && oldVehicleData.assignedUser !== vehicleData.assignedUser) {
-            // Unassign from old user
-            const oldUserRef = _db.collection('users').doc(oldVehicleData.assignedUser);
-            batch.update(oldUserRef, { assignedTruckPlate: null });
-        }
-
-        // Handle new assignment if a user is being assigned to this vehicle
-        if (vehicleData.assignedUser) {
-            // Check if the new user is already assigned to another vehicle
-            const existingAssignment = _vehicles.find(v => v.assignedUser === vehicleData.assignedUser && v.plate !== vehicleData.plate);
-            if (existingAssignment) {
-                // Remove existing assignment from the other vehicle
-                const otherVehicleRef = _db.collection('vehicles').doc(existingAssignment.plate);
-                batch.update(otherVehicleRef, { assignedUser: null });
-                _showMessageModal(`El usuario ya estaba asignado al camión ${existingAssignment.plate}. Se ha desasignado de ese camión.`);
-            }
-            // Assign to new user
-            const newUserRef = _db.collection('users').doc(vehicleData.assignedUser);
-            batch.update(newUserRef, { assignedTruckPlate: vehicleData.plate });
-        }
-
         if (isNew) {
             await _db.collection('vehicles').doc(vehicleData.plate).set(vehicleData);
             _vehicles.push(vehicleData);
@@ -921,11 +843,9 @@ export const saveEditedVehicle = async () => {
             const index = _vehicles.findIndex(v => v.plate === editingVehicle.plate);
             if (index !== -1) _vehicles[index] = vehicleData;
         }
-
-        await batch.commit();
         _showMessageModal('Vehículo guardado exitosamente.');
         editingVehicle = null; // Close modal
-        await _fetchDataFromFirestore(); // Re-fetch all data to update local arrays and UI
+        await _fetchDataFromFirestore(); // Re-fetch to update vehicles array in main scope
         _setScreenAndRender('vehicles'); // Re-render the vehicle list
     } catch (error) {
         console.error('Error al guardar vehículo:', error);
@@ -934,25 +854,18 @@ export const saveEditedVehicle = async () => {
 };
 
 export const showDeleteVehicleConfirmation = (plate) => {
-    _showConfirmationModal(`¿Estás seguro de que quieres eliminar el vehículo con placa "${plate}"? Esto también desvinculará a cualquier usuario asignado.`, () => deleteVehicle(plate));
+    _showConfirmationModal(`¿Estás seguro de que quieres eliminar el vehículo con placa ${plate}? Esto también eliminará su inventario asociado.`, () => deleteVehicle(plate));
 };
 
 const deleteVehicle = async (plate) => {
     try {
         const batch = _db.batch();
         batch.delete(_db.collection('vehicles').doc(plate));
-
-        // Unassign user if any
-        const vehicleToDelete = _vehicles.find(v => v.plate === plate);
-        if (vehicleToDelete && vehicleToDelete.assignedUser) {
-            const userRef = _db.collection('users').doc(vehicleToDelete.assignedUser);
-            batch.update(userRef, { assignedTruckPlate: null });
-        }
-
+        batch.delete(_db.collection('truck_inventories').doc(plate)); // Also delete associated truck inventory
         await batch.commit();
-        _vehicles = _vehicles.filter(v => v.plate !== plate); // Update local array
-        _showMessageModal('Vehículo eliminado exitosamente.');
-        await _fetchDataFromFirestore(); // Re-fetch all data to update local arrays and UI
+        _vehicles = _vehicles.filter(v => v.plate !== plate);
+        _showMessageModal('Vehículo y su inventario asociado eliminados exitosamente.');
+        await _fetchDataFromFirestore(); // Re-fetch to update vehicles array in main scope
         _setScreenAndRender('vehicles'); // Re-render the vehicle list
     } catch (error) {
         console.error('Error al eliminar vehículo:', error);
@@ -960,168 +873,341 @@ const deleteVehicle = async (plate) => {
     }
 };
 
-const assignVehicleToUser = async (userId, newPlate, currentVehicle) => {
+export const renderAssignVehicleScreen = () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering assign vehicle screen.');
+
+    const vehicleOptions = _vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
+
+    const usersHtml = Array.isArray(_users) && _users.length > 0 ? _users.map(user => {
+        // Find the vehicle currently assigned to this user
+        const currentAssignedVehicle = _vehicles.find(v => v.plate === user.assignedTruckPlate);
+        const currentAssignedVehicleText = currentAssignedVehicle ? `${currentAssignedVehicle.name} (${currentAssignedVehicle.plate})` : '';
+
+        return `
+            <tr>
+                <td>${user.email}</td>
+                <td>${user.role}</td>
+                <td>
+                    <div id="assignTruckDropdown-${user.uid}" class="w-full">
+                        ${_createSearchableDropdown(
+                            `assignTruck-${user.uid}`,
+                            'Buscar y asignar vehículo...',
+                            vehicleOptions,
+                            user.assignedTruckPlate || '', // Pass the currently assigned plate as selectedValue
+                            (selectedPlate) => handleAssignVehicle(user.uid, selectedPlate),
+                            'text'
+                        )}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('') : `<tr><td colspan="3" class="text-center text-gray-500 py-4">No hay usuarios para asignar vehículos.</td></tr>`;
+
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">ASIGNAR VEHÍCULO A USUARIO</h2>
+            <div class="table-container mb-5">
+                ${_createTable(['Usuario', 'Rol', 'Vehículo Asignado'], usersHtml, 'assign-vehicle-table-body')}
+            </div>
+            ${_createButton('Volver al Menú Principal', 'backToMainFromAssignVehicleButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
+};
+
+// This function is now called by the searchable dropdown's onSelectCallback
+export const handleAssignVehicle = async (userId, newTruckPlate) => {
+    if (!userId) {
+        _showMessageModal('Error: ID de usuario no encontrado.');
+        return;
+    }
+
     try {
         const batch = _db.batch();
 
-        // 1. Unassign old vehicle from user if exists
-        const userRef = _db.collection('users').doc(userId);
-        batch.update(userRef, { assignedTruckPlate: newPlate || null });
+        // Get current user and vehicle data to handle unassignments
+        const userDocRef = _db.collection('users').doc(userId);
+        const userDoc = await userDocRef.get();
+        const userData = userDoc.data();
+        const oldAssignedTruckPlate = userData.assignedTruckPlate;
 
-        // 2. Clear old vehicle's assignedUser if it was assigned to this user
-        if (currentVehicle && currentVehicle !== newPlate) {
-            const oldVehicleRef = _db.collection('vehicles').doc(currentVehicle);
+        // If the user was previously assigned to a different truck, unassign that truck
+        if (oldAssignedTruckPlate && oldAssignedTruckPlate !== newTruckPlate) {
+            const oldVehicleRef = _db.collection('vehicles').doc(oldAssignedTruckPlate);
             batch.update(oldVehicleRef, { assignedUser: null });
         }
 
-        // 3. Assign new vehicle's assignedUser
-        if (newPlate) {
-            // Check if the new vehicle is already assigned to another user
-            const existingAssignment = _users.find(u => _vehicles.find(v => v.plate === newPlate && v.assignedUser === u.uid));
-            if (existingAssignment && existingAssignment.uid !== userId) {
-                // Remove existing assignment from the other user
+        // If the new truck is already assigned to another user, unassign that user
+        if (newTruckPlate) {
+            const existingAssignment = _users.find(u => u.assignedTruckPlate === newTruckPlate && u.uid !== userId);
+            if (existingAssignment) {
                 const otherUserRef = _db.collection('users').doc(existingAssignment.uid);
                 batch.update(otherUserRef, { assignedTruckPlate: null });
-                _showMessageModal(`El camión ${newPlate} ya estaba asignado a ${existingAssignment.email}. Se ha desasignado de ese usuario.`);
+                _showMessageModal(`El camión ${newTruckPlate} ya estaba asignado a ${existingAssignment.email}. Se ha desasignado de ese usuario.`);
             }
-            const newVehicleRef = _db.collection('vehicles').doc(newPlate);
+            // Assign the new truck to the current user
+            const newVehicleRef = _db.collection('vehicles').doc(newTruckPlate);
             batch.update(newVehicleRef, { assignedUser: userId });
         }
 
+        // Update the user's assignedTruckPlate
+        batch.update(userDocRef, { assignedTruckPlate: newTruckPlate || null }); // Set to null if unassigning
+
         await batch.commit();
-        _showMessageModal(`Vehículo ${newPlate || 'ninguno'} asignado a ${(_users.find(u => u.uid === userId)?.email || userId)} exitosamente.`);
-        await _fetchDataFromFirestore(); // Re-fetch all data to update local arrays and UI
-        _setScreenAndRender('assignVehicle'); // Re-render the assignment screen
+        _showMessageModal('Vehículo asignado/desasignado exitosamente.');
+        await _fetchDataFromFirestore(); // Re-fetch users and vehicles to update local state
+        _setScreenAndRender('assignVehicle'); // Re-render to show updated assignment
     } catch (error) {
         console.error('Error al asignar vehículo:', error);
         _showMessageModal('Error al asignar vehículo. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
-const removeVehicleAssignment = async (userId) => {
-    _showConfirmationModal(`¿Estás seguro de que quieres desasignar el vehículo de este usuario?`, async () => {
-        try {
-            const batch = _db.batch();
 
-            const userRef = _db.collection('users').doc(userId);
-            const userDoc = await userRef.get();
-            const userData = userDoc.data();
-            const assignedTruckPlate = userData.assignedTruckPlate;
-
-            if (assignedTruckPlate) {
-                // Unassign from user
-                batch.update(userRef, { assignedTruckPlate: null });
-
-                // Clear vehicle's assignedUser
-                const vehicleRef = _db.collection('vehicles').doc(assignedTruckPlate);
-                batch.update(vehicleRef, { assignedUser: null });
-            }
-
-            await batch.commit();
-            _showMessageModal('Vehículo desasignado exitosamente.');
-            await _fetchDataFromFirestore(); // Re-fetch all data to update local arrays and UI
-            _setScreenAndRender('assignVehicle'); // Re-render the assignment screen
-        } catch (error) {
-            console.error('Error al desasignar vehículo:', error);
-            _showMessageModal('Error al desasignar vehículo. Revisa tu conexión y reglas de seguridad.');
-        }
-    });
+export const renderResetCargasInicialesPasswordScreen = () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md max-w-md mx-auto my-10">
+            <h2 class="text-2xl font-bold mb-5 text-center text-red-700">RESET DE CARGAS INICIALES</h2>
+            <p class="text-base text-center my-5 text-gray-600">Esta es una operación sensible. Por favor, ingresa tu contraseña de administrador para continuar.</p>
+            ${_createInput('adminPasswordForReset', 'Contraseña de Administrador', '', 'password')}
+            ${_createButton('Verificar Contraseña', 'adminPasswordForResetButton', 'bg-red-600 w-full')}
+            ${_createButton('Cancelar', 'cancelAndBackToCargaSelectionButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
 };
 
 export const handleResetCargasInicialesPassword = async () => {
-    const adminPassword = document.getElementById('adminPasswordForReset').value;
-    // In a real application, you would verify this password against a secure backend.
-    // For this example, we'll use a simple hardcoded check.
-    if (adminPassword === 'admin123') { // REPLACE WITH A SECURE METHOD IN PRODUCTION
-        _setScreenAndRender('resetCargasInicialesEdit');
-    } else {
-        _showMessageModal('Contraseña de administrador incorrecta.');
+    const password = document.getElementById('adminPasswordForReset').value;
+    if (!password) {
+        _showMessageModal('Por favor, ingresa tu contraseña.');
+        return;
     }
+
+    try {
+        const credential = firebase.auth.EmailAuthProvider.credential(_currentUserData.email, password);
+        await firebase.auth().currentUser.reauthenticateWithCredential(credential);
+        _setScreenAndRender('resetCargasInicialesEdit');
+    } catch (error) {
+        console.error('Error al reautenticar:', error);
+        _showMessageModal(`Error de autenticación: ${error.message}. Contraseña incorrecta o sesión expirada.`);
+    }
+};
+
+export const renderResetCargasInicialesEditScreen = () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering reset initial loads edit screen.');
+
+    const mainInventoryRows = _inventory.map(item => `
+        <tr>
+            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+            <td>${item.sku}</td>
+            <td>${item.producto}</td>
+            <td>${item.presentacion}</td>
+            <td><input type="number" class="border border-gray-300 rounded-md text-center reset-quantity-input-main" value="${item.cantidad}" data-sku="${item.sku}" min="0"></td>
+            <td>$${item.precio.toFixed(2)}</td>
+        </tr>
+    `).join('');
+
+    const allTrucksHtml = _vehicles.map(vehicle => {
+        const truckInventory = allTruckInventories[vehicle.plate] || [];
+        const truckInventoryRows = truckInventory.map(item => `
+            <tr>
+                <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.product}" class="w-10 h-10 rounded-md object-cover"></td>
+                <td>${item.sku}</td>
+                <td>${item.product}</td>
+                <td>${item.presentacion}</td>
+                <td><input type="number" class="border border-gray-300 rounded-md text-center reset-quantity-input-truck" value="${item.quantity}" data-sku="${item.sku}" data-truckplate="${vehicle.plate}" min="0"></td>
+                <td>$${item.price.toFixed(2)}</td>
+            </tr>
+        `).join('');
+        return `
+            <div class="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-300">
+                <h3 class="text-xl font-bold mb-4 text-yellow-700">Inventario de Camión: ${vehicle.name} (${vehicle.plate})</h3>
+                ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], truckInventoryRows, `truck-inventory-table-body-${vehicle.plate}`)}
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+            <h2 class="text-2xl font-bold mb-5 text-center text-red-700">EDITAR CARGAS INICIALES</h2>
+            <p class="text-base text-center my-5 text-gray-600">Modifica las cantidades iniciales de inventario para el almacén principal y los camiones.</p>
+
+            <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
+                <h3 class="text-xl font-bold mb-4 text-blue-700">Inventario Principal (Almacén)</h3>
+                ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], mainInventoryRows, 'main-inventory-table-body')}
+            </div>
+
+            ${allTrucksHtml}
+
+            <div class="flex justify-around gap-4 mt-5">
+                ${_createButton('Guardar Cambios', 'saveResetCargasInicialesButton', 'bg-emerald-600 flex-1')}
+                ${_createButton('Cancelar', 'cancelResetCargasInicialesButton', 'bg-gray-600 flex-1')}
+            </div>
+        </div>
+    `;
 };
 
 export const handleResetQuantityChange = (sku, type, quantity, truckPlate = null) => {
-    const key = type === 'main' ? `main-${sku}` : `truck-${truckPlate}-${sku}`;
-    resetQuantities[key] = parseInt(quantity) || 0;
+    const parsedQuantity = parseInt(quantity) || 0;
+    if (type === 'main') {
+        resetQuantities[`main_${sku}`] = parsedQuantity;
+    } else if (type === 'truck' && truckPlate) {
+        resetQuantities[`truck_${truckPlate}_${sku}`] = parsedQuantity;
+    }
+    console.log('[handleResetQuantityChange] resetQuantities:', resetQuantities);
 };
 
 export const saveResetCargasIniciales = async () => {
-    _showConfirmationModal('¿Estás seguro de que quieres guardar estos cambios de cargas iniciales? Esto modificará permanentemente los inventarios.', async () => {
-        try {
-            const batch = _db.batch();
+    try {
+        const batch = _db.batch();
 
-            // Update Main Inventory
-            for (const item of _inventory) {
-                const newQty = resetQuantities[`main-${item.sku}`];
-                if (newQty !== undefined && newQty !== item.cantidad) {
-                    batch.set(_db.collection('inventory').doc(item.sku), { ...item, cantidad: newQty });
-                }
+        // Update main inventory
+        const updatedMainInventory = JSON.parse(JSON.stringify(_inventory));
+        for (const item of updatedMainInventory) {
+            const newQuantity = resetQuantities[`main_${item.sku}`];
+            if (newQuantity !== undefined) {
+                item.cantidad = newQuantity;
+                batch.set(_db.collection('inventory').doc(item.sku), item);
             }
-
-            // Update Truck Inventories
-            for (const vehicle of _vehicles) {
-                const truckInventoryRef = _db.collection('truck_inventories').doc(vehicle.plate);
-                const truckInventoryDoc = await truckInventoryRef.get();
-                let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-                let updatedTruckItems = JSON.parse(JSON.stringify(currentTruckItems)); // Deep copy
-
-                for (const item of currentTruckItems) {
-                    const newQty = resetQuantities[`truck-${vehicle.plate}-${item.sku}`];
-                    if (newQty !== undefined && newQty !== item.quantity) {
-                        const index = updatedTruckItems.findIndex(i => i.sku === item.sku);
-                        if (index !== -1) {
-                            updatedTruckItems[index].quantity = newQty;
-                        }
-                    }
-                }
-                // Add new items if they were set in resetQuantities but not originally in truck inventory
-                for (const key in resetQuantities) {
-                    if (key.startsWith(`truck-${vehicle.plate}-`)) {
-                        const sku = key.split('-')[2];
-                        const newQty = resetQuantities[key];
-                        if (newQty > 0 && !updatedTruckItems.some(item => item.sku === sku)) {
-                            const mainProduct = _inventory.find(p => p.sku === sku);
-                            if (mainProduct) {
-                                updatedTruckItems.push({
-                                    sku: mainProduct.sku,
-                                    producto: mainProduct.producto,
-                                    presentacion: mainProduct.presentacion,
-                                    quantity: newQty,
-                                    price: mainProduct.precio
-                                });
-                            }
-                        }
-                    }
-                }
-
-                batch.set(truckInventoryRef, { items: updatedTruckItems.filter(item => item.quantity > 0) });
-            }
-
-            await batch.commit();
-            _showMessageModal('Cargas iniciales actualizadas exitosamente.');
-            await _fetchDataFromFirestore(); // Re-fetch all data
-            _setScreenAndRender('cargaSelection');
-        } catch (error) {
-            console.error('Error al guardar cambios de cargas iniciales:', error);
-            _showMessageModal('Error al guardar cambios de cargas iniciales. Revisa tu conexión y reglas de seguridad.');
         }
-    });
-};
+        _inventory.splice(0, _inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global inventory in place
 
-export const handleTransferInventoryPassword = async () => {
-    const userPassword = document.getElementById('userPasswordForTransfer').value;
-    // In a real application, verify against the currently logged-in user's password.
-    // For simplicity, we'll just check if it's not empty.
-    if (userPassword.length > 0) { // REPLACE WITH ACTUAL PASSWORD VERIFICATION IN PRODUCTION
-        _setScreenAndRender('transferInventory');
-    } else {
-        _showMessageModal('Por favor, ingresa tu contraseña.');
+        // Update truck inventories
+        for (const truckPlate in allTruckInventories) {
+            let currentTruckItems = JSON.parse(JSON.stringify(allTruckInventories[truckPlate]));
+            let truckInventoryChanged = false;
+
+            // Update existing items in the truck
+            currentTruckItems = currentTruckItems.map(item => {
+                const newQuantity = resetQuantities[`truck_${truckPlate}_${item.sku}`];
+                if (newQuantity !== undefined) {
+                    truckInventoryChanged = true;
+                    return { ...item, quantity: newQuantity };
+                }
+                return item;
+            });
+
+            // Add new items to the truck (from main inventory if they were added via resetQuantities)
+            for (const sku in resetQuantities) {
+                if (sku.startsWith(`truck_${truckPlate}_`)) {
+                    const itemSku = sku.replace(`truck_${truckPlate}_`, '');
+                    const newQuantity = resetQuantities[sku];
+                    if (newQuantity > 0 && !currentTruckItems.some(item => item.sku === itemSku)) {
+                        const productDetails = _inventory.find(mainItem => mainItem.sku === itemSku);
+                        if (productDetails) {
+                            currentTruckItems.push({
+                                sku: productDetails.sku,
+                                product: productDetails.producto,
+                                presentacion: productDetails.presentacion,
+                                quantity: newQuantity,
+                                price: productDetails.precio
+                            });
+                            truckInventoryChanged = true;
+                        }
+                    }
+                }
+            }
+
+            const filteredTruckItems = currentTruckItems.filter(item => item.quantity > 0);
+            if (truckInventoryChanged || filteredTruckItems.length !== allTruckInventories[truckPlate].length) { // Check if something actually changed or if items were removed
+                batch.set(_db.collection('truck_inventories').doc(truckPlate), { items: filteredTruckItems });
+            }
+        }
+
+        await batch.commit();
+        _showMessageModal('Cargas iniciales actualizadas exitosamente.');
+        resetQuantities = {}; // Clear reset quantities
+        await _fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+        _setScreenAndRender('cargaSelection'); // Go back to carga selection
+    } catch (error) {
+        console.error('Error al guardar cargas iniciales:', error);
+        _showMessageModal('Error al guardar cargas iniciales. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
-export const handleDestinationTruckSelection = (plate) => {
-    // No need to fetch inventory here, it's just for the transfer record.
-    // The currentTruckInventory is already the source.
+export const renderTransferInventoryPasswordScreen = () => {
+    if (!_isUser()) { _showMessageModal('Acceso denegado: Solo los usuarios pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md max-w-md mx-auto my-10">
+            <h2 class="text-2xl font-bold mb-5 text-center text-orange-700">TRANSBORDO DE INVENTARIO</h2>
+            <p class="text-base text-center my-5 text-gray-600">Esta es una operación sensible. Por favor, ingresa tu contraseña para continuar.</p>
+            ${_createInput('userPasswordForTransfer', 'Tu Contraseña', '', 'password')}
+            ${_createButton('Verificar Contraseña', 'userPasswordForTransferButton', 'bg-orange-600 w-full')}
+            ${_createButton('Cancelar', 'cancelTransferInventoryPasswordButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
+};
+
+export const handleTransferInventoryPassword = async () => {
+    const password = document.getElementById('userPasswordForTransfer').value;
+    if (!password) {
+        _showMessageModal('Por favor, ingresa tu contraseña.');
+        return;
+    }
+
+    try {
+        const credential = firebase.auth.EmailAuthProvider.credential(_currentUserData.email, password);
+        await firebase.auth().currentUser.reauthenticateWithCredential(credential);
+        _setScreenAndRender('transferInventory');
+    } catch (error) {
+        console.error('Error al reautenticar para transbordo:', error);
+        _showMessageModal(`Error de autenticación: ${error.message}. Contraseña incorrecta o sesión expirada.`);
+    }
+};
+
+export const renderTransferInventoryScreen = () => {
+    if (!_isUser() || !_currentUserData.assignedTruckPlate) {
+        _showMessageModal('Acceso denegado: No tienes un camión asignado o no eres un usuario válido.');
+        _setScreenAndRender('main');
+        return;
+    }
+
+    const sourceTruckPlate = _currentUserData.assignedTruckPlate;
+    const currentTruckItems = currentTruckInventory; // Use the current state of the assigned truck's inventory
+
+    const destinationTruckOptions = _vehicles
+        .filter(v => v.plate !== sourceTruckPlate)
+        .map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
+
+    const productsHtml = currentTruckItems.map(item => `
+        <tr>
+            <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.product}" class="w-10 h-10 rounded-md object-cover"></td>
+            <td>${item.sku}</td>
+            <td>${item.product}</td>
+            <td>${item.presentacion}</td>
+            <td>${item.quantity}</td>
+            <td><input type="number" class="border border-gray-300 rounded-md text-center transfer-quantity-input" value="${transferQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${item.quantity}"></td>
+        </tr>
+    `).join('');
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+            <h2 class="text-2xl font-bold mb-5 text-center text-orange-700">TRANSBORDO DE INVENTARIO</h2>
+            <p class="text-lg font-bold text-center mb-4 text-gray-800">Camión Origen: ${sourceTruckPlate}</p>
+
+            <div class="mb-6 p-4 bg-orange-50 rounded-lg border border-orange-300">
+                <label for="destinationTruckSelect" class="block text-gray-700 text-sm font-bold mb-2">Camión Destino:</label>
+                ${_createSelect('destinationTruckSelect', destinationTruckOptions, selectedDestinationTruck || '', 'w-full')}
+            </div>
+
+            <div class="table-container mb-5">
+                ${productsHtml ? _createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad Disponible', 'Cantidad a Transbordar'], productsHtml, 'transfer-products-table-body') : '<p class="text-center text-gray-500">No hay productos en tu camión para transbordar.</p>'}
+            </div>
+
+            <div class="flex justify-around gap-4 mt-5">
+                ${_createButton('Realizar Transbordo', 'performTransferButton', 'bg-orange-600 flex-1')}
+                ${_createButton('Volver', 'backToMainFromTransferInventoryButton', 'bg-gray-600 flex-1')}
+            </div>
+        </div>
+    `;
+};
+
+export const handleDestinationTruckSelection = (truckPlate) => {
+    selectedDestinationTruck = truckPlate;
+    _setScreenAndRender('transferInventory'); // Re-render to update the screen
 };
 
 export const handleTransferQuantityChange = (sku, quantity) => {
@@ -1129,210 +1215,227 @@ export const handleTransferQuantityChange = (sku, quantity) => {
 };
 
 export const showTransferConfirmation = () => {
-    _showConfirmationModal('¿Estás seguro de que quieres realizar este transbordo? Esto moverá el inventario entre camiones.', performTransferLogic);
+    _showConfirmationModal('¿Estás seguro de que quieres realizar este transbordo? Esto moverá el inventario entre camiones.', performTransfer);
 };
 
-const performTransferLogic = async () => {
+const performTransfer = async () => {
+    if (!selectedDestinationTruck) {
+        _showMessageModal('Por favor, selecciona un camión de destino.');
+        return;
+    }
     const sourceTruckPlate = _currentUserData.assignedTruckPlate;
-    const destinationTruckPlate = document.getElementById('destinationTruckSelect').value;
-
-    if (!sourceTruckPlate) { _showMessageModal('No tienes un camión de origen asignado.'); return; }
-    if (!destinationTruckPlate) { _showMessageModal('Por favor, selecciona un camión de destino.'); return; }
-    if (sourceTruckPlate === destinationTruckPlate) { _showMessageModal('El camión de origen y destino no pueden ser el mismo.'); return; }
+    if (!sourceTruckPlate) {
+        _showMessageModal('Error: No tienes un camión de origen asignado.');
+        return;
+    }
 
     const itemsToTransfer = [];
-    let validationErrors = [];
+    const validationErrors = [];
 
-    // Validate quantities against source truck's current inventory
-    const currentSourceTruckInventory = JSON.parse(JSON.stringify(currentTruckInventory)); // Deep copy
-    for (const sku in transferQuantities) {
-        const quantity = transferQuantities[sku];
-        if (quantity > 0) {
-            const sourceItem = currentSourceTruckInventory.find(item => item.sku === sku);
-            if (!sourceItem) {
-                validationErrors.push(`Error: El SKU ${sku} no se encontró en el inventario de tu camión.`);
-                continue;
-            }
-            if (quantity > sourceItem.quantity) {
-                validationErrors.push(`Error: Cantidad a transferir de "${sourceItem.producto}" (${quantity}) excede el stock disponible (${sourceItem.quantity}).`);
+    // Ensure currentTruckInventory is an array before iterating
+    if (!Array.isArray(currentTruckInventory)) {
+        console.error('[performTransfer] currentTruckInventory is not an array:', currentTruckInventory);
+        _showMessageModal('Error interno: Inventario del camión de origen no válido.');
+        return;
+    }
+
+    for (const item of currentTruckInventory) {
+        const quantityToTransfer = transferQuantities[item.sku] || 0;
+        if (quantityToTransfer > 0) {
+            if (quantityToTransfer > item.quantity) {
+                validationErrors.push(`Error: La cantidad a transbordar de "${item.product}" (${quantityToTransfer}) excede el stock disponible (${item.quantity}).`);
             } else {
-                itemsToTransfer.push({
-                    sku: sku,
-                    producto: sourceItem.producto,
-                    presentacion: sourceItem.presentacion,
-                    cantidadTransferida: quantity,
-                    price: sourceItem.price
-                });
+                itemsToTransfer.push({ sku: item.sku, quantity: quantityToTransfer, product: item.product, presentacion: item.presentacion, price: item.price });
             }
         }
     }
 
-    if (validationErrors.length > 0) { _showMessageModal(validationErrors.join('\n')); return; }
-    if (itemsToTransfer.length === 0) { _showMessageModal('No se ha ingresado ninguna cantidad para transferir.'); return; }
+    if (validationErrors.length > 0) {
+        _showMessageModal(validationErrors.join('\n'));
+        return;
+    }
+    if (itemsToTransfer.length === 0) {
+        _showMessageModal('No se ha ingresado ninguna cantidad para transbordar.');
+        return;
+    }
 
     try {
         const batch = _db.batch();
 
         // 1. Update Source Truck Inventory
-        let updatedSourceTruckItems = JSON.parse(JSON.stringify(currentSourceTruckInventory));
-        itemsToTransfer.forEach(transferItem => {
-            const sourceItemIndex = updatedSourceTruckItems.findIndex(item => item.sku === transferItem.sku);
-            if (sourceItemIndex !== -1) {
-                updatedSourceTruckItems[sourceItemIndex].quantity -= transferItem.cantidadTransferida;
+        let updatedSourceTruckItems = JSON.parse(JSON.stringify(currentTruckInventory));
+        itemsToTransfer.forEach(itemToTransfer => {
+            const itemIndex = updatedSourceTruckItems.findIndex(item => item.sku === itemToTransfer.sku);
+            if (itemIndex !== -1) {
+                updatedSourceTruckItems[itemIndex].quantity -= itemToTransfer.quantity;
             }
         });
-        batch.set(_db.collection('truck_inventories').doc(sourceTruckPlate), { items: updatedSourceTruckItems.filter(item => item.quantity > 0) });
-        currentTruckInventory.splice(0, currentTruckInventory.length, ...updatedSourceTruckItems.filter(item => item.quantity > 0)); // Update local
+        updatedSourceTruckItems = updatedSourceTruckItems.filter(item => item.quantity > 0);
+        batch.set(_db.collection('truck_inventories').doc(sourceTruckPlate), { items: updatedSourceTruckItems });
+        setCurrentTruckInventory(updatedSourceTruckItems); // Update local state for source truck
 
         // 2. Update Destination Truck Inventory
-        const destinationTruckRef = _db.collection('truck_inventories').doc(destinationTruckPlate);
-        const destinationTruckDoc = await destinationTruckRef.get();
+        const destinationTruckDocRef = _db.collection('truck_inventories').doc(selectedDestinationTruck);
+        const destinationTruckDoc = await destinationTruckDocRef.get();
         let currentDestinationTruckItems = destinationTruckDoc.exists ? (destinationTruckDoc.data().items || []) : [];
 
-        itemsToTransfer.forEach(transferItem => {
-            const existingDestinationItemIndex = currentDestinationTruckItems.findIndex(item => item.sku === transferItem.sku);
-            if (existingDestinationItemIndex !== -1) {
-                currentDestinationTruckItems[existingDestinationItemIndex].quantity += transferItem.cantidadTransferida;
+        itemsToTransfer.forEach(itemToTransfer => {
+            const itemIndex = currentDestinationTruckItems.findIndex(item => item.sku === itemToTransfer.sku);
+            if (itemIndex !== -1) {
+                currentDestinationTruckItems[itemIndex].quantity += itemToTransfer.quantity;
             } else {
-                currentDestinationTruckItems.push({
-                    sku: transferItem.sku,
-                    producto: transferItem.producto,
-                    presentacion: transferItem.presentacion,
-                    quantity: transferItem.cantidadTransferida,
-                    price: transferItem.price
-                });
+                currentDestinationTruckItems.push(itemToTransfer);
             }
         });
-        batch.set(destinationTruckRef, { items: currentDestinationTruckItems });
+        batch.set(destinationTruckDocRef, { items: currentDestinationTruckItems });
 
         // 3. Record Transfer History
-        const transferringUser = _users.find(u => u.uid === _currentUserData.uid);
         const transferRecord = {
-            date: new Date().toLocaleDateString('es-ES'),
-            sourceTruckPlate: sourceTruckPlate,
-            destinationTruckPlate: destinationTruckPlate,
-            transferringUserId: _currentUserData.uid,
-            transferringUserEmail: transferringUser ? transferringUser.email : 'Desconocido',
+            date: getCurrentDateFormatted(),
+            userId: _currentUserData.uid, // Record who performed the transfer
+            sourceTruck: sourceTruckPlate,
+            destinationTruck: selectedDestinationTruck,
             items: itemsToTransfer,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        const transferDocRef = _db.collection('transferRecords').doc();
-        batch.set(transferDocRef, transferRecord);
-        transferRecords.push({ docId: transferDocRef.id, ...transferRecord }); // Update local transferRecords
+        batch.add(_db.collection('transferRecords'), transferRecord);
 
         await batch.commit();
         _showMessageModal('Transbordo realizado exitosamente.');
-        transferQuantities = {}; // Clear quantities
-        await _fetchDataFromFirestore(); // Re-fetch all data to ensure UI consistency
-        _setScreenAndRender('main'); // Go back to main screen after transfer
+
+        // Reset state after successful transfer
+        selectedDestinationTruck = null;
+        transferQuantities = {};
+        await _fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+        _setScreenAndRender('main'); // Go back to main screen
     } catch (error) {
         console.error('Error al realizar transbordo:', error);
-        _showMessageModal('Error al realizar transbordo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+        _showMessageModal('Error al realizar transbordo. Revisa tu conexión y las reglas de seguridad.');
     }
+};
+
+export const renderAdminTransferHistoryScreen = async () => {
+    if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
+    console.log('[Inventory Management] Rendering admin transfer history screen.');
+    try {
+        const snapshot = await _db.collection('transferRecords').orderBy('createdAt', 'desc').get();
+        transferRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+        console.error('Error fetching transfer history:', error);
+        _showMessageModal('Error al cargar el historial de transbordos. Revisa tu conexión y las reglas de seguridad.');
+        transferRecords = []; // Fallback to empty array on error
+    }
+
+    const transferRows = transferRecords.map(record => {
+        const itemsSummary = record.items.map(item => `${item.product} (${item.quantity})`).join(', ');
+        const userName = _users.find(u => u.uid === record.userId)?.email || 'Desconocido';
+        return `
+            <tr>
+                <td>${record.date}</td>
+                <td>${userName}</td>
+                <td>${record.sourceTruck}</td>
+                <td>${record.destinationTruck}</td>
+                <td>${itemsSummary}</td>
+                <td>
+                    ${_createButton('Descargar CSV', '', 'bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded-md text-sm download-transfer-csv-button', { recordid: record.id })}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE TRANSBORDOS</h2>
+            <div class="table-container mb-5">
+                ${_createTable(['Fecha', 'Usuario', 'Origen', 'Destino', 'Artículos Transbordados', 'Acciones'], transferRows, 'transfer-history-table-body')}
+            </div>
+            <div class="flex justify-center mb-6 gap-4">
+                ${_createButton('Borrar Historial de Transbordos', 'clearTransferHistoryButton', 'bg-red-600')}
+            </div>
+            ${_createButton('Volver al Menú Principal', 'backToMainFromAdminTransferHistoryButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
 };
 
 export const showClearTransferHistoryConfirmation = () => {
-    _showConfirmationModal('¿Estás seguro de que quieres limpiar todo el historial de transbordos? Esta acción es irreversible.', clearTransferHistoryLogic);
+    _showConfirmationModal('¿Estás seguro de que quieres borrar TODO el historial de transbordos? Esta acción es irreversible.', clearTransferHistory);
 };
 
-const clearTransferHistoryLogic = async () => {
+const clearTransferHistory = async () => {
     try {
         const batch = _db.batch();
-        transferRecords.forEach(record => {
-            batch.delete(_db.collection('transferRecords').doc(record.docId));
+        const snapshot = await _db.collection('transferRecords').get();
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
         });
         await batch.commit();
-        transferRecords = []; // Clear local array
-        _showMessageModal('Historial de transbordos limpiado exitosamente.');
-        _setScreenAndRender('main');
+        _showMessageModal('Historial de transbordos borrado exitosamente.');
+        transferRecords = []; // Clear local state
+        _setScreenAndRender('adminTransferHistory'); // Re-render to show empty history
     } catch (error) {
-        console.error('Error al limpiar historial de transbordos:', error);
-        _showMessageModal('Error al limpiar historial de transbordos. Revisa tu conexión y reglas de seguridad.');
+        console.error('Error al borrar historial de transbordos:', error);
+        _showMessageModal('Error al borrar historial de transbordos. Revisa tu conexión y las reglas de seguridad.');
     }
 };
 
-// --- File Upload/Download Handlers (delegated from index.html) ---
 export const handleFileUpload = async (event, type) => {
+    console.log(`[Inventory Management] handleFileUpload called for type: ${type}`);
     const file = event.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-        const parsedData = parseCSV(e.target.result); // Assuming parseCSV is available or passed
-        try {
-            const collectionRef = _db.collection(type);
-            const existingSnapshot = await collectionRef.get();
-            const deleteBatch = _db.batch();
-            existingSnapshot.docs.forEach(doc => deleteBatch.delete(doc.ref));
-            await deleteBatch.commit();
-            console.log(`[handleFileUpload] Existing ${type} documents deleted.`);
+        const parsedData = parseCSV(e.target.result);
+        if (parsedData.length === 0) {
+            _showMessageModal(`El archivo CSV de ${type} está vacío o no tiene el formato correcto.`);
+            return;
+        }
 
-            const addBatch = _db.batch();
+        try {
+            const batch = _db.batch();
+            const collectionRef = _db.collection(type === 'inventory' ? 'inventory' : 'vehicles');
+            const idKey = type === 'inventory' ? 'sku' : 'plate';
+
+            // Delete existing documents in the collection
+            const existingSnapshot = await collectionRef.get();
+            existingSnapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // Add new documents from CSV
             for (const row of parsedData) {
-                let docId = row.sku || row.plate || row.id; // Determine docId based on type
+                const docId = row[idKey];
                 if (!docId) {
-                    console.warn(`Skipping row due to missing ID for type ${type}:`, row);
+                    console.warn(`Fila sin ${idKey}, saltando:`, row);
                     continue;
                 }
-                addBatch.set(collectionRef.doc(docId), row);
+                if (type === 'inventory') {
+                    batch.set(collectionRef.doc(docId), {
+                        rubro: row['Rubro'] || '',
+                        sku: row['SKU'] || '',
+                        segmento: row['Segmento'] || '',
+                        producto: row['Producto'] || '',
+                        presentacion: row['Presentacion'] || '',
+                        cantidad: parseInt(row['Cantidad']) || 0,
+                        precio: parseFloat(row['Precio']) || 0
+                    });
+                } else if (type === 'vehicles') {
+                    batch.set(collectionRef.doc(docId), {
+                        plate: row['Plate'] || '',
+                        name: row['Name'] || '',
+                        brand: row['Brand'] || '',
+                        model: row['Model'] || ''
+                    });
+                }
             }
-            await addBatch.commit();
-            console.log(`[handleFileUpload] New ${type} documents added.`);
+            await batch.commit();
             _showMessageModal(`${type}.csv cargado y guardado exitosamente en Firestore.`);
+            await _fetchDataFromFirestore(); // Re-fetch to update the main app's data
+            _setScreenAndRender('archivosAdmin'); // Go back to admin files screen
         } catch (error) {
-            console.error(`Error al cargar archivo ${type}.csv a Firestore:`, error);
-            _showMessageModal(`Error al cargar archivo ${type}.csv. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.`);
+            console.error(`Error al cargar archivo CSV de ${type} a Firestore:`, error);
+            _showMessageModal(`Error al cargar archivo de ${type}. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.`);
         }
     };
     reader.readAsText(file);
-};
-
-export const downloadExistingCSV = (filename) => {
-    let csvContent = '';
-    let dataToDownload = [];
-    let headers = [];
-
-    if (filename === 'inventario.csv') {
-        dataToDownload = _inventory;
-        headers = ['sku', 'rubro', 'segmento', 'producto', 'presentacion', 'cantidad', 'precio'];
-    } else if (filename === 'vehiculos.csv') {
-        dataToDownload = _vehicles;
-        headers = ['plate', 'model', 'capacity', 'assignedUser'];
-    } else if (filename.startsWith('carga_')) {
-        const recordId = filename.replace('carga_', '').replace('.csv', '');
-        const record = loadRecords.find(r => r.docId === recordId);
-        if (record) {
-            csvContent = `Fecha:,${record.date}\nCamión:,${record.truckPlate}\nCargador:,${record.loaderEmail}\n\nSKU,Producto,Presentacion,Cantidad Cargada,Precio\n` +
-                         record.items.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadCargada},${item.precio.toFixed(2)}`).join('\n');
-        } else {
-            _showMessageModal(`No se encontró el registro de carga para el archivo: ${filename}`);
-            return;
-        }
-    } else if (filename.startsWith('traslado_')) {
-        const recordId = filename.replace('traslado_', '').replace('.csv', '');
-        const record = transferRecords.find(r => r.docId === recordId);
-        if (record) {
-            csvContent = `Fecha:,${record.date}\nCamión Origen:,${record.sourceTruckPlate}\nCamión Destino:,${record.destinationTruckPlate}\nUsuario:,${record.transferringUserEmail}\n\nSKU,Producto,Presentacion,Cantidad Transferida,Precio\n` +
-                         record.items.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadTransferida},${item.price.toFixed(2)}`).join('\n');
-        } else {
-            _showMessageModal(`No se encontró el registro de transbordo para el archivo: ${filename}`);
-            return;
-        }
-    } else {
-        _showMessageModal(`Tipo de archivo no reconocido para descarga: ${filename}`);
-        return;
-    }
-
-    if (!csvContent) { // If it's not a special case handled above
-        csvContent = toCSV(dataToDownload, headers); // Assuming toCSV is available or passed
-    }
-    triggerCSVDownload(filename, csvContent); // Assuming triggerCSVDownload is available or passed
-};
-
-// Helper for CSV download (assuming it's passed from index.html init)
-let toCSV;
-let triggerCSVDownload;
-export const setCsvHelpers = (csvToFunc, csvTriggerFunc) => {
-    toCSV = csvToFunc;
-    triggerCSVDownload = csvTriggerFunc;
 };
