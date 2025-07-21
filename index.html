@@ -2529,7 +2529,8 @@
         const db = firebase.firestore();
 
         // Inicializar el módulo de gestión de clientes con la instancia de Firestore
-        clientManagement.init(db);
+        // MODIFICACIÓN CLAVE AQUÍ: Pasar setScreenAndRender al módulo clientManagement
+        clientManagement.init(db, setScreenAndRender);
 
         firebase.firestore().enablePersistence()
             .then(() => console.log("[Firestore] Persistencia offline de Firestore habilitada."))
