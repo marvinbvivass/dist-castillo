@@ -231,38 +231,7 @@
         // Importar el módulo de gestión de clientes
         import * as clientManagement from './clientManagement.js';
 
-        // --- Configuración de Firebase ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
-            authDomain: "dist-castillo.firebaseapp.com",
-            projectId: "dist-castillo",
-            storageBucket: "dist-castillo.firebasestorage.app",
-            messagingSenderId: "249846475959",
-            appId: "1:249846475959:web:066c3fbca65ca39655af132",
-            measurementId: "G-V56MBM5YT9"
-        };
-
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-
-        // Inicializar el módulo de gestión de clientes con la instancia de Firestore
-        clientManagement.init(db);
-
-        firebase.firestore().enablePersistence()
-            .then(() => console.log("[Firestore] Persistencia offline de Firestore habilitada."))
-            .catch((err) => {
-                if (err.code == 'failed-precondition') {
-                    console.warn("[Firestore] La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.", err);
-                } else if (err.code == 'unimplemented') {
-                    console.warn("[Firestore] El navegador actual no soporta la persistencia offline de Firestore.", err);
-                } else {
-                    console.error("[Firestore] Error al habilitar la persistencia offline de Firestore:", err);
-                }
-            });
-
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
-        // 'clients' y 'zonesData', 'sectorsData' ahora se gestionan en clientManagement.js
         let inventory = [];
         let vendors = [];
         let dailySales = [];
@@ -271,14 +240,10 @@
         let users = [];
         let loadRecords = [];
         let transferRecords = [];
-
-        // Global variable to hold the unsubscribe function for the user's truck inventory listener
-        let truckInventoryUnsubscribe = null;
-        // Global variable to hold the unsubscribe function for the admin's selected truck inventory listener
-        let adminTruckInventoryUnsubscribe = null;
+        let truckInventoryUnsubscribe = null; // Global variable to hold the unsubscribe function for the user's truck inventory listener
+        let adminTruckInventoryUnsubscribe = null; // Global variable to hold the unsubscribe function for the admin's selected truck inventory listener
 
         // Datos iniciales de ejemplo (se usarán para poblar Firestore si está vacío)
-        // (Se mantienen para referencia, pero se asume que Firestore los manejará)
         const initialInventory = [
             { rubro: 'Cerveceria', sku: '2364', segmento: 'cerveza', producto: 'solera verde', presentacion: '1/4', cantidad: 180, precio: 23 },
             { rubro: 'Cerveceria', sku: '7458', segmento: 'cerveza', producto: 'ligth', presentacion: '1/4', cantidad: 180, precio: 19.8 },
@@ -308,111 +273,6 @@
             'default': './images/no-image.png'
         };
 
-        // --- Funciones de Ayuda ---
-        const getCurrentDateFormatted = () => {
-            const today = new Date();
-            const day = String(today.getDate()).padStart(2, '0');
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const year = today.getFullYear();
-            return `${day}${month}${year}`;
-        };
-
-        // Nueva función para disparar la descarga de un CSV con contenido dado
-        const triggerCSVDownload = (filename, csvContent) => {
-            if (!csvContent) {
-                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                return;
-            }
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            } else {
-                showMessageModal('La descarga de archivos no es compatible con este navegador.');
-            }
-        };
-
-        // Función para descargar CSVs existentes (cambiado de downloadCSV a downloadExistingCSV)
-        const downloadExistingCSV = (filename) => {
-            let csvContent = '';
-            const findContent = (arr, key, val) => arr.find(record => record[key] === val);
-
-            const loadRecord = findContent(loadRecords, 'fileName', filename);
-            const transferRecord = findContent(transferRecords, 'fileName', filename);
-            const saleRecord = findContent(dailySales, 'fileName', filename);
-
-            if (loadRecord) {
-                csvContent = loadRecord.rawCSV;
-            } else if (transferRecord) {
-                csvContent = transferRecord.rawCSV;
-            } else if (saleRecord) {
-                csvContent = saleRecord.rawCSV;
-            } else {
-                let dataToDownload = [];
-                let headers = [];
-                switch (filename) {
-                    case 'clientes.csv':
-                        // Delegar a clientManagement para descargar clientes
-                        clientManagement.downloadClientsCSV();
-                        return; // Exit here as clientManagement handles the download
-                    case 'inventario.csv':
-                        dataToDownload = inventory.map(i => ({ Rubro: i.rubro, Sku: i.sku, Segmento: i.segmento, Producto: i.producto, Presentacion: i.presentacion, Cantidad: i.cantidad, Precio: i.precio }));
-                        headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
-                        break;
-                    case 'vendedor.csv':
-                        dataToDownload = vendors.map(v => ({ Name: v.name, Category: v.category }));
-                        headers = ['Name', 'Category'];
-                        break;
-                    case 'vehiculos.csv':
-                        dataToDownload = vehicles.map(v => ({ Plate: v.plate, Name: v.name, Brand: v.brand, Model: v.model }));
-                        headers = ['Plate', 'Name', 'Brand', 'Model'];
-                        break;
-                    default:
-                        showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                        return;
-                }
-                csvContent = toCSV(dataToDownload, headers);
-            }
-            triggerCSVDownload(filename, csvContent);
-        };
-
-        const parseCSV = (csvString) => {
-            const lines = csvString.split('\n').filter(line => line.trim() !== '');
-            if (lines.length === 0) return [];
-            const headers = lines[0].split(',').map(header => header.trim());
-            return lines.slice(1).map(currentLine => {
-                const data = currentLine.split(',');
-                return headers.reduce((obj, header, j) => {
-                    obj[header] = data[j] ? data[j].trim() : '';
-                    return obj;
-                }, {});
-            });
-        };
-
-        const toCSV = (data, headers) => {
-            if (!data || data.length === 0) return '';
-            const actualHeaders = headers || Object.keys(data[0]);
-            const csvRows = [actualHeaders.join(',')];
-            for (const row of data) {
-                const values = actualHeaders.map(header => {
-                    const val = row[header];
-                    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-                        return `"${val.replace(/"/g, '""')}"`;
-                    }
-                    return typeof val === 'number' ? val.toString() : val;
-                });
-                csvRows.push(values.join(','));
-            }
-            return csvRows.join('\n');
-        };
-
         // --- Estado Global de la Aplicación ---
         let screen = 'login';
         let saleQuantities = {};
@@ -439,15 +299,45 @@
         let allTruckInventories = {};
         let selectedDestinationTruck = null;
         let transferQuantities = {};
-        // Variables de estado de cliente ahora en clientManagement.js
-        // Variables de estado de zonas y sectores ahora en clientManagement.js
-
+        let inventorySearchTermUser = ''; // Para la búsqueda en el inventario del usuario
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
         const isUser = () => currentUserData.role === 'user';
 
-        // --- Funciones de Modales ---
+        // --- Componentes Reutilizables de UI (Globales) ---
+        const createScreenContainer = (title, content, className = '') => `
+            <div class="screen-container bg-white rounded-xl m-2 shadow-md ${className}">
+                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">${title}</h2>
+                ${content}
+            </div>
+        `;
+
+        const createButton = (text, onClick, className = '') => `
+            <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" onclick="${onClick}">${text}</button>
+        `;
+
+        const createInput = (id, placeholder, value = '', type = 'text', disabled = false, onChange = '') => `
+            <input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} onchange="${onChange}">
+        `;
+
+        const createSelect = (id, options, selectedValue, onChange = '', placeholder = '-- Seleccione --') => `
+            <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="${onChange}">
+                <option value="">${placeholder}</option>
+                ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
+            </select>
+        `;
+
+        const createTable = (headers, rowsHtml, id = '') => `
+            <div class="table-container mb-5">
+                <table>
+                    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+                    <tbody id="${id}">${rowsHtml}</tbody>
+                </table>
+            </div>
+        `;
+
+        // --- Funciones de Modales (Globales) ---
         const showMessageModal = (message) => {
             messageModalText = message;
             showMessageModalState = true;
@@ -503,268 +393,83 @@
             `;
         };
 
-        // --- Lógica de Autenticación de Firebase ---
-        const handleAuth = async (isRegister) => {
-            const email = document.getElementById(`${isRegister ? 'register' : 'login'}Email`).value;
-            const password = document.getElementById(`${isRegister ? 'register' : 'login'}Password`).value;
+        // --- Funciones de Ayuda Generales ---
+        const getCurrentDateFormatted = () => {
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const year = today.getFullYear();
+            return `${day}${month}${year}`;
+        };
 
-            if (!email || !password) {
-                showMessageModal('Por favor, ingresa un correo electrónico y una contraseña.');
+        const triggerCSVDownload = (filename, csvContent) => {
+            if (!csvContent) {
+                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
                 return;
             }
-
-            try {
-                let userCredential;
-                if (isRegister) {
-                    userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                    await db.collection('users').doc(userCredential.user.uid).set({
-                        email: userCredential.user.email,
-                        role: 'user',
-                        assignedTruckPlate: null,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    showMessageModal(`Registro exitoso para ${userCredential.user.email}! Tu rol es "user". Un administrador deberá asignarte un camión para que puedas realizar ventas.`);
-                } else {
-                    userCredential = await auth.signInWithEmailAndPassword(email, password);
-                }
-                // onAuthStateChanged se encargará de cargar los datos del usuario y redirigir
-            } catch (error) {
-                showMessageModal(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}: ${error.message}`);
-                console.error(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}:`, error);
-            }
-        };
-
-        const handleLogout = async () => {
-            try {
-                await auth.signOut();
-                showMessageModal('Sesión cerrada correctamente.');
-                setScreenAndRender('login');
-            } catch (error) {
-                showMessageModal(`Error al cerrar sesión: ${error.message}`);
-                console.error("Error al cerrar sesión:", error);
-            }
-        };
-
-        auth.onAuthStateChanged(async (user) => {
-            console.log('[Auth State Changed] User:', user ? user.email : 'No user');
-            if (user) {
-                currentUser = user;
-                try {
-                    const userDoc = await db.collection('users').doc(user.uid).get();
-                    currentUserData = userDoc.exists ? userDoc.data() : { email: user.email, role: 'user', assignedTruckPlate: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
-                    if (!userDoc.exists) {
-                        console.log('[Auth State Changed] Creating new user document in Firestore for:', user.email);
-                        await db.collection('users').doc(user.uid).set(currentUserData);
-                    }
-                    console.log('[Auth State Changed] Current User Data:', currentUserData);
-                } catch (error) {
-                    console.error('[Firestore] Error al cargar el perfil del usuario:', error);
-                    showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
-                    currentUserData = { role: 'user', assignedTruckPlate: null };
-                }
-                console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
-                await fetchDataFromFirestore(); // Fetch other data
-                setupTruckInventoryListener(); // Setup real-time listener for user's truck inventory
-
-                if (screen === 'login' || screen === 'register') {
-                    console.log('[Auth State Changed] Redirecting to main screen.');
-                    setScreenAndRender('main');
-                } else {
-                    console.log('[Auth State Changed] Re-rendering current screen.');
-                    render();
-                }
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
             } else {
-                currentUser = null;
-                currentUserData = { role: 'guest', assignedTruckPlate: null };
-                // Unsubscribe when user logs out
-                if (truckInventoryUnsubscribe) {
-                    truckInventoryUnsubscribe();
-                    truckInventoryUnsubscribe = null;
-                    console.log('[Firestore Listener] Unsubscribed from user truck inventory listener on logout.');
-                }
-                if (adminTruckInventoryUnsubscribe) { // Also unsubscribe admin listener on general logout
-                    adminTruckInventoryUnsubscribe();
-                    adminTruckInventoryUnsubscribe = null;
-                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
-                }
-                [inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords] = [[], [], [], [], [], [], [], []];
-                // clientManagement.js will handle clearing its own client data
-                if (screen !== 'login' && screen !== 'register') {
-                    console.log('[Auth State Changed] Redirecting to login screen (no user).');
-                    setScreenAndRender('login');
-                } else {
-                    console.log('[Auth State Changed] Staying on login/register screen.');
-                    render();
-                }
-            }
-        });
-
-        // --- Funciones de Carga de Datos desde Firestore ---
-        const fetchDataFromFirestore = async () => {
-            console.log('[fetchDataFromFirestore] Starting data fetch...');
-            try {
-                const fetchCollection = async (collectionName, initialData, idKey, defaultDocData = {}) => {
-                    const snapshot = await db.collection(collectionName).get();
-                    if (snapshot.empty) {
-                        console.log(`[fetchCollection] Collection '${collectionName}' is empty. Populating with initial data.`);
-                        for (const item of initialData) {
-                            await db.collection(collectionName).doc(item[idKey]).set(item);
-                            if (collectionName === 'vehicles') {
-                                // Ensure truck_inventories are initialized only once per vehicle
-                                const truckInvDoc = await db.collection('truck_inventories').doc(item.plate).get();
-                                if (!truckInvDoc.exists) {
-                                    await db.collection('truck_inventories').doc(item.plate).set({ items: [] });
-                                }
-                            }
-                        }
-                        return initialData;
-                    } else {
-                        console.log(`[fetchCollection] Collection '${collectionName}' has data. Fetching existing data.`);
-                        return snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }));
-                    }
-                };
-
-                // Fetch clients, zones, and sectors via clientManagement
-                await clientManagement.fetchClientData();
-
-                inventory = await fetchCollection('inventory', initialInventory, 'sku');
-                vendors = await fetchCollection('vendors', initialVendors, 'name', { name: '', category: '' });
-                vehicles = await fetchCollection('vehicles', initialVehicles, 'plate');
-
-                const usersSnapshot = await db.collection('users').get();
-                users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-                console.log('[fetchDataFromFirestore] Users fetched:', users.length);
-
-                // currentTruckInventory is now managed by the onSnapshot listener, not fetched here.
-
-                const dailySalesSnapshot = await db.collection('dailySales').get();
-                dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                console.log('[fetchDataFromFirestore] Daily Sales fetched:', dailySales.length);
-
-                if (isAdmin()) {
-                    console.log('[fetchDataFromFirestore] User is admin, fetching all load records.');
-                    const loadRecordsSnapshot = await db.collection('loadRecords').get();
-                    loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                } else {
-                    loadRecords = [];
-                    console.log('[fetchDataFromFirestore] User is not admin, not fetching all load records.');
-                }
-
-                if (isAdmin()) {
-                    console.log('[fetchDataFromFirestore] User is admin, fetching all transfer records.');
-                    const transferRecordsSnapshot = await db.collection('transferRecords').get();
-                    transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                } else if (isUser() && currentUser) {
-                    console.log(`[fetchDataFromFirestore] User is regular, fetching transfer records for user: ${currentUser.uid}`);
-                    const userTransferRecordsSnapshot = await db.collection('transferRecords').where('userId', '==', currentUser.uid).get();
-                    transferRecords = userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
-                } else {
-                    transferRecords = [];
-                    console.log('[fetchDataFromFirestore] Not fetching transfer records (guest or no user).');
-                }
-
-                if (!vendors.some(v => v.name === selectedVendor)) {
-                    selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
-                    localStorage.setItem('selectedVendor', selectedVendor);
-                    console.log('[fetchDataFromFirestore] Adjusted selectedVendor:', selectedVendor);
-                }
-                console.log('[fetchDataFromFirestore] Data fetch completed successfully.');
-            } catch (error) {
-                console.error('[Firestore] Error al cargar datos de Firestore:', error);
-                showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                // Revert to initial data for non-client related collections
-                [inventory, vendors, vehicles, dailySales, currentTruckInventory, users, loadRecords, transferRecords] = [initialInventory, initialVendors, initialVehicles, [], [], [], [], []];
-                // clientManagement.js handles its own initial data if fetch fails
-            } finally {
-                console.log('[fetchDataFromFirestore] Calling render() from finally block.');
-                render(); // Initial render after main data fetch
+                showMessageModal('La descarga de archivos no es compatible con este navegador.');
             }
         };
 
-        const setupTruckInventoryListener = () => {
-            // Unsubscribe from any existing user listener
-            if (truckInventoryUnsubscribe) {
-                truckInventoryUnsubscribe();
-                truckInventoryUnsubscribe = null;
-                console.log('[Firestore Listener] Unsubscribed from previous user truck inventory listener.');
-            }
+        const parseCSV = (csvString) => {
+            const lines = csvString.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0) return [];
+            const headers = lines[0].split(',').map(header => header.trim());
+            return lines.slice(1).map(currentLine => {
+                const data = currentLine.split(',');
+                return headers.reduce((obj, header, j) => {
+                    obj[header] = data[j] ? data[j].trim() : '';
+                    return obj;
+                }, {});
+            });
+        };
 
-            if (currentUserData.assignedTruckPlate) {
-                const truckInventoryDocRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
-                console.log(`[Firestore Listener] Setting up onSnapshot for user truck inventory: ${currentUserData.assignedTruckPlate}`);
-
-                truckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
-                    if (docSnapshot.exists) {
-                        currentTruckInventory = docSnapshot.data().items || [];
-                        console.log(`[Firestore Listener] User truck inventory updated via snapshot for ${currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
-                    } else {
-                        currentTruckInventory = [];
-                        console.log(`[Firestore Listener] User truck inventory document for ${currentUserData.assignedTruckPlate} does not exist or is empty.`);
+        const toCSV = (data, headers) => {
+            if (!data || data.length === 0) return '';
+            const actualHeaders = headers || Object.keys(data[0]);
+            const csvRows = [actualHeaders.join(',')];
+            for (const row of data) {
+                const values = actualHeaders.map(header => {
+                    const val = row[header];
+                    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+                        return `"${val.replace(/"/g, '""')}"`;
                     }
-                    // Re-render only if on a screen that displays truck inventory, or if it's the main screen
-                    if (screen === 'inventario' || screen === 'venta' || screen === 'transferInventory' || screen === 'main') {
-                        render();
-                    }
-                }, error => {
-                    console.error('[Firestore Listener] Error listening to user truck inventory:', error);
-                    showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
+                    return typeof val === 'number' ? val.toString() : val;
                 });
-            } else {
-                currentTruckInventory = [];
-                console.log('[Firestore Listener] No truck assigned for current user, no listener set up.');
+                csvRows.push(values.join(','));
             }
+            return csvRows.join('\n');
         };
 
-        const setupAdminTruckInventoryListener = (plate) => {
-            // Unsubscribe from any existing admin listener
-            if (adminTruckInventoryUnsubscribe) {
+        // --- Funciones de Pantalla (Globales) ---
+        const setScreenAndRender = (newScreen) => {
+            console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
+            // Clean up admin truck inventory listener if navigating away from admin inventory screens
+            if (adminTruckInventoryUnsubscribe && newScreen !== 'adminVehicleInventory') {
                 adminTruckInventoryUnsubscribe();
                 adminTruckInventoryUnsubscribe = null;
-                console.log('[Firestore Listener] Unsubscribed from previous admin truck inventory listener.');
+                console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
             }
-
-            if (plate) {
-                const truckInventoryDocRef = db.collection('truck_inventories').doc(plate);
-                console.log(`[Firestore Listener] Setting up onSnapshot for admin selected truck inventory: ${plate}`);
-
-                adminTruckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
-                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
-                    if (!displayDiv) {
-                        console.warn('[Firestore Listener] Display div for admin truck inventory not found.');
-                        return;
-                    }
-
-                    if (docSnapshot.exists) {
-                        const displayInventory = docSnapshot.data().items || [];
-                        console.log(`[Firestore Listener] Admin selected truck inventory updated via snapshot for ${plate}:`, displayInventory.length, 'items.');
-                        if (displayInventory.length === 0) {
-                            displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>`;
-                        } else {
-                            const tableRows = displayInventory.map(item => `
-                                <td>${item.rubro}</td><td>${item.sku}</td><td>${item.producto}</td>
-                                <td>${item.presentacion}</td><td>${item.quantity}</td><td>$${item.price.toFixed(2)}</td>
-                            `).map(row => `<tr>${row}</tr>`).join('');
-                            displayDiv.innerHTML = createTable(['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad', 'Precio'], tableRows, 'admin-truck-inventory-display-body');
-                        }
-                    } else {
-                        displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} no existe o está vacío.</p>`;
-                        console.log(`[Firestore Listener] Admin selected truck inventory document for ${plate} does not exist or is empty.`);
-                    }
-                }, error => {
-                    console.error('[Firestore Listener] Error listening to admin selected truck inventory:', error);
-                    showMessageModal('Error en la sincronización del inventario del camión para el administrador. Puede que los datos no estén actualizados.');
-                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
-                    if (displayDiv) {
-                        displayDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
-                    }
-                });
-            } else {
-                console.log('[Firestore Listener] No truck selected for admin, no listener set up.');
+            // Clean up client-related modals if navigating away from client screen or sales screen
+            if (newScreen !== 'clientes' && newScreen !== 'venta') {
+                clientManagement.closeAllClientModals();
             }
+            screen = newScreen;
+            render();
         };
 
-
-        // --- Función Principal de Renderizado ---
         const render = () => {
             console.log(`[Render] Current screen to render: ${screen}`);
             appRoot.innerHTML = '';
@@ -808,52 +513,17 @@
             appRoot.innerHTML += clientManagement.renderManageZonesSectorsModal();
             appRoot.innerHTML += clientManagement.renderClientPickerModal();
             console.log('[Render] Render cycle completed.');
+
+            // Call update functions for modals that might be open
+            if (clientManagement.showManageZonesSectorsModalState) {
+                clientManagement.updateManageZonesSectorsModalContent();
+            }
+            if (clientManagement.showClientPickerModal) {
+                clientManagement.updateClientPickerList();
+            }
         };
 
-        // --- Componentes Reutilizables de UI ---
-        const createScreenContainer = (title, content, className = '') => `
-            <div class="screen-container bg-white rounded-xl m-2 shadow-md ${className}">
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">${title}</h2>
-                ${content}
-            </div>
-        `;
-
-        const createButton = (text, onClick, className = '') => `
-            <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" onclick="${onClick}">${text}</button>
-        `;
-
-        const createInput = (id, placeholder, value = '', type = 'text', disabled = false, onChange = '') => `
-            <input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} onchange="${onChange}">
-        `;
-
-        const createSelect = (id, options, selectedValue, onChange = '', placeholder = '-- Seleccione --') => `
-            <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" onchange="${onChange}">
-                <option value="">${placeholder}</option>
-                ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
-            </select>
-        `;
-
-        const createTable = (headers, rowsHtml, id = '') => `
-            <div class="table-container mb-5">
-                <table>
-                    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-                    <tbody id="${id}">${rowsHtml}</tbody>
-                </table>
-            </div>
-        `;
-
-        // Hacer que estas funciones sean globales para que clientManagement.js pueda llamarlas
-        window.createScreenContainer = createScreenContainer;
-        window.createButton = createButton;
-        window.createInput = createInput;
-        window.createSelect = createSelect;
-        window.createTable = createTable;
-        window.showMessageModal = showMessageModal;
-        window.showConfirmationModal = showConfirmationModal;
-        window.setScreenAndRender = setScreenAndRender;
-        window.productImages = productImages; // Necesario para imágenes de productos en tablas
-
-        // --- Pantallas ---
+        // --- Definición de todas las pantallas ---
         const renderLoginScreen = () => {
             console.log('[renderLoginScreen] Rendering login screen.');
             appRoot.innerHTML = createScreenContainer('Iniciar Sesión', `
@@ -1462,16 +1132,6 @@
             }
         };
 
-        // La pantalla de clientes y sus funciones ahora están en clientManagement.js
-        // renderClientesScreen, filterClientsForClientesScreen, updateClientTableForClientesScreen,
-        // toggleAddClientForm, handleAddClient, openEditClientModal, closeEditClientModal,
-        // handleEditClientChange, saveEditedClient, renderEditClientModal,
-        // openManageZonesSectorsModal, closeManageZonesSectorsModal, renderManageZonesSectorsModal,
-        // updateZonesList, updateSectorsList, addZone, editZone, cancelEditZone, saveEditedZone,
-        // showDeleteZoneConfirmation, deleteZone, addSector, editSector, cancelEditSector,
-        // saveEditedSector, showDeleteSectorConfirmation, deleteSector
-        // Todas estas funciones se han movido a clientManagement.js
-
         const renderVentaScreen = () => {
             console.log('[renderVentaScreen] Rendering venta screen.');
             appRoot.innerHTML = createScreenContainer('VENTA', `
@@ -1642,9 +1302,6 @@
                 // If it's a network error, the sale is still locally present, so no need to revert UI.
             }
         };
-
-        // Funciones de modal de selección de cliente ahora en clientManagement.js
-        // toggleClientPickerModal, renderClientPickerModal, updateClientPickerList, filterClientsForPicker
 
         const resetVentaState = () => {
             clientManagement.selectedClientForSale = null; // Resetear el cliente seleccionado a través del módulo
@@ -2068,7 +1725,7 @@
                 <p class="text-base text-center my-5 text-gray-600">Esta sección permite cargar y descargar archivos de datos maestros.</p>
                 <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
                     <h3 class="text-xl font-bold mb-4 text-sky-700">Cargar Archivos CSV</h3>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadClientsCsv" accept=".csv" onchange="clientManagement.handleClientFileUpload(event)"></div></div>
+                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadClientsCsv" accept=".csv" onchange="handleClientFileUpload(event)"></div></div>
                     <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadInventoryCsv" accept=".csv" onchange="handleFileUpload(event, 'inventory')"></div></div>
                     <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadVendorsCsv" accept=".csv" onchange="handleFileUpload(event, 'vendors')"></div></div>
                     <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label><div class="file-input-wrapper"><button class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-2 px-4 rounded-md w-full">Seleccionar archivo</button><input type="file" id="uploadVehiclesCsv" accept=".csv" onchange="handleFileUpload(event, 'vehicles')"></div></div>
@@ -2298,7 +1955,7 @@
         };
 
         const handleFileUpload = async (event, type) => {
-            if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden cargar archivos CSV.'); return; }
+            // This function is now only for inventory, vendors, vehicles. Client upload is in clientManagement.
             const file = event.target.files[0];
             if (!file) return;
 
@@ -2311,7 +1968,6 @@
                     existingSnapshot.docs.forEach(doc => doc.ref.delete());
 
                     for (const row of parsedData) {
-                        // Client CSV upload is handled by clientManagement.handleClientFileUpload
                         if (type === 'inventory') {
                             await collectionRef.doc(row.Sku).set({ rubro: row.Rubro, sku: row.Sku, segmento: row.Segmento, producto: row.Producto, presentacion: row.Presentacion, cantidad: parseInt(row.Cantidad) || 0, precio: parseFloat(row.Precio) || 0 });
                         } else if (type === 'vendors') {
@@ -2334,6 +1990,50 @@
                 }
             };
             reader.readAsText(file);
+        };
+
+        // Función para descargar CSVs existentes (cambiado de downloadCSV a downloadExistingCSV)
+        const downloadExistingCSV = (filename) => {
+            let csvContent = '';
+            const findContent = (arr, key, val) => arr.find(record => record[key] === val);
+
+            const loadRecord = findContent(loadRecords, 'fileName', filename);
+            const transferRecord = findContent(transferRecords, 'fileName', filename);
+            const saleRecord = findContent(dailySales, 'fileName', filename);
+
+            if (loadRecord) {
+                csvContent = loadRecord.rawCSV;
+            } else if (transferRecord) {
+                csvContent = transferRecord.rawCSV;
+            } else if (saleRecord) {
+                csvContent = saleRecord.rawCSV;
+            } else {
+                let dataToDownload = [];
+                let headers = [];
+                switch (filename) {
+                    case 'clientes.csv':
+                        // Delegar a clientManagement para descargar clientes
+                        clientManagement.downloadClientsCSV();
+                        return; // Exit here as clientManagement handles the download
+                    case 'inventario.csv':
+                        dataToDownload = inventory.map(i => ({ Rubro: i.rubro, Sku: i.sku, Segmento: i.segmento, Producto: i.producto, Presentacion: i.presentacion, Cantidad: i.cantidad, Precio: i.precio }));
+                        headers = ['Rubro', 'Sku', 'Segmento', 'Producto', 'Presentacion', 'Cantidad', 'Precio'];
+                        break;
+                    case 'vendedor.csv':
+                        dataToDownload = vendors.map(v => ({ Name: v.name, Category: v.category }));
+                        headers = ['Name', 'Category'];
+                        break;
+                    case 'vehiculos.csv':
+                        dataToDownload = vehicles.map(v => ({ Plate: v.plate, Name: v.name, Brand: v.brand, Model: v.model }));
+                        headers = ['Plate', 'Name', 'Brand', 'Model'];
+                        break;
+                    default:
+                        showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+                        return;
+                }
+                csvContent = toCSV(dataToDownload, headers);
+            }
+            triggerCSVDownload(filename, csvContent);
         };
 
         const renderVehiclesScreen = () => {
@@ -2804,21 +2504,308 @@
             }
         };
 
-        const setScreenAndRender = (newScreen) => {
-            console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
-            // Clean up admin truck inventory listener if navigating away from admin inventory screens
-            if (adminTruckInventoryUnsubscribe && newScreen !== 'adminVehicleInventory') {
+        // --- Configuración de Firebase ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
+            authDomain: "dist-castillo.firebaseapp.com",
+            projectId: "dist-castillo",
+            storageBucket: "dist-castillo.firebasestorage.app",
+            messagingSenderId: "249846475959",
+            appId: "1:249846475959:web:066c3fbca65ca39655af132",
+            measurementId: "G-V56MBM5YT9"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // Hacer que estas funciones sean globales para que clientManagement.js pueda llamarlas
+        window.createScreenContainer = createScreenContainer;
+        window.createButton = createButton;
+        window.createInput = createInput;
+        window.createSelect = createSelect;
+        window.createTable = createTable;
+        window.showMessageModal = showMessageModal;
+        window.showConfirmationModal = showConfirmationModal;
+        window.setScreenAndRender = setScreenAndRender;
+        window.productImages = productImages; // Necesario para imágenes de productos en tablas
+        window.updateVentaScreenContent = updateVentaScreenContent; // Necesario para que clientManagement actualice la pantalla de venta
+        window.triggerCSVDownload = triggerCSVDownload; // Necesario para que clientManagement descargue CSVs
+
+        // Inicializar el módulo de gestión de clientes con la instancia de Firestore
+        clientManagement.init(db);
+
+        firebase.firestore().enablePersistence()
+            .then(() => console.log("[Firestore] Persistencia offline de Firestore habilitada."))
+            .catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.warn("[Firestore] La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.", err);
+                } else if (err.code == 'unimplemented') {
+                    console.warn("[Firestore] El navegador actual no soporta la persistencia offline de Firestore.", err);
+                } else {
+                    console.error("[Firestore] Error al habilitar la persistencia offline de Firestore:", err);
+                }
+            });
+
+        // --- Funciones de Carga de Datos desde Firestore ---
+        const fetchDataFromFirestore = async () => {
+            console.log('[fetchDataFromFirestore] Starting data fetch...');
+            try {
+                const fetchCollection = async (collectionName, initialData, idKey, defaultDocData = {}) => {
+                    const snapshot = await db.collection(collectionName).get();
+                    if (snapshot.empty) {
+                        console.log(`[fetchCollection] Collection '${collectionName}' is empty. Populating with initial data.`);
+                        for (const item of initialData) {
+                            await db.collection(collectionName).doc(item[idKey]).set(item);
+                            if (collectionName === 'vehicles') {
+                                // Ensure truck_inventories are initialized only once per vehicle
+                                const truckInvDoc = await db.collection('truck_inventories').doc(item.plate).get();
+                                if (!truckInvDoc.exists) {
+                                    await db.collection('truck_inventories').doc(item.plate).set({ items: [] });
+                                }
+                            }
+                        }
+                        return initialData;
+                    } else {
+                        console.log(`[fetchCollection] Collection '${collectionName}' has data. Fetching existing data.`);
+                        return snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }));
+                    }
+                };
+
+                // Fetch clients, zones, and sectors via clientManagement
+                await clientManagement.fetchClientData();
+
+                inventory = await fetchCollection('inventory', initialInventory, 'sku');
+                vendors = await fetchCollection('vendors', initialVendors, 'name', { name: '', category: '' });
+                vehicles = await fetchCollection('vehicles', initialVehicles, 'plate');
+
+                const usersSnapshot = await db.collection('users').get();
+                users = usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+                console.log('[fetchDataFromFirestore] Users fetched:', users.length);
+
+                // currentTruckInventory is now managed by the onSnapshot listener, not fetched here.
+
+                const dailySalesSnapshot = await db.collection('dailySales').get();
+                dailySales = dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                console.log('[fetchDataFromFirestore] Daily Sales fetched:', dailySales.length);
+
+                if (isAdmin()) {
+                    console.log('[fetchDataFromFirestore] User is admin, fetching all load records.');
+                    const loadRecordsSnapshot = await db.collection('loadRecords').get();
+                    loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                } else {
+                    loadRecords = [];
+                    console.log('[fetchDataFromFirestore] User is not admin, not fetching all load records.');
+                }
+
+                if (isAdmin()) {
+                    console.log('[fetchDataFromFirestore] User is admin, fetching all transfer records.');
+                    const transferRecordsSnapshot = await db.collection('transferRecords').get();
+                    transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                } else if (isUser() && currentUser) {
+                    console.log(`[fetchDataFromFirestore] User is regular, fetching transfer records for user: ${currentUser.uid}`);
+                    const userTransferRecordsSnapshot = await db.collection('transferRecords').where('userId', '==', currentUser.uid).get();
+                    transferRecords = userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+                } else {
+                    transferRecords = [];
+                    console.log('[fetchDataFromFirestore] Not fetching transfer records (guest or no user).');
+                }
+
+                if (!vendors.some(v => v.name === selectedVendor)) {
+                    selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
+                    localStorage.setItem('selectedVendor', selectedVendor);
+                    console.log('[fetchDataFromFirestore] Adjusted selectedVendor:', selectedVendor);
+                }
+                console.log('[fetchDataFromFirestore] Data fetch completed successfully.');
+            } catch (error) {
+                console.error('[Firestore] Error al cargar datos de Firestore:', error);
+                showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+                // Revert to initial data for non-client related collections
+                [inventory, vendors, vehicles, dailySales, currentTruckInventory, users, loadRecords, transferRecords] = [initialInventory, initialVendors, initialVehicles, [], [], [], [], []];
+                // clientManagement.js handles its own initial data if fetch fails
+            } finally {
+                console.log('[fetchDataFromFirestore] Calling render() from finally block.');
+                render(); // Initial render after main data fetch
+            }
+        };
+
+        const setupTruckInventoryListener = () => {
+            // Unsubscribe from any existing user listener
+            if (truckInventoryUnsubscribe) {
+                truckInventoryUnsubscribe();
+                truckInventoryUnsubscribe = null;
+                console.log('[Firestore Listener] Unsubscribed from previous user truck inventory listener.');
+            }
+
+            if (currentUserData.assignedTruckPlate) {
+                const truckInventoryDocRef = db.collection('truck_inventories').doc(currentUserData.assignedTruckPlate);
+                console.log(`[Firestore Listener] Setting up onSnapshot for user truck inventory: ${currentUserData.assignedTruckPlate}`);
+
+                truckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
+                    if (docSnapshot.exists) {
+                        currentTruckInventory = docSnapshot.data().items || [];
+                        console.log(`[Firestore Listener] User truck inventory updated via snapshot for ${currentUserData.assignedTruckPlate}:`, currentTruckInventory.length, 'items.');
+                    } else {
+                        currentTruckInventory = [];
+                        console.log(`[Firestore Listener] User truck inventory document for ${currentUserData.assignedTruckPlate} does not exist or is empty.`);
+                    }
+                    // Re-render only if on a screen that displays truck inventory, or if it's the main screen
+                    if (screen === 'inventario' || screen === 'venta' || screen === 'transferInventory' || screen === 'main') {
+                        render();
+                    }
+                }, error => {
+                    console.error('[Firestore Listener] Error listening to user truck inventory:', error);
+                    showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
+                });
+            } else {
+                currentTruckInventory = [];
+                console.log('[Firestore Listener] No truck assigned for current user, no listener set up.');
+            }
+        };
+
+        const setupAdminTruckInventoryListener = (plate) => {
+            // Unsubscribe from any existing admin listener
+            if (adminTruckInventoryUnsubscribe) {
                 adminTruckInventoryUnsubscribe();
                 adminTruckInventoryUnsubscribe = null;
-                console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
+                console.log('[Firestore Listener] Unsubscribed from previous admin truck inventory listener.');
             }
-            // Clean up client-related modals if navigating away from client screen or sales screen
-            if (newScreen !== 'clientes' && newScreen !== 'venta') {
-                clientManagement.closeAllClientModals();
+
+            if (plate) {
+                const truckInventoryDocRef = db.collection('truck_inventories').doc(plate);
+                console.log(`[Firestore Listener] Setting up onSnapshot for admin selected truck inventory: ${plate}`);
+
+                adminTruckInventoryUnsubscribe = truckInventoryDocRef.onSnapshot(docSnapshot => {
+                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
+                    if (!displayDiv) {
+                        console.warn('[Firestore Listener] Display div for admin truck inventory not found.');
+                        return;
+                    }
+
+                    if (docSnapshot.exists) {
+                        const displayInventory = docSnapshot.data().items || [];
+                        console.log(`[Firestore Listener] Admin selected truck inventory updated via snapshot for ${plate}:`, displayInventory.length, 'items.');
+                        if (displayInventory.length === 0) {
+                            displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>`;
+                        } else {
+                            const tableRows = displayInventory.map(item => `
+                                <td>${item.rubro}</td><td>${item.sku}</td><td>${item.producto}</td>
+                                <td>${item.presentacion}</td><td>${item.quantity}</td><td>$${item.price.toFixed(2)}</td>
+                            `).map(row => `<tr>${row}</tr>`).join('');
+                            displayDiv.innerHTML = createTable(['Rubro', 'Sku', 'Producto', 'Presentación', 'Cantidad', 'Precio'], tableRows, 'admin-truck-inventory-display-body');
+                        }
+                    } else {
+                        displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} no existe o está vacío.</p>`;
+                        console.log(`[Firestore Listener] Admin selected truck inventory document for ${plate} does not exist or is empty.`);
+                    }
+                }, error => {
+                    console.error('[Firestore Listener] Error listening to admin selected truck inventory:', error);
+                    showMessageModal('Error en la sincronización del inventario del camión para el administrador. Puede que los datos no estén actualizados.');
+                    const displayDiv = document.getElementById('selected-vehicle-inventory-display');
+                    if (displayDiv) {
+                        displayDiv.innerHTML = `<p class="text-center text-red-600 text-lg py-4">Error al cargar el inventario del camión.</p>`;
+                    }
+                });
+            } else {
+                console.log('[Firestore Listener] No truck selected for admin, no listener set up.');
             }
-            screen = newScreen;
-            render();
         };
+
+        // --- Lógica de Autenticación de Firebase ---
+        const handleAuth = async (isRegister) => {
+            const email = document.getElementById(`${isRegister ? 'register' : 'login'}Email`).value;
+            const password = document.getElementById(`${isRegister ? 'register' : 'login'}Password`).value;
+
+            if (!email || !password) {
+                showMessageModal('Por favor, ingresa un correo electrónico y una contraseña.');
+                return;
+            }
+
+            try {
+                let userCredential;
+                if (isRegister) {
+                    userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    await db.collection('users').doc(userCredential.user.uid).set({
+                        email: userCredential.user.email,
+                        role: 'user',
+                        assignedTruckPlate: null,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    showMessageModal(`Registro exitoso para ${userCredential.user.email}! Tu rol es "user". Un administrador deberá asignarte un camión para que puedas realizar ventas.`);
+                } else {
+                    userCredential = await auth.signInWithEmailAndPassword(email, password);
+                }
+                // onAuthStateChanged se encargará de cargar los datos del usuario y redirigir
+            } catch (error) {
+                showMessageModal(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}: ${error.message}`);
+                console.error(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}:`, error);
+            }
+        };
+
+        const handleLogout = async () => {
+            try {
+                await auth.signOut();
+                showMessageModal('Sesión cerrada correctamente.');
+                setScreenAndRender('login');
+            } catch (error) {
+                showMessageModal(`Error al cerrar sesión: ${error.message}`);
+                console.error("Error al cerrar sesión:", error);
+            }
+        };
+
+        auth.onAuthStateChanged(async (user) => {
+            console.log('[Auth State Changed] User:', user ? user.email : 'No user');
+            if (user) {
+                currentUser = user;
+                try {
+                    const userDoc = await db.collection('users').doc(user.uid).get();
+                    currentUserData = userDoc.exists ? userDoc.data() : { email: user.email, role: 'user', assignedTruckPlate: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+                    if (!userDoc.exists) {
+                        console.log('[Auth State Changed] Creating new user document in Firestore for:', user.email);
+                        await db.collection('users').doc(user.uid).set(currentUserData);
+                    }
+                    console.log('[Auth State Changed] Current User Data:', currentUserData);
+                } catch (error) {
+                    console.error('[Firestore] Error al cargar el perfil del usuario:', error);
+                    showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
+                    currentUserData = { role: 'user', assignedTruckPlate: null };
+                }
+                console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
+                await fetchDataFromFirestore(); // Fetch other data
+                setupTruckInventoryListener(); // Setup real-time listener for user's truck inventory
+
+                if (screen === 'login' || screen === 'register') {
+                    console.log('[Auth State Changed] Redirecting to main screen.');
+                    setScreenAndRender('main');
+                } else {
+                    console.log('[Auth State Changed] Re-rendering current screen.');
+                    render();
+                }
+            } else {
+                currentUser = null;
+                currentUserData = { role: 'guest', assignedTruckPlate: null };
+                // Unsubscribe when user logs out
+                if (truckInventoryUnsubscribe) {
+                    truckInventoryUnsubscribe();
+                    truckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from user truck inventory listener on logout.');
+                }
+                if (adminTruckInventoryUnsubscribe) { // Also unsubscribe admin listener on general logout
+                    adminTruckInventoryUnsubscribe();
+                    adminTruckInventoryUnsubscribe = null;
+                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
+                }
+                [inventory, vendors, dailySales, vehicles, currentTruckInventory, users, loadRecords, transferRecords] = [[], [], [], [], [], [], [], []];
+                // clientManagement.js will handle clearing its own client data
+                if (screen !== 'login' && screen !== 'register') {
+                    console.log('[Auth State Changed] Redirecting to login screen (no user).');
+                    setScreenAndRender('login');
+                } else {
+                    console.log('[Auth State Changed] Staying on login/register screen.');
+                    render();
+                }
+            }
+        });
 
         if ('serviceWorker' in navigator) {
             document.addEventListener('DOMContentLoaded', () => {
