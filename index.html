@@ -286,7 +286,7 @@
 
         // Importar módulos
         import * as clientManagement from './clientManagement.js';
-        import * as inventoryManagement from './inventoryManagement.js'; // CORREGIDO: Eliminado el doble asterisco
+        import * as inventoryManagement from './inventoryManagement.js';
 
         // --- Datos de la aplicación (se cargarán desde Firestore) ---
         // Estas variables ahora son gestionadas por inventoryManagement y clientManagement
@@ -643,6 +643,9 @@
             if (clientManagement.showClientPickerModal) {
                 clientManagement.updateClientPickerList();
             }
+
+            // Attach event listeners after rendering
+            attachEventListeners();
         };
 
         // --- Definición de todas las pantallas ---
@@ -1028,7 +1031,7 @@
                         precio: item.precio
                     });
                 });
-                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update in place
+                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global inventory in place
                 console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
                 for (const date in salesByDate) {
@@ -1799,6 +1802,520 @@
             }
         });
 
+        // --- Event Listeners ---
+        function attachEventListeners() {
+            // Global modal close buttons
+            const messageModalCloseButton = document.getElementById('messageModalCloseButton');
+            if (messageModalCloseButton) {
+                messageModalCloseButton.onclick = hideMessageModal;
+            }
+
+            const confirmationModalConfirmButton = document.getElementById('confirmationModalConfirmButton');
+            if (confirmationModalConfirmButton) {
+                confirmationModalConfirmButton.onclick = () => hideConfirmationModal(true);
+            }
+
+            const confirmationModalCancelButton = document.getElementById('confirmationModalCancelButton');
+            if (confirmationModalCancelButton) {
+                confirmationModalCancelButton.onclick = () => hideConfirmationModal(false);
+            }
+
+            // Login/Register Screen
+            const loginButton = document.getElementById('loginButton');
+            if (loginButton) {
+                loginButton.onclick = () => handleAuth(false);
+            }
+
+            const registerButton = document.getElementById('registerButton');
+            if (registerButton) {
+                registerButton.onclick = () => handleAuth(true);
+            }
+
+            const registerLink = document.getElementById('registerLink');
+            if (registerLink) {
+                registerLink.onclick = (e) => { e.preventDefault(); setScreenAndRender('register'); };
+            }
+
+            const loginLink = document.getElementById('loginLink');
+            if (loginLink) {
+                loginLink.onclick = (e) => { e.preventDefault(); setScreenAndRender('login'); };
+            }
+
+            // Main Screen
+            const logoutButton = document.getElementById('logoutButton');
+            if (logoutButton) {
+                logoutButton.onclick = handleLogout;
+            }
+
+            const cargaSelectionButton = document.getElementById('cargaSelectionButton');
+            if (cargaSelectionButton) {
+                cargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
+            }
+
+            const adminInventorySelectionButton = document.getElementById('adminInventorySelectionButton');
+            if (adminInventorySelectionButton) {
+                adminInventorySelectionButton.onclick = () => setScreenAndRender('adminInventorySelection');
+            }
+
+            const userInventoryButton = document.getElementById('userInventoryButton');
+            if (userInventoryButton) {
+                userInventoryButton.onclick = () => setScreenAndRender('inventario');
+            }
+
+            const clientsButton = document.getElementById('clientsButton');
+            if (clientsButton) {
+                clientsButton.onclick = () => setScreenAndRender('clientes');
+            }
+
+            const ventaButton = document.getElementById('ventaButton');
+            if (ventaButton) {
+                ventaButton.onclick = () => setScreenAndRender('venta');
+            }
+
+            const cierreVentasButton = document.getElementById('cierreVentasButton');
+            if (cierreVentasButton) {
+                cierreVentasButton.onclick = () => setScreenAndRender('cierreVentas');
+            }
+
+            const archivosAdminButton = document.getElementById('archivosAdminButton');
+            if (archivosAdminButton) {
+                archivosAdminButton.onclick = () => setScreenAndRender('archivosAdmin');
+            }
+
+            const archivosVentaButton = document.getElementById('archivosVentaButton');
+            if (archivosVentaButton) {
+                archivosVentaButton.onclick = () => setScreenAndRender('archivosVenta');
+            }
+
+            const vehiclesButton = document.getElementById('vehiclesButton');
+            if (vehiclesButton) {
+                vehiclesButton.onclick = () => setScreenAndRender('vehicles');
+            }
+
+            const assignVehicleButton = document.getElementById('assignVehicleButton');
+            if (assignVehicleButton) {
+                assignVehicleButton.onclick = () => setScreenAndRender('assignVehicle');
+            }
+
+            const transferInventoryPasswordButton = document.getElementById('transferInventoryPasswordButton');
+            if (transferInventoryPasswordButton) {
+                transferInventoryPasswordButton.onclick = () => setScreenAndRender('transferInventoryPassword');
+            }
+
+            const adminTransferHistoryButton = document.getElementById('adminTransferHistoryButton');
+            if (adminTransferHistoryButton) {
+                adminTransferHistoryButton.onclick = () => setScreenAndRender('adminTransferHistory');
+            }
+
+            // Carga Selection Screen
+            const truckLoadingButton = document.getElementById('truckLoadingButton');
+            if (truckLoadingButton) {
+                truckLoadingButton.onclick = () => setScreenAndRender('truckLoading');
+            }
+
+            const loadHistoryButton = document.getElementById('loadHistoryButton');
+            if (loadHistoryButton) {
+                loadHistoryButton.onclick = () => setScreenAndRender('loadHistory');
+            }
+
+            const resetCargasInicialesPasswordButton = document.getElementById('resetCargasInicialesPasswordButton');
+            if (resetCargasInicialesPasswordButton) {
+                resetCargasInicialesPasswordButton.onclick = () => setScreenAndRender('resetCargasInicialesPassword');
+            }
+
+            const backToMainFromCargaSelection = document.getElementById('backToMainFromCargaSelection');
+            if (backToMainFromCargaSelection) {
+                backToMainFromCargaSelection.onclick = () => setScreenAndRender('main');
+            }
+
+            // Truck Receiving Screen
+            const loaderSelect = document.getElementById('loaderSelect');
+            if (loaderSelect) {
+                loaderSelect.onchange = (e) => inventoryManagement.handleLoaderSelection(e.target.value);
+            }
+
+            const truckSelect = document.getElementById('truckSelect');
+            if (truckSelect) {
+                truckSelect.onchange = (e) => inventoryManagement.handleTruckForReceivingSelection(e.target.value);
+            }
+
+            document.querySelectorAll('.receiving-quantity-input').forEach(input => {
+                input.oninput = (e) => inventoryManagement.handleReceivingQuantityChange(e.target.dataset.sku, e.target.value);
+            });
+
+            const loadMerchandiseButton = document.getElementById('loadMerchandiseButton');
+            if (loadMerchandiseButton) {
+                loadMerchandiseButton.onclick = () => inventoryManagement.showLoadMerchandiseConfirmation();
+            }
+
+            const backToCargaSelectionButton = document.getElementById('backToCargaSelectionButton');
+            if (backToCargaSelectionButton) {
+                backToCargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
+            }
+
+            // Load History Screen
+            const clearLoadHistoryButton = document.getElementById('clearLoadHistoryButton');
+            if (clearLoadHistoryButton) {
+                clearLoadHistoryButton.onclick = () => inventoryManagement.showClearLoadHistoryConfirmation();
+            }
+
+            const backToCargaSelectionFromLoadHistoryButton = document.getElementById('backToCargaSelectionFromLoadHistoryButton');
+            if (backToCargaSelectionFromLoadHistoryButton) {
+                backToCargaSelectionFromLoadHistoryButton.onclick = () => setScreenAndRender('cargaSelection');
+            }
+
+            document.querySelectorAll('.download-load-csv-button').forEach(button => {
+                button.onclick = (e) => downloadExistingCSV(`carga_${e.target.dataset.recordid}.csv`);
+            });
+
+            // User Inventory Screen
+            const inventorySearchInputUser = document.getElementById('inventorySearchInputUser');
+            if (inventorySearchInputUser) {
+                inventorySearchInputUser.oninput = (e) => inventoryManagement.filterInventoryForUserScreen(e.target.value);
+            }
+
+            const backToMainFromUserInventoryButton = document.getElementById('backToMainFromUserInventoryButton');
+            if (backToMainFromUserInventoryButton) {
+                backToMainFromUserInventoryButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Admin Inventory Selection Screen
+            const adminMainInventoryButton = document.getElementById('adminMainInventoryButton');
+            if (adminMainInventoryButton) {
+                adminMainInventoryButton.onclick = () => setScreenAndRender('adminMainInventory');
+            }
+
+            const adminVehicleInventoryButton = document.getElementById('adminVehicleInventoryButton');
+            if (adminVehicleInventoryButton) {
+                adminVehicleInventoryButton.onclick = () => setScreenAndRender('adminVehicleInventory');
+            }
+
+            const backToMainFromAdminInventorySelection = document.getElementById('backToMainFromAdminInventorySelection');
+            if (backToMainFromAdminInventorySelection) {
+                backToMainFromAdminInventorySelection.onclick = () => setScreenAndRender('main');
+            }
+
+            // Admin Main Inventory Screen
+            const backToAdminInventorySelectionButton = document.getElementById('backToAdminInventorySelectionButton');
+            if (backToAdminInventorySelectionButton) {
+                backToAdminInventorySelectionButton.onclick = () => setScreenAndRender('adminInventorySelection');
+            }
+
+            // Admin Vehicle Inventory Screen
+            const adminVehicleSelect = document.getElementById('adminVehicleSelect');
+            if (adminVehicleSelect) {
+                adminVehicleSelect.onchange = (e) => inventoryManagement.handleAdminVehicleSelection(e.target.value);
+            }
+
+            const backToAdminInventorySelectionFromVehicleInventoryButton = document.getElementById('backToAdminInventorySelectionFromVehicleInventoryButton');
+            if (backToAdminInventorySelectionFromVehicleInventoryButton) {
+                backToAdminInventorySelectionFromVehicleInventoryButton.onclick = () => setScreenAndRender('adminInventorySelection');
+            }
+
+            // Vehicles Screen
+            const addVehicleButton = document.getElementById('addVehicleButton');
+            if (addVehicleButton) {
+                addVehicleButton.onclick = () => inventoryManagement.handleAddVehicle();
+            }
+
+            document.querySelectorAll('.edit-vehicle-button').forEach(button => {
+                button.onclick = (e) => inventoryManagement.editVehicle(e.target.dataset.plate);
+            });
+
+            document.querySelectorAll('.delete-vehicle-button').forEach(button => {
+                button.onclick = (e) => inventoryManagement.showDeleteVehicleConfirmation(e.target.dataset.plate);
+            });
+
+            const backToMainFromVehiclesButton = document.getElementById('backToMainFromVehiclesButton');
+            if (backToMainFromVehiclesButton) {
+                backToMainFromVehiclesButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Edit Vehicle Modal
+            const saveEditedVehicleButton = document.getElementById('saveEditedVehicleButton');
+            if (saveEditedVehicleButton) {
+                saveEditedVehicleButton.onclick = () => inventoryManagement.saveEditedVehicle();
+            }
+
+            const cancelEditVehicleButton = document.getElementById('cancelEditVehicleButton');
+            if (cancelEditVehicleButton) {
+                cancelEditVehicleButton.onclick = () => inventoryManagement.cancelEditVehicle();
+            }
+
+            // Assign Vehicle Screen
+            const backToMainFromAssignVehicleButton = document.getElementById('backToMainFromAssignVehicleButton');
+            if (backToMainFromAssignVehicleButton) {
+                backToMainFromAssignVehicleButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Reset Cargas Iniciales Password Screen
+            const adminPasswordForResetButton = document.getElementById('adminPasswordForResetButton');
+            if (adminPasswordForResetButton) {
+                adminPasswordForResetButton.onclick = () => inventoryManagement.handleResetCargasInicialesPassword();
+            }
+
+            const cancelAndBackToCargaSelectionButton = document.getElementById('cancelAndBackToCargaSelectionButton');
+            if (cancelAndBackToCargaSelectionButton) {
+                cancelAndBackToCargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
+            }
+
+            // Reset Cargas Iniciales Edit Screen
+            document.querySelectorAll('.reset-quantity-input-main').forEach(input => {
+                input.oninput = (e) => inventoryManagement.handleResetQuantityChange(e.target.dataset.sku, 'main', e.target.value);
+            });
+
+            document.querySelectorAll('.reset-quantity-input-truck').forEach(input => {
+                input.oninput = (e) => inventoryManagement.handleResetQuantityChange(e.target.dataset.sku, 'truck', e.target.value, e.target.dataset.truckplate);
+            });
+
+            const saveResetCargasInicialesButton = document.getElementById('saveResetCargasInicialesButton');
+            if (saveResetCargasInicialesButton) {
+                saveResetCargasInicialesButton.onclick = () => inventoryManagement.saveResetCargasIniciales();
+            }
+
+            const cancelResetCargasInicialesButton = document.getElementById('cancelResetCargasInicialesButton');
+            if (cancelResetCargasInicialesButton) {
+                cancelResetCargasInicialesButton.onclick = () => setScreenAndRender('cargaSelection');
+            }
+
+            // Transfer Inventory Password Screen
+            const userPasswordForTransferButton = document.getElementById('userPasswordForTransferButton');
+            if (userPasswordForTransferButton) {
+                userPasswordForTransferButton.onclick = () => inventoryManagement.handleTransferInventoryPassword();
+            }
+
+            const cancelTransferInventoryPasswordButton = document.getElementById('cancelTransferInventoryPasswordButton');
+            if (cancelTransferInventoryPasswordButton) {
+                cancelTransferInventoryPasswordButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Transfer Inventory Screen
+            const destinationTruckSelect = document.getElementById('destinationTruckSelect');
+            if (destinationTruckSelect) {
+                destinationTruckSelect.onchange = (e) => inventoryManagement.handleDestinationTruckSelection(e.target.value);
+            }
+
+            document.querySelectorAll('.transfer-quantity-input').forEach(input => {
+                input.oninput = (e) => inventoryManagement.handleTransferQuantityChange(e.target.dataset.sku, e.target.value);
+            });
+
+            const performTransferButton = document.getElementById('performTransferButton');
+            if (performTransferButton) {
+                performTransferButton.onclick = () => inventoryManagement.showTransferConfirmation();
+            }
+
+            const backToMainFromTransferInventoryButton = document.getElementById('backToMainFromTransferInventoryButton');
+            if (backToMainFromTransferInventoryButton) {
+                backToMainFromTransferInventoryButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Admin Transfer History Screen
+            const clearTransferHistoryButton = document.getElementById('clearTransferHistoryButton');
+            if (clearTransferHistoryButton) {
+                clearTransferHistoryButton.onclick = () => inventoryManagement.showClearTransferHistoryConfirmation();
+            }
+
+            const backToMainFromAdminTransferHistoryButton = document.getElementById('backToMainFromAdminTransferHistoryButton');
+            if (backToMainFromAdminTransferHistoryButton) {
+                backToMainFromAdminTransferHistoryButton.onclick = () => setScreenAndRender('main');
+            }
+
+            document.querySelectorAll('.download-transfer-csv-button').forEach(button => {
+                button.onclick = (e) => downloadExistingCSV(`traslado_${e.target.dataset.recordid}.csv`);
+            });
+
+            // Archivos Admin Screen
+            const uploadClientsCsv = document.getElementById('uploadClientsCsv');
+            if (uploadClientsCsv) {
+                uploadClientsCsv.onchange = (e) => handleFileUpload(e, 'clients');
+            }
+
+            const uploadInventoryCsv = document.getElementById('uploadInventoryCsv');
+            if (uploadInventoryCsv) {
+                uploadInventoryCsv.onchange = (e) => handleFileUpload(e, 'inventory');
+            }
+
+            const uploadVendorsCsv = document.getElementById('uploadVendorsCsv');
+            if (uploadVendorsCsv) {
+                uploadVendorsCsv.onchange = (e) => handleFileUpload(e, 'vendors');
+            }
+
+            const uploadVehiclesCsv = document.getElementById('uploadVehiclesCsv');
+            if (uploadVehiclesCsv) {
+                uploadVehiclesCsv.onchange = (e) => handleFileUpload(e, 'vehicles');
+            }
+
+            document.querySelectorAll('.download-csv-button').forEach(button => {
+                button.onclick = (e) => downloadExistingCSV(e.target.dataset.filename);
+            });
+
+            const backToMainFromArchivosAdminButton = document.getElementById('backToMainFromArchivosAdminButton');
+            if (backToMainFromArchivosAdminButton) {
+                backToMainFromArchivosAdminButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Archivos Venta Screen
+            document.querySelectorAll('.print-receipt-button').forEach(button => {
+                button.onclick = (e) => {
+                    const saleData = JSON.parse(e.target.dataset.sale);
+                    printSaleReceipt(saleData);
+                };
+            });
+
+            document.querySelectorAll('.modify-sale-button').forEach(button => {
+                button.onclick = (e) => {
+                    const saleData = JSON.parse(e.target.dataset.sale);
+                    openModifySaleModal(saleData);
+                };
+            });
+
+            const backToMainFromArchivosVentaButton = document.getElementById('backToMainFromArchivosVentaButton');
+            if (backToMainFromArchivosVentaButton) {
+                backToMainFromArchivosVentaButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Modify Sale Modal
+            const modifySaleModalSaveButton = document.getElementById('modifySaleModalSaveButton');
+            if (modifySaleModalSaveButton) {
+                modifySaleModalSaveButton.onclick = saveModifiedSale;
+            }
+
+            const modifySaleModalCancelButton = document.getElementById('modifySaleModalCancelButton');
+            if (modifySaleModalCancelButton) {
+                modifySaleModalCancelButton.onclick = closeModifySaleModal;
+            }
+
+            document.querySelectorAll('.modified-sale-quantity-input').forEach(input => {
+                input.oninput = (e) => handleModifiedSaleQuantityChange(e.target.dataset.sku, e.target.value);
+            });
+
+            const modificationReasonInput = document.getElementById('modificationReason');
+            if (modificationReasonInput) {
+                modificationReasonInput.oninput = (e) => handleModificationReasonChange(e.target.value);
+            }
+
+            // Client Management Screen
+            const addClientButton = document.getElementById('addClientButton');
+            if (addClientButton) {
+                addClientButton.onclick = () => clientManagement.addClient();
+            }
+
+            const manageZonesSectorsButton = document.getElementById('manageZonesSectorsButton');
+            if (manageZonesSectorsButton) {
+                manageZonesSectorsButton.onclick = () => clientManagement.openManageZonesSectorsModal();
+            }
+
+            document.querySelectorAll('.edit-client-button').forEach(button => {
+                button.onclick = (e) => clientManagement.editClient(e.target.dataset.clientid);
+            });
+
+            document.querySelectorAll('.delete-client-button').forEach(button => {
+                button.onclick = (e) => clientManagement.showDeleteClientConfirmation(e.target.dataset.clientid);
+            });
+
+            const backToMainFromClientsButton = document.getElementById('backToMainFromClientsButton');
+            if (backToMainFromClientsButton) {
+                backToMainFromClientsButton.onclick = () => setScreenAndRender('main');
+            }
+
+            // Edit Client Modal
+            const saveEditedClientButtonClient = document.getElementById('saveEditedClientButton');
+            if (saveEditedClientButtonClient) {
+                saveEditedClientButtonClient.onclick = () => clientManagement.saveEditedClient();
+            }
+
+            const cancelEditClientButtonClient = document.getElementById('cancelEditClientButton');
+            if (cancelEditClientButtonClient) {
+                cancelEditClientButtonClient.onclick = () => clientManagement.cancelEditClient();
+            }
+
+            const clientZoneSelect = document.getElementById('clientZone');
+            if (clientZoneSelect) {
+                clientZoneSelect.onchange = (e) => clientManagement.handleZoneChangeForClientEdit(e.target.value);
+            }
+
+            // Manage Zones/Sectors Modal
+            const closeManageZonesSectorsModalButton = document.getElementById('closeManageZonesSectorsModalButton');
+            if (closeManageZonesSectorsModalButton) {
+                closeManageZonesSectorsModalButton.onclick = () => clientManagement.closeManageZonesSectorsModal();
+            }
+
+            const addZoneButton = document.getElementById('addZoneButton');
+            if (addZoneButton) {
+                addZoneButton.onclick = () => clientManagement.handleAddZone();
+            }
+
+            document.querySelectorAll('.delete-zone-button').forEach(button => {
+                button.onclick = (e) => clientManagement.showDeleteZoneConfirmation(e.target.dataset.zonename);
+            });
+
+            const selectZoneForSector = document.getElementById('selectZoneForSector');
+            if (selectZoneForSector) {
+                selectZoneForSector.onchange = (e) => clientManagement.handleSelectZoneForSector(e.target.value);
+            }
+
+            const addSectorButton = document.getElementById('addSectorButton');
+            if (addSectorButton) {
+                addSectorButton.onclick = () => clientManagement.handleAddSector();
+            }
+
+            document.querySelectorAll('.delete-sector-button').forEach(button => {
+                button.onclick = (e) => clientManagement.showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
+            });
+
+            // Venta Screen
+            const selectClientButton = document.getElementById('selectClientButton');
+            if (selectClientButton) {
+                selectClientButton.onclick = () => clientManagement.openClientPickerModal();
+            }
+
+            document.querySelectorAll('.sale-quantity-input').forEach(input => {
+                input.oninput = (e) => handleProductQuantityChange(e.target.dataset.sku, e.target.value);
+            });
+
+            const finalizeSaleButton = document.getElementById('finalizeSaleButton');
+            if (finalizeSaleButton) {
+                finalizeSaleButton.onclick = showFinalizeSaleConfirmation;
+            }
+
+            const resetVentaStateAndGoToMainButton = document.getElementById('resetVentaStateAndGoToMainButton');
+            if (resetVentaStateAndGoToMainButton) {
+                resetVentaStateAndGoToMainButton.onclick = resetVentaStateAndGoToMain;
+            }
+
+            // Client Picker Modal
+            const confirmClientSelectionButton = document.getElementById('confirmClientSelectionButton');
+            if (confirmClientSelectionButton) {
+                confirmClientSelectionButton.onclick = () => clientManagement.confirmClientSelection();
+            }
+
+            const cancelClientSelectionButton = document.getElementById('cancelClientSelectionButton');
+            if (cancelClientSelectionButton) {
+                cancelClientSelectionButton.onclick = () => clientManagement.closeClientPickerModal();
+            }
+
+            // Cierre Ventas Screen
+            const closeSalesButton = document.getElementById('closeSalesButton');
+            if (closeSalesButton) {
+                closeSalesButton.onclick = showCloseSalesConfirmation;
+            }
+
+            const backToMainFromCierreVentasButton = document.getElementById('backToMainFromCierreVentasButton');
+            if (backToMainFromCierreVentasButton) {
+                backToMainFromCierreVentasButton.onclick = () => setScreenAndRender('main');
+            }
+
+            const vendorRadioGroup = document.getElementById('vendor-radio-group');
+            if (vendorRadioGroup) {
+                vendorRadioGroup.onchange = (e) => {
+                    if (e.target.name === 'vendor') {
+                        handleVendorChange(e.target.value);
+                    }
+                };
+            }
+        }
+
+
         // Initial render when the page loads.
         // fetchDataFromFirestore will be called by onAuthStateChanged for the first time.
         render();
@@ -1817,6 +2334,8 @@
 
         window.onload = () => {
             console.log('[window.onload] Page fully loaded. Initial render should have been triggered by direct call or onAuthStateChanged.');
+            // This is important: ensure event listeners are attached after the initial render
+            attachEventListeners();
         };
     </script>
 </body>
