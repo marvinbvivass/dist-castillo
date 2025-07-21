@@ -40,7 +40,8 @@ export const closeAllClientModals = () => {
 };
 
 export const openEditClientModal = (client = null) => {
-    editingClient = client ? { ...client } : { id: '', nombreComercial: '', cedulaRif: '', direccionFiscal: '', telefono: '', correo: '', zona: '', sector: '', limiteCredito: 0, diasCredito: 0, estado: 'activo' };
+    // Eliminados limiteCredito y diasCredito
+    editingClient = client ? { ...client } : { id: '', nombreComercial: '', cedulaRif: '', direccionFiscal: '', telefono: '', correo: '', zona: '', sector: '', estado: 'activo' };
     showEditClientModalState = true;
     if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Forzar renderizado para mostrar el modal
 };
@@ -259,11 +260,12 @@ export const renderClientesScreen = () => {
             ${createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    // Removed addClientScreenEventListeners() call from here
+    // addClientScreenEventListeners() fue eliminado de aquí, ahora se maneja por delegación en index.html
 };
 
 // --- Funciones CRUD de Clientes ---
 export const saveClient = async () => {
+    console.log('[Client Management] saveClient called'); // Debug log
     const isNewClient = !editingClient.id;
     const clientData = {
         nombreComercial: document.getElementById('clientName').value.trim(),
@@ -273,8 +275,7 @@ export const saveClient = async () => {
         correo: document.getElementById('clientEmail').value.trim(),
         zona: document.getElementById('clientZone').value.trim(),
         sector: document.getElementById('clientSector').value.trim(),
-        limiteCredito: parseFloat(document.getElementById('clientCreditLimit').value) || 0,
-        diasCredito: parseInt(document.getElementById('clientCreditDays').value) || 0,
+        // Eliminados limiteCredito y diasCredito
         estado: document.getElementById('clientStatus').value,
     };
 
@@ -306,6 +307,7 @@ export const saveClient = async () => {
 };
 
 export const deleteClient = async (clientId) => {
+    console.log('[Client Management] deleteClient called for ID:', clientId); // Debug log
     try {
         await _db.collection('clients').doc(clientId).delete();
         clients = clients.filter(c => c.id !== clientId);
@@ -341,8 +343,7 @@ export const renderEditClientModal = () => {
                 ${createInput('clientEmail', 'Correo Electrónico', client.correo, 'email')}
                 ${createSelect('clientZone', zoneOptions, client.zona, '', '-- Seleccione Zona --')}
                 ${createSelect('clientSector', sectorOptions, client.sector, '', '-- Seleccione Sector --')}
-                ${createInput('clientCreditLimit', 'Límite de Crédito', client.limiteCredito, 'number')}
-                ${createInput('clientCreditDays', 'Días de Crédito', client.diasCredito, 'number')}
+                <!-- Eliminados Límite de Crédito y Días de Crédito -->
                 ${createSelect('clientStatus', statusOptions, client.estado || 'activo', '', '-- Seleccione Estado --')}
                 <div class="flex justify-around gap-4 mt-5">
                     ${createButton('Guardar Cliente', 'saveClientButton', 'bg-emerald-600 flex-1')}
@@ -427,34 +428,9 @@ export const updateManageZonesSectorsModalContent = () => {
     const sectorsTableBody = modalContent.querySelector('#sectors-table-body');
     if (sectorsTableBody) sectorsTableBody.innerHTML = sectorRows;
 
-    // Re-attach event listeners for dynamically added buttons
-    // This function is now called from index.html's DOMContentLoaded for delegation
-    // addManageZonesSectorsModalEventListeners(); // Removed direct call
+    // addManageZonesSectorsModalEventListeners() fue eliminado de aquí.
+    // Los event listeners para estos botones se manejan por delegación en index.html.
 };
-
-// This function is no longer needed as event listeners are handled by delegation in index.html
-// const addManageZonesSectorsModalEventListeners = () => {
-//     const modal = document.getElementById('manage-zones-sectors-modal');
-//     if (!modal) return;
-
-//     modal.querySelector('#addZoneButton').onclick = () => addZone();
-//     modal.querySelector('#addSectorButton').onclick = () => addSector();
-//     modal.querySelector('#closeManageZonesSectorsButton').onclick = () => closeManageZonesSectorsModal();
-
-//     modal.querySelectorAll('.delete-zone-button').forEach(button => {
-//         button.onclick = (e) => {
-//             const zoneName = e.target.dataset.zonename;
-//             showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${zoneName}"? Esto no eliminará clientes asociados, pero la zona dejará de estar disponible.`, () => deleteZone(zoneName));
-//         };
-//     });
-
-//     modal.querySelectorAll('.delete-sector-button').forEach(button => {
-//         button.onclick = (e) => {
-//             const sectorName = e.target.dataset.sectorname;
-//             showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${sectorName}"? Esto no eliminará clientes asociados, pero el sector dejará de estar disponible.`, () => deleteSector(sectorName));
-//         };
-//     });
-// };
 
 export const renderClientPickerModal = () => {
     if (!showClientPickerModal) return '';
@@ -515,6 +491,8 @@ export const updateClientPickerList = () => {
     `).join('');
 
     // Add event listeners for client selection
+    // Estos onclicks se manejan directamente aquí porque son elementos dentro del modal
+    // y se re-renderizan con cada actualización de la lista.
     clientPickerListDiv.querySelectorAll('.select-client-item').forEach(item => {
         item.onclick = (e) => {
             const clientData = JSON.parse(e.currentTarget.dataset.client);
@@ -525,6 +503,7 @@ export const updateClientPickerList = () => {
 
 // --- Funciones CRUD de Zonas y Sectores ---
 export const addZone = async () => {
+    console.log('[Client Management] addZone called'); // Debug log
     const newZoneName = document.getElementById('newZoneName').value.trim();
     if (!newZoneName) { showMessageModal('El nombre de la zona no puede estar vacío.'); return; }
     if (zones.some(z => z.name === newZoneName)) { showMessageModal('Esta zona ya existe.'); return; }
@@ -542,6 +521,7 @@ export const addZone = async () => {
 };
 
 export const deleteZone = async (zoneName) => {
+    console.log('[Client Management] deleteZone called for:', zoneName); // Debug log
     try {
         await _db.collection('zones').doc(zoneName).delete();
         zones = zones.filter(z => z.name !== zoneName);
@@ -554,6 +534,7 @@ export const deleteZone = async (zoneName) => {
 };
 
 export const addSector = async () => {
+    console.log('[Client Management] addSector called'); // Debug log
     const newSectorName = document.getElementById('newSectorName').value.trim();
     if (!newSectorName) { showMessageModal('El nombre del sector no puede estar vacío.'); return; }
     if (sectors.some(s => s.name === newSectorName)) { showMessageModal('Este sector ya existe.'); return; }
@@ -571,10 +552,12 @@ export const addSector = async () => {
 };
 
 export const deleteSector = async (sectorName) => {
+    console.log('[Client Management] deleteSector called for:', sectorName); // Debug log
     try {
         await _db.collection('sectors').doc(sectorName).delete();
         sectors = sectors.filter(s => s.name !== sectorName);
         showMessageModal('Sector eliminado exitosamente.');
+        updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     }
     catch (error) {
         console.error('Error al eliminar sector:', error);
@@ -584,6 +567,7 @@ export const deleteSector = async (sectorName) => {
 
 // --- Manejo de Carga de Archivos CSV de Clientes ---
 export const handleClientFileUpload = async (event) => {
+    console.log('[Client Management] handleClientFileUpload called'); // Debug log
     const file = event.target.files[0];
     if (!file) return;
 
@@ -620,8 +604,7 @@ export const handleClientFileUpload = async (event) => {
                     correo: row['Correo Electrónico'] || row['correo'] || '',
                     zona: row['Zona'] || row['zona'] || '',
                     sector: row['Sector'] || row['sector'] || '',
-                    limiteCredito: parseFloat(row['Límite de Crédito']) || parseFloat(row['limiteCredito']) || 0,
-                    diasCredito: parseInt(row['Días de Crédito']) || parseInt(row['diasCredito']) || 0,
+                    // Eliminados limiteCredito y diasCredito
                     estado: row['Estado'] || row['estado'] || 'activo',
                 });
             }
@@ -639,7 +622,9 @@ export const handleClientFileUpload = async (event) => {
 
 // --- Descarga de Clientes CSV ---
 export const downloadClientsCSV = () => {
-    const headers = ['Nombre Comercial', 'Cédula/RIF', 'Dirección Fiscal', 'Teléfono', 'Correo Electrónico', 'Zona', 'Sector', 'Límite de Crédito', 'Días de Crédito', 'Estado'];
+    console.log('[Client Management] downloadClientsCSV called'); // Debug log
+    // Eliminados 'Límite de Crédito' y 'Días de Crédito' de los headers
+    const headers = ['Nombre Comercial', 'Cédula/RIF', 'Dirección Fiscal', 'Teléfono', 'Correo Electrónico', 'Zona', 'Sector', 'Estado'];
     const dataToDownload = clients.map(client => ({
         'Nombre Comercial': client.nombreComercial,
         'Cédula/RIF': client.cedulaRif,
@@ -648,49 +633,12 @@ export const downloadClientsCSV = () => {
         'Correo Electrónico': client.correo,
         'Zona': client.zona,
         'Sector': client.sector,
-        'Límite de Crédito': client.limiteCredito,
-        'Días de Crédito': client.diasCredito,
         'Estado': client.estado,
     }));
     const csvContent = toCSV(dataToDownload, headers);
     triggerCSVDownload('clientes.csv', csvContent);
 };
 
-// --- Event Delegation para los modales de cliente ---
-// Moved to index.html to centralize event handling on app-root
-// document.addEventListener('click', (event) => {
-//     const target = event.target;
-
-//     // Edit Client Modal
-//     if (target.id === 'saveClientButton') {
-//         saveClient();
-//     } else if (target.id === 'cancelEditClientButton') {
-//         closeEditClientModal();
-//     }
-//     // Manage Zones/Sectors Modal
-//     else if (target.id === 'addZoneButton') {
-//         addZone();
-//     } else if (target.id === 'addSectorButton') {
-//         addSector();
-//     } else if (target.id === 'closeManageZonesSectorsButton') {
-//         closeManageZonesSectorsModal();
-//     }
-//     // Client Picker Modal
-//     else if (target.id === 'closeClientPickerButton') {
-//         toggleClientPickerModal(false);
-//     }
-// });
-
-// document.addEventListener('change', (event) => {
-//     const target = event.target;
-
-//     // Client Picker Modal Filters
-//     if (target.id === 'clientPickerSearchInput') {
-//         handleClientPickerSearchChange(target.value);
-//     } else if (target.id === 'clientPickerFilterZone') {
-//         handleClientPickerFilterChange('zone', target.value);
-//     } else if (target.id === 'clientPickerFilterSector') {
-//         handleClientPickerFilterChange('sector', target.value);
-//     }
-// });
+// Los event listeners para los modales de cliente se han movido a index.html
+// para centralizar el manejo de eventos a través de delegación.
 
