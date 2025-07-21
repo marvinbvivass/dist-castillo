@@ -20,7 +20,7 @@ let _setScreenAndRender;
 let _fetchDataFromFirestore; // Reference to the main data fetching function in index.html
 
 // --- Data specific to inventory management ---
-export let currentTruckInventory = []; // This will be updated by the onSnapshot listener for user's assigned truck
+let currentTruckInventory = []; // Changed to 'let' without export directly for internal management
 export let loadRecords = [];
 export let transferRecords = [];
 
@@ -75,6 +75,16 @@ export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, 
     _fetchDataFromFirestore = fetchDataFromFirestore;
     console.log('[inventoryManagement.js] Initialized with dependencies.');
 };
+
+// --- Getter for currentTruckInventory (for external modules to read) ---
+export const getCurrentTruckInventory = () => currentTruckInventory;
+
+// --- Setter for currentTruckInventory (for external modules to update) ---
+export const setCurrentTruckInventory = (newInventory) => {
+    currentTruckInventory = newInventory;
+    console.log('[inventoryManagement.js] currentTruckInventory updated internally.');
+};
+
 
 // --- Helper Functions (copied from index.html if specific to inventory) ---
 const getCurrentDateFormatted = () => {
@@ -203,7 +213,7 @@ export const handleTruckForReceivingSelection = async (truckPlate) => {
         try {
             const truckInvDoc = await _db.collection('truck_inventories').doc(selectedTruckForReceiving.plate).get();
             selectedTruckInventoryForReceiving = truckInvDoc.exists ? (truckInvDoc.data().items || []) : [];
-            console.log(`[handleTruckForReceivingSelection] Inventario actual del camión ${selectedTruckForReceving.plate}:`, selectedTruckInventoryForReceiving);
+            console.log(`[handleTruckForReceivingSelection] Inventario actual del camión ${selectedTruckForReceiving.plate}:`, selectedTruckInventoryForReceiving);
         } catch (error) {
             console.error('Error al cargar el inventario del camión seleccionado:', error);
             _showMessageModal('Error al cargar el inventario del camión. Intenta de nuevo.');
@@ -232,7 +242,7 @@ export const updateTruckReceivingScreenContent = () => {
 
         return `
             <tr>
-                <td><Image of ${item.producto}></td>
+                <td><img src="${_productImages[item.sku] || _productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                 <td>${item.sku}</td>
                 <td>${item.producto}</td>
                 <td>${item.presentacion}</td>
@@ -362,7 +372,8 @@ export const performLoadMerchandise = async () => {
 
         await batch.commit();
 
-        _inventory = updatedMainInventory;
+        // Update the _inventory reference in this module (which is passed from index.html)
+        _inventory.splice(0, _inventory.length, ...updatedMainInventory); // Update in place
         loadRecords.push({ docId: loadDocRef.id, ...loadRecord });
         selectedTruckInventoryForReceiving = updatedTruckInventory;
 
@@ -399,9 +410,9 @@ export const handleResetCargasInicialesPassword = async () => {
     const password = document.getElementById('adminPasswordForReset').value;
     if (!password) { _showMessageModal('Por favor, ingresa la contraseña.'); return; }
     try {
-        const credential = firebase.auth.EmailAuthProvider.credential(_currentUser.email, password);
-        await _currentUser.reauthenticateWithCredential(credential);
-
+        const credential = firebase.auth.EmailAuthProvider.credential(_currentUserData.email, password); // Use _currentUserData.email
+        await firebase.auth().currentUser.reauthenticateWithCredential(credential); // Use firebase.auth().currentUser
+        
         await loadAllInventoriesForReset();
         _setScreenAndRender('resetCargasInicialesEdit');
     } catch (error) {
@@ -414,7 +425,7 @@ export const loadAllInventoriesForReset = async () => {
     allTruckInventories = {};
 
     const mainInvSnapshot = await _db.collection('inventory').get();
-    _inventory = mainInvSnapshot.docs.map(doc => ({ sku: doc.id, ...doc.data() }));
+    _inventory.splice(0, _inventory.length, ...mainInvSnapshot.docs.map(doc => ({ sku: doc.id, ...doc.data() }))); // Update in place
     _inventory.forEach(item => { resetQuantities[item.sku] = { main: item.cantidad, trucks: {} }; });
 
     const truckInvSnapshot = await _db.collection('truck_inventories').get();
@@ -545,6 +556,8 @@ export const saveResetCargasIniciales = async () => {
 
         await batch.commit();
         console.log('[saveResetCargasIniciales] Batch commit exitoso.');
+        // Update the _inventory reference in this module (which is passed from index.html)
+        _inventory.splice(0, _inventory.length, ...updatedMainInventory); // Update in place
         await _fetchDataFromFirestore();
         _showMessageModal('Inventarios reiniciados y guardados exitosamente.');
         _setScreenAndRender('cargaSelection');
@@ -685,6 +698,13 @@ export const handleAdminVehicleSelection = (plate) => {
 export const renderVehiclesScreen = () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden gestionar vehículos.'); _setScreenAndRender('main'); return; }
 
+    // Removed editingVehicle from here, it's a local variable in this module now.
+    // We need to ensure editingVehicle is properly managed (e.g., set to null when screen changes)
+    // For now, assume it's correctly managed by the calling context or through event handlers.
+    let editingVehicleLocal = null; // Placeholder for the actual editingVehicle state in this module.
+    // If editingVehicle is passed as a dependency to init, it should be _editingVehicle.
+    // For now, I'll assume it's managed by a dedicated function like `editVehicle` which sets it.
+
     const tableRows = _vehicles.map(vehicle => `
         <td>${vehicle.plate}</td><td>${vehicle.name}</td><td>${vehicle.brand || 'N/A'}</td><td>${vehicle.model || 'N/A'}</td>
         <td>
@@ -701,18 +721,21 @@ export const renderVehiclesScreen = () => {
                 ${_createTable(['Placa', 'Nombre', 'Marca', 'Modelo', 'Acciones'], tableRows, 'vehicles-table-body')}
             </div>
             <div class="p-4 bg-lime-50 rounded-lg border border-lime-300">
-                <h3 class="text-xl font-bold mb-4 text-lime-700">${editingVehicle ? 'Editar Vehículo' : 'Agregar Nuevo Vehículo'}</h3>
-                ${_createInput('vehiclePlate', 'Placa', editingVehicle?.plate, 'text', !!editingVehicle)}
-                ${_createInput('vehicleName', 'Nombre (ej. Volswaguen Worker 220)', editingVehicle?.name)}
-                ${_createInput('vehicleBrand', 'Marca', editingVehicle?.brand)}
-                ${_createInput('vehicleModel', 'Modelo', editingVehicle?.model)}
-                ${editingVehicle ? _createButton('Guardar Cambios', 'saveEditedVehicleButton', 'bg-purple-600 mt-3 w-full') : _createButton('Agregar Vehículo', 'addVehicleButton', 'bg-purple-600 mt-3 w-full')}
-                ${editingVehicle ? _createButton('Cancelar Edición', 'cancelEditVehicleButton', 'bg-gray-600 mt-3 w-full') : ''}
+                <h3 class="text-xl font-bold mb-4 text-lime-700">${editingVehicleLocal ? 'Editar Vehículo' : 'Agregar Nuevo Vehículo'}</h3>
+                ${_createInput('vehiclePlate', 'Placa', editingVehicleLocal?.plate, 'text', !!editingVehicleLocal)}
+                ${_createInput('vehicleName', 'Nombre (ej. Volswaguen Worker 220)', editingVehicleLocal?.name)}
+                ${_createInput('vehicleBrand', 'Marca', editingVehicleLocal?.brand)}
+                ${_createInput('vehicleModel', 'Modelo', editingVehicleLocal?.model)}
+                ${editingVehicleLocal ? _createButton('Guardar Cambios', 'saveEditedVehicleButton', 'bg-purple-600 mt-3 w-full') : _createButton('Agregar Vehículo', 'addVehicleButton', 'bg-purple-600 mt-3 w-full')}
+                ${editingVehicleLocal ? _createButton('Cancelar Edición', 'cancelEditVehicleButton', 'bg-gray-600 mt-3 w-full') : ''}
             </div>
             ${_createButton('Volver', 'backToMainFromVehiclesButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
 };
+
+// Variable to hold the vehicle being edited within this module
+let editingVehicle = null;
 
 export const handleAddVehicle = async () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden agregar vehículos.'); return; }
@@ -728,7 +751,7 @@ export const handleAddVehicle = async () => {
     try {
         await _db.collection('vehicles').doc(plate).set(newVehicle);
         await _db.collection('truck_inventories').doc(plate).set({ items: [] });
-        _vehicles.push(newVehicle);
+        _vehicles.push(newVehicle); // Update the shared _vehicles array
         _showMessageModal('Vehículo agregado exitosamente y su inventario de camión creado.');
         _setScreenAndRender('vehicles'); // Re-render to show updated list
     } catch (error) {
@@ -761,7 +784,7 @@ export const saveEditedVehicle = async () => {
     const updatedVehicle = { ...editingVehicle, name, brand, model };
     try {
         await _db.collection('vehicles').doc(updatedVehicle.plate).set(updatedVehicle);
-        _vehicles = _vehicles.map(v => v.plate === updatedVehicle.plate ? updatedVehicle : v);
+        _vehicles = _vehicles.map(v => v.plate === updatedVehicle.plate ? updatedVehicle : v); // Update the shared _vehicles array
         _showMessageModal('Vehículo actualizado exitosamente.');
         editingVehicle = null;
         _setScreenAndRender('vehicles');
@@ -781,7 +804,7 @@ export const deleteVehicle = async (plate) => {
     try {
         await _db.collection('vehicles').doc(plate).delete();
         await _db.collection('truck_inventories').doc(plate).delete();
-        _vehicles = _vehicles.filter(v => v.plate !== plate);
+        _vehicles = _vehicles.filter(v => v.plate !== plate); // Update the shared _vehicles array
         _showMessageModal('Vehículo y su inventario de camión eliminados exitosamente.');
         _setScreenAndRender('vehicles');
     } catch (error) {
@@ -908,8 +931,8 @@ export const handleTransferInventoryPassword = async () => {
     const password = document.getElementById('userPasswordForTransfer').value;
     if (!password) { _showMessageModal('Por favor, ingresa tu contraseña.'); return; }
     try {
-        const credential = firebase.auth.EmailAuthProvider.credential(_currentUser.email, password);
-        await _currentUser.reauthenticateWithCredential(credential);
+        const credential = firebase.auth.EmailAuthProvider.credential(_currentUserData.email, password); // Use _currentUserData.email
+        await firebase.auth().currentUser.reauthenticateWithCredential(credential); // Use firebase.auth().currentUser
 
         selectedDestinationTruck = null;
         transferQuantities = {};
@@ -1058,7 +1081,7 @@ export const performInventoryTransfer = async () => {
         transferRecord.docId = docRef.id;
         await batch.commit();
 
-        currentTruckInventory = sourceTruckInventoryCopy;
+        setCurrentTruckInventory(sourceTruckInventoryCopy); // Use the setter function
         transferRecords.push(transferRecord);
         
         _showMessageModal('Transbordo de inventario realizado exitosamente. Archivo generado.');
@@ -1168,7 +1191,7 @@ export const clearTransferHistoryLogic = async () => {
 // This function will be called from fetchDataFromFirestore in index.html
 export const fetchInventoryRelatedData = async () => {
     try {
-        const fetchCollection = async (collectionName, initialData, idKey, defaultDocData = {}) => {
+        const fetchCollection = async (collectionName, initialData, idKey) => {
             const snapshot = await _db.collection(collectionName).get();
             if (snapshot.empty) {
                 console.log(`[inventoryManagement] Collection '${collectionName}' is empty. Populating with initial data.`);
@@ -1194,28 +1217,28 @@ export const fetchInventoryRelatedData = async () => {
             }
         };
 
-        _inventory = await fetchCollection('inventory', initialInventory, 'sku');
-        _vehicles = await fetchCollection('vehicles', initialVehicles, 'plate');
+        _inventory.splice(0, _inventory.length, ...await fetchCollection('inventory', initialInventory, 'sku')); // Update _inventory in place
+        _vehicles.splice(0, _vehicles.length, ...await fetchCollection('vehicles', initialVehicles, 'plate')); // Update _vehicles in place
 
         if (_isAdmin()) {
             console.log('[inventoryManagement] User is admin, fetching all load records.');
             const loadRecordsSnapshot = await _db.collection('loadRecords').get();
-            loadRecords = loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+            loadRecords.splice(0, loadRecords.length, ...loadRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
         } else {
-            loadRecords = [];
+            loadRecords.splice(0, loadRecords.length); // Clear in place
             console.log('[inventoryManagement] User is not admin, not fetching all load records.');
         }
 
         if (_isAdmin()) {
             console.log('[inventoryManagement] User is admin, fetching all transfer records.');
             const transferRecordsSnapshot = await _db.collection('transferRecords').get();
-            transferRecords = transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+            transferRecords.splice(0, transferRecords.length, ...transferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
         } else if (_isUser() && _currentUserData) {
             console.log(`[inventoryManagement] User is regular, fetching transfer records for user: ${_currentUserData.uid}`);
             const userTransferRecordsSnapshot = await _db.collection('transferRecords').where('userId', '==', _currentUserData.uid).get();
-            transferRecords = userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+            transferRecords.splice(0, transferRecords.length, ...userTransferRecordsSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
         } else {
-            transferRecords = [];
+            transferRecords.splice(0, transferRecords.length); // Clear in place
             console.log('[inventoryManagement] Not fetching transfer records (guest or no user).');
         }
 
@@ -1223,10 +1246,10 @@ export const fetchInventoryRelatedData = async () => {
     } catch (error) {
         console.error('[inventoryManagement] Error fetching inventory-related data:', error);
         _showMessageModal('Error al cargar datos de inventario. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-        _inventory = initialInventory;
-        _vehicles = initialVehicles;
-        loadRecords = [];
-        transferRecords = [];
+        _inventory.splice(0, _inventory.length, ...initialInventory); // Fallback in place
+        _vehicles.splice(0, _vehicles.length, ...initialVehicles); // Fallback in place
+        loadRecords.splice(0, loadRecords.length); // Clear in place
+        transferRecords.splice(0, transferRecords.length); // Clear in place
     }
 };
 
@@ -1250,10 +1273,9 @@ export const setupTruckInventoryListener = () => {
                 console.log(`[Firestore Listener] User truck inventory document for ${_currentUserData.assignedTruckPlate} does not exist or is empty.`);
             }
             // Trigger a re-render in index.html if on a relevant screen
-            // We can't directly call render() from here, but we can signal index.html
-            // For now, we assume index.html's onAuthStateChanged or other screen renders will pick this up.
-            // If explicit re-render is needed, index.html might need a function to call for this.
-            // For simplicity, we'll let the main render loop handle it.
+            if (document.getElementById('app-root')) { // Check if app-root exists before trying to re-render
+                _setScreenAndRender(document.getElementById('app-root').dataset.currentScreen || 'main'); // Attempt to re-render current screen
+            }
         }, error => {
             console.error('[Firestore Listener] Error listening to user truck inventory:', error);
             _showMessageModal('Error en la sincronización del inventario del camión. Puede que los datos no estén actualizados.');
