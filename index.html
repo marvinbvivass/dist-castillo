@@ -1184,7 +1184,7 @@
                     const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
                     const price = item.price !== undefined ? item.price : item.precio;
                     return `
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                        <td><Image of ${item.producto}></td>
                         <td>${item.sku}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center sale-quantity-input" value="${saleQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${quantity}"></td>
                         <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
@@ -1820,7 +1820,7 @@
                 const price = item.precioUnitario !== undefined ? item.precioUnitario : (productInInventory?.price !== undefined ? productInInventory.price : productInInventory?.precio);
                 return `
                     <tr>
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
+                        <td><Image of ${item.producto}></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 modified-sale-quantity-input" value="${currentQuantity}" data-sku="${item.sku}" min="0"></td>
                         <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
@@ -2303,7 +2303,7 @@
                 const tableRows = currentTruckInventory.map(item => {
                     if (transferQuantities[item.sku] === undefined) transferQuantities[item.sku] = 0;
                     return `
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-12 h-12 rounded-md object-cover"></td>
+                        <td><Image of ${item.producto}></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>${item.quantity}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 transfer-quantity-input" value="${transferQuantities[item.sku]}" data-sku="${item.sku}" min="0" max="${item.quantity}"></td>
                     `;
@@ -2703,9 +2703,13 @@
                         return;
                     }
 
+                    console.log(`[Firestore Listener] Snapshot received for ${plate}. docSnapshot.exists: ${docSnapshot.exists}`); // NEW LOG
                     if (docSnapshot.exists) {
-                        const displayInventory = docSnapshot.data().items || [];
-                        console.log(`[Firestore Listener] Admin selected truck inventory updated via snapshot for ${plate}:`, displayInventory.length, 'items. Data:', JSON.stringify(displayInventory)); // Debug log
+                        const data = docSnapshot.data(); // Get all data
+                        console.log(`[Firestore Listener] Snapshot data for ${plate}:`, JSON.stringify(data)); // NEW LOG
+                        const displayInventory = data.items || []; // Access 'items' field
+                        console.log(`[Firestore Listener] Items array for ${plate}:`, JSON.stringify(displayInventory)); // NEW LOG
+
                         if (displayInventory.length === 0) {
                             displayDiv.innerHTML = `<p class="text-center text-gray-600 text-lg py-4">Inventario del camión ${plate} vacío por el momento.</p>`;
                         } else {
