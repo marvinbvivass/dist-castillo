@@ -296,6 +296,7 @@
         let vehicles = []; // Passed to inventoryManagement
         let users = [];
         let dailySales = []; // Sales are still managed here for now
+        let allTruckInventories = {}; // NEW: To store all truck inventories for admin view
 
         let selectedVendor = localStorage.getItem('selectedVendor') || 'Ninguno'; // Default to 'Ninguno' if no vendors initially
 
@@ -579,7 +580,7 @@
             appRoot.dataset.currentScreen = newScreen;
 
             // Clean up admin truck inventory listener if navigating away from admin inventory screens
-            if (inventoryManagement.getAdminTruckInventoryUnsubscribe() && newScreen !== 'adminVehicleInventory') {
+            if (inventoryManagement.getAdminTruckInventoryUnsubscribe()) {
                 inventoryManagement.getAdminTruckInventoryUnsubscribe()();
                 inventoryManagement.setAdminTruckInventoryUnsubscribe(null); // Use setter here
                 console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
@@ -1447,7 +1448,7 @@
                 `\nTotal General:, , , , ,${newTotalSaleAmount.toFixed(2)}\n` +
                 `Motivo de Modificación:,${modificationReason.trim()}`;
 
-            dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
+            dailySales.splice(0, dailySales.length, ...dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale)); // Update in place
 
             if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
                 // Use the getter function to get current state
@@ -1604,7 +1605,7 @@
             showMessageModal, showConfirmationModal, createSearchableDropdown // Pass modal functions and new dropdown helper
         );
         inventoryManagement.init(
-            db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
+            db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, allTruckInventories, // Pass allTruckInventories
             showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
             setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown // Pass new dropdown helper
         );
@@ -1668,6 +1669,15 @@
                 dailySales.splice(0, dailySales.length, ...dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
                 console.log('[fetchDataFromFirestore] Daily Sales fetched:', dailySales.length);
 
+                // NEW: Fetch all truck inventories and store them in allTruckInventories
+                const allTruckInventoriesSnapshot = await db.collection('truck_inventories').get();
+                allTruckInventories = {}; // Clear previous data
+                allTruckInventoriesSnapshot.docs.forEach(doc => {
+                    allTruckInventories[doc.id] = doc.data().items || [];
+                });
+                console.log('[fetchDataFromFirestore] All truck inventories fetched:', Object.keys(allTruckInventories).length, 'trucks');
+
+
                 if (!vendors.some(v => v.name === selectedVendor)) {
                     selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
                     localStorage.setItem('selectedVendor', selectedVendor);
@@ -1686,6 +1696,7 @@
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
                 inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
                 inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
+                allTruckInventories = {}; // Clear all truck inventories
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
                 clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
@@ -1796,6 +1807,7 @@
                 dailySales.splice(0, dailySales.length);
                 vehicles.splice(0, vehicles.length);
                 users.splice(0, users.length);
+                allTruckInventories = {}; // Clear all truck inventories
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
                 inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
                 inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
