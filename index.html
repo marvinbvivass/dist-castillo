@@ -2833,7 +2833,6 @@
                 } else if (target.id === 'userInventoryButton') {
                     setScreenAndRender('inventario');
                 } else if (target.id === 'clientsButton') {
-                    // CORRECCIÓN CLAVE AQUÍ: Usar setScreenAndRender directamente
                     setScreenAndRender('clientes');
                 } else if (target.id === 'ventaButton') {
                     setScreenAndRender('venta');
@@ -2988,18 +2987,55 @@
                 }
                 // Client Management (main buttons on client screen)
                 else if (target.id === 'addClientButton') {
+                    console.log('[Click] addClientButton clicked'); // Debug log
                     clientManagement.openEditClientModal();
                 } else if (target.id === 'manageZonesSectorsButton') {
+                    console.log('[Click] manageZonesSectorsButton clicked'); // Debug log
                     clientManagement.openManageZonesSectorsModal();
                 } else if (target.classList.contains('edit-client-button')) {
+                    console.log('[Click] edit-client-button clicked'); // Debug log
                     const clientId = target.dataset.clientid;
                     const clientToEdit = clientManagement.clients.find(c => c.id === clientId);
                     clientManagement.openEditClientModal(clientToEdit);
                 } else if (target.classList.contains('delete-client-button')) {
+                    console.log('[Click] delete-client-button clicked'); // Debug log
                     const clientId = target.dataset.clientid;
                     showConfirmationModal(`¿Estás seguro de que quieres eliminar al cliente con ID ${clientId}?`, () => clientManagement.deleteClient(clientId));
                 } else if (target.id === 'backToMainFromClientsButton') {
+                    console.log('[Click] backToMainFromClientsButton clicked'); // Debug log
                     setScreenAndRender('main');
+                }
+                // Client Management (buttons inside modals)
+                else if (target.id === 'saveClientButton') {
+                    console.log('[Click] saveClientButton clicked'); // Debug log
+                    clientManagement.saveClient();
+                } else if (target.id === 'cancelEditClientButton') {
+                    console.log('[Click] cancelEditClientButton clicked'); // Debug log
+                    clientManagement.closeEditClientModal();
+                } else if (target.id === 'addZoneButton') {
+                    console.log('[Click] addZoneButton clicked'); // Debug log
+                    clientManagement.addZone();
+                } else if (target.id === 'addSectorButton') {
+                    console.log('[Click] addSectorButton clicked'); // Debug log
+                    clientManagement.addSector();
+                } else if (target.classList.contains('delete-zone-button')) {
+                    console.log('[Click] delete-zone-button clicked'); // Debug log
+                    const zoneName = target.dataset.zonename;
+                    showConfirmationModal(`¿Estás seguro de que quieres eliminar la zona "${zoneName}"? Esto no eliminará clientes asociados, pero la zona dejará de estar disponible.`, () => clientManagement.deleteZone(zoneName));
+                } else if (target.classList.contains('delete-sector-button')) {
+                    console.log('[Click] delete-sector-button clicked'); // Debug log
+                    const sectorName = target.dataset.sectorname;
+                    showConfirmationModal(`¿Estás seguro de que quieres eliminar el sector "${sectorName}"? Esto no eliminará clientes asociados, pero el sector dejará de estar disponible.`, () => clientManagement.deleteSector(sectorName));
+                } else if (target.id === 'closeManageZonesSectorsButton') {
+                    console.log('[Click] closeManageZonesSectorsButton clicked'); // Debug log
+                    clientManagement.closeManageZonesSectorsModal();
+                } else if (target.id === 'closeClientPickerButton') {
+                    console.log('[Click] closeClientPickerButton clicked'); // Debug log
+                    clientManagement.toggleClientPickerModal(false);
+                } else if (target.classList.contains('select-client-item')) {
+                    console.log('[Click] select-client-item clicked'); // Debug log
+                    const clientData = JSON.parse(target.dataset.client);
+                    clientManagement.selectClientForSale(clientData);
                 }
             });
 
@@ -3069,6 +3105,14 @@
                 } else if (target.classList.contains('transfer-quantity-input')) {
                     const sku = target.dataset.sku;
                     handleTransferQuantityChange(sku, target.value);
+                }
+                // Client Management (modal inputs)
+                else if (target.id === 'clientPickerSearchInput') {
+                    clientManagement.handleClientPickerSearchChange(target.value);
+                } else if (target.id === 'clientPickerFilterZone') {
+                    clientManagement.handleClientPickerFilterChange('zone', target.value);
+                } else if (target.id === 'clientPickerFilterSector') {
+                    clientManagement.handleClientPickerFilterChange('sector', target.value);
                 }
             });
         });
