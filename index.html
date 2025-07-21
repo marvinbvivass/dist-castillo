@@ -446,9 +446,9 @@
             appRoot.dataset.currentScreen = newScreen;
 
             // Clean up admin truck inventory listener if navigating away from admin inventory screens
-            if (inventoryManagement.adminTruckInventoryUnsubscribe && newScreen !== 'adminVehicleInventory') {
-                inventoryManagement.adminTruckInventoryUnsubscribe();
-                inventoryManagement.adminTruckInventoryUnsubscribe = null;
+            if (inventoryManagement.getAdminTruckInventoryUnsubscribe() && newScreen !== 'adminVehicleInventory') {
+                inventoryManagement.getAdminTruckInventoryUnsubscribe()();
+                inventoryManagement.setAdminTruckInventoryUnsubscribe(null); // Use setter here
                 console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
             }
             // Clean up client-related modals if navigating away from client screen or sales screen
@@ -498,9 +498,10 @@
             appRoot.innerHTML += renderMessageModal();
             appRoot.innerHTML += renderConfirmationModal();
             if (showModifySaleModalState) appRoot.innerHTML += renderModifySaleModal();
-            clientManagement.renderEditClientModal(); // Render client modals
-            clientManagement.renderManageZonesSectorsModal();
-            clientManagement.renderClientPickerModal();
+            // Render client modals directly to app-root
+            appRoot.innerHTML += clientManagement.renderEditClientModal();
+            appRoot.innerHTML += clientManagement.renderManageZonesSectorsModal();
+            appRoot.innerHTML += clientManagement.renderClientPickerModal();
             console.log('[Render] Render cycle completed.');
 
             if (clientManagement.showManageZonesSectorsModalState) {
@@ -1478,8 +1479,8 @@
                 // but we need to pass the *reference* to the local variables so inventoryManagement can modify them.
                 // This is a bit tricky with primitives/arrays, so we'll re-assign after its call.
                 await inventoryManagement.fetchInventoryRelatedData();
-                inventory = inventoryManagement._inventory; // Re-assign local inventory after fetch
-                vehicles = inventoryManagement._vehicles; // Re-assign local vehicles after fetch
+                inventory.splice(0, inventory.length, ...inventoryManagement._inventory); // Re-assign local inventory after fetch
+                vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // Re-assign local vehicles after fetch
 
 
                 const usersSnapshot = await db.collection('users').get();
@@ -1519,19 +1520,19 @@
                 console.error('[Firestore] Error al cargar datos de Firestore:', error);
                 showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
                 // Revert to initial data for non-client related collections
-                inventory = []; // Will be populated by inventoryManagement's fallback
-                vehicles = []; // Will be populated by inventoryManagement's fallback
+                inventory.splice(0, inventory.length); // Clear in place
+                vehicles.splice(0, vehicles.length); // Clear in place
                 vendors = [{ name: 'Wilfredo Chacon', category: 'Alimentos' }]; // Fallback for vendors
-                dailySales = [];
-                users = [];
+                dailySales.splice(0, dailySales.length);
+                users.splice(0, users.length);
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for fallback
-                inventoryManagement.setLoadRecords([]); // Use setter for fallback
-                inventoryManagement.setTransferRecords([]); // Use setter for fallback
+                inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
+                inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.setClients([]); // Use setter for clearing
-                clientManagement.setZones([]); // Use setter for clearing
-                clientManagement.setSectors([]); // Use setter for clearing
+                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
+                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
+                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
@@ -1619,30 +1620,30 @@
             } else {
                 currentUser = null;
                 currentUserData = { role: 'guest', assignedTruckPlate: null };
-                if (inventoryManagement.truckInventoryUnsubscribe) {
-                    inventoryManagement.truckInventoryUnsubscribe();
-                    inventoryManagement.truckInventoryUnsubscribe = null;
+                if (inventoryManagement.getTruckInventoryUnsubscribe()) { // Use getter
+                    inventoryManagement.getTruckInventoryUnsubscribe()();
+                    inventoryManagement.setTruckInventoryUnsubscribe(null); // Use setter
                     console.log('[Firestore Listener] Unsubscribed from user truck inventory listener on logout.');
                 }
-                if (inventoryManagement.adminTruckInventoryUnsubscribe) {
-                    inventoryManagement.adminTruckInventoryUnsubscribe();
-                    inventoryManagement.adminTruckInventoryUnsubscribe = null;
+                if (inventoryManagement.getAdminTruckInventoryUnsubscribe()) { // Use getter
+                    inventoryManagement.getAdminTruckInventoryUnsubscribe()();
+                    inventoryManagement.setAdminTruckInventoryUnsubscribe(null); // Use setter
                     console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
                 }
                 // Clear local data
-                inventory = [];
-                vendors = [];
-                dailySales = [];
-                vehicles = [];
-                users = [];
+                inventory.splice(0, inventory.length);
+                vendors.splice(0, vendors.length);
+                dailySales.splice(0, dailySales.length);
+                vehicles.splice(0, vehicles.length);
+                users.splice(0, users.length);
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
-                inventoryManagement.setLoadRecords([]);
-                inventoryManagement.setTransferRecords([]);
+                inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
+                inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.setClients([]); // Use setter for clearing
-                clientManagement.setZones([]); // Use setter for clearing
-                clientManagement.setSectors([]); // Use setter for clearing
+                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
+                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
+                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
 
                 if (screen !== 'login' && screen !== 'register') {
                     console.log('[Auth State Changed] Redirecting to login screen (no user).');
@@ -1840,7 +1841,7 @@
                     clientManagement.openManageZonesSectorsModal();
                 } else if (target.classList.contains('edit-client-button')) {
                     const clientId = target.dataset.clientid;
-                    const clientToEdit = clientManagement.getClients().find(c => c.id === clientId); // Use getter
+                    const clientToEdit = clientManagement.clients.find(c => c.id === clientId);
                     clientManagement.openEditClientModal(clientToEdit);
                 } else if (target.classList.contains('delete-client-button')) {
                     const clientId = target.dataset.clientid;
