@@ -5,9 +5,9 @@ let _db;
 let _setScreenAndRenderFunc;
 
 // Estado global para la gestión de clientes
-export let clients = [];
-export let zones = [];
-export let sectors = [];
+let clients = []; // Cambiado a 'let' sin export directo
+let zones = [];   // Cambiado a 'let' sin export directo
+let sectors = []; // Cambiado a 'let' sin export directo
 export let selectedClientForSale = null;
 
 // Modales de cliente
@@ -25,6 +25,25 @@ export const init = (dbInstance, setScreenAndRenderCallback) => {
     _db = dbInstance;
     _setScreenAndRenderFunc = setScreenAndRenderCallback; // Almacenar la función para uso posterior
     console.log('[Client Management] Módulo inicializado con DB y setScreenAndRender.');
+};
+
+// --- Getters y Setters para las variables internas ---
+export const getClients = () => clients;
+export const setClients = (newClients) => {
+    clients = newClients;
+    console.log('[Client Management] clients updated internally.');
+};
+
+export const getZones = () => zones;
+export const setZones = (newZones) => {
+    zones = newZones;
+    console.log('[Client Management] zones updated internally.');
+};
+
+export const getSectors = () => sectors;
+export const setSectors = (newSectors) => {
+    sectors = newSectors;
+    console.log('[Client Management] sectors updated internally.');
 };
 
 // --- Funciones de Modales de Cliente ---
@@ -89,7 +108,7 @@ export const selectClientForSale = (client) => {
     if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('venta'); // Volver a la pantalla de venta
 };
 
-// Nueva función para resetear selectedClientForSale
+// Nueva función para restablecer selectedClientForSale
 export const resetSelectedClientForSale = () => {
     selectedClientForSale = null;
     console.log('[Client Management] selectedClientForSale has been reset.');
@@ -207,31 +226,33 @@ export const fetchClientData = async () => {
     console.log('[Client Management] Fetching client data...');
     try {
         const clientsSnapshot = await _db.collection('clients').get();
-        clients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setClients(clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
 
         const zonesSnapshot = await _db.collection('zones').get();
-        zones = zonesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (zones.length === 0) {
+        if (zonesSnapshot.empty) {
             await _db.collection('zones').doc('Zona A').set({ name: 'Zona A' });
             await _db.collection('zones').doc('Zona B').set({ name: 'Zona B' });
-            zones = [{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }];
+            setZones([{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }]); // Usa el setter
+        } else {
+            setZones(zonesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
         }
 
         const sectorsSnapshot = await _db.collection('sectors').get();
-        sectors = sectorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (sectors.length === 0) {
+        if (sectorsSnapshot.empty) {
             await _db.collection('sectors').doc('Sector 1').set({ name: 'Sector 1' });
             await _db.collection('sectors').doc('Sector 2').set({ name: 'Sector 2' });
-            sectors = [{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }];
+            setSectors([{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }]); // Usa el setter
+        } else {
+            setSectors(sectorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
         }
 
         console.log('[Client Management] Client data fetched successfully.');
     } catch (error) {
         console.error('[Client Management] Error fetching client data:', error);
         showMessageModal('Error al cargar datos de clientes. Revisa tu conexión y las reglas de seguridad.');
-        clients = [];
-        zones = [{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }];
-        sectors = [{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }];
+        setClients([]); // Usa el setter para fallback
+        setZones([{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }]); // Usa el setter para fallback
+        setSectors([{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }]); // Usa el setter para fallback
     }
 };
 
@@ -239,7 +260,7 @@ export const fetchClientData = async () => {
 export const renderClientesScreen = () => {
     console.log('[Client Management] Rendering clients screen.');
     const appRoot = document.getElementById('app-root');
-    const clientRows = clients.map(client => `
+    const clientRows = getClients().map(client => `
         <tr>
             <td>${client.nombreComercial}</td>
             <td>${client.cedulaRif}</td>
@@ -290,7 +311,7 @@ export const saveClient = async () => {
         return;
     }
 
-    if (isNewClient && clients.some(c => c.cedulaRif === clientData.cedulaRif)) {
+    if (isNewClient && getClients().some(c => c.cedulaRif === clientData.cedulaRif)) { // Usa el getter
         showMessageModal('Ya existe un cliente con esta Cédula/RIF.');
         return;
     }
@@ -298,10 +319,10 @@ export const saveClient = async () => {
     try {
         if (isNewClient) {
             await _db.collection('clients').doc(clientData.cedulaRif).set(clientData);
-            clients.push({ id: clientData.cedulaRif, ...clientData });
+            setClients([...getClients(), { id: clientData.cedulaRif, ...clientData }]); // Usa el setter
         } else {
             await _db.collection('clients').doc(editingClient.id).update(clientData);
-            clients = clients.map(c => c.id === editingClient.id ? { id: editingClient.id, ...clientData } : c);
+            setClients(getClients().map(c => c.id === editingClient.id ? { id: editingClient.id, ...clientData } : c)); // Usa el setter
         }
         showMessageModal('Cliente guardado exitosamente.');
         closeEditClientModal();
@@ -316,7 +337,7 @@ export const deleteClient = async (clientId) => {
     console.log('[Client Management] deleteClient called for ID:', clientId); // Debug log
     try {
         await _db.collection('clients').doc(clientId).delete();
-        clients = clients.filter(c => c.id !== clientId);
+        setClients(getClients().filter(c => c.id !== clientId)); // Usa el setter
         showMessageModal('Cliente eliminado exitosamente.');
         if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Re-render the client list
     } catch (error) {
@@ -335,8 +356,8 @@ export const renderEditClientModal = () => {
         { value: 'activo', text: 'Activo' },
         { value: 'inactivo', text: 'Inactivo' }
     ];
-    const zoneOptions = zones.map(z => ({ value: z.name, text: z.name }));
-    const sectorOptions = sectors.map(s => ({ value: s.name, text: s.name }));
+    const zoneOptions = getZones().map(z => ({ value: z.name, text: z.name })); // Usa el getter
+    const sectorOptions = getSectors().map(s => ({ value: s.name, text: s.name })); // Usa el getter
 
     return `
         <div id="edit-client-modal" class="modal">
@@ -363,7 +384,7 @@ export const renderEditClientModal = () => {
 export const renderManageZonesSectorsModal = () => {
     if (!showManageZonesSectorsModalState) return '';
 
-    const zoneRows = zones.map(zone => `
+    const zoneRows = getZones().map(zone => `
         <tr>
             <td>${zone.name}</td>
             <td>
@@ -372,7 +393,7 @@ export const renderManageZonesSectorsModal = () => {
         </tr>
     `).join('');
 
-    const sectorRows = sectors.map(sector => `
+    const sectorRows = getSectors().map(sector => `
         <tr>
             <td>${sector.name}</td>
             <td>
@@ -412,7 +433,7 @@ export const updateManageZonesSectorsModalContent = () => {
     if (!modalContent) return;
 
     // Re-render only the dynamic parts
-    const zoneRows = zones.map(zone => `
+    const zoneRows = getZones().map(zone => `
         <tr>
             <td>${zone.name}</td>
             <td>
@@ -423,7 +444,7 @@ export const updateManageZonesSectorsModalContent = () => {
     const zonesTableBody = modalContent.querySelector('#zones-table-body');
     if (zonesTableBody) zonesTableBody.innerHTML = zoneRows;
 
-    const sectorRows = sectors.map(sector => `
+    const sectorRows = getSectors().map(sector => `
         <tr>
             <td>${sector.name}</td>
             <td>
@@ -441,8 +462,8 @@ export const updateManageZonesSectorsModalContent = () => {
 export const renderClientPickerModal = () => {
     if (!showClientPickerModal) return '';
 
-    const zoneOptions = zones.map(z => ({ value: z.name, text: z.name }));
-    const sectorOptions = sectors.map(s => ({ value: s.name, text: s.name }));
+    const zoneOptions = getZones().map(z => ({ value: z.name, text: z.name })); // Usa el getter
+    const sectorOptions = getSectors().map(s => ({ value: s.name, text: s.name })); // Usa el getter
 
     return `
         <div id="client-picker-modal" class="modal">
@@ -473,7 +494,7 @@ export const updateClientPickerList = () => {
     const clientPickerListDiv = document.getElementById('client-picker-list');
     if (!clientPickerListDiv) return;
 
-    const filteredClients = clients.filter(client => {
+    const filteredClients = getClients().filter(client => { // Usa el getter
         const matchesSearch = clientPickerSearchTerm === '' ||
             client.nombreComercial.toLowerCase().includes(clientPickerSearchTerm.toLowerCase()) ||
             client.cedulaRif.toLowerCase().includes(clientPickerSearchTerm.toLowerCase()) ||
@@ -512,11 +533,11 @@ export const addZone = async () => {
     console.log('[Client Management] addZone called'); // Debug log
     const newZoneName = document.getElementById('newZoneName').value.trim();
     if (!newZoneName) { showMessageModal('El nombre de la zona no puede estar vacío.'); return; }
-    if (zones.some(z => z.name === newZoneName)) { showMessageModal('Esta zona ya existe.'); return; }
+    if (getZones().some(z => z.name === newZoneName)) { showMessageModal('Esta zona ya existe.'); return; } // Usa el getter
 
     try {
         await _db.collection('zones').doc(newZoneName).set({ name: newZoneName });
-        zones.push({ id: newZoneName, name: newZoneName });
+        setZones([...getZones(), { id: newZoneName, name: newZoneName }]); // Usa el setter
         showMessageModal('Zona agregada exitosamente.');
         document.getElementById('newZoneName').value = '';
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
@@ -530,7 +551,7 @@ export const deleteZone = async (zoneName) => {
     console.log('[Client Management] deleteZone called for:', zoneName); // Debug log
     try {
         await _db.collection('zones').doc(zoneName).delete();
-        zones = zones.filter(z => z.name !== zoneName);
+        setZones(getZones().filter(z => z.name !== zoneName)); // Usa el setter
         showMessageModal('Zona eliminada exitosamente.');
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     } catch (error) {
@@ -543,11 +564,11 @@ export const addSector = async () => {
     console.log('[Client Management] addSector called'); // Debug log
     const newSectorName = document.getElementById('newSectorName').value.trim();
     if (!newSectorName) { showMessageModal('El nombre del sector no puede estar vacío.'); return; }
-    if (sectors.some(s => s.name === newSectorName)) { showMessageModal('Este sector ya existe.'); return; }
+    if (getSectors().some(s => s.name === newSectorName)) { showMessageModal('Este sector ya existe.'); return; } // Usa el getter
 
     try {
         await _db.collection('sectors').doc(newSectorName).set({ name: newSectorName });
-        sectors.push({ id: newSectorName, name: newSectorName });
+        setSectors([...getSectors(), { id: newSectorName, name: newSectorName }]); // Usa el setter
         showMessageModal('Sector agregado exitosamente.');
         document.getElementById('newSectorName').value = '';
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
@@ -561,7 +582,7 @@ export const deleteSector = async (sectorName) => {
     console.log('[Client Management] deleteSector called for:', sectorName); // Debug log
     try {
         await _db.collection('sectors').doc(sectorName).delete();
-        sectors = sectors.filter(s => s.name !== sectorName);
+        setSectors(getSectors().filter(s => s.name !== sectorName)); // Usa el setter
         showMessageModal('Sector eliminado exitosamente.');
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     }
@@ -615,7 +636,7 @@ export const handleClientFileUpload = async (event) => {
                 });
             }
             await batch.commit();
-            await fetchClientData(); // Re-fetch para actualizar el estado local
+            await fetchClientData(); // Re-fetch para actualizar el estado local (usará los setters)
             showMessageModal('clientes.csv cargado y guardado exitosamente en Firestore.');
             if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Re-render la pantalla de clientes
         } catch (error) {
@@ -631,7 +652,7 @@ export const downloadClientsCSV = () => {
     console.log('[Client Management] downloadClientsCSV called'); // Debug log
     // Eliminados 'Límite de Crédito' y 'Días de Crédito' de los headers
     const headers = ['Nombre Comercial', 'Cédula/RIF', 'Dirección Fiscal', 'Teléfono', 'Correo Electrónico', 'Zona', 'Sector', 'Estado'];
-    const dataToDownload = clients.map(client => ({
+    const dataToDownload = getClients().map(client => ({ // Usa el getter
         'Nombre Comercial': client.nombreComercial,
         'Cédula/RIF': client.cedulaRif,
         'Dirección Fiscal': client.direccionFiscal,
