@@ -2986,6 +2986,21 @@
                 } else if (target.id === 'backToMainFromAdminTransferHistoryButton') {
                     setScreenAndRender('main');
                 }
+                // Client Management (main buttons on client screen)
+                else if (target.id === 'addClientButton') {
+                    clientManagement.openEditClientModal();
+                } else if (target.id === 'manageZonesSectorsButton') {
+                    clientManagement.openManageZonesSectorsModal();
+                } else if (target.classList.contains('edit-client-button')) {
+                    const clientId = target.dataset.clientid;
+                    const clientToEdit = clientManagement.clients.find(c => c.id === clientId);
+                    clientManagement.openEditClientModal(clientToEdit);
+                } else if (target.classList.contains('delete-client-button')) {
+                    const clientId = target.dataset.clientid;
+                    showConfirmationModal(`¿Estás seguro de que quieres eliminar al cliente con ID ${clientId}?`, () => clientManagement.deleteClient(clientId));
+                } else if (target.id === 'backToMainFromClientsButton') {
+                    setScreenAndRender('main');
+                }
             });
 
             appRoot.addEventListener('change', (event) => {
