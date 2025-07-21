@@ -268,7 +268,7 @@
         let selectedSaleForModification = null;
         let modifiedSaleQuantities = {};
         let modificationReason = '';
-        let editingVehicle = null; // This is now managed by inventoryManagement, but still a local variable for now.
+        // let editingVehicle = null; // This is now managed by inventoryManagement, but still a local variable for now.
 
         // --- Funciones de Rol ---
         const isAdmin = () => currentUserData.role === 'admin';
@@ -418,7 +418,13 @@
         const toCSV = (data, headers) => {
             if (!data || data.length === 0) return '';
             const actualHeaders = headers || Object.keys(data[0]);
-            const csvRows = [actualHeaders.join(',')];
+            const csvRows = [actualHeaders.map(header => {
+                const val = header;
+                if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+                    return `"${val.replace(/"/g, '""')}"`;
+                }
+                return val;
+            }).join(',')];
             for (const row of data) {
                 const values = actualHeaders.map(header => {
                     const val = row[header];
@@ -432,9 +438,13 @@
             return csvRows.join('\n');
         };
 
+
         // --- Funciones de Pantalla (Globales) ---
         const setScreenAndRender = (newScreen) => {
             console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
+            // Store the current screen in a data attribute for `_setScreenAndRender` in modules
+            appRoot.dataset.currentScreen = newScreen;
+
             // Clean up admin truck inventory listener if navigating away from admin inventory screens
             if (inventoryManagement.adminTruckInventoryUnsubscribe && newScreen !== 'adminVehicleInventory') {
                 inventoryManagement.adminTruckInventoryUnsubscribe();
@@ -588,7 +598,8 @@
                 return;
             }
 
-            const inventoryToDisplay = currentUserData.assignedTruckPlate ? inventoryManagement.currentTruckInventory : inventory;
+            // Use the getter function to access currentTruckInventory
+            const inventoryToDisplay = currentUserData.assignedTruckPlate ? inventoryManagement.getCurrentTruckInventory() : inventory;
             const inventorySourceText = currentUserData.assignedTruckPlate ? ` (Camión: ${currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
 
             if (clientManagement.selectedClientForSale) {
@@ -599,7 +610,7 @@
                     const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
                     const price = item.price !== undefined ? item.price : item.precio;
                     return `
-                        <td><Image of ${item.producto}></td>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center sale-quantity-input" value="${saleQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${quantity}"></td>
                         <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
@@ -639,7 +650,8 @@
 
             let currentSourceInventoryData;
             if (sourceInventoryDocId) {
-                currentSourceInventoryData = JSON.parse(JSON.stringify(inventoryManagement.currentTruckInventory));
+                // Use the getter function
+                currentSourceInventoryData = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
             } else {
                 currentSourceInventoryData = JSON.parse(JSON.stringify(inventory));
             }
@@ -686,7 +698,8 @@
             dailySales.push(saleRecord);
 
             if (sourceInventoryDocId) {
-                inventoryManagement.currentTruckInventory = updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0);
+                // Use the setter function
+                inventoryManagement.setCurrentTruckInventory(updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0));
             }
 
             resetVentaState();
@@ -699,7 +712,7 @@
                 batch.set(docRef, saleRecord);
 
                 if (sourceInventoryDocId) {
-                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: inventoryManagement.currentTruckInventory });
+                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: inventoryManagement.getCurrentTruckInventory() }); // Use getter here
                 }
 
                 await batch.commit();
@@ -881,7 +894,7 @@
                         precio: item.precio
                     });
                 });
-                inventory = updatedMainInventory.filter(item => item.cantidad > 0);
+                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update in place
                 console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
 
                 for (const date in salesByDate) {
@@ -1147,7 +1160,7 @@
                         <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
                         <div class="flex flex-wrap gap-2">
                             <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out print-receipt-button" data-sale='${JSON.stringify(sale)}'>IMPRIMIR</button>
-                            ${currentUser ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out modify-sale-button" data-sale='${JSON.stringify(sale)}'>MODIFICAR</button>` : ''}
+                            ${isAdmin() ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out modify-sale-button" data-sale='${JSON.stringify(sale)}'>MODIFICAR</button>` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -1192,7 +1205,8 @@
 
             let productsHtml = '';
             let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
-            const inventoryToCompare = (selectedSaleForModification.sourceInventory === 'warehouse') ? inventory : inventoryManagement.currentTruckInventory;
+            // Use the getter function for currentTruckInventory
+            const inventoryToCompare = (selectedSaleForModification.sourceInventory === 'warehouse') ? inventory : inventoryManagement.getCurrentTruckInventory();
 
             const renderProductRow = (item, isNew = false) => {
                 const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku);
@@ -1200,7 +1214,7 @@
                 const price = item.precioUnitario !== undefined ? item.precioUnitario : (productInInventory?.price !== undefined ? productInInventory.price : productInInventory?.precio);
                 return `
                     <tr>
-                        <td><Image of ${item.producto}></td>
+                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
                         <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td>
                         <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 modified-sale-quantity-input" value="${currentQuantity}" data-sku="${item.sku}" min="0"></td>
                         <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
@@ -1246,7 +1260,8 @@
             if (sourceInventoryPlate === 'warehouse') {
                 currentInventoryDataForValidation = inventory;
             } else {
-                currentInventoryDataForValidation = JSON.parse(JSON.stringify(inventoryManagement.currentTruckInventory));
+                // Use the getter function
+                currentInventoryDataForValidation = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
             }
 
             for (const sku in modifiedSaleQuantities) {
@@ -1263,7 +1278,7 @@
                 }
 
                 if (newQty > 0) {
-                    const productDetails = inventory.find(item => item.sku === sku) || inventoryManagement.currentTruckInventory.find(item => item.sku === sku);
+                    const productDetails = inventory.find(item => item.sku === sku) || inventoryManagement.getCurrentTruckInventory().find(item => item.sku === sku); // Use getter here
                     if (productDetails) {
                         const price = productDetails.price !== undefined ? productDetails.price : productDetails.precio;
                         newSaleItems.push({ sku: productDetails.sku, producto: productDetails.producto, presentacion: productDetails.presentacion, cantidadVendida: newQty, precioUnitario: price, subtotal: newQty * price });
@@ -1289,7 +1304,8 @@
             dailySales = dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale);
 
             if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
-                let currentTruckItems = JSON.parse(JSON.stringify(inventoryManagement.currentTruckInventory));
+                // Use the getter function to get current state
+                let currentTruckItems = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
                 for (const sku in inventoryUpdates) {
                     const delta = inventoryUpdates[sku];
                     const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
@@ -1306,7 +1322,8 @@
                     }
                 }
                 currentTruckItems = currentTruckItems.filter(item => item.quantity > 0);
-                if (currentUserData.assignedTruckPlate === sourceInventoryPlate) inventoryManagement.currentTruckInventory = currentTruckItems;
+                // Use the setter function to update
+                if (currentUserData.assignedTruckPlate === sourceInventoryPlate) inventoryManagement.setCurrentTruckInventory(currentTruckItems);
             }
 
             closeModifySaleModal();
@@ -1317,7 +1334,7 @@
                 batch.set(db.collection('dailySales').doc(selectedSaleForModification.docId), selectedSaleForModification);
 
                 if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
-                    batch.set(db.collection('truck_inventories').doc(sourceInventoryPlate), { items: inventoryManagement.currentTruckInventory });
+                    batch.set(db.collection('truck_inventories').doc(sourceInventoryPlate), { items: inventoryManagement.getCurrentTruckInventory() }); // Use getter here
                 }
 
                 await batch.commit();
@@ -1507,6 +1524,13 @@
                 vendors = [{ name: 'Wilfredo Chacon', category: 'Alimentos' }]; // Fallback for vendors
                 dailySales = [];
                 users = [];
+                inventoryManagement.setCurrentTruckInventory([]); // Use setter for fallback
+                inventoryManagement.loadRecords = []; // Direct assignment is fine for exported `let`
+                inventoryManagement.transferRecords = []; // Direct assignment is fine for exported `let`
+
+                clientManagement.clients = []; // Direct assignment is fine for exported `let`
+                clientManagement.zones = []; // Direct assignment is fine for exported `let`
+                clientManagement.sectors = []; // Direct assignment is fine for exported `let`
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
@@ -1610,7 +1634,7 @@
                 dailySales = [];
                 vehicles = [];
                 users = [];
-                inventoryManagement.currentTruckInventory = [];
+                inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
                 inventoryManagement.loadRecords = [];
                 inventoryManagement.transferRecords = [];
 
