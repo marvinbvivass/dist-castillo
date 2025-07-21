@@ -1476,11 +1476,11 @@
 
                 // Fetch inventory and vehicles via inventoryManagement
                 // inventory and vehicles are updated directly within inventoryManagement.fetchInventoryRelatedData
-                // but we need to pass the *reference* to the local variables so inventoryManagement can modify them.
-                // This is a bit tricky with primitives/arrays, so we'll re-assign after its call.
+                // The global 'inventory' and 'vehicles' arrays are passed by reference to inventoryManagement.init
+                // so inventoryManagement directly modifies them. No need to re-assign here.
                 await inventoryManagement.fetchInventoryRelatedData();
-                inventory.splice(0, inventory.length, ...inventoryManagement._inventory); // Re-assign local inventory after fetch
-                vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // Re-assign local vehicles after fetch
+                // REMOVED THE LINE BELOW AS IT WAS REDUNDANT AND CAUSING THE ERROR
+                // vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // Re-assign local vehicles after fetch
 
 
                 const usersSnapshot = await db.collection('users').get();
@@ -1525,7 +1525,7 @@
                 vendors = [{ name: 'Wilfredo Chacon', category: 'Alimentos' }]; // Fallback for vendors
                 dailySales.splice(0, dailySales.length);
                 users.splice(0, users.length);
-                inventoryManagement.setCurrentTruckInventory([]); // Use setter for fallback
+                inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
                 inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
                 inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
 
