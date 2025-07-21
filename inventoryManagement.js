@@ -351,7 +351,7 @@ const loadMerchandise = async () => {
         receivingQuantities = {};
         selectedTruckInventoryForReceiving = [];
 
-        await _fetchDataFromFirestore(); // Re-fetch all data to ensure consistency
+        await _fetchDataFromFirestore(); // Re-fetch to ensure data consistency
         _setScreenAndRender('cargaSelection');
     } catch (error) {
         console.error('Error al cargar mercancía:', error);
@@ -639,9 +639,12 @@ export const renderAdminVehicleInventoryScreen = () => {
     };
 
     // Call fetchAllTruckInventories if it hasn't been called or if data is stale
-    if (Object.keys(allTruckInventories).length === 0) {
+    // Only fetch if the screen is being rendered for the first time or if data is explicitly needed
+    // This prevents infinite loops with _setScreenAndRender
+    if (Object.keys(allTruckInventories).length === 0 || !selectedAdminVehicleForInventory) { // Re-fetch if no truck selected yet
         fetchAllTruckInventories();
     }
+
 
     const currentVehicleInventory = selectedAdminVehicleForInventory ? (allTruckInventories[selectedAdminVehicleForInventory] || []) : [];
 
@@ -744,6 +747,7 @@ export const renderVehiclesScreen = () => {
             <div id="vehicles-list-display" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 ${filteredVehicles.length === 0 ? '<p class="text-center text-gray-500 col-span-full">No hay vehículos registrados o no coinciden con la búsqueda.</p>' :
                     filteredVehicles.map(vehicle => {
+                        // Find the user assigned to this vehicle
                         const assignedUser = _users.find(u => u.assignedTruckPlate === vehicle.plate);
                         return `
                             <div class="bg-gray-100 p-4 rounded-lg shadow-sm border border-gray-200">
@@ -883,13 +887,15 @@ const deleteVehicle = async (plate) => {
 export const renderAssignVehicleScreen = () => {
     if (!_isAdmin()) { _showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta función.'); _setScreenAndRender('main'); return; }
     console.log('[Inventory Management] Rendering assign vehicle screen.');
+    console.log('[Inventory Management] Users available:', _users);
+    console.log('[Inventory Management] Vehicles available:', _vehicles);
 
     const vehicleOptions = _vehicles.map(v => ({ value: v.plate, text: `${v.name} (${v.plate})` }));
 
     const usersHtml = Array.isArray(_users) && _users.length > 0 ? _users.map(user => {
         // Find the vehicle currently assigned to this user
         const currentAssignedVehicle = _vehicles.find(v => v.plate === user.assignedTruckPlate);
-        const currentAssignedVehicleText = currentAssignedVehicle ? `${currentAssignedVehicle.name} (${currentAssignedVehicle.plate})` : '';
+        const currentAssignedVehicleText = currentAssignedVehicle ? `${currentAssignedVehicle.name} (${currentAssignedVehicle.plate})` : 'No asignado';
 
         return `
             <tr>
@@ -941,8 +947,13 @@ export const handleAssignVehicle = async (userId, newTruckPlate) => {
 
         // If the user was previously assigned to a different truck, unassign that truck
         if (oldAssignedTruckPlate && oldAssignedTruckPlate !== newTruckPlate) {
-            const oldVehicleRef = _db.collection('vehicles').doc(oldAssignedTruckPlate);
-            batch.update(oldVehicleRef, { assignedUser: null });
+            // Find the user who previously had this truck and clear their assignment
+            const previouslyAssignedUser = _users.find(u => u.assignedTruckPlate === oldAssignedTruckPlate);
+            if (previouslyAssignedUser) {
+                const oldUserDocRef = _db.collection('users').doc(previouslyAssignedUser.uid);
+                batch.update(oldUserDocRef, { assignedTruckPlate: null });
+                console.log(`[handleAssignVehicle] Desasignado camión ${oldAssignedTruckPlate} de usuario ${previouslyAssignedUser.email}`);
+            }
         }
 
         // If the new truck is already assigned to another user, unassign that user
@@ -952,14 +963,13 @@ export const handleAssignVehicle = async (userId, newTruckPlate) => {
                 const otherUserRef = _db.collection('users').doc(existingAssignment.uid);
                 batch.update(otherUserRef, { assignedTruckPlate: null });
                 _showMessageModal(`El camión ${newTruckPlate} ya estaba asignado a ${existingAssignment.email}. Se ha desasignado de ese usuario.`);
+                console.log(`[handleAssignVehicle] Desasignado camión ${newTruckPlate} de usuario ${existingAssignment.email} (ya estaba asignado a otro).`);
             }
-            // Assign the new truck to the current user
-            const newVehicleRef = _db.collection('vehicles').doc(newTruckPlate);
-            batch.update(newVehicleRef, { assignedUser: userId });
         }
 
-        // Update the user's assignedTruckPlate
+        // Update the current user's assignedTruckPlate
         batch.update(userDocRef, { assignedTruckPlate: newTruckPlate || null }); // Set to null if unassigning
+        console.log(`[handleAssignVehicle] Asignando camión ${newTruckPlate || 'ninguno'} a usuario ${userData.email}`);
 
         await batch.commit();
         _showMessageModal('Vehículo asignado/desasignado exitosamente.');
