@@ -2531,6 +2531,42 @@
         window.productImages = productImages; // Necesario para imágenes de productos en tablas
         window.updateVentaScreenContent = updateVentaScreenContent; // Necesario para que clientManagement actualice la pantalla de venta
         window.triggerCSVDownload = triggerCSVDownload; // Necesario para que clientManagement descargue CSVs
+        window.handleAuth = handleAuth; // Hacer handleAuth global
+        window.handleLogout = handleLogout; // Hacer handleLogout global
+        window.handleFileUpload = handleFileUpload; // Hacer handleFileUpload global
+        window.downloadExistingCSV = downloadExistingCSV; // Hacer downloadExistingCSV global
+        window.handleLoadMerchandiseConfirmation = showLoadMerchandiseConfirmation; // Hacer showLoadMerchandiseConfirmation global
+        window.handleLoaderSelection = handleLoaderSelection; // Hacer handleLoaderSelection global
+        window.handleTruckForReceivingSelection = handleTruckForReceivingSelection; // Hacer handleTruckForReceivingSelection global
+        window.handleReceivingQuantityChange = handleReceivingQuantityChange; // Hacer handleReceivingQuantityChange global
+        window.showLoadMerchandiseConfirmation = showLoadMerchandiseConfirmation; // Hacer showLoadMerchandiseConfirmation global
+        window.handleResetCargasInicialesPassword = handleResetCargasInicialesPassword; // Hacer handleResetCargasInicialesPassword global
+        window.handleResetQuantityChange = handleResetQuantityChange; // Hacer handleResetQuantityChange global
+        window.saveResetCargasIniciales = saveResetCargasIniciales; // Hacer saveResetCargasIniciales global
+        window.handleAdminVehicleSelection = handleAdminVehicleSelection; // Hacer handleAdminVehicleSelection global
+        window.filterInventoryForUserScreen = filterInventoryForUserScreen; // Hacer filterInventoryForUserScreen global
+        window.handleProductQuantityChange = handleProductQuantityChange; // Hacer handleProductQuantityChange global
+        window.showFinalizeSaleConfirmation = showFinalizeSaleConfirmation; // Hacer showFinalizeSaleConfirmation global
+        window.resetVentaStateAndGoToMain = resetVentaStateAndGoToMain; // Hacer resetVentaStateAndGoToMain global
+        window.showCloseSalesConfirmation = showCloseSalesConfirmation; // Hacer showCloseSalesConfirmation global
+        window.printSaleReceipt = printSaleReceipt; // Hacer printSaleReceipt global
+        window.openModifySaleModal = openModifySaleModal; // Hacer openModifySaleModal global
+        window.handleModifiedSaleQuantityChange = handleModifiedSaleQuantityChange; // Hacer handleModifiedSaleQuantityChange global
+        window.handleModificationReasonChange = handleModificationReasonChange; // Hacer handleModificationReasonChange global
+        window.saveModifiedSale = saveModifiedSale; // Hacer saveModifiedSale global
+        window.handleAddVehicle = handleAddVehicle; // Hacer handleAddVehicle global
+        window.editVehicle = editVehicle; // Hacer editVehicle global
+        window.cancelEditVehicle = cancelEditVehicle; // Hacer cancelEditVehicle global
+        window.saveEditedVehicle = saveEditedVehicle; // Hacer saveEditedVehicle global
+        window.showDeleteVehicleConfirmation = showDeleteVehicleConfirmation; // Hacer showDeleteVehicleConfirmation global
+        window.handleAssignVehicle = handleAssignVehicle; // Hacer handleAssignVehicle global
+        window.showClearLoadHistoryConfirmation = showClearLoadHistoryConfirmation; // Hacer showClearLoadHistoryConfirmation global
+        window.handleTransferInventoryPassword = handleTransferInventoryPassword; // Hacer handleTransferInventoryPassword global
+        window.handleDestinationTruckSelection = handleDestinationTruckSelection; // Hacer handleDestinationTruckSelection global
+        window.handleTransferQuantityChange = handleTransferQuantityChange; // Hacer handleTransferQuantityChange global
+        window.showTransferConfirmation = showTransferConfirmation; // Hacer showTransferConfirmation global
+        window.showClearTransferHistoryConfirmation = showClearTransferHistoryConfirmation; // Hacer showClearTransferHistoryConfirmation global
+
 
         // Inicializar el módulo de gestión de clientes con la instancia de Firestore
         clientManagement.init(db);
