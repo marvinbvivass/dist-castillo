@@ -2,7 +2,7 @@
 
 // --- Module-scoped variables (will be initialized via init function) ---
 let _db;
-let _currentUserData;
+let _currentUserData; // This will be updated via the setter function
 let _isAdmin;
 let _isUser;
 let _vehicles; // This will be the global vehicles array from index.html
@@ -62,7 +62,7 @@ const initialVehicles = [
 // --- Initialization function ---
 export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton, setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown) => {
     _db = db;
-    _currentUserData = currentUserData;
+    _currentUserData = currentUserData; // Initial assignment
     _isAdmin = isAdmin;
     _isUser = isUser;
     // Ensure these are arrays, even if initially undefined or null
@@ -82,6 +82,12 @@ export const init = (db, currentUserData, isAdmin, isUser, vehicles, inventory, 
     _fetchDataFromFirestore = fetchDataFromFirestore;
     _createSearchableDropdown = createSearchableDropdown; // Assign the new dependency
     console.log('[inventoryManagement.js] Initialized with dependencies.');
+};
+
+// --- Setter for _currentUserData (for external modules to update) ---
+export const updateCurrentUserData = (data) => {
+    _currentUserData = data;
+    console.log('[inventoryManagement.js] _currentUserData updated via setter:', _currentUserData);
 };
 
 // --- Getter for currentTruckInventory (for external modules to read) ---
