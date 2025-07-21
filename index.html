@@ -1969,12 +1969,6 @@
             });
 
             // User Inventory Screen
-            // Removed inventorySearchInputUser as search bar is removed from user inventory screen.
-            // const inventorySearchInputUser = document.getElementById('inventorySearchInputUser');
-            // if (inventorySearchInputUser) {
-            //     inventorySearchInputUser.oninput = (e) => inventoryManagement.filterInventoryForUserScreen(e.target.value);
-            // }
-
             const backToMainFromUserInventoryButton = document.getElementById('backToMainFromUserInventoryButton');
             if (backToMainFromUserInventoryButton) {
                 backToMainFromUserInventoryButton.onclick = () => setScreenAndRender('main');
@@ -2019,12 +2013,13 @@
                 addVehicleButton.onclick = () => inventoryManagement.handleAddVehicle();
             }
 
-            document.querySelectorAll('.edit-vehicle-button').forEach(button => {
-                button.onclick = (e) => inventoryManagement.editVehicle(e.target.dataset.plate);
-            });
-
-            document.querySelectorAll('.delete-vehicle-button').forEach(button => {
-                button.onclick = (e) => inventoryManagement.showDeleteVehicleConfirmation(e.target.dataset.plate);
+            // Delegación de eventos para botones de editar/eliminar vehículo
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('edit-vehicle-button')) {
+                    inventoryManagement.editVehicle(e.target.dataset.plate);
+                } else if (e.target.classList.contains('delete-vehicle-button')) {
+                    inventoryManagement.showDeleteVehicleConfirmation(e.target.dataset.plate);
+                }
             });
 
             const backToMainFromVehiclesButton = document.getElementById('backToMainFromVehiclesButton');
@@ -2032,16 +2027,17 @@
                 backToMainFromVehiclesButton.onclick = () => setScreenAndRender('main');
             }
 
-            // Edit Vehicle Modal
-            const saveEditedVehicleButton = document.getElementById('saveEditedVehicleButton');
-            if (saveEditedVehicleButton) {
-                saveEditedVehicleButton.onclick = () => inventoryManagement.saveEditedVehicle();
-            }
+            // Edit Vehicle Modal (buttons are now handled by delegation in inventoryManagement.js)
+            // No direct querySelector here, as they are handled by delegation in inventoryManagement.js
+            // const saveEditedVehicleButton = document.getElementById('saveEditedVehicleButton');
+            // if (saveEditedVehicleButton) {
+            //     saveEditedVehicleButton.onclick = () => inventoryManagement.saveEditedVehicle();
+            // }
 
-            const cancelEditVehicleButton = document.getElementById('cancelEditVehicleButton');
-            if (cancelEditVehicleButton) {
-                cancelEditVehicleButton.onclick = () => inventoryManagement.cancelEditVehicle();
-            }
+            // const cancelEditVehicleButton = document.getElementById('cancelEditVehicleButton');
+            // if (cancelEditVehicleButton) {
+            //     cancelEditVehicleButton.onclick = () => inventoryManagement.cancelEditVehicle();
+            // }
 
             // Assign Vehicle Screen
             const backToMainFromAssignVehicleButton = document.getElementById('backToMainFromAssignVehicleButton');
@@ -2121,8 +2117,11 @@
                 backToMainFromAdminTransferHistoryButton.onclick = () => setScreenAndRender('main');
             }
 
-            document.querySelectorAll('.download-transfer-csv-button').forEach(button => {
-                button.onclick = (e) => downloadExistingCSV(`traslado_${e.target.dataset.recordid}.csv`);
+            // Delegación de eventos para botones de descarga de historial de transbordo
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('download-transfer-csv-button')) {
+                    downloadExistingCSV(`traslado_${e.target.dataset.recordid}.csv`);
+                }
             });
 
             // Archivos Admin Screen
@@ -2213,9 +2212,14 @@
                 // We just need to ensure it's rendered.
             }
 
-            // These buttons will now be rendered conditionally based on selectedClientInClientsScreen
-            // so their event listeners need to be attached dynamically after client selection.
-            // No need to query them directly here.
+            // Delegación de eventos para botones de editar/eliminar cliente
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('edit-client-button')) {
+                    clientManagement.editClient(e.target.dataset.clientid);
+                } else if (e.target.classList.contains('delete-client-button')) {
+                    clientManagement.showDeleteClientConfirmation(e.target.dataset.clientid);
+                }
+            });
 
             const backToMainFromClientsButton = document.getElementById('backToMainFromClientsButton');
             if (backToMainFromClientsButton) {
