@@ -1,13 +1,19 @@
 // clientManagement.js
 
-// Variables globales dentro del módulo para almacenar las instancias de Firestore y la función setScreenAndRender
+// Variables globales dentro del módulo para almacenar las instancias de Firestore y las funciones de UI
 let _db;
 let _setScreenAndRenderFunc;
+let _createButton; // Global UI helper function
+let _createInput;  // Global UI helper function
+let _createSelect; // Global UI helper function
+let _createTable;  // Global UI helper function
+let _showMessageModal; // Global message modal function
+let _showConfirmationModal; // Global confirmation modal function
 
 // Estado global para la gestión de clientes
-let clients = []; // Cambiado a 'let' sin export directo
-let zones = [];   // Cambiado a 'let' sin export directo
-let sectors = []; // Cambiado a 'let' sin export directo
+export let clients = [];
+export let zones = [];
+export let sectors = [];
 export let selectedClientForSale = null;
 
 // Modales de cliente
@@ -20,30 +26,17 @@ export let clientPickerFilterZone = '';
 export let clientPickerFilterSector = '';
 
 // Función de inicialización del módulo
-// Ahora acepta la instancia de Firestore y la función setScreenAndRender
-export const init = (dbInstance, setScreenAndRenderCallback) => {
+// Ahora acepta la instancia de Firestore, la función setScreenAndRender y las funciones de UI
+export const init = (dbInstance, setScreenAndRenderCallback, createButtonFunc, createInputFunc, createSelectFunc, createTableFunc, showMessageModalFunc, showConfirmationModalFunc) => {
     _db = dbInstance;
-    _setScreenAndRenderFunc = setScreenAndRenderCallback; // Almacenar la función para uso posterior
-    console.log('[Client Management] Módulo inicializado con DB y setScreenAndRender.');
-};
-
-// --- Getters y Setters para las variables internas ---
-export const getClients = () => clients;
-export const setClients = (newClients) => {
-    clients = newClients;
-    console.log('[Client Management] clients updated internally.');
-};
-
-export const getZones = () => zones;
-export const setZones = (newZones) => {
-    zones = newZones;
-    console.log('[Client Management] zones updated internally.');
-};
-
-export const getSectors = () => sectors;
-export const setSectors = (newSectors) => {
-    sectors = newSectors;
-    console.log('[Client Management] sectors updated internally.');
+    _setScreenAndRenderFunc = setScreenAndRenderCallback;
+    _createButton = createButtonFunc; // Assign global UI helper
+    _createInput = createInputFunc;   // Assign global UI helper
+    _createSelect = createSelectFunc; // Assign global UI helper
+    _createTable = createTableFunc;   // Assign global UI helper
+    _showMessageModal = showMessageModalFunc; // Assign global message modal function
+    _showConfirmationModal = showConfirmationModalFunc; // Assign global confirmation modal function
+    console.log('[Client Management] Módulo inicializado con DB, setScreenAndRender y funciones de UI.');
 };
 
 // --- Funciones de Modales de Cliente ---
@@ -115,60 +108,7 @@ export const resetSelectedClientForSale = () => {
 };
 
 
-// --- Funciones de Ayuda Generales (replicadas o adaptadas del index.html si son necesarias aquí) ---
-const createButton = (text, id, className = '', dataAttributes = {}) => {
-    const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-    return `<button id="${id}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" ${dataAttrs}>${text}</button>`;
-};
-
-const createInput = (id, placeholder, value = '', type = 'text', disabled = false, className = '', dataAttributes = {}) => {
-    const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-    return `<input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${className}" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} ${dataAttrs}>`;
-};
-
-const createSelect = (id, options, selectedValue, className = '', placeholder = '-- Seleccione --', dataAttributes = {}) => {
-    const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-    return `
-        <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}" ${dataAttrs}>
-            <option value="">${placeholder}</option>
-            ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
-        </select>
-    `;
-};
-
-const createTable = (headers, rowsHtml, id = '') => `
-    <div class="table-container mb-5">
-        <table>
-            <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-            <tbody id="${id}">${rowsHtml}</tbody>
-        </table>
-    </div>
-`;
-
-// Helper para mostrar mensajes (usando la función del módulo principal)
-const showMessageModal = (message) => {
-    // Esto asume que showMessageModal es una función global o pasada al módulo principal
-    // Para evitar la dependencia circular, la función showMessageModal del index.html
-    // debería ser la única que gestiona el modal. Aquí solo la llamamos si está disponible.
-    if (window.showMessageModal) {
-        window.showMessageModal(message);
-    } else {
-        console.warn('showMessageModal no está disponible globalmente. Mensaje:', message);
-        alert(message); // Fallback si no está integrada
-    }
-};
-
-const showConfirmationModal = (message, callback) => {
-    if (window.showConfirmationModal) {
-        window.showConfirmationModal(message, callback);
-    } else {
-        console.warn('showConfirmationModal no está disponible globalmente.');
-        if (confirm(message)) { // Fallback
-            callback();
-        }
-    }
-};
-
+// --- Funciones de Ayuda Generales (ahora usan las funciones pasadas en init) ---
 const parseCSV = (csvString) => {
     const lines = csvString.split('\n').filter(line => line.trim() !== '');
     if (lines.length === 0) return [];
@@ -201,7 +141,7 @@ const toCSV = (data, headers) => {
 
 const triggerCSVDownload = (filename, csvContent) => {
     if (!csvContent) {
-        showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
+        _showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
         return;
     }
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -216,7 +156,7 @@ const triggerCSVDownload = (filename, csvContent) => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     } else {
-        showMessageModal('La descarga de archivos no es compatible con este navegador.');
+        _showMessageModal('La descarga de archivos no es compatible con este navegador.');
     }
 };
 
@@ -226,33 +166,31 @@ export const fetchClientData = async () => {
     console.log('[Client Management] Fetching client data...');
     try {
         const clientsSnapshot = await _db.collection('clients').get();
-        setClients(clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
+        clients = clientsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const zonesSnapshot = await _db.collection('zones').get();
-        if (zonesSnapshot.empty) {
+        zones = zonesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (zones.length === 0) {
             await _db.collection('zones').doc('Zona A').set({ name: 'Zona A' });
             await _db.collection('zones').doc('Zona B').set({ name: 'Zona B' });
-            setZones([{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }]); // Usa el setter
-        } else {
-            setZones(zonesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
+            zones = [{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }];
         }
 
         const sectorsSnapshot = await _db.collection('sectors').get();
-        if (sectorsSnapshot.empty) {
+        sectors = sectorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (sectors.length === 0) {
             await _db.collection('sectors').doc('Sector 1').set({ name: 'Sector 1' });
             await _db.collection('sectors').doc('Sector 2').set({ name: 'Sector 2' });
-            setSectors([{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }]); // Usa el setter
-        } else {
-            setSectors(sectorsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); // Usa el setter
+            sectors = [{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }];
         }
 
         console.log('[Client Management] Client data fetched successfully.');
     } catch (error) {
         console.error('[Client Management] Error fetching client data:', error);
-        showMessageModal('Error al cargar datos de clientes. Revisa tu conexión y las reglas de seguridad.');
-        setClients([]); // Usa el setter para fallback
-        setZones([{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }]); // Usa el setter para fallback
-        setSectors([{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }]); // Usa el setter para fallback
+        _showMessageModal('Error al cargar datos de clientes. Revisa tu conexión y las reglas de seguridad.');
+        clients = [];
+        zones = [{ id: 'Zona A', name: 'Zona A' }, { id: 'Zona B', name: 'Zona B' }];
+        sectors = [{ id: 'Sector 1', name: 'Sector 1' }, { id: 'Sector 2', name: 'Sector 2' }];
     }
 };
 
@@ -260,7 +198,7 @@ export const fetchClientData = async () => {
 export const renderClientesScreen = () => {
     console.log('[Client Management] Rendering clients screen.');
     const appRoot = document.getElementById('app-root');
-    const clientRows = getClients().map(client => `
+    const clientRows = clients.map(client => `
         <tr>
             <td>${client.nombreComercial}</td>
             <td>${client.cedulaRif}</td>
@@ -268,8 +206,8 @@ export const renderClientesScreen = () => {
             <td>${client.zona}</td>
             <td>${client.sector}</td>
             <td>
-                ${createButton('Editar', '', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-2 rounded-md text-sm edit-client-button', { clientid: client.id })}
-                ${createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-client-button', { clientid: client.id })}
+                ${_createButton('Editar', '', 'bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-2 rounded-md text-sm edit-client-button', { clientid: client.id })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-client-button', { clientid: client.id })}
             </td>
         </tr>
     `).join('');
@@ -278,16 +216,15 @@ export const renderClientesScreen = () => {
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
             <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">GESTIÓN DE CLIENTES</h2>
             <div class="flex justify-center mb-6 gap-4">
-                ${createButton('Agregar Nuevo Cliente', 'addClientButton', 'bg-emerald-600')}
-                ${createButton('Gestionar Zonas y Sectores', 'manageZonesSectorsButton', 'bg-blue-600')}
+                ${_createButton('Agregar Nuevo Cliente', 'addClientButton', 'bg-emerald-600')}
+                ${_createButton('Gestionar Zonas y Sectores', 'manageZonesSectorsButton', 'bg-blue-600')}
             </div>
             <div class="table-container mb-5">
-                ${createTable(['Nombre Comercial', 'Cédula/RIF', 'Teléfono', 'Zona', 'Sector', 'Acciones'], clientRows, 'clients-table-body')}
+                ${_createTable(['Nombre Comercial', 'Cédula/RIF', 'Teléfono', 'Zona', 'Sector', 'Acciones'], clientRows, 'clients-table-body')}
             </div>
-            ${createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
+            ${_createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
-    // addClientScreenEventListeners() fue eliminado de aquí, ahora se maneja por delegación en index.html
 };
 
 // --- Funciones CRUD de Clientes ---
@@ -307,29 +244,29 @@ export const saveClient = async () => {
     };
 
     if (!clientData.nombreComercial || !clientData.cedulaRif || !clientData.telefono) {
-        showMessageModal('Nombre Comercial, Cédula/RIF y Teléfono son campos obligatorios.');
+        _showMessageModal('Nombre Comercial, Cédula/RIF y Teléfono son campos obligatorios.');
         return;
     }
 
-    if (isNewClient && getClients().some(c => c.cedulaRif === clientData.cedulaRif)) { // Usa el getter
-        showMessageModal('Ya existe un cliente con esta Cédula/RIF.');
+    if (isNewClient && clients.some(c => c.cedulaRif === clientData.cedulaRif)) {
+        _showMessageModal('Ya existe un cliente con esta Cédula/RIF.');
         return;
     }
 
     try {
         if (isNewClient) {
             await _db.collection('clients').doc(clientData.cedulaRif).set(clientData);
-            setClients([...getClients(), { id: clientData.cedulaRif, ...clientData }]); // Usa el setter
+            clients.push({ id: clientData.cedulaRif, ...clientData });
         } else {
             await _db.collection('clients').doc(editingClient.id).update(clientData);
-            setClients(getClients().map(c => c.id === editingClient.id ? { id: editingClient.id, ...clientData } : c)); // Usa el setter
+            clients = clients.map(c => c.id === editingClient.id ? { id: editingClient.id, ...clientData } : c);
         }
-        showMessageModal('Cliente guardado exitosamente.');
+        _showMessageModal('Cliente guardado exitosamente.');
         closeEditClientModal();
         if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Re-render the client list
     } catch (error) {
         console.error('Error al guardar cliente:', error);
-        showMessageModal('Error al guardar cliente. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al guardar cliente. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
@@ -337,12 +274,12 @@ export const deleteClient = async (clientId) => {
     console.log('[Client Management] deleteClient called for ID:', clientId); // Debug log
     try {
         await _db.collection('clients').doc(clientId).delete();
-        setClients(getClients().filter(c => c.id !== clientId)); // Usa el setter
-        showMessageModal('Cliente eliminado exitosamente.');
+        clients = clients.filter(c => c.id !== clientId);
+        _showMessageModal('Cliente eliminado exitosamente.');
         if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Re-render the client list
     } catch (error) {
         console.error('Error al eliminar cliente:', error);
-        showMessageModal('Error al eliminar cliente. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al eliminar cliente. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
@@ -356,25 +293,25 @@ export const renderEditClientModal = () => {
         { value: 'activo', text: 'Activo' },
         { value: 'inactivo', text: 'Inactivo' }
     ];
-    const zoneOptions = getZones().map(z => ({ value: z.name, text: z.name })); // Usa el getter
-    const sectorOptions = getSectors().map(s => ({ value: s.name, text: s.name })); // Usa el getter
+    const zoneOptions = zones.map(z => ({ value: z.name, text: z.name }));
+    const sectorOptions = sectors.map(s => ({ value: s.name, text: s.name }));
 
     return `
         <div id="edit-client-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">${isNew ? 'Agregar Nuevo Cliente' : 'Editar Cliente'}</h3>
-                ${createInput('clientName', 'Nombre Comercial', client.nombreComercial)}
-                ${createInput('clientId', 'Cédula/RIF', client.cedulaRif, 'text', !isNew)}
-                ${createInput('clientAddress', 'Dirección Fiscal', client.direccionFiscal)}
-                ${createInput('clientPhone', 'Teléfono', client.telefono, 'tel')}
-                ${createInput('clientEmail', 'Correo Electrónico', client.correo, 'email')}
-                ${createSelect('clientZone', zoneOptions, client.zona, '', '-- Seleccione Zona --')}
-                ${createSelect('clientSector', sectorOptions, client.sector, '', '-- Seleccione Sector --')}
+                ${_createInput('clientName', 'Nombre Comercial', client.nombreComercial)}
+                ${_createInput('clientId', 'Cédula/RIF', client.cedulaRif, 'text', !isNew)}
+                ${_createInput('clientAddress', 'Dirección Fiscal', client.direccionFiscal)}
+                ${_createInput('clientPhone', 'Teléfono', client.telefono, 'tel')}
+                ${_createInput('clientEmail', 'Correo Electrónico', client.correo, 'email')}
+                ${_createSelect('clientZone', zoneOptions, client.zona, '', '-- Seleccione Zona --')}
+                ${_createSelect('clientSector', sectorOptions, client.sector, '', '-- Seleccione Sector --')}
                 <!-- Eliminados Límite de Crédito y Días de Crédito -->
-                ${createSelect('clientStatus', statusOptions, client.estado || 'activo', '', '-- Seleccione Estado --')}
+                ${_createSelect('clientStatus', statusOptions, client.estado || 'activo', '', '-- Seleccione Estado --')}
                 <div class="flex justify-around gap-4 mt-5">
-                    ${createButton('Guardar Cliente', 'saveClientButton', 'bg-emerald-600 flex-1')}
-                    ${createButton('Cancelar', 'cancelEditClientButton', 'bg-gray-600 flex-1')}
+                    ${_createButton('Guardar Cliente', 'saveClientButton', 'bg-emerald-600 flex-1')}
+                    ${_createButton('Cancelar', 'cancelEditClientButton', 'bg-gray-600 flex-1')}
                 </div>
             </div>
         </div>
@@ -384,20 +321,20 @@ export const renderEditClientModal = () => {
 export const renderManageZonesSectorsModal = () => {
     if (!showManageZonesSectorsModalState) return '';
 
-    const zoneRows = getZones().map(zone => `
+    const zoneRows = zones.map(zone => `
         <tr>
             <td>${zone.name}</td>
             <td>
-                ${createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
             </td>
         </tr>
     `).join('');
 
-    const sectorRows = getSectors().map(sector => `
+    const sectorRows = sectors.map(sector => `
         <tr>
             <td>${sector.name}</td>
             <td>
-                ${createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-sector-button', { sectorname: sector.name })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-sector-button', { sectorname: sector.name })}
             </td>
         </tr>
     `).join('');
@@ -409,19 +346,19 @@ export const renderManageZonesSectorsModal = () => {
 
                 <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-300">
                     <h4 class="text-xl font-bold mb-3 text-blue-700">Zonas</h4>
-                    ${createInput('newZoneName', 'Nueva Zona')}
-                    ${createButton('Agregar Zona', 'addZoneButton', 'bg-blue-600 w-full mb-4')}
-                    ${createTable(['Nombre', 'Acciones'], zoneRows, 'zones-table-body')}
+                    ${_createInput('newZoneName', 'Nueva Zona')}
+                    ${_createButton('Agregar Zona', 'addZoneButton', 'bg-blue-600 w-full mb-4')}
+                    ${_createTable(['Nombre', 'Acciones'], zoneRows, 'zones-table-body')}
                 </div>
 
                 <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-300">
                     <h4 class="text-xl font-bold mb-3 text-green-700">Sectores</h4>
-                    ${createInput('newSectorName', 'Nuevo Sector')}
-                    ${createButton('Agregar Sector', 'addSectorButton', 'bg-green-600 w-full mb-4')}
-                    ${createTable(['Nombre', 'Acciones'], sectorRows, 'sectors-table-body')}
+                    ${_createInput('newSectorName', 'Nuevo Sector')}
+                    ${_createButton('Agregar Sector', 'addSectorButton', 'bg-green-600 w-full mb-4')}
+                    ${_createTable(['Nombre', 'Acciones'], sectorRows, 'sectors-table-body')}
                 </div>
 
-                ${createButton('Cerrar', 'closeManageZonesSectorsButton', 'bg-gray-600 mt-5 w-full')}
+                ${_createButton('Cerrar', 'closeManageZonesSectorsButton', 'bg-gray-600 mt-5 w-full')}
             </div>
         </div>
     `;
@@ -433,57 +370,54 @@ export const updateManageZonesSectorsModalContent = () => {
     if (!modalContent) return;
 
     // Re-render only the dynamic parts
-    const zoneRows = getZones().map(zone => `
+    const zoneRows = zones.map(zone => `
         <tr>
             <td>${zone.name}</td>
             <td>
-                ${createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-zone-button', { zonename: zone.name })}
             </td>
         </tr>
     `).join('');
     const zonesTableBody = modalContent.querySelector('#zones-table-body');
     if (zonesTableBody) zonesTableBody.innerHTML = zoneRows;
 
-    const sectorRows = getSectors().map(sector => `
+    const sectorRows = sectors.map(sector => `
         <tr>
             <td>${sector.name}</td>
             <td>
-                ${createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-sector-button', { sectorname: sector.name })}
+                ${_createButton('Eliminar', '', 'bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm delete-sector-button', { sectorname: sector.name })}
             </td>
         </tr>
     `).join('');
     const sectorsTableBody = modalContent.querySelector('#sectors-table-body');
     if (sectorsTableBody) sectorsTableBody.innerHTML = sectorRows;
-
-    // addManageZonesSectorsModalEventListeners() fue eliminado de aquí.
-    // Los event listeners para estos botones se manejan por delegación en index.html.
 };
 
 export const renderClientPickerModal = () => {
     if (!showClientPickerModal) return '';
 
-    const zoneOptions = getZones().map(z => ({ value: z.name, text: z.name })); // Usa el getter
-    const sectorOptions = getSectors().map(s => ({ value: s.name, text: s.name })); // Usa el getter
+    const zoneOptions = zones.map(z => ({ value: z.name, text: z.name }));
+    const sectorOptions = sectors.map(s => ({ value: s.name, text: s.name }));
 
     return `
         <div id="client-picker-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-purple-700">Seleccionar Cliente</h3>
                 <div class="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-300">
-                    ${createInput('clientPickerSearchInput', 'Buscar por nombre, cédula, teléfono...', clientPickerSearchTerm)}
+                    ${_createInput('clientPickerSearchInput', 'Buscar por nombre, cédula, teléfono...', clientPickerSearchTerm)}
                     <div class="flex flex-wrap gap-4 mt-2">
                         <div class="flex-1 min-w-[150px]">
-                            ${createSelect('clientPickerFilterZone', zoneOptions, clientPickerFilterZone, 'w-full', '-- Filtrar por Zona --')}
+                            ${_createSelect('clientPickerFilterZone', zoneOptions, clientPickerFilterZone, 'w-full', '-- Filtrar por Zona --')}
                         </div>
                         <div class="flex-1 min-w-[150px]">
-                            ${createSelect('clientPickerFilterSector', sectorOptions, clientPickerFilterSector, 'w-full', '-- Filtrar por Sector --')}
+                            ${_createSelect('clientPickerFilterSector', sectorOptions, clientPickerFilterSector, 'w-full', '-- Filtrar por Sector --')}
                         </div>
                     </div>
                 </div>
                 <div id="client-picker-list" class="max-h-60 overflow-y-auto mb-4 border border-gray-200 rounded-lg p-2">
                     <!-- Client list will be rendered here by updateClientPickerList -->
                 </div>
-                ${createButton('Cerrar', 'closeClientPickerButton', 'bg-gray-600 w-full')}
+                ${_createButton('Cerrar', 'closeClientPickerButton', 'bg-gray-600 w-full')}
             </div>
         </div>
     `;
@@ -494,7 +428,7 @@ export const updateClientPickerList = () => {
     const clientPickerListDiv = document.getElementById('client-picker-list');
     if (!clientPickerListDiv) return;
 
-    const filteredClients = getClients().filter(client => { // Usa el getter
+    const filteredClients = clients.filter(client => {
         const matchesSearch = clientPickerSearchTerm === '' ||
             client.nombreComercial.toLowerCase().includes(clientPickerSearchTerm.toLowerCase()) ||
             client.cedulaRif.toLowerCase().includes(clientPickerSearchTerm.toLowerCase()) ||
@@ -518,8 +452,6 @@ export const updateClientPickerList = () => {
     `).join('');
 
     // Add event listeners for client selection
-    // Estos onclicks se manejan directamente aquí porque son elementos dentro del modal
-    // y se re-renderizan con cada actualización de la lista.
     clientPickerListDiv.querySelectorAll('.select-client-item').forEach(item => {
         item.onclick = (e) => {
             const clientData = JSON.parse(e.currentTarget.dataset.client);
@@ -532,18 +464,18 @@ export const updateClientPickerList = () => {
 export const addZone = async () => {
     console.log('[Client Management] addZone called'); // Debug log
     const newZoneName = document.getElementById('newZoneName').value.trim();
-    if (!newZoneName) { showMessageModal('El nombre de la zona no puede estar vacío.'); return; }
-    if (getZones().some(z => z.name === newZoneName)) { showMessageModal('Esta zona ya existe.'); return; } // Usa el getter
+    if (!newZoneName) { _showMessageModal('El nombre de la zona no puede estar vacío.'); return; }
+    if (zones.some(z => z.name === newZoneName)) { _showMessageModal('Esta zona ya existe.'); return; }
 
     try {
         await _db.collection('zones').doc(newZoneName).set({ name: newZoneName });
-        setZones([...getZones(), { id: newZoneName, name: newZoneName }]); // Usa el setter
-        showMessageModal('Zona agregada exitosamente.');
+        zones.push({ id: newZoneName, name: newZoneName });
+        _showMessageModal('Zona agregada exitosamente.');
         document.getElementById('newZoneName').value = '';
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     } catch (error) {
         console.error('Error al agregar zona:', error);
-        showMessageModal('Error al agregar zona. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al agregar zona. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
@@ -551,30 +483,30 @@ export const deleteZone = async (zoneName) => {
     console.log('[Client Management] deleteZone called for:', zoneName); // Debug log
     try {
         await _db.collection('zones').doc(zoneName).delete();
-        setZones(getZones().filter(z => z.name !== zoneName)); // Usa el setter
-        showMessageModal('Zona eliminada exitosamente.');
+        zones = zones.filter(z => z.name !== zoneName);
+        _showMessageModal('Zona eliminada exitosamente.');
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     } catch (error) {
         console.error('Error al eliminar zona:', error);
-        showMessageModal('Error al eliminar zona. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al eliminar zona. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
 export const addSector = async () => {
     console.log('[Client Management] addSector called'); // Debug log
     const newSectorName = document.getElementById('newSectorName').value.trim();
-    if (!newSectorName) { showMessageModal('El nombre del sector no puede estar vacío.'); return; }
-    if (getSectors().some(s => s.name === newSectorName)) { showMessageModal('Este sector ya existe.'); return; } // Usa el getter
+    if (!newSectorName) { _showMessageModal('El nombre del sector no puede estar vacío.'); return; }
+    if (sectors.some(s => s.name === newSectorName)) { _showMessageModal('Este sector ya existe.'); return; }
 
     try {
         await _db.collection('sectors').doc(newSectorName).set({ name: newSectorName });
-        setSectors([...getSectors(), { id: newSectorName, name: newSectorName }]); // Usa el setter
-        showMessageModal('Sector agregado exitosamente.');
+        sectors.push({ id: newSectorName, name: newSectorName });
+        _showMessageModal('Sector agregado exitosamente.');
         document.getElementById('newSectorName').value = '';
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     } catch (error) {
         console.error('Error al agregar sector:', error);
-        showMessageModal('Error al agregar sector. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al agregar sector. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
@@ -582,13 +514,13 @@ export const deleteSector = async (sectorName) => {
     console.log('[Client Management] deleteSector called for:', sectorName); // Debug log
     try {
         await _db.collection('sectors').doc(sectorName).delete();
-        setSectors(getSectors().filter(s => s.name !== sectorName)); // Usa el setter
-        showMessageModal('Sector eliminado exitosamente.');
+        sectors = sectors.filter(s => s.name !== sectorName);
+        _showMessageModal('Sector eliminado exitosamente.');
         updateManageZonesSectorsModalContent(); // Actualizar el contenido del modal
     }
     catch (error) {
         console.error('Error al eliminar sector:', error);
-        showMessageModal('Error al eliminar sector. Revisa tu conexión y reglas de seguridad.');
+        _showMessageModal('Error al eliminar sector. Revisa tu conexión y reglas de seguridad.');
     }
 };
 
@@ -602,7 +534,7 @@ export const handleClientFileUpload = async (event) => {
     reader.onload = async (e) => {
         const parsedData = parseCSV(e.target.result);
         if (parsedData.length === 0) {
-            showMessageModal('El archivo CSV de clientes está vacío o no tiene el formato correcto.');
+            _showMessageModal('El archivo CSV de clientes está vacío o no tiene el formato correcto.');
             return;
         }
 
@@ -636,12 +568,12 @@ export const handleClientFileUpload = async (event) => {
                 });
             }
             await batch.commit();
-            await fetchClientData(); // Re-fetch para actualizar el estado local (usará los setters)
-            showMessageModal('clientes.csv cargado y guardado exitosamente en Firestore.');
+            await fetchClientData(); // Re-fetch para actualizar el estado local
+            _showMessageModal('clientes.csv cargado y guardado exitosamente en Firestore.');
             if (_setScreenAndRenderFunc) _setScreenAndRenderFunc('clientes'); // Re-render la pantalla de clientes
         } catch (error) {
             console.error('Error al cargar archivo CSV de clientes a Firestore:', error);
-            showMessageModal('Error al cargar archivo de clientes. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
+            _showMessageModal('Error al cargar archivo de clientes. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
         }
     };
     reader.readAsText(file);
@@ -652,7 +584,7 @@ export const downloadClientsCSV = () => {
     console.log('[Client Management] downloadClientsCSV called'); // Debug log
     // Eliminados 'Límite de Crédito' y 'Días de Crédito' de los headers
     const headers = ['Nombre Comercial', 'Cédula/RIF', 'Dirección Fiscal', 'Teléfono', 'Correo Electrónico', 'Zona', 'Sector', 'Estado'];
-    const dataToDownload = getClients().map(client => ({ // Usa el getter
+    const dataToDownload = clients.map(client => ({
         'Nombre Comercial': client.nombreComercial,
         'Cédula/RIF': client.cedulaRif,
         'Dirección Fiscal': client.direccionFiscal,
@@ -665,6 +597,3 @@ export const downloadClientsCSV = () => {
     const csvContent = toCSV(dataToDownload, headers);
     triggerCSVDownload('clientes.csv', csvContent);
 };
-
-// Los event listeners para los modales de cliente se han movido a index.html
-// para centralizar el manejo de eventos a través de delegación.
