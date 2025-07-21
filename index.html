@@ -1031,7 +1031,7 @@
             } catch (error) {
                 console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
                 console.error(`[handleCloseSalesLogic] Firestore Error Code: ${error.code}, Message: ${error.message}`);
-                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition' || error.code === 'permission-denied') {
+                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition') {
                     messages.push(`Error de Conexión/Permisos: No se pudo completar el cierre de ventas debido a problemas de red o reglas de seguridad. Por favor, verifica tu conexión y las reglas de seguridad de Firestore. Los datos no se han borrado de la nube.`);
                 } else {
                     messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
@@ -1525,12 +1525,13 @@
                 dailySales = [];
                 users = [];
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for fallback
-                inventoryManagement.loadRecords = []; // Direct assignment is fine for exported `let`
-                inventoryManagement.transferRecords = []; // Direct assignment is fine for exported `let`
+                inventoryManagement.setLoadRecords([]); // Use setter for fallback
+                inventoryManagement.setTransferRecords([]); // Use setter for fallback
 
-                clientManagement.clients = []; // Direct assignment is fine for exported `let`
-                clientManagement.zones = []; // Direct assignment is fine for exported `let`
-                clientManagement.sectors = []; // Direct assignment is fine for exported `let`
+                clientManagement.closeAllClientModals(); // Clear client-related local data
+                clientManagement.clients = [];
+                clientManagement.zones = [];
+                clientManagement.sectors = [];
             } finally {
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
@@ -1635,8 +1636,8 @@
                 vehicles = [];
                 users = [];
                 inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
-                inventoryManagement.loadRecords = [];
-                inventoryManagement.transferRecords = [];
+                inventoryManagement.setLoadRecords([]);
+                inventoryManagement.setTransferRecords([]);
 
                 clientManagement.closeAllClientModals(); // Clear client-related local data
                 clientManagement.clients = [];
