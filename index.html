@@ -220,6 +220,62 @@
                 font-size: 10pt;
             }
         }
+        /* Styles for searchable dropdown */
+        .searchable-dropdown-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 1rem;
+        }
+        .searchable-dropdown-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            background-color: #fff;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease-in-out;
+        }
+        .searchable-dropdown-input:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
+        }
+        .searchable-dropdown-results {
+            position: absolute;
+            top: 100%; /* Position below the input */
+            left: 0;
+            right: 0;
+            background-color: #fff;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 50; /* Ensure it's above other content */
+            display: none; /* Hidden by default */
+        }
+        .searchable-dropdown-results.active {
+            display: block;
+        }
+        .searchable-dropdown-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-bottom: 1px solid #edf2f7;
+        }
+        .searchable-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        .searchable-dropdown-item:hover {
+            background-color: #f0f4f8;
+        }
+        .searchable-dropdown-item.selected {
+            background-color: #e0e7ff; /* Light indigo for selected item */
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -436,6 +492,83 @@
                 csvRows.push(values.join(','));
             }
             return csvRows.join('\n');
+        };
+
+        // --- NEW: Searchable Dropdown Helper Function ---
+        // This function creates the HTML for a searchable dropdown and attaches basic event listeners.
+        // The filtering logic and item selection callback will be handled by the caller.
+        const createSearchableDropdown = (id, placeholder, options, selectedValue, onSelectCallback, filterKey = 'text') => {
+            const inputId = `${id}Input`;
+            const resultsId = `${id}Results`;
+
+            // Function to render/update results
+            const renderResults = (searchTerm) => {
+                const resultsContainer = document.getElementById(resultsId);
+                if (!resultsContainer) return;
+
+                const filteredOptions = options.filter(option =>
+                    option[filterKey].toLowerCase().includes(searchTerm.toLowerCase())
+                );
+
+                resultsContainer.innerHTML = filteredOptions.map(option => `
+                    <div class="searchable-dropdown-item ${selectedValue === option.value ? 'selected' : ''}" data-value="${option.value}" data-text="${option.text}">
+                        ${option.text}
+                    </div>
+                `).join('');
+
+                if (searchTerm.length > 0 && filteredOptions.length > 0) {
+                    resultsContainer.classList.add('active');
+                } else {
+                    resultsContainer.classList.remove('active');
+                }
+            };
+
+            // Attach event listeners after the element is in the DOM
+            setTimeout(() => {
+                const searchInput = document.getElementById(inputId);
+                const resultsContainer = document.getElementById(resultsId);
+
+                if (searchInput && resultsContainer) {
+                    // Initial render of results
+                    renderResults(searchInput.value);
+
+                    searchInput.addEventListener('input', (event) => {
+                        renderResults(event.target.value);
+                    });
+
+                    resultsContainer.addEventListener('click', (event) => {
+                        const item = event.target.closest('.searchable-dropdown-item');
+                        if (item) {
+                            const value = item.dataset.value;
+                            const text = item.dataset.text;
+                            searchInput.value = text; // Set input value to selected text
+                            resultsContainer.classList.remove('active'); // Hide results
+                            onSelectCallback(value); // Call the provided callback
+                        }
+                    });
+
+                    // Hide results when clicking outside
+                    document.addEventListener('click', (event) => {
+                        if (!resultsContainer.contains(event.target) && event.target !== searchInput) {
+                            resultsContainer.classList.remove('active');
+                        }
+                    });
+
+                    // Show results when input is focused and not empty
+                    searchInput.addEventListener('focus', () => {
+                        if (searchInput.value.length > 0 || options.length > 0) {
+                            renderResults(searchInput.value);
+                        }
+                    });
+                }
+            }, 0); // Use setTimeout to ensure elements are rendered
+
+            return `
+                <div class="searchable-dropdown-container">
+                    <input type="text" id="${inputId}" class="searchable-dropdown-input" placeholder="${placeholder}" value="${options.find(opt => opt.value === selectedValue)?.text || ''}">
+                    <div id="${resultsId}" class="searchable-dropdown-results"></div>
+                </div>
+            `;
         };
 
 
@@ -1480,7 +1613,8 @@
                 // so inventoryManagement directly modifies them. No need to re-assign here.
                 await inventoryManagement.fetchInventoryRelatedData();
                 // REMOVED THE LINE BELOW AS IT WAS REDUNDANT AND CAUSING THE ERROR
-                // vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // Re-assign local vehicles after fetch
+                // inventory.splice(0, inventory.length, ...inventoryManagement._inventory); // THIS LINE IS THE PROBLEM
+                // vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // This was already removed in previous iteration
 
 
                 const usersSnapshot = await db.collection('users').get();
@@ -1602,12 +1736,12 @@
                 clientManagement.init(
                     db, setScreenAndRender,
                     createButton, createInput, createSelect, createTable, // Pass UI helper functions
-                    showMessageModal, showConfirmationModal // Pass modal functions
+                    showMessageModal, showConfirmationModal, createSearchableDropdown // Pass modal functions and new dropdown helper
                 );
                 inventoryManagement.init(
                     db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages,
                     showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
-                    setScreenAndRender, fetchDataFromFirestore
+                    setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown // Pass new dropdown helper
                 );
 
                 console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
