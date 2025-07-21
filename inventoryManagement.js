@@ -35,7 +35,7 @@ let resetQuantities = {};
 let allTruckInventories = {};
 let selectedDestinationTruck = null;
 let transferQuantities = {};
-let inventorySearchTermUser = '';
+// let inventorySearchTermUser = ''; // Removed as per user request
 
 // State for searchable dropdowns in inventory management
 let assignVehicleSearchTerm = ''; // For the assign vehicle screen's search dropdown
@@ -485,6 +485,9 @@ export const downloadExistingCSV = (filename) => {
 
 export const renderInventarioScreen = () => {
     console.log('[Inventory Management] Rendering user inventory screen.');
+    console.log('[Inventory Management] Current User Data:', _currentUserData);
+    console.log('[Inventory Management] Current Truck Inventory:', currentTruckInventory);
+
     if (!_isUser() || !_currentUserData.assignedTruckPlate) {
         document.getElementById('app-root').innerHTML = `
             <div class="screen-container bg-white rounded-xl m-2 shadow-md">
@@ -498,12 +501,8 @@ export const renderInventarioScreen = () => {
     }
 
     const truckPlate = _currentUserData.assignedTruckPlate;
-    const inventoryToDisplay = currentTruckInventory.filter(item => {
-        const matchesSearch = inventorySearchTermUser === '' ||
-            item.product.toLowerCase().includes(inventorySearchTermUser.toLowerCase()) ||
-            item.sku.toLowerCase().includes(inventorySearchTermUser.toLowerCase());
-        return matchesSearch;
-    });
+    // No search bar for user inventory screen as requested
+    const inventoryToDisplay = currentTruckInventory; // Display all items in currentTruckInventory
 
     const inventoryRows = inventoryToDisplay.map(item => `
         <tr>
@@ -520,21 +519,21 @@ export const renderInventarioScreen = () => {
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
             <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">INVENTARIO DE CAMIÓN</h2>
             <p class="text-lg font-bold text-center mb-4 text-gray-800">Camión Asignado: ${truckPlate}</p>
-            <div class="mb-4">
-                ${_createInput('inventorySearchInputUser', 'Buscar por producto o SKU...', inventorySearchTermUser, 'text', false, 'w-full')}
-            </div>
-            <div class="table-container mb-5">
-                ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'user-inventory-table-body')}
-            </div>
+            ${inventoryToDisplay.length > 0 ? `
+                <div class="table-container mb-5">
+                    ${_createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Cantidad', 'Precio'], inventoryRows, 'user-inventory-table-body')}
+                </div>
+            ` : `<p class="text-center text-gray-500">No hay productos en el inventario de tu camión.</p>`}
             ${_createButton('Volver al Menú Principal', 'backToMainFromUserInventoryButton', 'bg-gray-600 mt-5 w-full')}
         </div>
     `;
 };
 
-export const filterInventoryForUserScreen = (searchTerm) => {
-    inventorySearchTermUser = searchTerm;
-    _setScreenAndRender('inventario'); // Re-render the inventory screen with filtered results
-};
+// Removed filterInventoryForUserScreen as search bar is removed.
+// export const filterInventoryForUserScreen = (searchTerm) => {
+//     inventorySearchTermUser = searchTerm;
+//     _setScreenAndRender('inventario'); // Re-render the inventory screen with filtered results
+// };
 
 export const setupTruckInventoryListener = () => {
     if (_truckInventoryUnsubscribe) {
@@ -803,10 +802,10 @@ export const renderEditVehicleModal = () => {
         <div id="edit-vehicle-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">${isNew ? 'Agregar Nuevo Vehículo' : 'Editar Vehículo'}</h3>
-                ${_createInput('vehiclePlate', 'Placa', editingVehicle.plate, 'text', !isNew)}
-                ${_createInput('vehicleName', 'Nombre', editingVehicle.name)}
-                ${_createInput('vehicleBrand', 'Marca', editingVehicle.brand)}
-                ${_createInput('vehicleModel', 'Modelo', editingVehicle.model)}
+                ${_createInput('vehiclePlate', 'Placa', editingVehicle.plate || '', 'text', !isNew)}
+                ${_createInput('vehicleName', 'Nombre', editingVehicle.name || '')}
+                ${_createInput('vehicleBrand', 'Marca', editingVehicle.brand || '')}
+                ${_createInput('vehicleModel', 'Modelo', editingVehicle.model || '')}
                 <div class="flex justify-around gap-4 mt-5">
                     ${_createButton('Guardar Vehículo', 'saveEditedVehicleButton', 'bg-emerald-600 flex-1')}
                     ${_createButton('Cancelar', 'cancelEditVehicleButton', 'bg-gray-600 flex-1')}
@@ -1328,6 +1327,7 @@ export const renderAdminTransferHistoryScreen = async () => {
     try {
         const snapshot = await _db.collection('transferRecords').orderBy('createdAt', 'desc').get();
         transferRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        console.log('[Inventory Management] Fetched transferRecords:', transferRecords); // Log fetched records
     } catch (error) {
         console.error('Error fetching transfer history:', error);
         _showMessageModal('Error al cargar el historial de transbordos. Revisa tu conexión y las reglas de seguridad.');
@@ -1355,7 +1355,7 @@ export const renderAdminTransferHistoryScreen = async () => {
         <div class="screen-container bg-white rounded-xl m-2 shadow-md">
             <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">HISTORIAL DE TRANSBORDOS</h2>
             <div class="table-container mb-5">
-                ${_createTable(['Fecha', 'Usuario', 'Origen', 'Destino', 'Artículos Transbordados', 'Acciones'], transferRows, 'transfer-history-table-body')}
+                ${transferRecords.length > 0 ? _createTable(['Fecha', 'Usuario', 'Origen', 'Destino', 'Artículos Transbordados', 'Acciones'], transferRows, 'transfer-history-table-body') : '<p class="text-center text-gray-500">No hay registros de transbordo.</p>'}
             </div>
             <div class="flex justify-center mb-6 gap-4">
                 ${_createButton('Borrar Historial de Transbordos', 'clearTransferHistoryButton', 'bg-red-600')}
