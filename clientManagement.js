@@ -23,6 +23,7 @@ export let showManageZonesSectorsModalState = false; // Exported for direct acce
 export let showClientPickerModal = false; // Exported for direct access in index.html
 
 let selectedZoneForSectorManagement = null;
+let clientSearchTerm = ''; // New state for client search
 
 // Initial data for populating Firestore if collections are empty
 const initialClients = [
@@ -94,7 +95,45 @@ export const fetchClientData = async () => {
 // --- Screen Rendering Functions ---
 export const renderClientesScreen = () => {
     console.log('[clientManagement.js] Rendering clients screen.');
-    const clientRows = clients.map(client => `
+
+    const clientOptions = clients.map(client => ({
+        value: client.id,
+        text: `${client.nombreComercial} (${client.rif}) - ${client.zona || 'N/A'} / ${client.sector || 'N/A'}`
+    }));
+
+    document.getElementById('app-root').innerHTML = `
+        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
+            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">GESTIÓN DE CLIENTES</h2>
+            <div class="flex justify-center mb-6 gap-4">
+                ${_createButton('Agregar Nuevo Cliente', 'addClientButton', 'bg-emerald-600')}
+                ${_createButton('Gestionar Zonas y Sectores', 'manageZonesSectorsButton', 'bg-blue-600')}
+            </div>
+            <div class="mb-4">
+                ${_createSearchableDropdown('clientSearchDropdown', 'Buscar cliente por nombre, RIF, zona o sector...', clientOptions, clientSearchTerm, (value) => { clientSearchTerm = value; filterClientsList(value); }, 'text')}
+            </div>
+            <div class="table-container mb-5">
+                ${_createTable(['Nombre Comercial', 'RIF', 'Teléfono', 'Zona', 'Sector', 'Acciones'], '', 'clients-table-body')}
+            </div>
+            ${_createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
+        </div>
+    `;
+    filterClientsList(clientSearchTerm); // Initial render of the filtered list
+};
+
+export const filterClientsList = (searchTerm) => {
+    const tableBody = document.getElementById('clients-table-body');
+    if (!tableBody) return;
+
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const filteredClients = clients.filter(client =>
+        client.nombreComercial.toLowerCase().includes(lowerCaseSearchTerm) ||
+        client.rif.toLowerCase().includes(lowerCaseSearchTerm) ||
+        client.telefono.toLowerCase().includes(lowerCaseSearchTerm) ||
+        (client.zona && client.zona.toLowerCase().includes(lowerCaseSearchTerm)) ||
+        (client.sector && client.sector.toLowerCase().includes(lowerCaseSearchTerm))
+    );
+
+    tableBody.innerHTML = filteredClients.map(client => `
         <tr>
             <td>${client.nombreComercial}</td>
             <td>${client.rif}</td>
@@ -107,21 +146,8 @@ export const renderClientesScreen = () => {
             </td>
         </tr>
     `).join('');
-
-    document.getElementById('app-root').innerHTML = `
-        <div class="screen-container bg-white rounded-xl m-2 shadow-md">
-            <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">GESTIÓN DE CLIENTES</h2>
-            <div class="flex justify-center mb-6 gap-4">
-                ${_createButton('Agregar Nuevo Cliente', 'addClientButton', 'bg-emerald-600')}
-                ${_createButton('Gestionar Zonas y Sectores', 'manageZonesSectorsButton', 'bg-blue-600')}
-            </div>
-            <div class="table-container mb-5">
-                ${_createTable(['Nombre Comercial', 'RIF', 'Teléfono', 'Zona', 'Sector', 'Acciones'], clientRows, 'clients-table-body')}
-            </div>
-            ${_createButton('Volver al Menú Principal', 'backToMainFromClientsButton', 'bg-gray-600 mt-5 w-full')}
-        </div>
-    `;
 };
+
 
 // --- Client Modals and Logic ---
 export const addClient = () => {
@@ -176,6 +202,11 @@ export const renderEditClientModal = () => {
         const existingModal = document.getElementById('edit-client-modal');
         if (existingModal) existingModal.remove(); // Remove old modal if exists
         appRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Attach event listeners for modal buttons after rendering
+        document.getElementById('saveEditedClientButton').onclick = saveEditedClient;
+        document.getElementById('cancelEditClientButton').onclick = cancelEditClient;
+        document.getElementById('clientZone').onchange = (e) => handleZoneChangeForClientEdit(e.target.value);
     }
 };
 
@@ -253,8 +284,15 @@ export const downloadClientsCSV = () => {
         zona: client.zona,
         sector: client.sector
     }));
-    const csvContent = toCSV(dataToDownload, headers); // Assuming toCSV is available globally or passed
-    triggerCSVDownload('clientes.csv', csvContent); // Assuming triggerCSVDownload is available globally or passed
+    // Assuming toCSV and triggerCSVDownload are passed via init or globally available
+    // For now, let's assume they are available via init or a dedicated setter
+    if (typeof window.toCSV === 'function' && typeof window.triggerCSVDownload === 'function') {
+        const csvContent = window.toCSV(dataToDownload, headers);
+        window.triggerCSVDownload('clientes.csv', csvContent);
+    } else {
+        console.error('CSV helper functions not available in clientManagement.js');
+        _showMessageModal('Error: Funciones de descarga CSV no disponibles.');
+    }
 };
 
 // --- Zone and Sector Management Modals and Logic ---
@@ -282,7 +320,7 @@ export const renderManageZonesSectorsModal = () => {
         </div>
     `).join('');
 
-    return `
+    const modalHtml = `
         <div id="manage-zones-sectors-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-blue-700">Gestionar Zonas y Sectores</h3>
@@ -309,6 +347,27 @@ export const renderManageZonesSectorsModal = () => {
             </div>
         </div>
     `;
+    const appRoot = document.getElementById('app-root');
+    if (appRoot) {
+        const existingModal = document.getElementById('manage-zones-sectors-modal');
+        if (existingModal) existingModal.remove();
+        appRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Attach event listeners for modal buttons after rendering
+        document.getElementById('closeManageZonesSectorsModalButton').onclick = closeManageZonesSectorsModal;
+        document.getElementById('addZoneButton').onclick = handleAddZone;
+        document.getElementById('selectZoneForSector').onchange = (e) => handleSelectZoneForSector(e.target.value);
+        const addSectorBtn = document.getElementById('addSectorButton');
+        if (addSectorBtn) addSectorBtn.onclick = handleAddSector;
+
+        document.querySelectorAll('#zones-list .delete-zone-button').forEach(button => {
+            button.onclick = (e) => showDeleteZoneConfirmation(e.target.dataset.zonename);
+        });
+        document.querySelectorAll('#sectors-list .delete-sector-button').forEach(button => {
+            button.onclick = (e) => showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
+        });
+    }
+    return ''; // Return empty string as modal is appended directly
 };
 
 // Functions to open/close the modal
@@ -461,6 +520,19 @@ export const updateManageZonesSectorsModalContent = () => {
 
             ${_createButton('Cerrar', 'closeManageZonesSectorsModalButton', 'bg-gray-600 mt-5 w-full')}
         `;
+        // Re-attach event listeners for dynamically added content
+        document.getElementById('closeManageZonesSectorsModalButton').onclick = closeManageZonesSectorsModal;
+        document.getElementById('addZoneButton').onclick = handleAddZone;
+        document.getElementById('selectZoneForSector').onchange = (e) => handleSelectZoneForSector(e.target.value);
+        const addSectorBtn = document.getElementById('addSectorButton');
+        if (addSectorBtn) addSectorBtn.onclick = handleAddSector;
+
+        document.querySelectorAll('#zones-list .delete-zone-button').forEach(button => {
+            button.onclick = (e) => showDeleteZoneConfirmation(e.target.dataset.zonename);
+        });
+        document.querySelectorAll('#sectors-list .delete-sector-button').forEach(button => {
+            button.onclick = (e) => showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
+        });
     }
 };
 
@@ -470,12 +542,12 @@ export const renderClientPickerModal = () => {
 
     const clientOptions = clients.map(c => ({ value: c.id, text: `${c.nombreComercial} (${c.zona} - ${c.sector})` }));
 
-    return `
+    const modalHtml = `
         <div id="client-picker-modal" class="modal">
             <div class="modal-content">
                 <h3 class="text-2xl font-bold mb-4 text-center text-purple-700">Seleccionar Cliente</h3>
                 <div class="mb-4">
-                    ${_createSearchableDropdown('clientSearchDropdown', 'Buscar cliente por nombre o RIF...', clientOptions, selectedClientForSale?.id || '', (clientId) => selectClientForSale(clientId), 'text')}
+                    ${_createSearchableDropdown('clientSearchDropdownPicker', 'Buscar cliente por nombre o RIF...', clientOptions, selectedClientForSale?.id || '', (clientId) => selectClientForSale(clientId), 'text')}
                 </div>
                 <div id="client-picker-list" class="mb-4">
                     <!-- Client list will be updated dynamically -->
@@ -487,6 +559,17 @@ export const renderClientPickerModal = () => {
             </div>
         </div>
     `;
+    const appRoot = document.getElementById('app-root');
+    if (appRoot) {
+        const existingModal = document.getElementById('client-picker-modal');
+        if (existingModal) existingModal.remove();
+        appRoot.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Attach event listeners for modal buttons after rendering
+        document.getElementById('confirmClientSelectionButton').onclick = confirmClientSelection;
+        document.getElementById('cancelClientSelectionButton').onclick = closeClientPickerModal;
+    }
+    return ''; // Return empty string as modal is appended directly
 };
 
 export const openClientPickerModal = () => {
@@ -500,13 +583,9 @@ export const closeClientPickerModal = () => {
 };
 
 export const updateClientPickerList = () => {
-    if (!showClientPickerModal) return;
-    const clientListDiv = document.getElementById('client-picker-list');
-    if (clientListDiv) {
-        // This list will be filtered by the searchable dropdown's internal logic
-        // The dropdown itself renders the options. This div might be redundant or used for a different display.
-        // For now, let's just ensure the dropdown is rendered.
-    }
+    // This function is now mostly handled by the _createSearchableDropdown's internal logic
+    // We can keep it to ensure the dropdown is initialized correctly if needed.
+    // The dropdown itself renders the options. This div might be redundant or used for a different display.
 };
 
 export const selectClientForSale = (clientId) => {
@@ -538,10 +617,12 @@ export const closeAllClientModals = () => {
 };
 
 // Helper for CSV download (assuming it's passed from index.html init)
-let toCSV;
-let triggerCSVDownload;
-export const setCsvHelpers = (csvToFunc, csvTriggerFunc) => {
-    toCSV = csvToFunc;
-    triggerCSVDownload = csvTriggerFunc;
-};
-
+// These are now expected to be available globally via window object or passed explicitly
+// For now, let's assume index.html exposes them to window
+// No longer needed as setCsvHelpers is removed.
+// let toCSV;
+// let triggerCSVDownload;
+// export const setCsvHelpers = (csvToFunc, csvTriggerFunc) => {
+//     toCSV = csvToFunc;
+//     triggerCSVDownload = csvTriggerFunc;
+// };
