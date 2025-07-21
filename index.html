@@ -1599,7 +1599,7 @@
 
 
         // --- Funciones de Carga de Datos desde Firestore ---
-        const fetchDataFromFirestore = async () => {
+        async function fetchDataFromFirestore() { // Changed to function declaration
             console.log('[fetchDataFromFirestore] Starting data fetch...');
             try {
                 const fetchCollection = async (collectionName, initialData, idKey) => {
@@ -1683,7 +1683,7 @@
                 console.log('[fetchDataFromFirestore] Calling render() from finally block.');
                 render();
             }
-        };
+        }
 
         // --- Lógica de Autenticación de Firebase ---
         const handleAuth = async (isRegister) => {
@@ -1821,4 +1821,3 @@
     </script>
 </body>
 </html>
-
