@@ -37,7 +37,7 @@ let selectedDestinationTruck = null;
 let transferQuantities = {};
 // let inventorySearchTermUser = ''; // Removed as per user request
 
-// State for searchable dropdowns in inventory management
+// State for searchable dropdowns
 let assignVehicleSearchTerm = ''; // For the assign vehicle screen's search dropdown
 let vehiclesSearchTerm = ''; // For the vehicles screen's search dropdown
 
