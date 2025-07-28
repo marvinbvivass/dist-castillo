@@ -225,11 +225,12 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    
-        // jsPDF and html2canvas CDN
-        import html2canvas from "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-        import { jsPDF } from "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js";
+    </script>
+    <!-- jsPDF and html2canvas CDN (UMD versions for direct browser compatibility) -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
+    <script type="module">
         // Global variables for Firebase config and app ID
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
@@ -593,6 +594,7 @@
             document.body.appendChild(pdfContent); // Append to body to be rendered by html2canvas
 
             try {
+                // Access html2canvas and jsPDF from global scope
                 const canvas = await html2canvas(pdfContent, {
                     scale: 2, // Increase scale for better quality
                     useCORS: true, // Needed if images are from external sources
@@ -600,7 +602,7 @@
                 });
 
                 const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF('p', 'mm', 'a4'); // 'p' for portrait, 'mm' for millimeters, 'a4' for A4 size
+                const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4'); // Access jsPDF from global scope
                 const imgWidth = 210; // A4 width in mm
                 const pageHeight = 297; // A4 height in mm
                 const imgHeight = canvas.height * imgWidth / canvas.width;
@@ -635,3 +637,4 @@
     </script>
 </body>
 </html>
+
