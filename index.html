@@ -233,7 +233,11 @@
         // Register Service Worker
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
+                // IMPORTANT: Adjust the path for project pages on GitHub Pages
+                // If your repo is 'dist-castillo' and your user page is 'marvinbvivass.github.io',
+                // then the service worker path should include the repo name.
+                const serviceWorkerPath = '/dist-castillo/service-worker.js'; // <--- CAMBIO AQUÍ
+                navigator.serviceWorker.register(serviceWorkerPath)
                     .then(registration => {
                         console.log('Service Worker registrado con éxito:', registration);
                     })
