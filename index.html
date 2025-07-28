@@ -245,8 +245,18 @@
         }
 
         // Global variables for Firebase config and app ID
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // En un entorno real, __app_id y __firebase_config serían proporcionados por el entorno.
+        // Aquí se usan valores predeterminados o los que has proporcionado para que funcione en un entorno local.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dist-castillo'; // Usando tu projectId como appId predeterminado
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
+            authDomain: "dist-castillo.firebaseapp.com",
+            projectId: "dist-castillo",
+            storageBucket: "dist-castillo.firebasestorage.app",
+            messagingSenderId: "249846475959",
+            appId: "1:249846475959:web:066c3fbca65ca3965af132",
+            measurementId: "G-V56MBM5YT9"
+        };
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
         let app;
