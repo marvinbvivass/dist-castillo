@@ -3,2392 +3,635 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dist Castillo Ventas</title>
-    <!-- Ruta relativa para manifest.json -->
-    <link rel="manifest" href="./manifest.json">
-    <!-- Carga de Tailwind CSS desde CDN para asegurar que el estilo se aplique correctamente -->
+    <title>Generador de Portafolio de Productos</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
-
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
-    <!-- html2canvas para convertir HTML a imagen -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            margin: 0;
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        input[type="text"], input[type="number"], select {
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            width: 100%;
+            font-size: 1rem;
+            color: #4b5563;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-1px);
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: #ffffff;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3), 0 2px 4px -1px rgba(79, 70, 229, 0.15);
+        }
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+        .btn-secondary {
+            background-color: #6b7280;
+            color: #ffffff;
+        }
+        .btn-secondary:hover {
+            background-color: #4b5563;
+        }
+        .product-card {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .product-card img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 0.5rem;
+            border: 1px solid #d1d5db;
+        }
+        .product-card .details {
+            flex-grow: 1;
+        }
+        .product-card .details p {
+            margin-bottom: 0.25rem;
+            font-size: 0.95rem;
+        }
+        .product-card .details p strong {
+            color: #1f2937;
+        }
+        .image-preview {
+            width: 150px;
+            height: 150px;
+            border: 2px dashed #d1d5db;
+            border-radius: 0.5rem;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 20px;
-            box-sizing: border-box;
-            background-image: url('./images/fondo.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-color: rgba(0, 0, 0, 0.1);
-        }
-        #app-root {
-            width: 100%;
-            max-width: 800px;
-            background-color: rgba(255, 255, 255, 0.9);
-            border-radius: 15px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            align-items: center;
             overflow: hidden;
-            padding: 20px;
+            background-color: #f9fafb;
         }
-        .screen-container {
-            padding: 0px;
-            width: 100%;
-            background-color: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 20px;
+        .image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
+        .image-preview span {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+        /* Modal styles */
         .modal {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.5);
             display: flex;
             justify-content: center;
             align-items: center;
             z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal.show {
+            opacity: 1;
+            visibility: visible;
         }
         .modal-content {
-            background-color: rgba(255, 255, 255, 0.98);
-            padding: 35px;
-            border-radius: 20px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 500px;
             width: 90%;
-            max-width: 600px;
-            max-height: 90%;
-            overflow-y: auto;
             text-align: center;
         }
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-            width: 100%;
-        }
-        .file-input-wrapper input[type=file] {
-            font-size: 100px;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0;
-        }
-        .table-container {
-            overflow-x: auto;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 8px 10px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        th {
-            background-color: #f8fafc;
+        .modal-content h3 {
+            font-size: 1.5rem;
             font-weight: 600;
-            color: #4a5568;
-            text-transform: uppercase;
-            font-size: 0.875rem;
-            letter-spacing: 0.05em;
-        }
-        tr:hover {
-            background-color: #f0f4f8;
-        }
-        td input[type="number"] {
-            width: 80px;
-            padding: 6px 10px;
-            border: 1px solid #cbd5e0;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .radio-button-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 10px;
-        }
-        .radio-button-label {
-            background-color: #e3f2fd;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: 2px solid #1976d2;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-            font-weight: 500;
-            color: #1976d2;
-            text-align: center;
-        }
-        .radio-button-label:hover {
-            background-color: #bbdefb;
-        }
-        .radio-button-input:checked + .radio-button-label {
-            background-color: #1976d2;
-            color: white;
-            border-color: #0d47a1;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        }
-        .radio-button-input {
-            display: none;
-        }
-        .thermal-receipt {
-            font-family: 'monospace', 'Courier New', Courier, monospace;
-            font-size: 0.75rem;
-            width: 250px;
-            margin: 0 auto;
-            padding: 10px;
-            border: 1px dashed #ccc;
-            background-color: #fff;
-            color: #000;
-            text-align: left;
-            box-shadow: 0 0 5px rgba(0,0,0,0.1);
-        }
-        .thermal-receipt h3, .thermal-receipt h4 {
-            text-align: center;
-            margin-bottom: 5px;
-            font-size: 0.85rem;
-        }
-        .thermal-receipt .item-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 2px;
-        }
-        .thermal-receipt .item-qty {
-            width: 20%;
-            text-align: left;
-        }
-        .thermal-receipt .item-desc {
-            width: 50%;
-            text-align: left;
-        }
-        .thermal-receipt .item-price, .item-total {
-            width: 30%;
-            text-align: right;
-        }
-        .thermal-receipt .divider {
-            border-top: 1px dashed #000;
-            margin: 5px 0;
-        }
-        .thermal-receipt .total-line {
-            display: flex;
-            justify-content: space-between;
-            font-weight: bold;
-            margin-top: 5px;
-            font-size: 0.9rem;
-        }
-        .thermal-receipt .footer-text {
-            text-align: center;
-            margin-top: 10px;
-            font-size: 0.7rem;
-        }
-        @media print {
-            body > *:not(.print-only) {
-                display: none !important;
-            }
-            .print-only {
-                display: block !important;
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: auto;
-                margin: 0;
-                padding: 0;
-            }
-            .thermal-receipt {
-                border: none !important;
-                box-shadow: none !important;
-                width: 100% !important;
-                font-size: 10pt;
-            }
-        }
-        /* Styles for searchable dropdown */
-        .searchable-dropdown-container {
-            position: relative;
-            width: 100%;
             margin-bottom: 1rem;
+            color: #1f2937;
         }
-        .searchable-dropdown-input {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border: 1px solid #cbd5e0;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            background-color: #fff;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-            transition: all 0.2s ease-in-out;
+        .modal-content p {
+            margin-bottom: 1.5rem;
+            color: #4b5563;
         }
-        .searchable-dropdown-input:focus {
-            outline: none;
-            border-color: #4f46e5;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
-        }
-        .searchable-dropdown-results {
-            position: absolute;
-            top: 100%; /* Position below the input */
-            left: 0;
-            right: 0;
-            background-color: #fff;
-            border: 1px solid #cbd5e0;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 50; /* Ensure it's above other content */
-            display: none; /* Hidden by default */
-        }
-        .searchable-dropdown-results.active {
-            display: block;
-        }
-        .searchable-dropdown-item {
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            border-bottom: 1px solid #edf2f7;
-        }
-        .searchable-dropdown-item:last-child {
-            border-bottom: none;
-        }
-        .searchable-dropdown-item:hover {
-            background-color: #f0f4f8;
-        }
-        .searchable-dropdown-item.selected {
-            background-color: #e0e7ff; /* Light indigo for selected item */
-            font-weight: 600;
+        .modal-content button {
+            margin: 0 0.5rem;
         }
     </style>
 </head>
 <body>
-    <div id="app-root"></div>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Generador de Portafolio de Productos</h1>
+        <p class="text-center text-sm text-gray-600 mb-4">ID de Usuario: <span id="userIdDisplay" class="font-mono text-gray-700">Cargando...</span></p>
 
-    <script defer type="module">
-        console.log('[App Init] Script started.');
-
-        // Importar módulos
-        import * as clientManagement from './clientManagement.js';
-        import * as inventoryManagement from './inventoryManagement.js';
-
-        // --- Datos de la aplicación (se cargarán desde Firestore) ---
-        // Estas variables ahora son gestionadas por inventoryManagement y clientManagement
-        // Pero se mantienen aquí para ser pasadas por referencia o para datos no específicos de un módulo
-        let inventory = []; // Passed to inventoryManagement
-        let vendors = [];
-        let vehicles = []; // Passed to inventoryManagement
-        let users = [];
-        let dailySales = []; // Sales are still managed here for now
-        let allTruckInventories = {}; // NEW: To store all truck inventories for admin view
-
-        let selectedVendor = localStorage.getItem('selectedVendor') || 'Ninguno'; // Default to 'Ninguno' if no vendors initially
-
-        const productImages = {
-            '2364': './images/2364.png',
-            '7458': './images/7458.png',
-            '1001': './images/1001.png',
-            '1002': './images/1002.png',
-            '9876': './images/9876.png',
-            'default': './images/no-image.png'
-        };
-
-        // --- Estado Global de la Aplicación ---
-        let screen = 'login';
-        let saleQuantities = {};
-        let currentProductIndex = 0;
-        let showMessageModalState = false;
-        let messageModalText = '';
-        let showConfirmationModalState = false;
-        let confirmationModalMessage = '';
-        let confirmationModalCallback = null;
-        let currentUser = null;
-        let currentUserData = { role: 'guest', assignedTruckPlate: null };
-        const appRoot = document.getElementById('app-root');
-        let showModifySaleModalState = false;
-        let selectedSaleForModification = null;
-        let modifiedSaleQuantities = {};
-        let modificationReason = '';
-        // let editingVehicle = null; // This is now managed by inventoryManagement, but still a local variable for now.
-
-        // --- Funciones de Rol ---
-        const isAdmin = () => currentUserData.role === 'admin';
-        const isUser = () => currentUserData.role === 'user';
-
-        // --- Componentes Reutilizables de UI (Globales) ---
-        const createScreenContainer = (title, content, className = '') => `
-            <div class="screen-container bg-white rounded-xl m-2 shadow-md ${className}">
-                <h2 class="text-2xl font-bold mb-5 text-center text-indigo-700">${title}</h2>
-                ${content}
+        <div class="bg-gray-50 p-6 rounded-lg mb-8 shadow-inner">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Añadir Nuevo Producto</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                    <select id="category" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="">Selecciona una categoría</option>
+                        <option value="Alimentos Polar">Alimentos Polar</option>
+                        <option value="Procter & Gamble">Procter & Gamble</option>
+                        <option value="Cerveza y Vinos">Cerveza y Vinos</option>
+                        <option value="Pepsi y Maltin">Pepsi y Maltin</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="brand" class="block text-sm font-medium text-gray-700 mb-1">Marca</label>
+                    <input type="text" id="brand" list="brandSuggestions" placeholder="Ej: Harina P.A.N." class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    <datalist id="brandSuggestions"></datalist>
+                </div>
+                <div>
+                    <label for="presentation" class="block text-sm font-medium text-gray-700 mb-1">Presentación</label>
+                    <input type="text" id="presentation" placeholder="Ej: Paquete de 1kg" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                    <input type="number" id="price" step="0.01" placeholder="Ej: 1.50" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
             </div>
-        `;
 
-        const createButton = (text, id, className = '', dataAttributes = {}) => {
-            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-            return `<button id="${id}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg m-2 min-w-[150px] shadow-md transition duration-300 ease-in-out transform hover:scale-105 border border-indigo-700 ${className}" ${dataAttrs}>${text}</button>`;
-        };
-
-        const createInput = (id, placeholder, value = '', type = 'text', disabled = false, className = '', dataAttributes = {}) => {
-            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-            return `<input type="${type}" id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 mb-4 text-base w-full bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${className}" placeholder="${placeholder}" value="${value}" ${disabled ? 'disabled' : ''} ${dataAttrs}>`;
-        };
-
-        const createSelect = (id, options, selectedValue, className = '', placeholder = '-- Seleccione --', dataAttributes = {}) => {
-            const dataAttrs = Object.keys(dataAttributes).map(key => `data-${key}="${dataAttributes[key]}"`).join(' ');
-            return `
-                <select id="${id}" class="h-12 border border-gray-300 rounded-lg px-4 text-base w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className}" ${dataAttrs}>
-                    <option value="">${placeholder}</option>
-                    ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.text}</option>`).join('')}
-                </select>
-            `;
-        };
-
-        const createTable = (headers, rowsHtml, id = '') => `
-            <div class="table-container mb-5">
-                <table>
-                    <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-                    <tbody id="${id}">${rowsHtml}</tbody>
-                </table>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <label for="brandImage" class="block text-sm font-medium text-gray-700 mb-1">Imagen de Marca</label>
+                    <input type="file" id="brandImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <div id="brandImagePreview" class="image-preview mt-2">
+                        <span>Previsualización de Marca</span>
+                    </div>
+                </div>
+                <div>
+                    <label for="productImage" class="block text-sm font-medium text-gray-700 mb-1">Imagen de Producto</label>
+                    <input type="file" id="productImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <div id="productImagePreview" class="image-preview mt-2">
+                        <span>Previsualización de Producto</span>
+                    </div>
+                </div>
             </div>
-        `;
 
-        // --- Funciones de Modales (Globales) ---
-        const showMessageModal = (message) => {
-            messageModalText = message;
-            showMessageModalState = true;
-            render();
-        };
-        // Expose to window for clientManagement.js to use
-        window.showMessageModal = showMessageModal;
-
-        const hideMessageModal = () => {
-            showMessageModalState = false;
-            messageModalText = '';
-            render();
-        };
-
-        const renderMessageModal = () => {
-            if (!showMessageModalState) return '';
-            return `
-                <div id="custom-message-modal" class="modal">
-                    <div class="modal-content">
-                        <p class="text-lg text-center mb-4">${messageModalText}</p>
-                        <button id="messageModalCloseButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg w-full shadow-md transition duration-300 ease-in-out transform hover:scale-105">Cerrar</button>
-                    </div>
-                </div>
-            `;
-        };
-
-        const showConfirmationModal = (message, callback) => {
-            confirmationModalMessage = message;
-            confirmationModalCallback = callback;
-            showConfirmationModalState = true;
-            render();
-        };
-        // Expose to window for clientManagement.js to use
-        window.showConfirmationModal = showConfirmationModal;
-
-
-        const hideConfirmationModal = (confirmed) => {
-            showConfirmationModalState = false;
-            if (confirmed && confirmationModalCallback) {
-                confirmationModalCallback();
-            }
-            confirmationModalCallback = null;
-            render();
-        };
-
-        const renderConfirmationModal = () => {
-            if (!showConfirmationModalState) return '';
-            return `
-                <div id="confirmation-modal" class="modal">
-                    <div class="modal-content">
-                        <p class="text-lg text-center mb-6">${confirmationModalMessage}</p>
-                        <div class="flex justify-around gap-4">
-                            <button id="confirmationModalConfirmButton" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105">Confirmar</button>
-                            <button id="confirmationModalCancelButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-5 rounded-lg flex-1 shadow-md transition duration-300 ease-in-out transform hover:scale-105">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        };
-
-        // --- Funciones de Ayuda Generales ---
-        const getCurrentDateFormatted = () => {
-            const today = new Date();
-            const day = String(today.getDate()).padStart(2, '0');
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const year = today.getFullYear();
-            return `${day}${month}${year}`;
-        };
-
-        const triggerCSVDownload = (filename, csvContent) => {
-            if (!csvContent) {
-                showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                return;
-            }
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-            } else {
-                showMessageModal('La descarga de archivos no es compatible con este navegador.');
-            }
-        };
-
-        const parseCSV = (csvString) => {
-            const lines = csvString.split('\n').filter(line => line.trim() !== '');
-            if (lines.length === 0) return [];
-            const headers = lines[0].split(',').map(header => header.trim());
-            return lines.slice(1).map(currentLine => {
-                const data = currentLine.split(',');
-                return headers.reduce((obj, header, j) => {
-                    obj[header] = data[j] ? data[j].trim() : '';
-                    return obj;
-                }, {});
-            });
-        };
-
-        const toCSV = (data, headers) => {
-            if (!data || data.length === 0) return '';
-            const actualHeaders = headers || Object.keys(data[0]);
-            const csvRows = [actualHeaders.map(header => {
-                const val = header;
-                if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-                    return `"${val.replace(/"/g, '""')}"`;
-                }
-                return val;
-            }).join(',')];
-            for (const row of data) {
-                const values = actualHeaders.map(header => {
-                    const val = row[header];
-                    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-                        return `"${val.replace(/"/g, '""')}"`;
-                    }
-                    return typeof val === 'number' ? val.toString() : val;
-                });
-                csvRows.push(values.join(','));
-            }
-            return csvRows.join('\n');
-        };
-
-        // --- NEW: Searchable Dropdown Helper Function ---
-        // This function creates the HTML for a searchable dropdown and attaches basic event listeners.
-        // The filtering logic and item selection callback will be handled by the caller.
-        const createSearchableDropdown = (id, placeholder, options, selectedValue, onSelectCallback, filterKey = 'text') => {
-            const inputId = `${id}Input`;
-            const resultsId = `${id}Results`;
-
-            // Function to render/update results
-            const renderResults = (searchTerm) => {
-                const resultsContainer = document.getElementById(resultsId);
-                if (!resultsContainer) return;
-
-                const filteredOptions = options.filter(option =>
-                    option[filterKey].toLowerCase().includes(searchTerm.toLowerCase())
-                );
-
-                resultsContainer.innerHTML = filteredOptions.map(option => `
-                    <div class="searchable-dropdown-item ${selectedValue === option.value ? 'selected' : ''}" data-value="${option.value}" data-text="${option.text}">
-                        ${option.text}
-                    </div>
-                `).join('');
-
-                if (searchTerm.length > 0 && filteredOptions.length > 0) {
-                    resultsContainer.classList.add('active');
-                } else {
-                    resultsContainer.classList.remove('active');
-                }
-            };
-
-            // Attach event listeners after the element is in the DOM
-            setTimeout(() => {
-                const searchInput = document.getElementById(inputId);
-                const resultsContainer = document.getElementById(resultsId);
-
-                if (searchInput && resultsContainer) {
-                    // Initial render of results
-                    renderResults(searchInput.value);
-
-                    searchInput.addEventListener('input', (event) => {
-                        renderResults(event.target.value);
-                    });
-
-                    resultsContainer.addEventListener('click', (event) => {
-                        const item = event.target.closest('.searchable-dropdown-item');
-                        if (item) {
-                            const value = item.dataset.value;
-                            const text = item.dataset.text;
-                            searchInput.value = text; // Set input value to selected text
-                            resultsContainer.classList.remove('active'); // Hide results
-                            onSelectCallback(value); // Call the provided callback
-                        }
-                    });
-
-                    // Hide results when clicking outside
-                    document.addEventListener('click', (event) => {
-                        if (!resultsContainer.contains(event.target) && event.target !== searchInput) {
-                            resultsContainer.classList.remove('active');
-                        }
-                    });
-
-                    // Show results when input is focused and not empty
-                    searchInput.addEventListener('focus', () => {
-                        if (searchInput.value.length > 0 || options.length > 0) {
-                            renderResults(searchInput.value);
-                        }
-                    });
-                }
-            }, 0); // Use setTimeout to ensure elements are rendered
-
-            return `
-                <div class="searchable-dropdown-container">
-                    <input type="text" id="${inputId}" class="searchable-dropdown-input" placeholder="${placeholder}" value="${options.find(opt => opt.value === selectedValue)?.text || ''}">
-                    <div id="${resultsId}" class="searchable-dropdown-results"></div>
-                </div>
-            `;
-        };
-
-
-        // --- Funciones de Pantalla (Globales) ---
-        const setScreenAndRender = (newScreen) => {
-            console.log(`[setScreenAndRender] Changing screen to: ${newScreen}`);
-            // Store the current screen in a data attribute for `_setScreenAndRender` in modules
-            appRoot.dataset.currentScreen = newScreen;
-
-            // Clean up admin truck inventory listener if navigating away from admin inventory screens
-            if (inventoryManagement.getAdminTruckInventoryUnsubscribe()) {
-                inventoryManagement.getAdminTruckInventoryUnsubscribe()();
-                inventoryManagement.setAdminTruckInventoryUnsubscribe(null); // Use setter here
-                console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener due to screen change.');
-            }
-            // Clean up client-related modals if navigating away from client screen or sales screen
-            if (newScreen !== 'clientes' && newScreen !== 'venta') {
-                clientManagement.closeAllClientModals();
-            }
-            screen = newScreen;
-            render();
-        };
-
-        const render = () => {
-            console.log(`[Render] Current screen to render: ${screen}`);
-            appRoot.innerHTML = ''; // Clear existing content
-
-            const screenFunctions = {
-                'main': renderMainScreen,
-                'cargaSelection': inventoryManagement.renderCargaSelectionScreen,
-                'truckLoading': inventoryManagement.renderTruckReceivingScreen,
-                'loadHistory': inventoryManagement.renderLoadHistoryScreen,
-                'inventario': inventoryManagement.renderInventarioScreen,
-                'clientes': clientManagement.renderClientesScreen,
-                'venta': renderVentaScreen,
-                'cierreVentas': renderCierreVentasScreen,
-                'archivosAdmin': renderArchivosAdminScreen,
-                'archivosVenta': renderArchivosVentaScreen,
-                'vehicles': inventoryManagement.renderVehiclesScreen,
-                'adminInventorySelection': inventoryManagement.renderAdminInventorySelection,
-                'adminMainInventory': inventoryManagement.renderAdminMainInventoryScreen,
-                'adminVehicleInventory': inventoryManagement.renderAdminVehicleInventoryScreen,
-                'assignVehicle': inventoryManagement.renderAssignVehicleScreen,
-                'login': renderLoginScreen,
-                'register': renderRegisterScreen,
-                'resetCargasInicialesPassword': inventoryManagement.renderResetCargasInicialesPasswordScreen,
-                'resetCargasInicialesEdit': inventoryManagement.renderResetCargasInicialesEditScreen,
-                'transferInventoryPassword': inventoryManagement.renderTransferInventoryPasswordScreen,
-                'transferInventory': inventoryManagement.renderTransferInventoryScreen,
-                'adminTransferHistory': inventoryManagement.renderAdminTransferHistoryScreen,
-            };
-
-            if (!currentUser && screen !== 'login' && screen !== 'register') {
-                console.log('[Render] No current user, forcing login screen.');
-                renderLoginScreen();
-            } else {
-                (screenFunctions[screen] || renderMainScreen)();
-            }
-
-            appRoot.innerHTML += renderMessageModal();
-            appRoot.innerHTML += renderConfirmationModal();
-            if (showModifySaleModalState) appRoot.innerHTML += renderModifySaleModal();
-            // Render client modals directly to app-root
-            appRoot.innerHTML += clientManagement.renderEditClientModal();
-            appRoot.innerHTML += clientManagement.renderManageZonesSectorsModal();
-            appRoot.innerHTML += clientManagement.renderClientPickerModal();
-            console.log('[Render] Render cycle completed.');
-
-            if (clientManagement.showManageZonesSectorsModalState) {
-                clientManagement.updateManageZonesSectorsModalContent();
-            }
-            if (clientManagement.showClientPickerModal) {
-                clientManagement.updateClientPickerList();
-            }
-
-            // Attach event listeners after rendering
-            attachEventListeners();
-        };
-
-        // --- Definición de todas las pantallas ---
-        const renderLoginScreen = () => {
-            console.log('[renderLoginScreen] Rendering login screen.');
-            appRoot.innerHTML = createScreenContainer('Iniciar Sesión', `
-                ${createInput('loginEmail', 'Correo Electrónico', '', 'email')}
-                ${createInput('loginPassword', 'Contraseña', '', 'password')}
-                ${createButton('Iniciar Sesión', 'loginButton', 'w-full')}
-                <p class="text-center mt-6 text-gray-700">¿No tienes cuenta? <a href="#" id="registerLink" class="text-indigo-600 hover:underline font-semibold">Regístrate aquí</a></p>
-            `, 'max-w-md mx-auto my-10');
-        };
-
-        const renderRegisterScreen = () => {
-            console.log('[renderRegisterScreen] Rendering register screen.');
-            appRoot.innerHTML = createScreenContainer('Registrar Nuevo Usuario', `
-                ${createInput('registerEmail', 'Correo Electrónico', '', 'email')}
-                ${createInput('registerPassword', 'Contraseña', '', 'password')}
-                ${createButton('Registrar', 'registerButton', 'w-full')}
-                <p class="text-center mt-6 text-gray-700">¿Ya tienes cuenta? <a href="#" id="loginLink" class="text-indigo-600 hover:underline font-semibold">Inicia sesión aquí</a></p>
-            `, 'max-w-md mx-auto my-10');
-        };
-
-        const renderMainScreen = () => {
-            console.log('[renderMainScreen] Rendering main screen.');
-            const buttons = [
-                isAdmin() && createButton('CARGA', 'cargaSelectionButton'),
-                isAdmin() && createButton('INVENTARIO', 'adminInventorySelectionButton'),
-                isUser() && createButton('INVENTARIO', 'userInventoryButton'),
-                createButton('CLIENTES', 'clientsButton'),
-                isUser() && createButton('VENTA', 'ventaButton'),
-                isUser() && createButton('CIERRE VENTAS', 'cierreVentasButton'),
-                isAdmin() && createButton('ARCHIVOS ADMIN', 'archivosAdminButton'),
-                !isAdmin() && currentUser && createButton('ARCHIVOS DE VENTA', 'archivosVentaButton'),
-                isAdmin() && createButton('VEHÍCULOS DE CARGA', 'vehiclesButton'),
-                isAdmin() && createButton('ASIGNAR VEHÍCULO', 'assignVehicleButton'),
-                isUser() && createButton('TRANSBORDO INV.', 'transferInventoryPasswordButton'),
-                isAdmin() && createButton('HISTORIAL TRANSBORDOS', 'adminTransferHistoryButton'),
-            ].filter(Boolean).join('');
-
-            appRoot.innerHTML = `
-                <div class="flex flex-col items-center justify-center p-5 bg-blue-50 rounded-xl m-2 shadow-lg">
-                    <h1 class="text-3xl font-bold mb-4 text-indigo-700 drop-shadow-sm">Dist Castillo Ventas</h1>
-                    ${currentUser ? `<p class="text-md text-gray-700 mb-4">Bienvenido, ${currentUser.email} (${currentUserData.role}) ${currentUserData.assignedTruckPlate ? ` - Camión: ${currentUserData.assignedTruckPlate}` : ''}</p>` : ''}
-                    <div class="flex flex-wrap justify-center">${buttons}</div>
-                    ${createButton('Cerrar Sesión', 'logoutButton', 'bg-red-600 mt-8 w-full')}
-                </div>
-            `;
-        };
-
-        const updateVendorSelectionDisplay = () => {
-            const vendorRadioGroup = document.getElementById('vendor-radio-group');
-            if (!vendorRadioGroup) return;
-            vendorRadioGroup.innerHTML = vendors.map(vendor => `
-                <input type="radio" id="vendor-${vendor.name.replace(/\s/g, '-')}" name="vendor" value="${vendor.name}" class="radio-button-input" ${selectedVendor === vendor.name ? 'checked' : ''}>
-                <label for="vendor-${vendor.name.replace(/\s/g, '-')}" class="radio-button-label">${vendor.name}</label>
-            `).join('');
-        };
-
-        const handleVendorChange = (vendorName) => {
-            selectedVendor = vendorName;
-            localStorage.setItem('selectedVendor', selectedVendor);
-        };
-
-        const renderVentaScreen = () => {
-            console.log('[renderVentaScreen] Rendering venta screen.');
-            appRoot.innerHTML = createScreenContainer('VENTA', `
-                ${createButton('Seleccionar Cliente', 'selectClientButton', 'bg-purple-600')}
-                <div id="selected-client-display" class="text-lg font-bold text-center my-4 text-emerald-800"></div>
-                <div id="product-sale-container"></div>
-                <div id="info-text" class="text-base text-center my-5 text-gray-600"></div>
-                ${createButton('Volver al Menú Principal', 'resetVentaStateAndGoToMainButton', 'bg-gray-600 mt-5 w-full')}
-            `);
-            updateVentaScreenContent();
-        };
-
-        const updateVentaScreenContent = () => {
-            console.log('[updateVentaScreenContent] Updating venta screen content.');
-            const selectedClientDisplay = document.getElementById('selected-client-display');
-            const productSaleContainer = document.getElementById('product-sale-container');
-            const infoText = document.getElementById('info-text');
-
-            if (isUser() && !currentUserData.assignedTruckPlate) {
-                selectedClientDisplay.textContent = '';
-                infoText.textContent = 'No tienes un camión asignado. Por favor, contacta a un administrador para que te asigne uno.';
-                productSaleContainer.innerHTML = '';
-                return;
-            }
-
-            // Use the getter function to access currentTruckInventory
-            const inventoryToDisplay = currentUserData.assignedTruckPlate ? inventoryManagement.getCurrentTruckInventory() : inventory;
-            const inventorySourceText = currentUserData.assignedTruckPlate ? ` (Camión: ${currentUserData.assignedTruckPlate})` : ' (Almacén Principal)';
-
-            if (clientManagement.selectedClientForSale) {
-                selectedClientDisplay.textContent = `Cliente Seleccionado: ${clientManagement.selectedClientForSale.nombreComercial}`;
-                infoText.textContent = `Inventario actual${inventorySourceText}`;
-
-                const tableRows = inventoryToDisplay.map(item => {
-                    const quantity = item.quantity !== undefined ? item.quantity : item.cantidad;
-                    const price = item.price !== undefined ? item.price : item.precio;
-                    return `
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-                        <td>${item.sku}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center sale-quantity-input" value="${saleQuantities[item.sku] || ''}" data-sku="${item.sku}" min="0" max="${quantity}"></td>
-                        <td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td><td>${quantity}</td>
-                    `;
-                }).map(row => `<tr>${row}</tr>`).join('');
-
-                productSaleContainer.innerHTML = `
-                    ${createTable(['Imagen', 'SKU', 'Cantidad a Vender', 'Producto', 'Presentación', 'Precio', 'Disponible'], tableRows, 'products-for-sale-body')}
-                    ${createButton('Finalizar Venta', 'finalizeSaleButton', 'bg-emerald-600 mt-3 w-full')}
-                `;
-            } else {
-                selectedClientDisplay.textContent = '';
-                infoText.textContent = 'Por favor, seleccione un cliente para iniciar la venta.';
-                productSaleContainer.innerHTML = '';
-            }
-        };
-
-        const handleProductQuantityChange = (sku, quantity) => {
-            saleQuantities[sku] = parseInt(quantity) || 0;
-        };
-
-        const showFinalizeSaleConfirmation = () => {
-            showConfirmationModal('¿Estás seguro de que quieres finalizar esta venta? Esto actualizará el inventario y generará un archivo de venta.', finalizeSaleLogic);
-        };
-
-        const finalizeSaleLogic = async () => {
-            // Capture selectedClientForSale into a local variable immediately
-            const clientForSale = clientManagement.selectedClientForSale;
-            if (!clientForSale) {
-                showMessageModal('Error: Por favor, seleccione un cliente primero.');
-                return;
-            }
-            if (isUser() && !currentUserData.assignedTruckPlate) {
-                showMessageModal('Error: No tienes un camión asignado para realizar ventas.');
-                return;
-            }
-
-            const saleData = [];
-            let totalSaleAmount = 0;
-            let messages = [];
-            let validationErrors = [];
-
-            const sourceInventoryCollection = currentUserData.assignedTruckPlate ? 'truck_inventories' : 'inventory';
-            const sourceInventoryDocId = currentUserData.assignedTruckPlate;
-
-            let currentSourceInventoryData;
-            if (sourceInventoryDocId) {
-                // Use the getter function
-                currentSourceInventoryData = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
-            } else {
-                currentSourceInventoryData = JSON.parse(JSON.stringify(inventory));
-            }
-
-            let updatedSourceInventory = JSON.parse(JSON.stringify(currentSourceInventoryData));
-
-            for (const item of currentSourceInventoryData) {
-                const quantitySold = saleQuantities[item.sku] || 0;
-                const availableQuantity = item.quantity !== undefined ? item.quantity : item.cantidad;
-
-                if (quantitySold > 0) {
-                    if (quantitySold > availableQuantity) {
-                        validationErrors.push(`Error: La cantidad a vender de "${item.producto}" (${quantitySold}) excede el stock disponible (${availableQuantity}).`);
-                    } else {
-                        const price = item.price !== undefined ? item.price : item.precio;
-                        const subtotal = quantitySold * price;
-                        saleData.push({ sku: item.sku, producto: item.producto, presentacion: item.presentacion, cantidadVendida: quantitySold, precioUnitario: price, subtotal: subtotal });
-                        totalSaleAmount += subtotal;
-
-                        updatedSourceInventory = updatedSourceInventory.map(invItem =>
-                            invItem.sku === item.sku ? {
-                                ...invItem,
-                                quantity: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold,
-                                cantidad: (invItem.quantity !== undefined ? invItem.quantity : invItem.cantidad) - quantitySold
-                            } : invItem
-                        );
-                    }
-                }
-            }
-
-            if (validationErrors.length > 0) { showMessageModal(validationErrors.join('\n')); return; }
-            if (saleData.length === 0) { showMessageModal('Error: No se ha ingresado ninguna cantidad para la venta.'); return; }
-
-            // Use the captured local variable clientForSale
-            const fileName = `venta_${clientForSale.nombreComercial.replace(/\s/g, '_')}_${getCurrentDateFormatted()}.csv`;
-            const saleRecord = {
-                fileName: fileName, client: clientForSale, date: getCurrentDateFormatted(), items: saleData,
-                total: totalSaleAmount, vendor: selectedVendor, sourceInventory: currentUserData.assignedTruckPlate || 'warehouse',
-                rawCSV: `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
-                        saleData.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
-                        `\nTotal General:, , , , ,${totalSaleAmount.toFixed(2)}`
-            };
-
-            saleRecord.docId = `temp_${Date.now()}`;
-            dailySales.push(saleRecord);
-
-            if (sourceInventoryDocId) {
-                // Use the setter function
-                inventoryManagement.setCurrentTruckInventory(updatedSourceInventory.filter(item => (item.quantity !== undefined ? item.quantity : item.cantidad) > 0));
-            }
-
-            resetVentaState();
-            setScreenAndRender('main');
-            showMessageModal(`Venta registrada localmente para ${clientForSale.nombreComercial}. Se sincronizará cuando haya conexión a internet.`);
-
-            try {
-                const batch = db.batch();
-                const docRef = db.collection('dailySales').doc();
-                batch.set(docRef, saleRecord);
-
-                if (sourceInventoryDocId) {
-                    batch.set(db.collection('truck_inventories').doc(sourceInventoryDocId), { items: inventoryManagement.getCurrentTruckInventory() }); // Use getter here
-                }
-
-                await batch.commit();
-                console.log('Firestore commit successful for sale:', saleRecord.fileName);
-
-                const index = dailySales.findIndex(s => s.docId === saleRecord.docId);
-                if (index !== -1) {
-                    dailySales[index].docId = docRef.id;
-                }
-                await fetchDataFromFirestore();
-
-            } catch (error) {
-                console.error('Error al guardar la venta en Firestore (puede ser por falta de conexión):', error);
-                if (error.code !== 'unavailable' && error.code !== 'internal' && error.code !== 'failed-precondition') {
-                    showMessageModal('Error al guardar la venta en la nube. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                }
-            }
-        };
-
-        const resetVentaState = () => {
-            clientManagement.resetSelectedClientForSale();
-            saleQuantities = {};
-            currentProductIndex = 0;
-        };
-
-        const resetVentaStateAndGoToMain = () => {
-            resetVentaState();
-            setScreenAndRender('main');
-        };
-
-        const renderCierreVentasScreen = () => {
-            appRoot.innerHTML = createScreenContainer('CIERRE DE VENTAS', `
-                <div class="mb-8 text-center">
-                    <label class="block text-lg font-semibold text-gray-700 mb-2">Seleccionar Vendedor:</label>
-                    <div class="radio-button-group" id="vendor-radio-group"></div>
-                </div>
-                <p class="text-base text-center my-5 text-gray-600">Esta sección permite consolidar y cerrar las ventas del día.</p>
-                ${createButton('Cerrar Ventas del Día', 'closeSalesButton', 'bg-emerald-600 mt-3 w-full')}
-                ${createButton('Volver', 'backToMainFromCierreVentasButton', 'bg-gray-600 mt-5 w-full')}
-            `);
-            updateVendorSelectionDisplay();
-        };
-
-        const showCloseSalesConfirmation = () => {
-            showConfirmationModal('¿Estás seguro de que quieres cerrar las ventas del día? Esto consolidará las ventas y "borrará" los registros individuales.', handleCloseSalesLogic);
-        };
-
-        const handleCloseSalesLogic = async () => {
-            console.log('[handleCloseSalesLogic] Initiating sales close logic.');
-
-            if (!navigator.onLine) {
-                showMessageModal('Error de Conexión: No se puede realizar el cierre de ventas sin conexión a internet. Por favor, verifica tu conexión y vuelve a intentarlo.');
-                console.warn('[handleCloseSalesLogic] Aborting sales closure due to no internet connection.');
-                return;
-            }
-
-            let messages = [];
-            if (dailySales.length === 0) {
-                showMessageModal('No hay Ventas: No hay ventas registradas para cerrar.');
-                console.log('[handleCloseSalesLogic] No daily sales found.');
-                return;
-            }
-
-            const salesByDate = dailySales.reduce((acc, sale) => {
-                (acc[sale.date] = acc[sale.date] || []).push(sale);
-                return acc;
-            }, {});
-
-            let allProcessedSaleDocIds = [];
-            let updatedMainInventory = JSON.parse(JSON.stringify(inventory));
-            console.log('[handleCloseSalesLogic] Initial Main Inventory (before processing sales):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
-
-            const truckSalesAggregates = {};
-
-            for (const date in salesByDate) {
-                const salesForThisDate = salesByDate[date];
-                const aggregatedSalesBySku = {};
-                let totalOverallSale = 0;
-
-                salesForThisDate.forEach(sale => {
-                    sale.items.forEach(item => {
-                        const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
-                        if (!aggregatedSalesBySku[sku]) {
-                            aggregatedSalesBySku[sku] = { producto, presentacion, totalCantidad: 0, totalSubtotal: 0 };
-                        }
-                        aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
-                        aggregatedSalesBySku[sku].totalSubtotal += subtotal;
-                        totalOverallSale += subtotal;
-                    });
-
-                    if (sale.sourceInventory && sale.sourceInventory !== 'warehouse') {
-                        const truckPlate = sale.sourceInventory;
-                        if (!truckSalesAggregates[truckPlate]) {
-                            truckSalesAggregates[truckPlate] = {};
-                        }
-                        sale.items.forEach(item => {
-                            truckSalesAggregates[truckPlate][item.sku] = (truckSalesAggregates[truckPlate][item.sku] || 0) + item.cantidadVendida;
-                        });
-                    }
-                });
-
-                let combinedCSVContent = `Venta General Consolidada - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nSKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n`;
-                for (const sku in aggregatedSalesBySku) {
-                    const item = aggregatedSalesBySku[sku];
-                    combinedCSVContent += `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}\n`;
-                }
-                combinedCSVContent += `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
-                const combinedFileName = `venta_consolidada_${date}.csv`;
-                messages.push(`Cierre de Ventas para ${date}: Se ha generado el archivo "${combinedFileName}" con las ventas consolidadas.\nTotal del día: $${totalOverallSale.toFixed(2)}`);
-                console.log(`[handleCloseSalesLogic] Attempting to download consolidated CSV: ${combinedFileName}`);
-                triggerCSVDownload(combinedFileName, combinedCSVContent);
-
-                const uniqueSKUs = new Set();
-                const clientSalesData = {};
-                salesForThisDate.forEach(sale => {
-                    if (!clientSalesData[sale.client.id]) {
-                        clientSalesData[sale.client.id] = { clientName: sale.client.nombreComercial, total: 0, skus: {} };
-                    }
-                    sale.items.forEach(item => {
-                        uniqueSKUs.add(item.sku);
-                        clientSalesData[sale.client.id].skus[item.sku] = (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
-                        clientSalesData[sale.client.id].total += item.subtotal;
-                    });
-                });
-
-                const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
-                let clientCSVContent = `Venta General por Clientes - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nCliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
-                let grandTotalClients = 0;
-                for (const clientId in clientSalesData) {
-                    const clientData = clientSalesData[clientId];
-                    let clientRow = `"${clientData.clientName}"`;
-                    sortedUniqueSKUs.forEach(sku => { clientRow += `,${clientData.skus[sku] || 0}`; });
-                    clientRow += `,${clientData.total.toFixed(2)}\n`;
-                    clientCSVContent += clientRow;
-                    grandTotalClients += clientData.total;
-                }
-                clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
-                const clientFileName = `ventas_por_cliente_${date}.csv`;
-                messages.push(`Se ha generado el archivo "${clientFileName}" con las ventas consolidadas por cliente para ${date}.`);
-                console.log(`[handleCloseSalesLogic] Attempting to download client-specific CSV: ${clientFileName}`);
-                triggerCSVDownload(clientFileName, clientCSVContent);
-
-                for (const sku in aggregatedSalesBySku) {
-                    const totalQuantitySold = aggregatedSalesBySku[sku].totalCantidad;
-                    const mainInventoryItem = updatedMainInventory.find(item => item.sku === sku);
-                    if (mainInventoryItem) {
-                        console.log(`[handleCloseSalesLogic] Deducting ${totalQuantitySold} of SKU ${sku} from main inventory. Before: ${mainInventoryItem.cantidad}`);
-                        mainInventoryItem.cantidad = Math.max(0, mainInventoryItem.cantidad - totalQuantitySold);
-                        console.log(`[handleCloseSalesLogic] After deduction: ${mainInventoryItem.cantidad}`);
-                    } else {
-                        messages.push(`Advertencia: SKU ${sku} vendido no encontrado en el inventario principal para deducción durante el cierre.`);
-                        console.warn(`[handleCloseSalesLogic] SKU ${sku} not found in main inventory for deduction.`);
-                    }
-                }
-                salesForThisDate.forEach(sale => {
-                    if (sale.docId) {
-                        allProcessedSaleDocIds.push(sale.docId);
-                        console.log(`[handleCloseSalesLogic] Marking sale DOC ID ${sale.docId} for deletion.`);
-                    }
-                });
-            }
-
-            console.log('[handleCloseSalesLogic] Main Inventory AFTER processing sales (before commit):', JSON.stringify(updatedMainInventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
-
-            messages.push(`Compartiendo: Simulando compartir archivos de cierre vía WhatsApp.`);
-            messages.push(`Imprimiendo: Simulando impresión del cierre de ventas.`);
-
-            try {
-                const batch = db.batch();
-                updatedMainInventory.forEach(item => {
-                    console.log(`[handleCloseSalesLogic] Adding batch set for main inventory SKU: ${item.sku}, new quantity: ${item.cantidad}`);
-                    batch.set(db.collection('inventory').doc(item.sku), {
-                        rubro: item.rubro,
-                        sku: item.sku,
-                        segmento: item.segmento,
-                        producto: item.producto,
-                        presentacion: item.presentacion,
-                        cantidad: item.cantidad,
-                        precio: item.precio
-                    });
-                });
-                inventory.splice(0, inventory.length, ...updatedMainInventory.filter(item => item.cantidad > 0)); // Update global inventory in place
-                console.log('[handleCloseSalesLogic] Local main inventory updated to:', JSON.stringify(inventory.map(i => ({sku: i.sku, cantidad: i.cantidad}))));
-
-                for (const date in salesByDate) {
-                    const salesForThisDate = salesByDate[date];
-                    const aggregatedSalesBySku = {};
-                    let totalOverallSale = 0;
-                    salesForThisDate.forEach(sale => {
-                        sale.items.forEach(item => {
-                            const { sku, producto, presentacion, cantidadVendida, precioUnitario, subtotal } = item;
-                            if (!aggregatedSalesBySku[sku]) {
-                                aggregatedSalesBySku[sku] = { producto, presentacion, totalCantidad: 0, totalSubtotal: 0 };
-                            }
-                            aggregatedSalesBySku[sku].totalCantidad += cantidadVendida;
-                            aggregatedSalesBySku[sku].totalSubtotal += subtotal;
-                            totalOverallSale += subtotal;
-                        });
-                    });
-
-                    const itemsSoldSummary = [];
-                    for (const sku in aggregatedSalesBySku) {
-                        const item = aggregatedSalesBySku[sku];
-                        itemsSoldSummary.push({
-                            sku: sku,
-                            producto: item.producto,
-                            presentacion: item.presentacion,
-                            totalCantidad: item.totalCantidad,
-                            totalSubtotal: item.totalSubtotal
-                        });
-                    }
-
-                    const combinedCSVContent = `Venta General Consolidada - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nSKU,Producto,Presentacion,Cantidad Total,Subtotal Total\n` +
-                                               Object.keys(aggregatedSalesBySku).map(sku => {
-                                                   const item = aggregatedSalesBySku[sku];
-                                                   return `${sku},${item.producto},${item.presentacion},${item.totalCantidad},${item.totalSubtotal.toFixed(2)}`;
-                                               }).join('\n') +
-                                               `\nTotal General:, , , ,${totalOverallSale.toFixed(2)}`;
-
-                    const generalSaleDocRef = db.collection('historicalConsolidatedGeneralSales').doc();
-                    console.log(`[handleCloseSalesLogic] Adding batch set for historical general sales: ${generalSaleDocRef.id}, data: ${JSON.stringify({ date: date, vendor: selectedVendor, totalOverallSale: totalOverallSale, itemsSoldSummary: itemsSoldSummary })}`);
-                    batch.set(generalSaleDocRef, {
-                        date: date,
-                        vendor: selectedVendor,
-                        totalOverallSale: totalOverallSale,
-                        itemsSoldSummary: itemsSoldSummary,
-                        rawCSV: combinedCSVContent,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    const uniqueSKUs = new Set();
-                    const clientSalesData = {};
-                    salesForThisDate.forEach(sale => {
-                        if (!clientSalesData[sale.client.id]) {
-                            clientSalesData[sale.client.id] = { clientName: sale.client.nombreComercial, total: 0, skus: {} };
-                        }
-                        sale.items.forEach(item => {
-                            uniqueSKUs.add(item.sku);
-                            clientSalesData[sale.client.id].skus[item.sku] = (clientSalesData[sale.client.id].skus[item.sku] || 0) + item.cantidadVendida;
-                            clientSalesData[sale.client.id].total += item.subtotal;
-                        });
-                    });
-
-                    const sortedUniqueSKUs = Array.from(uniqueSKUs).sort();
-                    let clientCSVContent = `Venta General por Clientes - Fecha: ${date}\nVendedor: ${selectedVendor}\n\nCliente,${sortedUniqueSKUs.map(sku => `SKU(${sku})`).join(',')},Total\n`;
-                    let grandTotalClients = 0;
-                    const clientSalesDetails = [];
-
-                    for (const clientId in clientSalesData) {
-                        const clientData = clientSalesData[clientId];
-                        let clientRow = `"${clientData.clientName}"`;
-                        sortedUniqueSKUs.forEach(sku => { clientRow += `,${clientData.skus[sku] || 0}`; });
-                        clientRow += `,${clientData.total.toFixed(2)}\n`;
-                        clientCSVContent += clientRow;
-                        grandTotalClients += clientData.total;
-
-                        clientSalesDetails.push({
-                            clientId: clientId,
-                            clientName: clientData.clientName,
-                            total: clientData.total,
-                            skusSold: clientData.skus
-                        });
-                    }
-                    clientCSVContent += `Total General:,${','.repeat(sortedUniqueSKUs.length)},${grandTotalClients.toFixed(2)}`;
-
-
-                    const clientSaleDocRef = db.collection('historicalConsolidatedClientSales').doc();
-                    console.log(`[handleCloseSalesLogic] Adding batch set for historical client sales: ${clientSaleDocRef.id}, data: ${JSON.stringify({ date: date, vendor: selectedVendor, grandTotalClients: grandTotalClients, clientSalesDetails: clientSalesDetails })}`);
-                    batch.set(clientSaleDocRef, {
-                        date: date,
-                        vendor: selectedVendor,
-                        grandTotalClients: grandTotalClients,
-                        clientSalesDetails: clientSalesDetails,
-                        rawCSV: clientCSVContent,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                }
-
-                for (const truckPlate in truckSalesAggregates) {
-                    const truckSpecificSales = truckSalesAggregates[truckPlate];
-                    const truckInventoryDocRef = db.collection('truck_inventories').doc(truckPlate);
-                    const truckInventoryDoc = await truckInventoryDocRef.get();
-                    let currentTruckItems = truckInventoryDoc.exists ? (truckInventoryDoc.data().items || []) : [];
-
-                    console.log(`[handleCloseSalesLogic] Processing sales for truck: ${truckPlate}. Initial inventory:`, JSON.stringify(currentTruckItems));
-
-                    for (const sku in truckSpecificSales) {
-                        const quantitySoldFromTruck = truckSpecificSales[sku];
-                        const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
-                        if (itemIndex !== -1) {
-                            console.log(`[handleCloseSalesLogic] Deducting ${quantitySoldFromTruck} of SKU ${sku} from truck ${truckPlate}. Before: ${currentTruckItems[itemIndex].quantity}`);
-                            currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - quantitySoldFromTruck);
-                            console.log(`[handleCloseSalesLogic] After deduction: ${currentTruckItems[itemIndex].quantity}`);
-                        } else {
-                            messages.push(`Advertencia: SKU ${sku} vendido desde el camión ${truckPlate} no encontrado en su inventario durante el cierre.`);
-                            console.warn(`[handleCloseSalesLogic] SKU ${sku} sold from truck ${truckPlate} not found in its inventory during closure.`);
-                        }
-                    }
-                    const filteredTruckItems = currentTruckItems.filter(item => item.quantity > 0);
-                    console.log(`[handleCloseSalesLogic] Adding batch set for truck ${truckPlate} inventory: ${JSON.stringify(filteredTruckItems)}`);
-                    batch.set(truckInventoryDocRef, { items: filteredTruckItems });
-                }
-
-                allProcessedSaleDocIds.forEach(docId => {
-                    console.log(`[handleCloseSalesLogic] Adding batch delete for daily sale DOC ID ${docId}.`);
-                    batch.delete(db.collection('dailySales').doc(docId));
-                });
-                dailySales.splice(0, dailySales.length, ...dailySales.filter(sale => !allProcessedSaleDocIds.includes(sale.docId))); // Update in place
-                console.log('[handleCloseSalesLogic] Local daily sales updated. Remaining sales:', dailySales.length);
-
-                await batch.commit();
-                console.log('[handleCloseSalesLogic] Firestore batch commit successful.');
-                messages.push('Inventario Principal Actualizado: Las ventas han sido deducidas del inventario principal.');
-                messages.push('Inventarios de Camiones Actualizados: Los inventarios de los camiones afectados han sido actualizados.');
-                messages.push('Archivos Borrados: Los archivos de ventas individuales procesados han sido "borrados" de Firestore.');
-            } catch (error) {
-                console.error('[handleCloseSalesLogic] Error during Firestore batch commit:', error);
-                console.error(`[handleCloseSalesLogic] Firestore Error Code: ${error.code}, Message: ${error.message}`);
-                if (error.code === 'unavailable' || error.code === 'internal' || error.code === 'failed-precondition') {
-                    messages.push(`Error de Conexión/Permisos: No se pudo completar el cierre de ventas debido a problemas de red o reglas de seguridad. Por favor, verifica tu conexión y las reglas de seguridad de Firestore. Los datos no se han borrado de la nube.`);
-                } else {
-                    messages.push('Error al procesar el cierre de ventas. Por favor, revisa tu conexión y las reglas de seguridad.');
-                }
-            }
-            setScreenAndRender('main');
-            showMessageModal(messages.join('\n'));
-        };
-
-        const generateThermalReceiptHtml = (saleRecord) => {
-            let itemsHtml = saleRecord.items.map(item => `
-                <div class="item-row">
-                    <span class="item-qty">${item.cantidadVendida}x</span>
-                    <span class="item-desc">${item.producto} (${item.presentacion})</span>
-                    <span class="item-price">$${item.precioUnitario.toFixed(2)}</span>
-                    <span class="item-total">$${item.subtotal.toFixed(2)}</span>
-                </div>
-            `).join('');
-
-            let modificationReasonHtml = saleRecord.modificationReason ? `
-                <div style="border-top: 1px dashed #000; margin: 5px 0;"></div>
-                <p style="font-weight: bold;">Motivo Modificación:</p>
-                <p>${saleRecord.modificationReason}</p>
-            ` : '';
-
-            return `
-                <div class="thermal-receipt">
-                    <h3>Dist Castillo Ventas</h3>
-                    <h4>Recibo de Venta</h4>
-                    <div class="divider"></div>
-                    <p>Fecha: ${saleRecord.date}</p>
-                    <p>Cliente: ${saleRecord.client.nombreComercial}</p>
-                    <p>Vendedor: ${saleRecord.vendor || selectedVendor}</p>
-                    <div class="divider"></div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                        <span class="item-qty">Cant.</span>
-                        <span class="item-desc">Producto</span>
-                        <span class="item-price">Total</span>
-                    </div>
-                    <div class="divider"></div>
-                    ${itemsHtml}
-                    <div class="divider"></div>
-                    <div class="total-line">
-                        <span>TOTAL:</span>
-                        <span>$${saleRecord.total.toFixed(2)}</span>
-                    </div>
-                    ${modificationReasonHtml}
-                    <div class="divider"></div>
-                    <p class="footer-text">¡Gracias por tu compra!</p>
-                </div>
-            `;
-        };
-
-        const printSaleReceipt = async (saleRecord) => {
-            showMessageModal('Generando imagen del recibo...');
-            const receiptHtml = generateThermalReceiptHtml(saleRecord);
-
-            const tempDiv = document.createElement('div');
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px';
-            tempDiv.style.width = '250px';
-            tempDiv.innerHTML = receiptHtml;
-            document.body.appendChild(tempDiv);
-
-            try {
-                const canvas = await html2canvas(tempDiv, { scale: 2, logging: false, useCORS: true });
-                const imageDataUrl = canvas.toDataURL('image/png');
-
-                if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([], 'recibo.png', { type: 'image/png' })] })) {
-                    const response = await fetch(imageDataUrl);
-                    const blob = await response.blob();
-                    const file = new File([blob], `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`, { type: 'image/png' });
-                    await navigator.share({
-                        files: [file],
-                        title: `Recibo de Venta ${saleRecord.fileName}`,
-                        text: `Aquí tienes el recibo de venta para ${saleRecord.client.nombreComercial} del ${saleRecord.date}. Total: $${saleRecord.total.toFixed(2)}`,
-                    });
-                    showMessageModal('Recibo compartido exitosamente a través de las opciones de tu dispositivo.');
-                } else {
-                    showMessageModal('La función de compartir avanzada no está disponible en este navegador. Se descargará la imagen del recibo.');
-                    const link = document.createElement('a');
-                    link.download = `recibo_venta_${saleRecord.client.nombreComercial.replace(/\s/g, '_')}_${saleRecord.date}.png`;
-                    link.href = imageDataUrl;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    showMessageModal('La imagen del recibo ha sido descargada.');
-                }
-            } catch (error) {
-                console.error('[printSaleReceipt] Error al generar o compartir la imagen:', error);
-                showMessageModal('Error al generar o compartir la imagen del recibo. Intenta de nuevo.');
-            } finally {
-                if (tempDiv && tempDiv.parentNode) {
-                    document.body.removeChild(tempDiv);
-                }
-            }
-        };
-
-        const renderArchivosAdminScreen = () => {
-            if (!isAdmin()) { showMessageModal('Acceso denegado: Solo los administradores pueden acceder a esta sección.'); setScreenAndRender('main'); return; }
-            appRoot.innerHTML = createScreenContainer('ARCHIVOS ADMIN', `
-                <p class="text-base text-center my-5 text-gray-600">Esta sección permite cargar y descargar archivos de datos maestros.</p>
-                <div class="mb-8 p-4 bg-sky-50 rounded-lg border border-sky-300">
-                    <h3 class="text-xl font-bold mb-4 text-sky-700">Cargar Archivos CSV</h3>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar clientes.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadClientsCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadClientsCsv" accept=".csv"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar inventario.csv (Almacén Principal):</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadInventoryCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadInventoryCsv" accept=".csv" data-type="inventory"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vendedor.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadVendorsCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadVendorsCsv" accept=".csv" data-type="vendors"></div></div>
-                    <div class="mb-3"><label class="block text-gray-700 text-sm font-bold mb-2">Cargar vehículos.csv:</label><div class="file-input-wrapper">${createButton('Seleccionar archivo', 'uploadVehiclesCsvButton', 'bg-sky-500 w-full')}<input type="file" id="uploadVehiclesCsv" accept=".csv" data-type="vehicles"></div></div>
-                </div>
-                <div class="mb-8 p-4 bg-emerald-50 rounded-lg border border-emerald-300">
-                    <h3 class="text-xl font-bold mb-4 text-emerald-700">Descargar Archivos de Datos</h3>
-                    ${createButton('Descargar clientes.csv', 'downloadClientsCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'clientes.csv' })}
-                    ${createButton('Descargar inventario.csv (Almacén Principal)', 'downloadInventoryCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'inventario.csv' })}
-                    ${createButton('Descargar vendedor.csv', 'downloadVendorsCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'vendedor.csv' })}
-                    ${createButton('Descargar vehículos.csv', 'downloadVehiclesCsvButton', 'bg-emerald-600 w-full mb-2 download-csv-button', { filename: 'vehiculos.csv' })}
-                </div>
-                ${createButton('Volver', 'backToMainFromArchivosAdminButton', 'bg-gray-600 mt-5 w-full')}
-            `);
-        };
-
-        const renderArchivosVentaScreen = () => {
-            if (!currentUser) { showMessageModal('Acceso denegado: Debes iniciar sesión para ver los archivos de venta.'); setScreenAndRender('login'); return; }
-            const saleFilesHtml = dailySales.length === 0 ? '<p class="text-gray-600">No hay archivos de venta generados.</p>' :
-                dailySales.map(sale => `
-                    <div class="bg-cyan-100 p-3 rounded-lg mb-2 flex flex-wrap justify-between items-center border border-cyan-200">
-                        <span class="text-base text-cyan-800 mb-2 sm:mb-0">${sale.fileName}</span>
-                        <div class="flex flex-wrap gap-2">
-                            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out print-receipt-button" data-sale='${JSON.stringify(sale)}'>IMPRIMIR</button>
-                            ${isAdmin() ? `<button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out modify-sale-button" data-sale='${JSON.stringify(sale)}'>MODIFICAR</button>` : ''}
-                        </div>
-                    </div>
-                `).join('');
-
-            appRoot.innerHTML = createScreenContainer('ARCHIVOS DE VENTA', `
-                <p class="text-base text-center my-5 text-gray-600">Aquí puedes ver, imprimir y modificar (solo administradores) los archivos de venta generados.</p>
-                <div class="p-4 bg-cyan-50 rounded-lg border border-cyan-300">
-                    <h3 class="text-xl font-bold mb-4 text-cyan-700">Archivos de Venta Generados</h3>
-                    <div id="generated-sale-files-list">${saleFilesHtml}</div>
-                </div>
-                ${createButton('Volver', 'backToMainFromArchivosVentaButton', 'bg-gray-600 mt-5 w-full')}
-            `);
-        };
-
-        const openModifySaleModal = (saleRecord) => {
-            selectedSaleForModification = JSON.parse(JSON.stringify(saleRecord));
-            modifiedSaleQuantities = {};
-            selectedSaleForModification.items.forEach(item => { modifiedSaleQuantities[item.sku] = item.cantidadVendida; });
-            modificationReason = selectedSaleForModification.modificationReason || '';
-            showModifySaleModalState = true;
-            render();
-        };
-
-        const closeModifySaleModal = () => {
-            showModifySaleModalState = false;
-            selectedSaleForModification = null;
-            modifiedSaleQuantities = {};
-            modificationReason = '';
-            render();
-        };
-
-        const handleModifiedSaleQuantityChange = (sku, quantity) => {
-            modifiedSaleQuantities[sku] = parseInt(quantity) || 0;
-        };
-
-        const handleModificationReasonChange = (reason) => {
-            modificationReason = reason;
-        };
-
-        const renderModifySaleModal = () => {
-            if (!showModifySaleModalState || !selectedSaleForModification) return '';
-
-            let productsHtml = '';
-            let currentSaleSkus = new Set(selectedSaleForModification.items.map(item => item.sku));
-            // Use the getter function for currentTruckInventory
-            const inventoryToCompare = (selectedSaleForModification.sourceInventory === 'warehouse') ? inventory : inventoryManagement.getCurrentTruckInventory();
-
-            const renderProductRow = (item, isNew = false) => {
-                const productInInventory = inventoryToCompare.find(invItem => invItem.sku === item.sku);
-                const currentQuantity = modifiedSaleQuantities[item.sku] !== undefined ? modifiedSaleQuantities[item.sku] : (isNew ? 0 : item.cantidadVendida);
-                const price = item.precioUnitario !== undefined ? item.precioUnitario : (productInInventory?.price !== undefined ? productInInventory.price : productInInventory?.precio);
-                return `
-                    <tr>
-                        <td><img src="${productImages[item.sku] || productImages['default']}" alt="Imagen de ${item.producto}" class="w-10 h-10 rounded-md object-cover"></td>
-                        <td>${item.sku}</td><td>${item.producto}</td><td>${item.presentacion}</td><td>$${price.toFixed(2)}</td>
-                        <td><input type="number" class="border border-gray-300 rounded-md text-center w-20 modified-sale-quantity-input" value="${currentQuantity}" data-sku="${item.sku}" min="0"></td>
-                        <td>${productInInventory ? (productInInventory.quantity || productInInventory.cantidad) : 'N/A'}</td>
-                    </tr>
-                `;
-            };
-
-            productsHtml += selectedSaleForModification.items.map(item => renderProductRow(item)).join('');
-            productsHtml += inventoryToCompare.filter(item => !currentSaleSkus.has(item.sku)).map(item => renderProductRow(item, true)).join('');
-
-            return `
-                <div id="modify-sale-modal" class="modal">
-                    <div class="modal-content">
-                        <h3 class="text-2xl font-bold mb-4 text-center text-indigo-700">Modificar Venta</h3>
-                        <p class="text-lg font-bold mb-2">Cliente: ${selectedSaleForModification.client.nombreComercial}</p>
-                        <p class="text-md text-gray-700 mb-4">Fecha: ${selectedSaleForModification.date}</p>
-                        <p class="text-md text-gray-700 mb-4">Origen: ${selectedSaleForModification.sourceInventory === 'warehouse' ? 'Almacén Principal' : `Camión ${selectedSaleForModification.sourceInventory}`}</p>
-                        ${createTable(['Imagen', 'SKU', 'Producto', 'Presentación', 'Precio Unitario', 'Cantidad', 'Disp. Actual'], productsHtml, 'modify-sale-products-body')}
-                        <div class="mb-4 text-left">
-                            <label for="modificationReason" class="block text-gray-700 text-sm font-bold mb-2">Motivo de la Modificación:</label>
-                            <textarea id="modificationReason" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="3">${modificationReason}</textarea>
-                        </div>
-                        <div class="flex justify-around gap-4 mt-5">
-                            ${createButton('Guardar Modificación', 'modifySaleModalSaveButton', 'bg-emerald-600 flex-1')}
-                            ${createButton('Cancelar', 'modifySaleModalCancelButton', 'bg-gray-600 flex-1')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        };
-
-        const saveModifiedSale = async () => {
-            if (!modificationReason.trim()) { showMessageModal('Por favor, ingresa un motivo para la modificación.'); return; }
-
-            const oldSaleItemsMap = new Map(selectedSaleForModification.items.map(item => [item.sku, item.cantidadVendida]));
-            const newSaleItems = [];
-            let newTotalSaleAmount = 0;
-            let inventoryUpdates = {};
-
-            const sourceInventoryPlate = selectedSaleForModification.sourceInventory;
-            let currentInventoryDataForValidation;
-
-            if (sourceInventoryPlate === 'warehouse') {
-                currentInventoryDataForValidation = inventory;
-            } else {
-                // Use the getter function
-                currentInventoryDataForValidation = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
-            }
-
-            for (const sku in modifiedSaleQuantities) {
-                const newQty = modifiedSaleQuantities[sku];
-                const oldQty = oldSaleItemsMap.get(sku) || 0;
-                const netChange = newQty - oldQty;
-
-                const productInInventory = currentInventoryDataForValidation.find(invItem => invItem.sku === sku);
-                const availableQuantity = productInInventory ? (productInInventory.quantity !== undefined ? productInInventory.quantity : productInInventory.cantidad) : 0;
-
-                if (netChange > 0 && netChange > availableQuantity + oldQty) {
-                    showMessageModal(`Error: La cantidad adicional de "${sku}" (${netChange}) excede el stock disponible (${availableQuantity}).`);
-                    return; // Exit if validation fails
-                }
-
-                if (newQty > 0) {
-                    const productDetails = inventory.find(item => item.sku === sku) || inventoryManagement.getCurrentTruckInventory().find(item => item.sku === sku); // Use getter here
-                    if (productDetails) {
-                        const price = productDetails.price !== undefined ? productDetails.price : productDetails.precio;
-                        newSaleItems.push({ sku: productDetails.sku, producto: productDetails.producto, presentacion: productDetails.presentacion, cantidadVendida: newQty, precioUnitario: price, subtotal: newQty * price });
-                        newTotalSaleAmount += newQty * price;
-                    }
-                }
-                if (netChange !== 0) inventoryUpdates[sku] = (inventoryUpdates[sku] || 0) + netChange;
-            }
-
-            if (newSaleItems.length === 0 && Object.keys(inventoryUpdates).length === 0) {
-                showMessageModal('La venta modificada no puede estar vacía y no hay cambios de inventario. Ajusta las cantidades o cancela.'); return;
-            }
-
-            selectedSaleForModification.items = newSaleItems;
-            selectedSaleForModification.total = newTotalSaleAmount;
-            selectedSaleForModification.modificationReason = modificationReason.trim();
-            selectedSaleForModification.rawCSV =
-                `SKU,Producto,Presentacion,Cantidad,Precio Unitario,Subtotal\n` +
-                newSaleItems.map(item => `${item.sku},${item.producto},${item.presentacion},${item.cantidadVendida},${item.precioUnitario.toFixed(2)},${item.subtotal.toFixed(2)}`).join('\n') +
-                `\nTotal General:, , , , ,${newTotalSaleAmount.toFixed(2)}\n` +
-                `Motivo de Modificación:,${modificationReason.trim()}`;
-
-            dailySales.splice(0, dailySales.length, ...dailySales.map(sale => sale.docId === selectedSaleForModification.docId ? selectedSaleForModification : sale)); // Update in place
-
-            if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
-                // Use the getter function to get current state
-                let currentTruckItems = JSON.parse(JSON.stringify(inventoryManagement.getCurrentTruckInventory()));
-                for (const sku in inventoryUpdates) {
-                    const delta = inventoryUpdates[sku];
-                    const itemIndex = currentTruckItems.findIndex(item => item.sku === sku);
-                    const productDetails = inventory.find(item => item.sku === sku);
-
-                    if (itemIndex !== -1) {
-                        currentTruckItems[itemIndex].quantity = Math.max(0, currentTruckItems[itemIndex].quantity - delta);
-                    } else if (delta > 0 && productDetails) {
-                        currentTruckItems.push({
-                            sku: productDetails.sku, rubro: productDetails.rubro, segmento: productDetails.segmento,
-                            producto: productDetails.producto, presentacion: productDetails.presentacion,
-                            quantity: delta, price: productDetails.precio
-                        });
-                    }
-                }
-                currentTruckItems = currentTruckItems.filter(item => item.quantity > 0);
-                // Use the setter function to update
-                if (currentUserData.assignedTruckPlate === sourceInventoryPlate) inventoryManagement.setCurrentTruckInventory(currentTruckItems);
-            }
-
-            closeModifySaleModal();
-            showMessageModal('Venta modificada y guardada localmente. Se sincronizará cuando haya conexión a internet.');
-
-            try {
-                const batch = db.batch();
-                batch.set(db.collection('dailySales').doc(selectedSaleForModification.docId), selectedSaleForModification);
-
-                if (sourceInventoryPlate && sourceInventoryPlate !== 'warehouse') {
-                    batch.set(db.collection('truck_inventories').doc(sourceInventoryPlate), { items: inventoryManagement.getCurrentTruckInventory() }); // Use getter here
-                }
-
-                await batch.commit();
-                console.log('Firestore commit successful for modified sale:', selectedSaleForModification.fileName);
-
-                await fetchDataFromFirestore();
-
-            } catch (error) {
-                console.error('Error al modificar venta en Firestore (puede ser por falta de conexión):', error);
-                if (error.code !== 'unavailable' && error.code !== 'internal' && error.code !== 'failed-precondition') {
-                    showMessageModal('Error al guardar la modificación de venta en la nube. Por favor, revisa tu conexión y las reglas de seguridad.');
-                }
-            }
-        };
-
-        const handleFileUpload = async (event, type) => {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const parsedData = parseCSV(e.target.result);
-                try {
-                    if (type === 'vendors') {
-                        const collectionRef = db.collection('vendors');
-                        const existingSnapshot = await collectionRef.get();
-                        const deleteBatch = db.batch();
-                        existingSnapshot.docs.forEach(doc => deleteBatch.delete(doc.ref));
-                        await deleteBatch.commit();
-                        console.log(`[handleFileUpload] Existing ${type} documents deleted.`);
-
-                        const addBatch = db.batch();
-                        for (const row of parsedData) {
-                            addBatch.set(collectionRef.doc((row['Wilfredo Chacon'] || row.Name).replace(/\s/g, '_')), { name: row['Wilfredo Chacon'] || row.Name, category: row['Alimentos'] || row.Category });
-                        }
-                        await addBatch.commit();
-                        console.log(`[handleFileUpload] New ${type} documents added.`);
-                        showMessageModal(`${type}.csv cargado y guardado exitosamente en Firestore.`);
-                        if (vendors.length > 0 && selectedVendor === 'Ninguno') {
-                            selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
-                            localStorage.setItem('selectedVendor', selectedVendor);
-                        }
-                    } else {
-                        // Delegate to inventoryManagement for 'inventory' and 'vehicles'
-                        await inventoryManagement.handleFileUpload(e, type);
-                    }
-                    await fetchDataFromFirestore();
-                    render();
-                } catch (error) {
-                    console.error('Error al cargar archivo CSV a Firestore:', error);
-                    showMessageModal('Error al cargar archivo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                }
-            };
-            reader.readAsText(file);
-        };
-
-        const downloadExistingCSV = (filename) => {
-            let csvContent = '';
-            const findContent = (arr, key, val) => arr.find(record => record[key] === val);
-
-            const saleRecord = findContent(dailySales, 'fileName', filename);
-
-            if (saleRecord) {
-                csvContent = saleRecord.rawCSV;
-            } else if (filename === 'clientes.csv') {
-                clientManagement.downloadClientsCSV();
-                return;
-            } else if (filename === 'inventario.csv' || filename === 'vehiculos.csv' || filename.startsWith('carga_') || filename.startsWith('traslado_')) {
-                // Delegate to inventoryManagement for inventory and vehicle related CSVs
-                inventoryManagement.downloadExistingCSV(filename);
-                return;
-            } else {
-                let dataToDownload = [];
-                let headers = [];
-                switch (filename) {
-                    case 'vendedor.csv':
-                        dataToDownload = vendors.map(v => ({ Name: v.name, Category: v.category }));
-                        headers = ['Name', 'Category'];
-                        break;
-                    default:
-                        showMessageModal(`No se encontró contenido para descargar el archivo: ${filename}`);
-                        return;
-                }
-                csvContent = toCSV(dataToDownload, headers);
-            }
-            triggerCSVDownload(filename, csvContent);
-        };
-
-        // --- Configuración de Firebase ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
-            authDomain: "dist-castillo.firebaseapp.com",
-            projectId: "dist-castillo",
-            storageBucket: "dist-castillo.firebasestorage.app",
-            messagingSenderId: "249846475959",
-            appId: "1:249846475959:web:066c3fbca65ca39655af132",
-            measurementId: "G-V56MBM5YT9"
-        };
-
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-
-        firebase.firestore().enablePersistence()
-            .then(() => console.log("[Firestore] Persistencia offline de Firestore habilitada."))
-            .catch((err) => {
-                if (err.code == 'failed-precondition') {
-                    console.warn("[Firestore] La persistencia offline no se pudo habilitar porque el navegador no la soporta o ya está en uso.", err);
-                } else if (err.code == 'unimplemented') {
-                    console.warn("[Firestore] El navegador actual no soporta la persistencia offline de Firestore.", err);
-                } else {
-                    console.error("[Firestore] Error al habilitar la persistencia offline de Firestore:", err);
-                }
-            });
-
-        // --- Initialize modules with necessary data and functions (MOVED HERE) ---
-        // These need to be initialized regardless of auth state to ensure functions are available
-        clientManagement.init(
-            db, setScreenAndRender,
-            createButton, createInput, createSelect, createTable, // Pass UI helper functions
-            showMessageModal, showConfirmationModal, createSearchableDropdown // Pass modal functions and new dropdown helper
-        );
-        inventoryManagement.init(
-            db, currentUserData, isAdmin, isUser, vehicles, inventory, users, vendors, productImages, allTruckInventories, // Pass allTruckInventories
-            showMessageModal, showConfirmationModal, createTable, createInput, createSelect, createButton,
-            setScreenAndRender, fetchDataFromFirestore, createSearchableDropdown // Pass new dropdown helper
-        );
-
-
-        // --- Funciones de Carga de Datos desde Firestore ---
-        async function fetchDataFromFirestore() { // Changed to function declaration
-            console.log('[fetchDataFromFirestore] Starting data fetch...');
-            try {
-                const fetchCollection = async (collectionName, targetArray, initialData, idKey) => {
-                    const snapshot = await db.collection(collectionName).get();
-                    if (snapshot.empty) {
-                        console.log(`[fetchCollection] Collection '${collectionName}' is empty. Populating with initial data.`);
-                        const batch = db.batch();
-                        for (const item of initialData) {
-                            batch.set(db.collection(collectionName).doc(item[idKey]), item);
-                        }
-                        await batch.commit();
-                        targetArray.splice(0, targetArray.length, ...initialData); // Update in place
-                    } else {
-                        console.log(`[fetchCollection] Collection '${collectionName}' has data. Fetching existing data.`);
-                        targetArray.splice(0, targetArray.length, ...snapshot.docs.map(doc => ({ [idKey]: doc.id, ...doc.data() }))); // Update in place
-                    }
+            <button id="addProductBtn" class="btn-primary w-full">Agregar Producto</button>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Productos en el Portafolio</h2>
+            <div id="productList" class="space-y-4">
+                <!-- Products will be dynamically loaded here -->
+                <p class="text-gray-500 text-center" id="noProductsMessage">No hay productos añadidos aún.</p>
+            </div>
+            <button id="generatePortfolioBtn" class="btn-primary w-full mt-6">Generar Portafolio PDF</button>
+        </div>
+    </div>
+
+    <!-- Custom Modal for Alerts/Confirmations -->
+    <div id="customModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle"></h3>
+            <p id="modalMessage"></p>
+            <div id="modalButtons">
+                <!-- Buttons will be added dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    
+        // jsPDF and html2canvas CDN
+        import html2canvas from "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+        import { jsPDF } from "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.es.min.js";
+
+        // Global variables for Firebase config and app ID
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // UI Elements
+        const categoryInput = document.getElementById('category');
+        const brandInput = document.getElementById('brand');
+        const presentationInput = document.getElementById('presentation');
+        const priceInput = document.getElementById('price');
+        const brandImageInput = document.getElementById('brandImage');
+        const productImageInput = document.getElementById('productImage');
+        const brandImagePreview = document.getElementById('brandImagePreview');
+        const productImagePreview = document.getElementById('productImagePreview');
+        const addProductBtn = document.getElementById('addProductBtn');
+        const productListDiv = document.getElementById('productList');
+        const generatePortfolioBtn = document.getElementById('generatePortfolioBtn');
+        const brandSuggestionsDatalist = document.getElementById('brandSuggestions');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const noProductsMessage = document.getElementById('noProductsMessage');
+
+        let products = []; // Array to store current products
+        let brandsHistory = {}; // Object to store brands and their images for suggestions
+
+        // --- Custom Modal Functions ---
+        const customModal = document.getElementById('customModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const modalButtons = document.getElementById('modalButtons');
+
+        function showModal(title, message, buttons) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modalButtons.innerHTML = ''; // Clear previous buttons
+
+            buttons.forEach(btn => {
+                const buttonElement = document.createElement('button');
+                buttonElement.textContent = btn.text;
+                buttonElement.className = `button ${btn.className || 'btn-primary'}`;
+                buttonElement.onclick = () => {
+                    hideModal();
+                    if (btn.handler) btn.handler();
                 };
+                modalButtons.appendChild(buttonElement);
+            });
+            customModal.classList.add('show');
+        }
 
-                // Fetch clients, zones, and sectors via clientManagement
-                await clientManagement.fetchClientData();
+        function hideModal() {
+            customModal.classList.remove('show');
+        }
 
-                // Fetch inventory and vehicles via inventoryManagement
-                // inventory and vehicles are updated directly within inventoryManagement.fetchInventoryRelatedData
-                // The global 'inventory' and 'vehicles' arrays are passed by reference to inventoryManagement.init
-                // so inventoryManagement directly modifies them. No need to re-assign here.
-                await inventoryManagement.fetchInventoryRelatedData();
-                // vehicles.splice(0, vehicles.length, ...inventoryManagement._vehicles); // This was already removed in previous iteration
+        // --- Firebase Initialization and Authentication ---
+        async function initializeFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
 
-
-                const usersSnapshot = await db.collection('users').get();
-                users.splice(0, users.length, ...usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }))); // Update in place
-                console.log('[fetchDataFromFirestore] Users fetched:', users.length);
-
-                const vendorsSnapshot = await db.collection('vendors').get();
-                vendors.splice(0, vendors.length, ...vendorsSnapshot.docs.map(doc => ({ name: doc.id, ...doc.data() }))); // Update in place
-                if (vendors.length === 0) {
-                    // Initial vendors if the collection is empty
-                    const initialVendors = [
-                        { name: 'Wilfredo Chacon', category: 'Alimentos' },
-                        { name: 'Yonathan Chavez', category: 'Alimentos' },
-                        { name: 'Roberto Chacon', category: 'Cerveceria' },
-                    ];
-                    const batch = db.batch();
-                    for (const vendor of initialVendors) {
-                        batch.set(db.collection('vendors').doc(vendor.name), vendor);
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = userId;
+                        isAuthReady = true;
+                        console.log("Firebase initialized and user authenticated:", userId);
+                        // Load existing data once authenticated
+                        loadBrands();
+                        loadProducts();
+                    } else {
+                        // Sign in anonymously if no custom token or if token fails
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                                console.log("Signed in with custom token.");
+                            } else {
+                                await signInAnonymously(auth);
+                                console.log("Signed in anonymously.");
+                            }
+                        } catch (error) {
+                            console.error("Error during authentication:", error);
+                            showModal("Error de Autenticación", "No se pudo autenticar. Por favor, recarga la página.", [{ text: "Ok", className: "btn-secondary" }]);
+                        }
                     }
-                    await batch.commit();
-                    vendors.splice(0, vendors.length, ...initialVendors); // Update in place
-                }
-                console.log('[fetchDataFromFirestore] Vendors fetched:', vendors.length);
-
-
-                const dailySalesSnapshot = await db.collection('dailySales').get();
-                dailySales.splice(0, dailySales.length, ...dailySalesSnapshot.docs.map(doc => ({ docId: doc.id, ...doc.data() }))); // Update in place
-                console.log('[fetchDataFromFirestore] Daily Sales fetched:', dailySales.length);
-
-                // NEW: Fetch all truck inventories and store them in allTruckInventories
-                const allTruckInventoriesSnapshot = await db.collection('truck_inventories').get();
-                allTruckInventories = {}; // Clear previous data
-                allTruckInventoriesSnapshot.docs.forEach(doc => {
-                    allTruckInventories[doc.id] = doc.data().items || [];
                 });
-                console.log('[fetchDataFromFirestore] All truck inventories fetched:', Object.keys(allTruckInventories).length, 'trucks');
-
-
-                if (!vendors.some(v => v.name === selectedVendor)) {
-                    selectedVendor = vendors.length > 0 ? vendors[0].name : 'Ninguno';
-                    localStorage.setItem('selectedVendor', selectedVendor);
-                    console.log('[fetchDataFromFirestore] Adjusted selectedVendor:', selectedVendor);
-                }
-                console.log('[fetchDataFromFirestore] Data fetch completed successfully.');
             } catch (error) {
-                console.error('[Firestore] Error al cargar datos de Firestore:', error);
-                showMessageModal('Error al cargar datos. Usando datos de ejemplo. Por favor, revisa tu conexión y las reglas de seguridad de Firestore.');
-                // Revert to initial data for non-client related collections
-                inventory.splice(0, inventory.length); // Clear in place
-                vehicles.splice(0, vehicles.length); // Clear in place
-                vendors.splice(0, vendors.length, { name: 'Wilfredo Chacon', category: 'Alimentos' }); // Fallback for vendors
-                dailySales.splice(0, dailySales.length);
-                users.splice(0, users.length);
-                inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
-                inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
-                inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
-                allTruckInventories = {}; // Clear all truck inventories
-
-                clientManagement.closeAllClientModals(); // Clear client-related local data
-                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
-                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
-                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
-            } finally {
-                console.log('[fetchDataFromFirestore] Calling render() from finally block.');
-                render();
+                console.error("Error initializing Firebase:", error);
+                showModal("Error de Inicialización", "No se pudo inicializar Firebase. Revisa tu configuración.", [{ text: "Ok", className: "btn-secondary" }]);
             }
         }
 
-        // --- Lógica de Autenticación de Firebase ---
-        const handleAuth = async (isRegister) => {
-            const email = document.getElementById(`${isRegister ? 'register' : 'login'}Email`).value;
-            const password = document.getElementById(`${isRegister ? 'register' : 'login'}Password`).value;
+        // --- Data Loading from Firestore ---
+        async function loadBrands() {
+            if (!isAuthReady || !userId) return;
+            try {
+                const brandsRef = collection(db, `artifacts/${appId}/users/${userId}/brands`);
+                onSnapshot(brandsRef, (snapshot) => {
+                    brandsHistory = {};
+                    brandSuggestionsDatalist.innerHTML = '';
+                    snapshot.forEach(doc => {
+                        const brandData = doc.data();
+                        brandsHistory[brandData.brandName.toLowerCase()] = brandData.brandImageUrl;
+                        const option = document.createElement('option');
+                        option.value = brandData.brandName;
+                        brandSuggestionsDatalist.appendChild(option);
+                    });
+                    console.log("Brands loaded:", brandsHistory);
+                }, (error) => {
+                    console.error("Error loading brands:", error);
+                });
+            } catch (error) {
+                console.error("Error setting up brand listener:", error);
+            }
+        }
 
-            if (!email || !password) {
-                showMessageModal('Por favor, ingresa un correo electrónico y una contraseña.');
+        async function loadProducts() {
+            if (!isAuthReady || !userId) return;
+            try {
+                const productsRef = collection(db, `artifacts/${appId}/users/${userId}/products`);
+                onSnapshot(productsRef, (snapshot) => {
+                    products = [];
+                    productListDiv.innerHTML = ''; // Clear existing products
+                    if (snapshot.empty) {
+                        noProductsMessage.style.display = 'block';
+                    } else {
+                        noProductsMessage.style.display = 'none';
+                        snapshot.forEach(doc => {
+                            products.push({ id: doc.id, ...doc.data() });
+                        });
+                        renderProducts();
+                    }
+                    console.log("Products loaded:", products);
+                }, (error) => {
+                    console.error("Error loading products:", error);
+                });
+            } catch (error) {
+                console.error("Error setting up product listener:", error);
+            }
+        }
+
+        // --- Render Products to UI ---
+        function renderProducts() {
+            productListDiv.innerHTML = '';
+            products.forEach(product => {
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                productCard.innerHTML = `
+                    <img src="${product.productImageUrl || 'https://placehold.co/80x80/cccccc/333333?text=Producto'}" alt="Imagen de Producto">
+                    <div class="details">
+                        <p><strong>Categoría:</strong> ${product.category}</p>
+                        <p><strong>Marca:</strong> ${product.brand}</p>
+                        <p><strong>Presentación:</strong> ${product.presentation}</p>
+                        <p><strong>Precio:</strong> $${parseFloat(product.price).toFixed(2)}</p>
+                    </div>
+                    <button data-id="${product.id}" class="btn-secondary px-3 py-1 text-sm delete-product-btn">Eliminar</button>
+                `;
+                productListDiv.appendChild(productCard);
+            });
+
+            // Add event listeners for delete buttons
+            document.querySelectorAll('.delete-product-btn').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const productIdToDelete = e.target.dataset.id;
+                    showModal("Confirmar Eliminación", "¿Estás seguro de que quieres eliminar este producto?", [
+                        { text: "Cancelar", className: "btn-secondary" },
+                        { text: "Eliminar", className: "btn-primary", handler: () => deleteProduct(productIdToDelete) }
+                    ]);
+                });
+            });
+        }
+
+        async function deleteProduct(productId) {
+            if (!isAuthReady || !userId) {
+                showModal("Error", "Usuario no autenticado.", [{ text: "Ok", className: "btn-secondary" }]);
+                return;
+            }
+            try {
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/products`, productId), {}, { merge: true, delete: true }); // Delete by setting empty object with merge:true and delete:true
+                console.log("Producto eliminado:", productId);
+            } catch (error) {
+                console.error("Error eliminando producto:", error);
+                showModal("Error", "No se pudo eliminar el producto.", [{ text: "Ok", className: "btn-secondary" }]);
+            }
+        }
+
+
+        // --- Image Handling ---
+        function setupImagePreview(inputElement, previewElement) {
+            inputElement.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        previewElement.innerHTML = `<img src="${e.target.result}" alt="Previsualización">`;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    previewElement.innerHTML = `<span>Previsualización de ${previewElement.id.includes('Brand') ? 'Marca' : 'Producto'}</span>`;
+                }
+            });
+        }
+
+        setupImagePreview(brandImageInput, brandImagePreview);
+        setupImagePreview(productImageInput, productImagePreview);
+
+        // --- Add Product Functionality ---
+        addProductBtn.addEventListener('click', async () => {
+            if (!isAuthReady || !userId) {
+                showModal("Error", "Usuario no autenticado. Por favor, espera a que la aplicación se cargue completamente.", [{ text: "Ok", className: "btn-secondary" }]);
                 return;
             }
 
-            try {
-                let userCredential;
-                if (isRegister) {
-                    userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                    await db.collection('users').doc(userCredential.user.uid).set({
-                        email: userCredential.user.email,
-                        role: 'user',
-                        assignedTruckPlate: null,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    showMessageModal(`Registro exitoso para ${userCredential.user.email}! Tu rol es "user". Un administrador deberá asignarte un camión para que puedas realizar ventas.`);
-                } else {
-                    userCredential = await auth.signInWithEmailAndPassword(email, password);
-                }
-            } catch (error) {
-                showMessageModal(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}: ${error.message}`);
-                console.error(`Error al ${isRegister ? 'registrar' : 'iniciar sesión'}:`, error);
+            const category = categoryInput.value;
+            const brand = brandInput.value.trim();
+            const presentation = presentationInput.value.trim();
+            const price = parseFloat(priceInput.value);
+
+            if (!category || !brand || !presentation || isNaN(price) || price <= 0) {
+                showModal("Campos Incompletos", "Por favor, completa todos los campos y asegúrate de que el precio sea un número válido.", [{ text: "Ok", className: "btn-secondary" }]);
+                return;
             }
-        };
 
-        const handleLogout = async () => {
-            try {
-                await auth.signOut();
-                showMessageModal('Sesión cerrada correctamente.');
-                setScreenAndRender('login');
-            } catch (error) {
-                showMessageModal(`Error al cerrar sesión: ${error.message}`);
-                console.error("Error al cerrar sesión:", error);
-            }
-        };
+            let brandImageUrl = '';
+            let productImageUrl = '';
 
-        auth.onAuthStateChanged(async (user) => {
-            console.log('[Auth State Changed] User:', user ? user.email : 'No user');
-            if (user) {
-                currentUser = user;
-                try {
-                    const userDoc = await db.collection('users').doc(user.uid).get();
-                    currentUserData = userDoc.exists ? userDoc.data() : { email: user.email, role: 'user', assignedTruckPlate: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
-                    if (!userDoc.exists) {
-                        console.log('[Auth State Changed] Creating new user document in Firestore for:', user.email);
-                        await db.collection('users').doc(user.uid).set(currentUserData);
-                    }
-                    console.log('[Auth State Changed] Current User Data:', currentUserData);
-                } catch (error) {
-                    console.error('[Firestore] Error al cargar el perfil del usuario:', error);
-                    showMessageModal('Error al cargar tu perfil. Algunas funciones pueden estar limitadas.');
-                    currentUserData = { role: 'user', assignedTruckPlate: null };
-                }
-
-                // Update currentUserData in inventoryManagement after it's fetched
-                inventoryManagement.updateCurrentUserData(currentUserData); // Use the setter function
-
-                console.log('[Auth State Changed] Calling fetchDataFromFirestore...');
-                await fetchDataFromFirestore();
-                inventoryManagement.setupTruckInventoryListener(); // Setup real-time listener for user's truck inventory
-
-                if (screen === 'login' || screen === 'register') {
-                    console.log('[Auth State Changed] Redirecting to main screen.');
-                    setScreenAndRender('main');
-                } else {
-                    console.log('[Auth State Changed] Re-rendering current screen.');
-                    render();
-                }
+            // Read brand image
+            if (brandImageInput.files.length > 0) {
+                const file = brandImageInput.files[0];
+                brandImageUrl = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
             } else {
-                currentUser = null;
-                currentUserData = { role: 'guest', assignedTruckPlate: null };
-                inventoryManagement.updateCurrentUserData(currentUserData); // Also update on logout
-
-                if (inventoryManagement.getTruckInventoryUnsubscribe()) { // Use getter
-                    inventoryManagement.getTruckInventoryUnsubscribe()();
-                    inventoryManagement.setTruckInventoryUnsubscribe(null); // Use setter
-                    console.log('[Firestore Listener] Unsubscribed from user truck inventory listener on logout.');
+                // If no new brand image, try to use one from history
+                const existingBrandImage = brandsHistory[brand.toLowerCase()];
+                if (existingBrandImage) {
+                    brandImageUrl = existingBrandImage;
                 }
-                if (inventoryManagement.getAdminTruckInventoryUnsubscribe()) { // Use getter
-                    inventoryManagement.getAdminTruckInventoryUnsubscribe()();
-                    inventoryManagement.setAdminTruckInventoryUnsubscribe(null); // Use setter
-                    console.log('[Firestore Listener] Unsubscribed from admin truck inventory listener on logout.');
+            }
+
+            // Read product image
+            if (productImageInput.files.length > 0) {
+                const file = productImageInput.files[0];
+                productImageUrl = await new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            const newProduct = {
+                category,
+                brand,
+                presentation,
+                price,
+                brandImageUrl: brandImageUrl || '', // Store brand image with the product for PDF
+                productImageUrl: productImageUrl || '',
+                timestamp: Date.now()
+            };
+
+            try {
+                // Add product to Firestore
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/products`), newProduct);
+
+                // Update brand history with its image
+                if (brand && brandImageUrl) {
+                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/brands`, brand), {
+                        brandName: brand,
+                        brandImageUrl: brandImageUrl
+                    }, { merge: true }); // Use merge to update if exists, create if not
                 }
-                // Clear local data
-                clientManagement.closeAllClientModals();
-                clientManagement.clients.splice(0, clientManagement.clients.length); // Clear in place
-                clientManagement.zones.splice(0, clientManagement.zones.length); // Clear in place
-                clientManagement.sectors.splice(0, clientManagement.sectors.length); // Clear in place
 
-                inventory.splice(0, inventory.length);
-                vendors.splice(0, vendors.length);
-                dailySales.splice(0, dailySales.length);
-                vehicles.splice(0, vehicles.length);
-                users.splice(0, users.length);
-                allTruckInventories = {}; // Clear all truck inventories
-                inventoryManagement.setCurrentTruckInventory([]); // Use setter for clearing
-                inventoryManagement.loadRecords.splice(0, inventoryManagement.loadRecords.length); // Clear in place
-                inventoryManagement.transferRecords.splice(0, inventoryManagement.transferRecords.length); // Clear in place
+                showModal("Éxito", "Producto añadido correctamente.", [{ text: "Ok", className: "btn-primary" }]);
 
+                // Clear form
+                categoryInput.value = '';
+                brandInput.value = '';
+                presentationInput.value = '';
+                priceInput.value = '';
+                brandImageInput.value = '';
+                productImageInput.value = '';
+                brandImagePreview.innerHTML = '<span>Previsualización de Marca</span>';
+                productImagePreview.innerHTML = '<span>Previsualización de Producto</span>';
 
-                if (screen !== 'login' && screen !== 'register') {
-                    console.log('[Auth State Changed] Redirecting to login screen (no user).');
-                    setScreenAndRender('login');
-                } else {
-                    console.log('[Auth State Changed] Staying on login/register screen.');
-                    render();
-                }
+            } catch (error) {
+                console.error("Error adding product:", error);
+                showModal("Error al Añadir", "Hubo un error al añadir el producto. Inténtalo de nuevo.", [{ text: "Ok", className: "btn-secondary" }]);
             }
         });
 
-        // --- Event Listeners ---
-        function attachEventListeners() {
-            // Global modal close buttons
-            const messageModalCloseButton = document.getElementById('messageModalCloseButton');
-            if (messageModalCloseButton) {
-                messageModalCloseButton.onclick = hideMessageModal;
+        // --- Brand Autocomplete Logic ---
+        brandInput.addEventListener('input', () => {
+            const currentBrand = brandInput.value.trim().toLowerCase();
+            if (brandsHistory[currentBrand]) {
+                // If brand exists in history, pre-fill brand image preview
+                brandImagePreview.innerHTML = `<img src="${brandsHistory[currentBrand]}" alt="Previsualización de Marca">`;
+            } else {
+                brandImagePreview.innerHTML = '<span>Previsualización de Marca</span>';
+            }
+        });
+
+        // --- Generate Portfolio PDF ---
+        generatePortfolioBtn.addEventListener('click', async () => {
+            if (products.length === 0) {
+                showModal("Portafolio Vacío", "No hay productos para generar el portafolio.", [{ text: "Ok", className: "btn-secondary" }]);
+                return;
             }
 
-            const confirmationModalConfirmButton = document.getElementById('confirmationModalConfirmButton');
-            if (confirmationModalConfirmButton) {
-                confirmationModalConfirmButton.onclick = () => hideConfirmationModal(true);
-            }
+            showModal("Generando PDF", "Por favor, espera mientras se genera el portafolio...", []); // Show loading modal
 
-            const confirmationModalCancelButton = document.getElementById('confirmationModalCancelButton');
-            if (confirmationModalCancelButton) {
-                confirmationModalCancelButton.onclick = () => hideConfirmationModal(false);
-            }
+            // Create a temporary div to render content for PDF
+            const pdfContent = document.createElement('div');
+            pdfContent.style.width = '210mm'; // A4 width
+            pdfContent.style.padding = '10mm';
+            pdfContent.style.boxSizing = 'border-box';
+            pdfContent.style.backgroundColor = '#ffffff';
+            pdfContent.style.fontFamily = 'Inter, sans-serif';
+            pdfContent.style.color = '#374151';
+            pdfContent.style.display = 'none'; // Hide it from view
 
-            // Login/Register Screen
-            const loginButton = document.getElementById('loginButton');
-            if (loginButton) {
-                loginButton.onclick = () => handleAuth(false);
-            }
+            let contentHTML = `
+                <h1 style="text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 20px; color: #1f2937;">Portafolio de Productos</h1>
+                <p style="text-align: center; font-size: 14px; color: #6b7280; margin-bottom: 30px;">Generado el: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>
+            `;
 
-            const registerButton = document.getElementById('registerButton');
-            if (registerButton) {
-                registerButton.onclick = () => handleAuth(true);
-            }
-
-            const registerLink = document.getElementById('registerLink');
-            if (registerLink) {
-                registerLink.onclick = (e) => { e.preventDefault(); setScreenAndRender('register'); };
-            }
-
-            const loginLink = document.getElementById('loginLink');
-            if (loginLink) {
-                loginLink.onclick = (e) => { e.preventDefault(); setScreenAndRender('login'); };
-            }
-
-            // Main Screen
-            const logoutButton = document.getElementById('logoutButton');
-            if (logoutButton) {
-                logoutButton.onclick = handleLogout;
-            }
-
-            const cargaSelectionButton = document.getElementById('cargaSelectionButton');
-            if (cargaSelectionButton) {
-                cargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
-            }
-
-            const adminInventorySelectionButton = document.getElementById('adminInventorySelectionButton');
-            if (adminInventorySelectionButton) {
-                adminInventorySelectionButton.onclick = () => setScreenAndRender('adminInventorySelection');
-            }
-
-            const userInventoryButton = document.getElementById('userInventoryButton');
-            if (userInventoryButton) {
-                userInventoryButton.onclick = () => setScreenAndRender('inventario');
-            }
-
-            const clientsButton = document.getElementById('clientsButton');
-            if (clientsButton) {
-                clientsButton.onclick = () => setScreenAndRender('clientes');
-            }
-
-            const ventaButton = document.getElementById('ventaButton');
-            if (ventaButton) {
-                ventaButton.onclick = () => setScreenAndRender('venta');
-            }
-
-            const cierreVentasButton = document.getElementById('cierreVentasButton');
-            if (cierreVentasButton) {
-                cierreVentasButton.onclick = () => setScreenAndRender('cierreVentas');
-            }
-
-            const archivosAdminButton = document.getElementById('archivosAdminButton');
-            if (archivosAdminButton) {
-                archivosAdminButton.onclick = () => setScreenAndRender('archivosAdmin');
-            }
-
-            const archivosVentaButton = document.getElementById('archivosVentaButton');
-            if (archivosVentaButton) {
-                archivosVentaButton.onclick = () => setScreenAndRender('archivosVenta');
-            }
-
-            const vehiclesButton = document.getElementById('vehiclesButton');
-            if (vehiclesButton) {
-                vehiclesButton.onclick = () => setScreenAndRender('vehicles');
-            }
-
-            const assignVehicleButton = document.getElementById('assignVehicleButton');
-            if (assignVehicleButton) {
-                assignVehicleButton.onclick = () => setScreenAndRender('assignVehicle');
-            }
-
-            const transferInventoryPasswordButton = document.getElementById('transferInventoryPasswordButton');
-            if (transferInventoryPasswordButton) {
-                transferInventoryPasswordButton.onclick = () => setScreenAndRender('transferInventoryPassword');
-            }
-
-            const adminTransferHistoryButton = document.getElementById('adminTransferHistoryButton');
-            if (adminTransferHistoryButton) {
-                adminTransferHistoryButton.onclick = () => setScreenAndRender('adminTransferHistory');
-            }
-
-            // Carga Selection Screen
-            const truckLoadingButton = document.getElementById('truckLoadingButton');
-            if (truckLoadingButton) {
-                truckLoadingButton.onclick = () => setScreenAndRender('truckLoading');
-            }
-
-            const loadHistoryButton = document.getElementById('loadHistoryButton');
-            if (loadHistoryButton) {
-                loadHistoryButton.onclick = () => setScreenAndRender('loadHistory');
-            }
-
-            const resetCargasInicialesPasswordButton = document.getElementById('resetCargasInicialesPasswordButton');
-            if (resetCargasInicialesPasswordButton) {
-                resetCargasInicialesPasswordButton.onclick = () => setScreenAndRender('resetCargasInicialesPassword');
-            }
-
-            const backToMainFromCargaSelection = document.getElementById('backToMainFromCargaSelection');
-            if (backToMainFromCargaSelection) {
-                backToMainFromCargaSelection.onclick = () => setScreenAndRender('main');
-            }
-
-            // Truck Receiving Screen
-            const loaderSelect = document.getElementById('loaderSelect');
-            if (loaderSelect) {
-                loaderSelect.onchange = (e) => inventoryManagement.handleLoaderSelection(e.target.value);
-            }
-
-            const truckSelect = document.getElementById('truckSelect');
-            if (truckSelect) {
-                truckSelect.onchange = (e) => inventoryManagement.handleTruckForReceivingSelection(e.target.value);
-            }
-
-            document.querySelectorAll('.receiving-quantity-input').forEach(input => {
-                input.oninput = (e) => inventoryManagement.handleReceivingQuantityChange(e.target.dataset.sku, e.target.value);
-            });
-
-            const loadMerchandiseButton = document.getElementById('loadMerchandiseButton');
-            if (loadMerchandiseButton) {
-                loadMerchandiseButton.onclick = () => inventoryManagement.showLoadMerchandiseConfirmation();
-            }
-
-            const backToCargaSelectionButton = document.getElementById('backToCargaSelectionButton');
-            if (backToCargaSelectionButton) {
-                backToCargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
-            }
-
-            // Load History Screen
-            const clearLoadHistoryButton = document.getElementById('clearLoadHistoryButton');
-            if (clearLoadHistoryButton) {
-                clearLoadHistoryButton.onclick = () => inventoryManagement.showClearLoadHistoryConfirmation();
-            }
-
-            const backToCargaSelectionFromLoadHistoryButton = document.getElementById('backToCargaSelectionFromLoadHistoryButton');
-            if (backToCargaSelectionFromLoadHistoryButton) {
-                backToCargaSelectionFromLoadHistoryButton.onclick = () => setScreenAndRender('cargaSelection');
-            }
-
-            // Delegación de eventos para botones de descarga de historial de carga
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('download-load-csv-button')) {
-                    downloadExistingCSV(`carga_${e.target.dataset.recordid}.csv`);
+            // Group products by category
+            const productsByCategory = products.reduce((acc, product) => {
+                if (!acc[product.category]) {
+                    acc[product.category] = [];
                 }
-            });
+                acc[product.category].push(product);
+                return acc;
+            }, {});
 
-            // User Inventory Screen
-            const backToMainFromUserInventoryButton = document.getElementById('backToMainFromUserInventoryButton');
-            if (backToMainFromUserInventoryButton) {
-                backToMainFromUserInventoryButton.onclick = () => setScreenAndRender('main');
+            for (const category in productsByCategory) {
+                contentHTML += `
+                    <h2 style="font-size: 22px; font-weight: 600; margin-top: 30px; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 2px solid #e5e7eb; color: #374151;">${category}</h2>
+                `;
+                productsByCategory[category].forEach(product => {
+                    contentHTML += `
+                        <div style="display: flex; align-items: center; margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 10px; background-color: #f9fafb; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
+                            <img src="${product.productImageUrl || 'https://placehold.co/80x80/cccccc/333333?text=Producto'}" alt="Imagen de Producto" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin-right: 20px; border: 1px solid #d1d5db;">
+                            <div style="flex-grow: 1;">
+                                <p style="margin-bottom: 5px; font-size: 16px; font-weight: 500; color: #1f2937;"><strong>Marca:</strong> ${product.brand}</p>
+                                <p style="margin-bottom: 5px; font-size: 14px; color: #4b5563;"><strong>Presentación:</strong> ${product.presentation}</p>
+                                <p style="margin-bottom: 5px; font-size: 14px; color: #4b5563;"><strong>Precio:</strong> $${parseFloat(product.price).toFixed(2)}</p>
+                                ${product.brandImageUrl ? `<p style="font-size: 14px; color: #4b5563;"><strong>Imagen de Marca:</strong> <img src="${product.brandImageUrl}" alt="Imagen de Marca" style="width: 50px; height: 50px; object-fit: contain; vertical-align: middle; margin-left: 10px; border-radius: 4px; border: 1px solid #d1d5db;"></p>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
             }
 
-            // Admin Inventory Selection Screen
-            const adminMainInventoryButton = document.getElementById('adminMainInventoryButton');
-            if (adminMainInventoryButton) {
-                adminMainInventoryButton.onclick = () => setScreenAndRender('adminMainInventory');
-            }
+            pdfContent.innerHTML = contentHTML;
+            document.body.appendChild(pdfContent); // Append to body to be rendered by html2canvas
 
-            const adminVehicleInventoryButton = document.getElementById('adminVehicleInventoryButton');
-            if (adminVehicleInventoryButton) {
-                adminVehicleInventoryButton.onclick = () => setScreenAndRender('adminVehicleInventory');
-            }
+            try {
+                const canvas = await html2canvas(pdfContent, {
+                    scale: 2, // Increase scale for better quality
+                    useCORS: true, // Needed if images are from external sources
+                    logging: false, // Disable logging for cleaner console
+                });
 
-            const backToMainFromAdminInventorySelection = document.getElementById('backToMainFromAdminInventorySelection');
-            if (backToMainFromAdminInventorySelection) {
-                backToMainFromAdminInventorySelection.onclick = () => setScreenAndRender('main');
-            }
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4'); // 'p' for portrait, 'mm' for millimeters, 'a4' for A4 size
+                const imgWidth = 210; // A4 width in mm
+                const pageHeight = 297; // A4 height in mm
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
 
-            // Admin Main Inventory Screen
-            const backToAdminInventorySelectionButton = document.getElementById('backToAdminInventorySelectionButton');
-            if (backToAdminInventorySelectionButton) {
-                backToAdminInventorySelectionButton.onclick = () => setScreenAndRender('adminInventorySelection');
-            }
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
 
-            // Admin Vehicle Inventory Screen
-            const adminVehicleSelect = document.getElementById('adminVehicleSelect');
-            if (adminVehicleSelect) {
-                adminVehicleSelect.onchange = (e) => inventoryManagement.handleAdminVehicleSelection(e.target.value);
-            }
-
-            const backToAdminInventorySelectionFromVehicleInventoryButton = document.getElementById('backToAdminInventorySelectionFromVehicleInventoryButton');
-            if (backToAdminInventorySelectionFromVehicleInventoryButton) {
-                backToAdminInventorySelectionFromVehicleInventoryButton.onclick = () => setScreenAndRender('adminInventorySelection');
-            }
-
-            // Vehicles Screen
-            const addVehicleButton = document.getElementById('addVehicleButton');
-            if (addVehicleButton) {
-                addVehicleButton.onclick = () => inventoryManagement.handleAddVehicle();
-            }
-
-            // Delegación de eventos para botones de editar/eliminar vehículo
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('edit-vehicle-button')) {
-                    inventoryManagement.editVehicle(e.target.dataset.plate);
-                } else if (e.target.classList.contains('delete-vehicle-button')) {
-                    inventoryManagement.showDeleteVehicleConfirmation(e.target.dataset.plate);
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
                 }
-            });
 
-            const backToMainFromVehiclesButton = document.getElementById('backToMainFromVehiclesButton');
-            if (backToMainFromVehiclesButton) {
-                backToMainFromVehiclesButton.onclick = () => setScreenAndRender('main');
+                pdf.save('portafolio_productos.pdf');
+                hideModal(); // Hide loading modal
+                showModal("PDF Generado", "El portafolio se ha generado y descargado como 'portafolio_productos.pdf'.", [{ text: "Ok", className: "btn-primary" }]);
+
+            } catch (error) {
+                console.error("Error generating PDF:", error);
+                hideModal(); // Hide loading modal
+                showModal("Error al Generar PDF", "Hubo un error al generar el PDF. Inténtalo de nuevo.", [{ text: "Ok", className: "btn-secondary" }]);
+            } finally {
+                document.body.removeChild(pdfContent); // Clean up the temporary div
             }
+        });
 
-            // Edit Vehicle Modal (buttons are now handled by delegation in inventoryManagement.js)
-            // Delegación de eventos para los botones de guardar y cancelar en el modal de edición de vehículos
-            document.addEventListener('click', (e) => {
-                if (e.target.id === 'saveEditedVehicleButton') {
-                    inventoryManagement.saveEditedVehicle();
-                } else if (e.target.id === 'cancelEditVehicleButton') {
-                    inventoryManagement.cancelEditVehicle();
-                }
-            });
-
-
-            // Assign Vehicle Screen
-            const backToMainFromAssignVehicleButton = document.getElementById('backToMainFromAssignVehicleButton');
-            if (backToMainFromAssignVehicleButton) {
-                backToMainFromAssignVehicleButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Reset Cargas Iniciales Password Screen
-            const adminPasswordForResetButton = document.getElementById('adminPasswordForResetButton');
-            if (adminPasswordForResetButton) {
-                adminPasswordForResetButton.onclick = () => inventoryManagement.handleResetCargasInicialesPassword();
-            }
-
-            const cancelAndBackToCargaSelectionButton = document.getElementById('cancelAndBackToCargaSelectionButton');
-            if (cancelAndBackToCargaSelectionButton) {
-                cancelAndBackToCargaSelectionButton.onclick = () => setScreenAndRender('cargaSelection');
-            }
-
-            // Reset Cargas Iniciales Edit Screen
-            document.querySelectorAll('.reset-quantity-input-main').forEach(input => {
-                input.oninput = (e) => inventoryManagement.handleResetQuantityChange(e.target.dataset.sku, 'main', e.target.value);
-            });
-
-            document.querySelectorAll('.reset-quantity-input-truck').forEach(input => {
-                input.oninput = (e) => inventoryManagement.handleResetQuantityChange(e.target.dataset.sku, 'truck', e.target.value, e.target.dataset.truckplate);
-            });
-
-            const saveResetCargasInicialesButton = document.getElementById('saveResetCargasInicialesButton');
-            if (saveResetCargasInicialesButton) {
-                saveResetCargasInicialesButton.onclick = () => inventoryManagement.saveResetCargasIniciales();
-            }
-
-            const cancelResetCargasInicialesButton = document.getElementById('cancelResetCargasInicialesButton');
-            if (cancelResetCargasInicialesButton) {
-                cancelResetCargasInicialesButton.onclick = () => setScreenAndRender('cargaSelection');
-            }
-
-            // Transfer Inventory Password Screen
-            const userPasswordForTransferButton = document.getElementById('userPasswordForTransferButton');
-            if (userPasswordForTransferButton) {
-                userPasswordForTransferButton.onclick = () => inventoryManagement.handleTransferInventoryPassword();
-            }
-
-            const cancelTransferInventoryPasswordButton = document.getElementById('cancelTransferInventoryPasswordButton');
-            if (cancelTransferInventoryPasswordButton) {
-                cancelTransferInventoryPasswordButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Transfer Inventory Screen
-            const destinationTruckSelect = document.getElementById('destinationTruckSelect');
-            if (destinationTruckSelect) {
-                destinationTruckSelect.onchange = (e) => inventoryManagement.handleDestinationTruckSelection(e.target.value);
-            }
-
-            document.querySelectorAll('.transfer-quantity-input').forEach(input => {
-                input.oninput = (e) => inventoryManagement.handleTransferQuantityChange(e.target.dataset.sku, e.target.value);
-            });
-
-            const performTransferButton = document.getElementById('performTransferButton');
-            if (performTransferButton) {
-                performTransferButton.onclick = () => inventoryManagement.showTransferConfirmation();
-            }
-
-            const backToMainFromTransferInventoryButton = document.getElementById('backToMainFromTransferInventoryButton');
-            if (backToMainFromTransferInventoryButton) {
-                backToMainFromTransferInventoryButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Admin Transfer History Screen
-            const clearTransferHistoryButton = document.getElementById('clearTransferHistoryButton');
-            if (clearTransferHistoryButton) {
-                clearTransferHistoryButton.onclick = () => inventoryManagement.showClearTransferHistoryConfirmation();
-            }
-
-            const backToMainFromAdminTransferHistoryButton = document.getElementById('backToMainFromAdminTransferHistoryButton');
-            if (backToMainFromAdminTransferHistoryButton) {
-                backToMainFromAdminTransferHistoryButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Delegación de eventos para botones de descarga de historial de transbordo
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('download-transfer-csv-button')) {
-                    downloadExistingCSV(`traslado_${e.target.dataset.recordid}.csv`);
-                }
-            });
-
-            // Archivos Admin Screen
-            const uploadClientsCsv = document.getElementById('uploadClientsCsv');
-            if (uploadClientsCsv) {
-                uploadClientsCsv.onchange = (e) => handleFileUpload(e, 'clients');
-            }
-
-            const uploadInventoryCsv = document.getElementById('uploadInventoryCsv');
-            if (uploadInventoryCsv) {
-                uploadInventoryCsv.onchange = (e) => handleFileUpload(e, 'inventory');
-            }
-
-            const uploadVendorsCsv = document.getElementById('uploadVendorsCsv');
-            if (uploadVendorsCsv) {
-                uploadVendorsCsv.onchange = (e) => handleFileUpload(e, 'vendors');
-            }
-
-            const uploadVehiclesCsv = document.getElementById('uploadVehiclesCsv');
-            if (uploadVehiclesCsv) {
-                uploadVehiclesCsv.onchange = (e) => handleFileUpload(e, 'vehicles');
-            }
-
-            document.querySelectorAll('.download-csv-button').forEach(button => {
-                button.onclick = (e) => downloadExistingCSV(e.target.dataset.filename);
-            });
-
-            const backToMainFromArchivosAdminButton = document.getElementById('backToMainFromArchivosAdminButton');
-            if (backToMainFromArchivosAdminButton) {
-                backToMainFromArchivosAdminButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Archivos Venta Screen
-            document.querySelectorAll('.print-receipt-button').forEach(button => {
-                button.onclick = (e) => {
-                    const saleData = JSON.parse(e.target.dataset.sale);
-                    printSaleReceipt(saleData);
-                };
-            });
-
-            document.querySelectorAll('.modify-sale-button').forEach(button => {
-                button.onclick = (e) => {
-                    const saleData = JSON.parse(e.target.dataset.sale);
-                    openModifySaleModal(saleData);
-                };
-            });
-
-            const backToMainFromArchivosVentaButton = document.getElementById('backToMainFromArchivosVentaButton');
-            if (backToMainFromArchivosVentaButton) {
-                backToMainFromArchivosVentaButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Modify Sale Modal
-            const modifySaleModalSaveButton = document.getElementById('modifySaleModalSaveButton');
-            if (modifySaleModalSaveButton) {
-                modifySaleModalSaveButton.onclick = saveModifiedSale;
-            }
-
-            const modifySaleModalCancelButton = document.getElementById('modifySaleModalCancelButton');
-            if (modifySaleModalCancelButton) {
-                modifySaleModalCancelButton.onclick = closeModifySaleModal;
-            }
-
-            document.querySelectorAll('.modified-sale-quantity-input').forEach(input => {
-                input.oninput = (e) => handleModifiedSaleQuantityChange(e.target.dataset.sku, e.target.value);
-            });
-
-            const modificationReasonInput = document.getElementById('modificationReason');
-            if (modificationReasonInput) {
-                modificationReasonInput.oninput = (e) => handleModificationReasonChange(e.target.value);
-            }
-
-            // Client Management Screen
-            const addClientButton = document.getElementById('addClientButton');
-            if (addClientButton) {
-                addClientButton.onclick = () => clientManagement.addClient();
-            }
-
-            const manageZonesSectorsButton = document.getElementById('manageZonesSectorsButton');
-            if (manageZonesSectorsButton) {
-                manageZonesSectorsButton.onclick = () => clientManagement.openManageZonesSectorsModal();
-            }
-
-            // Client Searchable Dropdown (new)
-            const clientSearchDropdownContainer = document.getElementById('clientListSearch');
-            if (clientSearchDropdownContainer) {
-                // The createSearchableDropdown function already attaches event listeners internally
-                // We just need to ensure it's rendered.
-            }
-
-            // Delegación de eventos para botones de editar/eliminar cliente
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('edit-client-button')) {
-                    clientManagement.editClient(e.target.dataset.clientid);
-                } else if (e.target.classList.contains('delete-client-button')) {
-                    clientManagement.showDeleteClientConfirmation(e.target.dataset.clientid);
-                }
-            });
-
-            const backToMainFromClientsButton = document.getElementById('backToMainFromClientsButton');
-            if (backToMainFromClientsButton) {
-                backToMainFromClientsButton.onclick = () => setScreenAndRender('main');
-            }
-
-            // Edit Client Modal
-            const saveEditedClientButtonClient = document.getElementById('saveEditedClientButton');
-            if (saveEditedClientButtonClient) {
-                saveEditedClientButtonClient.onclick = () => clientManagement.saveEditedClient();
-            }
-
-            const cancelEditClientButtonClient = document.getElementById('cancelEditClientButton');
-            if (cancelEditClientButtonClient) {
-                cancelEditClientButtonClient.onclick = () => clientManagement.cancelEditClient();
-            }
-
-            const clientZoneSelect = document.getElementById('clientZone');
-            if (clientZoneSelect) {
-                clientZoneSelect.onchange = (e) => clientManagement.handleZoneChangeForClientEdit(e.target.value);
-            }
-
-            // Manage Zones/Sectors Modal
-            const closeManageZonesSectorsModalButton = document.getElementById('closeManageZonesSectorsModalButton');
-            if (closeManageZonesSectorsModalButton) {
-                closeManageZonesSectorsModalButton.onclick = () => clientManagement.closeManageZonesSectorsModal();
-            }
-
-            const selectManageZonesButton = document.getElementById('selectManageZonesButton');
-            if (selectManageZonesButton) {
-                selectManageZonesButton.onclick = () => clientManagement.setManageSection('zones');
-            }
-
-            const selectManageSectorsButton = document.getElementById('selectManageSectorsButton');
-            if (selectManageSectorsButton) {
-                selectManageSectorsButton.onclick = () => clientManagement.setManageSection('sectors');
-            }
-
-            const backToManageSelectionButton = document.getElementById('backToManageSelectionButton');
-            if (backToManageSelectionButton) {
-                backToManageSelectionButton.onclick = () => clientManagement.backToManageSelection();
-            }
-
-            const addZoneButton = document.getElementById('addZoneButton');
-            if (addZoneButton) {
-                addZoneButton.onclick = () => clientManagement.handleAddZone();
-            }
-
-            // Event delegation for delete-zone-button
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('delete-zone-button')) {
-                    clientManagement.showDeleteZoneConfirmation(e.target.dataset.zonename);
-                }
-            });
-
-            const selectZoneForSector = document.getElementById('selectZoneForSector');
-            if (selectZoneForSector) {
-                selectZoneForSector.onchange = (e) => clientManagement.handleSelectZoneForSector(e.target.value);
-            }
-
-            const addSectorButton = document.getElementById('addSectorButton');
-            if (addSectorButton) {
-                addSectorButton.onclick = () => clientManagement.handleAddSector();
-            }
-
-            // Event delegation for delete-sector-button
-            document.addEventListener('click', (e) => {
-                if (e.target.classList.contains('delete-sector-button')) {
-                    clientManagement.showDeleteSectorConfirmation(e.target.dataset.sectorname, e.target.dataset.zone);
-                }
-            });
-
-            // Venta Screen
-            const selectClientButton = document.getElementById('selectClientButton');
-            if (selectClientButton) {
-                selectClientButton.onclick = () => clientManagement.openClientPickerModal();
-            }
-
-            document.querySelectorAll('.sale-quantity-input').forEach(input => {
-                input.oninput = (e) => handleProductQuantityChange(e.target.dataset.sku, e.target.value);
-            });
-
-            const finalizeSaleButton = document.getElementById('finalizeSaleButton');
-            if (finalizeSaleButton) {
-                finalizeSaleButton.onclick = showFinalizeSaleConfirmation;
-            }
-
-            const resetVentaStateAndGoToMainButton = document.getElementById('resetVentaStateAndGoToMainButton');
-            if (resetVentaStateAndGoToMainButton) {
-                resetVentaStateAndGoToMainButton.onclick = resetVentaStateAndGoToMain;
-            }
-
-            // Client Picker Modal
-            const confirmClientSelectionButton = document.getElementById('confirmClientSelectionButton');
-            if (confirmClientSelectionButton) {
-                confirmClientSelectionButton.onclick = () => clientManagement.confirmClientSelection();
-            }
-
-            const cancelClientSelectionButton = document.getElementById('cancelClientSelectionButton');
-            if (cancelClientSelectionButton) {
-                cancelClientSelectionButton.onclick = () => clientManagement.closeClientPickerModal();
-            }
-
-            // Cierre Ventas Screen
-            const closeSalesButton = document.getElementById('closeSalesButton');
-            if (closeSalesButton) {
-                closeSalesButton.onclick = showCloseSalesConfirmation;
-            }
-
-            const backToMainFromCierreVentasButton = document.getElementById('backToMainFromCierreVentasButton');
-            if (backToMainFromCierreVentasButton) {
-                backToMainFromCierreVentasButton.onclick = () => setScreenAndRender('main');
-            }
-
-            const vendorRadioGroup = document.getElementById('vendor-radio-group');
-            if (vendorRadioGroup) {
-                vendorRadioGroup.onchange = (e) => {
-                    if (e.target.name === 'vendor') {
-                        handleVendorChange(e.target.value);
-                    }
-                };
-            }
-        }
-
-
-        // Initial render when the page loads.
-        // fetchDataFromFirestore will be called by onAuthStateChanged for the first time.
-        render();
-
-        if ('serviceWorker' in navigator) {
-            document.addEventListener('DOMContentLoaded', () => {
-                const serviceWorkerFileName = 'service-worker.js';
-                const baseUrl = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
-                const absoluteServiceWorkerUrl = baseUrl + serviceWorkerFileName;
-
-                navigator.serviceWorker.register(absoluteServiceWorkerUrl)
-                    .then(registration => console.log('[Service Worker] Service Worker registrado con éxito:', registration))
-                    .catch(error => console.error('[Service Worker] Fallo el registro del Service Worker:', error));
-            });
-        }
-
-        window.onload = () => {
-            console.log('[window.onload] Page fully loaded. Initial render should have been triggered by direct call or onAuthStateChanged.');
-            // This is important: ensure event listeners are attached after the initial render
-            attachEventListeners();
-        };
+        // Initialize Firebase and load data when the window loads
+        window.onload = initializeFirebase;
     </script>
 </body>
 </html>
