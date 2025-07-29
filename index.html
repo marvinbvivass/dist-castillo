@@ -236,7 +236,7 @@
                 // IMPORTANT: Adjust the path for project pages on GitHub Pages
                 // If your repo is 'dist-castillo' and your user page is 'marvinbvivass.github.io',
                 // then the service worker path should include the repo name.
-                const serviceWorkerPath = '/dist-castillo/service-worker.js'; // <--- CAMBIO AQUÍ
+                const serviceWorkerPath = '/dist-castillo/service-worker.js';
                 navigator.serviceWorker.register(serviceWorkerPath)
                     .then(registration => {
                         console.log('Service Worker registrado con éxito:', registration);
@@ -358,7 +358,8 @@
         async function loadBrands() {
             if (!isAuthReady || !userId) return;
             try {
-                const brandsRef = collection(db, `artifacts/${appId}/users/${userId}/brands`);
+                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
+                const brandsRef = collection(db, `users/${userId}/brands`);
                 onSnapshot(brandsRef, (snapshot) => {
                     brandsHistory = {};
                     brandSuggestionsDatalist.innerHTML = '';
@@ -381,7 +382,8 @@
         async function loadProducts() {
             if (!isAuthReady || !userId) return;
             try {
-                const productsRef = collection(db, `artifacts/${appId}/users/${userId}/products`);
+                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
+                const productsRef = collection(db, `users/${userId}/products`);
                 onSnapshot(productsRef, (snapshot) => {
                     products = [];
                     productListDiv.innerHTML = ''; // Clear existing products
@@ -440,7 +442,8 @@
                 return;
             }
             try {
-                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/products`, productId), {}, { merge: true, delete: true }); // Delete by setting empty object with merge:true and delete:true
+                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta del documento
+                await setDoc(doc(db, `users/${userId}/products`, productId), {}, { merge: true, delete: true }); // Delete by setting empty object with merge:true and delete:true
                 console.log("Producto eliminado:", productId);
             } catch (error) {
                 console.error("Error eliminando producto:", error);
@@ -525,12 +528,13 @@
             };
 
             try {
-                // Add product to Firestore
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/products`), newProduct);
+                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
+                await addDoc(collection(db, `users/${userId}/products`), newProduct);
 
                 // Update brand history with its image
                 if (brand && brandImageUrl) {
-                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/brands`, brand), {
+                    // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta del documento
+                    await setDoc(doc(db, `users/${userId}/brands`, brand), {
                         brandName: brand,
                         brandImageUrl: brandImageUrl
                     }, { merge: true }); // Use merge to update if exists, create if not
