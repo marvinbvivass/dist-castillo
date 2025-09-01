@@ -24,6 +24,7 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         let userId = null;
+        let isAuthReady = false;
         let productSuggestions = new Set();
         let presentationSuggestions = new Set();
 
@@ -33,6 +34,7 @@
                 console.log("Usuario autenticado: ", userId);
                 document.getElementById('login-container').classList.add('hidden');
                 document.getElementById('main-menu-container').classList.remove('hidden');
+                isAuthReady = true;
                 // Load suggestions when the user logs in
                 loadSuggestions();
             } else {
@@ -40,6 +42,7 @@
                 console.log("No hay usuario autenticado.");
                 document.getElementById('login-container').classList.remove('hidden');
                 document.getElementById('main-menu-container').classList.add('hidden');
+                isAuthReady = false;
                 // Use anonymous sign-in if the custom token is not available
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
                     try {
@@ -200,14 +203,15 @@
 
         // Inventory Logic
         window.saveProduct = () => {
+            if (!isAuthReady || !userId) {
+                showMessage("El usuario no está listo para guardar datos. Por favor, espera y vuelve a intentarlo.", 'error');
+                return;
+            }
+            
             const productId = document.getElementById('product-id').value;
             const message = productId ? "¿Estás seguro de que quieres modificar este producto?" : "¿Estás seguro de que quieres guardar este producto?";
+            
             showConfirmationModal(message, async () => {
-                if (!userId) {
-                    showMessage("Debes iniciar sesión para agregar productos.", 'error');
-                    return;
-                }
-
                 const rubro = document.getElementById('rubro').value;
                 const segmento = document.getElementById('segmento').value;
                 const producto = document.getElementById('producto').value;
@@ -258,13 +262,14 @@
                 try {
                     if (productId) {
                         await updateDoc(doc(inventoryCollection, productId), productData);
+                        showMessage("Producto actualizado exitosamente.", 'success');
                     } else {
                         await addDoc(inventoryCollection, productData);
                         // Add the new product and presentation to the suggestion sets
                         productSuggestions.add(producto);
                         presentationSuggestions.add(presentacion);
+                        showMessage("Producto guardado correctamente.", 'success');
                     }
-                    showMessage("Producto guardado correctamente.", 'success');
                     document.getElementById('inventory-form').reset();
                     document.getElementById('product-id').value = '';
                 } catch (e) {
