@@ -10,7 +10,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { initVentasApp, showMessage, showMainMenu, showView } from './ventas.js';
+        import { initVentasApp, showMessage, showMainMenu, showView, updateSegmentoOptions } from './ventas.js';
 
         // Configuración de Firebase - NO MODIFICAR
         const __app_id = 'default-app-id';
@@ -85,6 +85,7 @@
         // Exponemos las funciones de navegación al ámbito global para los eventos onclick
         window.showMainMenu = showMainMenu;
         window.showView = showView;
+        window.updateSegmentoOptions = updateSegmentoOptions;
     </script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
@@ -148,6 +149,24 @@
                     <input type="text" id="presentacion" placeholder="Presentación" class="w-full p-3 border rounded-lg">
                     <input type="number" id="cantidad" placeholder="Cantidad" class="w-full p-3 border rounded-lg">
                     <input type="number" id="precio" placeholder="Precio" class="w-full p-3 border rounded-lg" step="0.01">
+                    <select id="rubro" class="w-full p-3 border rounded-lg" onchange="updateSegmentoOptions()">
+                        <option value="">Selecciona Rubro</option>
+                        <option value="Ferretería">Ferretería</option>
+                        <option value="Electricidad">Electricidad</option>
+                        <option value="Pintura">Pintura</option>
+                        <option value="Plomería">Plomería</option>
+                        <option value="Iluminación">Iluminación</option>
+                        <option value="Herramientas">Herramientas</option>
+                        <option value="Automotriz">Automotriz</option>
+                        <option value="Hogar">Hogar</option>
+                        <option value="Cervecería">Cervecería</option>
+                        <option value="P&M">P&M</option>
+                        <option value="Alimentos">Alimentos</option>
+                        <option value="P&G">P&G</option>
+                    </select>
+                    <select id="segmento" class="w-full p-3 border rounded-lg">
+                        <option value="">Selecciona Segmento</option>
+                    </select>
                     <button type="submit" class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg">Guardar Producto</button>
                 </form>
                 <button onclick="showView('inventory-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
