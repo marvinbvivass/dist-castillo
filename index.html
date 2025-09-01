@@ -23,7 +23,7 @@
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         let userId = null;
-        
+
         // Módulo de Autenticación
         window.login = async () => {
             const email = document.getElementById('email').value;
@@ -116,32 +116,60 @@
             <button onclick="register()" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg">Registrarse</button>
         </div>
 
-        <!-- Menú Principal -->
+        <!-- Menú Principal y Vistas -->
         <div id="main-menu-container" class="hidden space-y-6">
             <div id="main-menu" class="view-section">
                 <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Menú Principal</h1>
-                <button onclick="showView('inventory-view')" class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg mb-4">Inventario</button>
-                <button onclick="showView('sales-view')" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg">Ventas</button>
+                <button onclick="showView('inventory-menu')" class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg mb-4">Inventario</button>
+                <button onclick="showView('sales-menu')" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg">Ventas</button>
                 <button onclick="logout()" class="w-full bg-red-600 text-white font-semibold py-3 rounded-lg mt-6">Cerrar Sesión</button>
             </div>
 
-            <!-- Vista de Inventario -->
-            <div id="inventory-view" class="view-section hidden">
+            <!-- Menú de Inventario -->
+            <div id="inventory-menu" class="view-section hidden">
                 <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Gestión de Inventario</h2>
-                <div class="space-y-4">
-                    <h3 class="font-semibold text-gray-700">Productos en Stock</h3>
-                    <div id="inventory-list" class="space-y-2"></div>
-                </div>
-                <div class="mt-6 space-y-4">
-                    <h3 class="font-semibold text-gray-700">Modificar Cantidad</h3>
-                    <div id="quantity-list" class="space-y-2"></div>
-                </div>
+                <button onclick="showView('inventory-list-view')" class="w-full bg-green-500 text-white font-semibold py-3 rounded-lg mb-4">Ver Inventario</button>
+                <button onclick="showView('add-product-view')" class="w-full bg-blue-500 text-white font-semibold py-3 rounded-lg mb-4">Agregar Producto</button>
+                <button onclick="showView('manage-product-view')" class="w-full bg-yellow-500 text-white font-semibold py-3 rounded-lg mb-4">Modificar o Eliminar Producto</button>
+                <button onclick="showMainMenu()" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar al Menú Principal</button>
+            </div>
+            
+            <!-- Vistas de Inventario -->
+            <div id="inventory-list-view" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Productos en Stock</h2>
+                <div id="inventory-list" class="space-y-2"></div>
+                <button onclick="showView('inventory-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
+            </div>
+
+            <div id="add-product-view" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Agregar Producto</h2>
+                <form id="add-product-form" class="space-y-4">
+                    <input type="text" id="producto" placeholder="Nombre del Producto" class="w-full p-3 border rounded-lg">
+                    <input type="text" id="presentacion" placeholder="Presentación" class="w-full p-3 border rounded-lg">
+                    <input type="number" id="cantidad" placeholder="Cantidad" class="w-full p-3 border rounded-lg">
+                    <input type="number" id="precio" placeholder="Precio" class="w-full p-3 border rounded-lg" step="0.01">
+                    <button type="submit" class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg">Guardar Producto</button>
+                </form>
+                <button onclick="showView('inventory-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
+            </div>
+
+            <div id="manage-product-view" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Modificar o Eliminar</h2>
+                <div id="manage-product-list" class="space-y-4"></div>
+                <button onclick="showView('inventory-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
+            </div>
+
+            <!-- Menú de Ventas -->
+            <div id="sales-menu" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Gestión de Ventas</h2>
+                <button onclick="showView('new-sale-view')" class="w-full bg-indigo-500 text-white font-semibold py-3 rounded-lg mb-4">Nueva Venta</button>
+                <button onclick="showView('total-sales-view')" class="w-full bg-purple-500 text-white font-semibold py-3 rounded-lg mb-4">Ventas Totales</button>
                 <button onclick="showMainMenu()" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar al Menú Principal</button>
             </div>
 
-            <!-- Vista de Ventas -->
-            <div id="sales-view" class="view-section hidden">
-                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Gestión de Ventas</h2>
+            <!-- Vistas de Ventas -->
+            <div id="new-sale-view" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Nueva Venta</h2>
                 <div class="space-y-4">
                     <select id="client-select" class="w-full p-3 border rounded-lg"></select>
                     <div class="flex space-x-2">
@@ -153,8 +181,15 @@
                     <p id="sale-total" class="text-right text-xl font-bold text-gray-800">Total: $0.00</p>
                     <button onclick="saveSale()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg">Guardar Venta</button>
                 </div>
-                <button onclick="showMainMenu()" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar al Menú Principal</button>
+                <button onclick="showView('sales-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
             </div>
+
+            <div id="total-sales-view" class="view-section hidden">
+                <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Reporte de Ventas Totales</h2>
+                <div id="total-sales-report" class="space-y-2"></div>
+                <button onclick="showView('sales-menu')" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg mt-6">Regresar</button>
+            </div>
+
         </div>
     </div>
 </body>
