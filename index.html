@@ -43,16 +43,15 @@
                 document.getElementById('login-container').classList.remove('hidden');
                 document.getElementById('main-menu-container').classList.add('hidden');
                 isAuthReady = false;
-                // Use anonymous sign-in if the custom token is not available
+                // Se ha eliminado el inicio de sesión anónimo.
+                // La aplicación solo intentará iniciar sesión con un token personalizado.
+                // Si el token no está disponible, la aplicación permanecerá en la pantalla de inicio de sesión.
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
                     try {
                         await signInWithCustomToken(auth, __initial_auth_token);
                     } catch (error) {
                         console.error("Error al iniciar sesión con token personalizado:", error);
-                        await signInAnonymously(auth);
                     }
-                } else {
-                    await signInAnonymously(auth);
                 }
             }
         });
