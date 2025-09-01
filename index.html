@@ -3,668 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Portafolio de Productos</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Gestión de Ventas</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-            color: #374151;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background-color: #ffffff;
-            border-radius: 1rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-        input[type="text"], input[type="number"], select {
-            border: 1px solid #d1d5db;
-            border-radius: 0.5rem;
-            padding: 0.75rem 1rem;
-            width: 100%;
-            font-size: 1rem;
-            color: #4b5563;
-        }
-        button {
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.2s, transform 0.2s;
-        }
-        button:hover {
-            transform: translateY(-1px);
-        }
-        .btn-primary {
-            background-color: #4f46e5;
-            color: #ffffff;
-            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3), 0 2px 4px -1px rgba(79, 70, 229, 0.15);
-        }
-        .btn-primary:hover {
-            background-color: #4338ca;
-        }
-        .btn-secondary {
-            background-color: #6b7280;
-            color: #ffffff;
-        }
-        .btn-secondary:hover {
-            background-color: #4b5563;
-        }
-        .product-card {
-            background-color: #f9fafb;
-            border: 1px solid #e5e7eb;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1.5rem;
-            margin-bottom: 1rem;
-        }
-        .product-card img {
-            width: 80px;
-            height: 80px;
-            object-fit: cover;
-            border-radius: 0.5rem;
-            border: 1px solid #d1d5db;
-        }
-        .product-card .details {
-            flex-grow: 1;
-        }
-        .product-card .details p {
-            margin-bottom: 0.25rem;
-            font-size: 0.95rem;
-        }
-        .product-card .details p strong {
-            color: #1f2937;
-        }
-        .image-preview {
-            width: 150px;
-            height: 150px;
-            border: 2px dashed #d1d5db;
-            border-radius: 0.5rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            background-color: #f9fafb;
-        }
-        .image-preview img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
-        .image-preview span {
-            color: #9ca3af;
-            font-size: 0.9rem;
-        }
-        /* Modal styles */
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
-        .modal.show {
-            opacity: 1;
-            visibility: visible;
-        }
-        .modal-content {
-            background-color: #ffffff;
-            padding: 2rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            max-width: 500px;
-            width: 90%;
-            text-align: center;
-        }
-        .modal-content h3 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            color: #1f2937;
-        }
-        .modal-content p {
-            margin-bottom: 1.5rem;
-            color: #4b5563;
-        }
-        .modal-content button {
-            margin: 0 0.5rem;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Generador de Portafolio de Productos</h1>
-        <p class="text-center text-sm text-gray-600 mb-4">ID de Usuario: <span id="userIdDisplay" class="font-mono text-gray-700">Cargando...</span></p>
-
-        <div class="bg-gray-50 p-6 rounded-lg mb-8 shadow-inner">
-            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Añadir Nuevo Producto</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                    <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                    <select id="category" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                        <option value="">Selecciona una categoría</option>
-                        <option value="Alimentos Polar">Alimentos Polar</option>
-                        <option value="Procter & Gamble">Procter & Gamble</option>
-                        <option value="Cerveza y Vinos">Cerveza y Vinos</option>
-                        <option value="Pepsi y Maltin">Pepsi y Maltin</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="brand" class="block text-sm font-medium text-gray-700 mb-1">Marca</label>
-                    <input type="text" id="brand" list="brandSuggestions" placeholder="Ej: Harina P.A.N." class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <datalist id="brandSuggestions"></datalist>
-                </div>
-                <div>
-                    <label for="presentation" class="block text-sm font-medium text-gray-700 mb-1">Presentación</label>
-                    <input type="text" id="presentation" placeholder="Ej: Paquete de 1kg" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                </div>
-                <div>
-                    <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Precio</label>
-                    <input type="number" id="price" step="0.01" placeholder="Ej: 1.50" class="mt-1 block w-full rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                    <label for="brandImage" class="block text-sm font-medium text-gray-700 mb-1">Imagen de Marca</label>
-                    <input type="file" id="brandImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                    <div id="brandImagePreview" class="image-preview mt-2">
-                        <span>Previsualización de Marca</span>
-                    </div>
-                </div>
-                <div>
-                    <label for="productImage" class="block text-sm font-medium text-gray-700 mb-1">Imagen de Producto</label>
-                    <input type="file" id="productImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                    <div id="productImagePreview" class="image-preview mt-2">
-                        <span>Previsualización de Producto</span>
-                    </div>
-                </div>
-            </div>
-
-            <button id="addProductBtn" class="btn-primary w-full">Agregar Producto</button>
-        </div>
-
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Productos en el Portafolio</h2>
-            <div id="productList" class="space-y-4">
-                <!-- Products will be dynamically loaded here -->
-                <p class="text-gray-500 text-center" id="noProductsMessage">No hay productos añadidos aún.</p>
-            </div>
-            <button id="generatePortfolioBtn" class="btn-primary w-full mt-6">Generar Portafolio PDF</button>
-        </div>
-    </div>
-
-    <!-- Custom Modal for Alerts/Confirmations -->
-    <div id="customModal" class="modal">
-        <div class="modal-content">
-            <h3 id="modalTitle"></h3>
-            <p id="modalMessage"></p>
-            <div id="modalButtons">
-                <!-- Buttons will be added dynamically -->
-            </div>
-        </div>
-    </div>
-
-    <!-- jsPDF and html2canvas CDN (UMD versions for direct browser compatibility) -->
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
     <script type="module">
-        // Import Firebase SDKs
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, collection, query, onSnapshot, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, deleteDoc, onSnapshot, query, where, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 
-        // Register Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // IMPORTANT: Adjust the path for project pages on GitHub Pages
-                // If your repo is 'dist-castillo' and your user page is 'marvinbvivass.github.io',
-                // then the service worker path should include the repo name.
-                const serviceWorkerPath = '/dist-castillo/service-worker.js';
-                navigator.serviceWorker.register(serviceWorkerPath)
-                    .then(registration => {
-                        console.log('Service Worker registrado con éxito:', registration);
-                    })
-                    .catch(error => {
-                        console.error('Fallo el registro del Service Worker:', error);
-                    });
-            });
-        }
+        // Firebase Configuration and Initialization (DO NOT CHANGE)
+        const __app_id = 'default-app-id';
+        const __firebase_config = '{"apiKey":"AIzaSyBags4wEqc_v8GGsHoLBwStPf0FIJgT6hE","authDomain":"admin-804f6.firebaseapp.com","projectId":"admin-804f6","storageBucket":"admin-804f6.firebasestorage.app","messagingSenderId":"641744033630","appId":"1:641744033630:web:cfb42c0ea493c3c66461cf","measurementId":"G-69EVM3G6SW"}';
+        const __initial_auth_token = '';
 
-        // Global variables for Firebase config and app ID
-        // En un entorno real, __app_id y __firebase_config serían proporcionados por el entorno.
-        // Aquí se usan valores predeterminados o los que has proporcionado para que funcione en un entorno local.
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dist-castillo'; // Usando tu projectId como appId predeterminado
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "AIzaSyDLf4iOoqw0yecLPAMUkniHJTMF3YhRY7A",
-            authDomain: "dist-castillo.firebaseapp.com",
-            projectId: "dist-castillo",
-            storageBucket: "dist-castillo.firebasestorage.app",
-            messagingSenderId: "249846475959",
-            appId: "1:249846475959:web:066c3fbca65ca3965af132",
-            measurementId: "G-V56MBM5YT9"
-        };
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const analytics = getAnalytics(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        let app;
-        let db;
-        let auth;
         let userId = null;
-        let isAuthReady = false;
 
-        // UI Elements
-        const categoryInput = document.getElementById('category');
-        const brandInput = document.getElementById('brand');
-        const presentationInput = document.getElementById('presentation');
-        const priceInput = document.getElementById('price');
-        const brandImageInput = document.getElementById('brandImage');
-        const productImageInput = document.getElementById('productImage');
-        const brandImagePreview = document.getElementById('brandImagePreview');
-        const productImagePreview = document.getElementById('productImagePreview');
-        const addProductBtn = document.getElementById('addProductBtn');
-        const productListDiv = document.getElementById('productList');
-        const generatePortfolioBtn = document.getElementById('generatePortfolioBtn');
-        const brandSuggestionsDatalist = document.getElementById('brandSuggestions');
-        const userIdDisplay = document.getElementById('userIdDisplay');
-        const noProductsMessage = document.getElementById('noProductsMessage');
-
-        let products = []; // Array to store current products
-        let brandsHistory = {}; // Object to store brands and their images for suggestions
-
-        // --- Custom Modal Functions ---
-        const customModal = document.getElementById('customModal');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalMessage = document.getElementById('modalMessage');
-        const modalButtons = document.getElementById('modalButtons');
-
-        function showModal(title, message, buttons) {
-            modalTitle.textContent = title;
-            modalMessage.textContent = message;
-            modalButtons.innerHTML = ''; // Clear previous buttons
-
-            buttons.forEach(btn => {
-                const buttonElement = document.createElement('button');
-                buttonElement.textContent = btn.text;
-                buttonElement.className = `button ${btn.className || 'btn-primary'}`;
-                buttonElement.onclick = () => {
-                    hideModal();
-                    if (btn.handler) btn.handler();
-                };
-                modalButtons.appendChild(buttonElement);
-            });
-            customModal.classList.add('show');
-        }
-
-        function hideModal() {
-            customModal.classList.remove('show');
-        }
-
-        // --- Firebase Initialization and Authentication ---
-        async function initializeFirebase() {
-            try {
-                // Initialize Firebase app, db, and auth here
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = userId;
-                        isAuthReady = true;
-                        console.log("Firebase initialized and user authenticated:", userId);
-                        // Load existing data once authenticated
-                        loadBrands();
-                        loadProducts();
-                    } else {
-                        // Sign in anonymously if no custom token or if token fails
-                        try {
-                            if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                                console.log("Signed in with custom token.");
-                            } else {
-                                await signInAnonymously(auth);
-                                console.log("Signed in anonymously.");
-                            }
-                        } catch (error) {
-                            console.error("Error during authentication:", error);
-                            showModal("Error de Autenticación", "No se pudo autenticar. Por favor, recarga la página.", [{ text: "Ok", className: "btn-secondary" }]);
-                        }
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("Usuario autenticado: ", userId);
+                document.getElementById('login-container').classList.add('hidden');
+                document.getElementById('main-menu-container').classList.remove('hidden');
+            } else {
+                userId = null;
+                console.log("No hay usuario autenticado.");
+                document.getElementById('login-container').classList.remove('hidden');
+                document.getElementById('main-menu-container').classList.add('hidden');
+                // Use anonymous sign-in if the custom token is not available
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== '') {
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } catch (error) {
+                        console.error("Error al iniciar sesión con token personalizado:", error);
+                        await signInAnonymously(auth);
                     }
-                });
-            } catch (error) {
-                console.error("Error initializing Firebase:", error);
-                showModal("Error de Inicialización", "No se pudo inicializar Firebase. Revisa tu configuración.", [{ text: "Ok", className: "btn-secondary" }]);
-            }
-        }
-
-        // --- Data Loading from Firestore ---
-        async function loadBrands() {
-            if (!isAuthReady || !userId) return;
-            try {
-                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
-                const brandsRef = collection(db, `users/${userId}/brands`);
-                onSnapshot(brandsRef, (snapshot) => {
-                    brandsHistory = {};
-                    brandSuggestionsDatalist.innerHTML = '';
-                    snapshot.forEach(doc => {
-                        const brandData = doc.data();
-                        brandsHistory[brandData.brandName.toLowerCase()] = brandData.brandImageUrl;
-                        const option = document.createElement('option');
-                        option.value = brandData.brandName;
-                        brandSuggestionsDatalist.appendChild(option);
-                    });
-                    console.log("Brands loaded:", brandsHistory);
-                }, (error) => {
-                    console.error("Error loading brands:", error);
-                });
-            } catch (error) {
-                console.error("Error setting up brand listener:", error);
-            }
-        }
-
-        async function loadProducts() {
-            if (!isAuthReady || !userId) return;
-            try {
-                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
-                const productsRef = collection(db, `users/${userId}/products`);
-                onSnapshot(productsRef, (snapshot) => {
-                    products = [];
-                    productListDiv.innerHTML = ''; // Clear existing products
-                    if (snapshot.empty) {
-                        noProductsMessage.style.display = 'block';
-                    } else {
-                        noProductsMessage.style.display = 'none';
-                        snapshot.forEach(doc => {
-                            products.push({ id: doc.id, ...doc.data() });
-                        });
-                        renderProducts();
-                    }
-                    console.log("Products loaded:", products);
-                }, (error) => {
-                    console.error("Error loading products:", error);
-                });
-            } catch (error) {
-                console.error("Error setting up product listener:", error);
-            }
-        }
-
-        // --- Render Products to UI ---
-        function renderProducts() {
-            productListDiv.innerHTML = '';
-            products.forEach(product => {
-                const productCard = document.createElement('div');
-                productCard.className = 'product-card';
-                productCard.innerHTML = `
-                    <img src="${product.productImageUrl || 'https://placehold.co/80x80/cccccc/333333?text=Producto'}" alt="Imagen de Producto">
-                    <div class="details">
-                        <p><strong>Categoría:</strong> ${product.category}</p>
-                        <p><strong>Marca:</strong> ${product.brand}</p>
-                        <p><strong>Presentación:</strong> ${product.presentation}</p>
-                        <p><strong>Precio:</strong> $${parseFloat(product.price).toFixed(2)}</p>
-                    </div>
-                    <button data-id="${product.id}" class="btn-secondary px-3 py-1 text-sm delete-product-btn">Eliminar</button>
-                `;
-                productListDiv.appendChild(productCard);
-            });
-
-            // Add event listeners for delete buttons
-            document.querySelectorAll('.delete-product-btn').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    const productIdToDelete = e.target.dataset.id;
-                    showModal("Confirmar Eliminación", "¿Estás seguro de que quieres eliminar este producto?", [
-                        { text: "Cancelar", className: "btn-secondary" },
-                        { text: "Eliminar", className: "btn-primary", handler: () => deleteProduct(productIdToDelete) }
-                    ]);
-                });
-            });
-        }
-
-        async function deleteProduct(productId) {
-            if (!isAuthReady || !userId) {
-                showModal("Error", "Usuario no autenticado.", [{ text: "Ok", className: "btn-secondary" }]);
-                return;
-            }
-            try {
-                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta del documento
-                await setDoc(doc(db, `users/${userId}/products`, productId), {}, { merge: true, delete: true }); // Delete by setting empty object with merge:true and delete:true
-                console.log("Producto eliminado:", productId);
-            } catch (error) {
-                console.error("Error eliminando producto:", error);
-                showModal("Error", "No se pudo eliminar el producto.", [{ text: "Ok", className: "btn-secondary" }]);
-            }
-        }
-
-
-        // --- Image Handling ---
-        function setupImagePreview(inputElement, previewElement) {
-            inputElement.addEventListener('change', (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        previewElement.innerHTML = `<img src="${e.target.result}" alt="Previsualización">`;
-                    };
-                    reader.readAsDataURL(file);
                 } else {
-                    previewElement.innerHTML = `<span>Previsualización de ${previewElement.id.includes('Brand') ? 'Marca' : 'Producto'}</span>`;
+                    await signInAnonymously(auth);
                 }
-            });
+            }
+        });
+
+        // Login Logic
+        window.login = async () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage("Inicio de sesión exitoso.", 'success');
+            } catch (error) {
+                console.error("Error al iniciar sesión:", error);
+                showMessage("Error en el inicio de sesión. Verifica tu correo y contraseña.", 'error');
+            }
+        };
+
+        // Logout Logic
+        window.logout = async () => {
+            try {
+                await signOut(auth);
+                showMessage("Sesión cerrada.", 'info');
+            } catch (error) {
+                console.error("Error al cerrar sesión:", error);
+                showMessage("Error al cerrar sesión.", 'error');
+            }
+        };
+
+        // UI navigation
+        window.showInventory = () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('inventory-section').classList.remove('hidden');
+        };
+
+        window.showSales = () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('sales-section').classList.remove('hidden');
+        };
+
+        window.backToMenu = () => {
+            document.getElementById('main-menu').classList.remove('hidden');
+            document.getElementById('inventory-section').classList.add('hidden');
+            document.getElementById('sales-section').classList.add('hidden');
+        };
+
+        // General Message Box
+        function showMessage(message, type = 'info') {
+            const messageBox = document.getElementById('message-box');
+            const messageText = document.getElementById('message-text');
+            messageText.textContent = message;
+            messageBox.className = 'absolute top-5 right-5 p-4 rounded-lg shadow-lg transition-transform transform translate-x-full';
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-500', 'text-white');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-500', 'text-white');
+            } else {
+                messageBox.classList.add('bg-blue-500', 'text-white');
+            }
+            // Animate in
+            setTimeout(() => {
+                messageBox.classList.remove('translate-x-full');
+            }, 10);
+            // Animate out after 5 seconds
+            setTimeout(() => {
+                messageBox.classList.add('translate-x-full');
+            }, 5000);
         }
 
-        setupImagePreview(brandImageInput, brandImagePreview);
-        setupImagePreview(productImageInput, productImagePreview);
-
-        // --- Add Product Functionality ---
-        addProductBtn.addEventListener('click', async () => {
-            if (!isAuthReady || !userId) {
-                showModal("Error", "Usuario no autenticado. Por favor, espera a que la aplicación se cargue completamente.", [{ text: "Ok", className: "btn-secondary" }]);
-                return;
-            }
-
-            const category = categoryInput.value;
-            const brand = brandInput.value.trim();
-            const presentation = presentationInput.value.trim();
-            const price = parseFloat(priceInput.value);
-
-            if (!category || !brand || !presentation || isNaN(price) || price <= 0) {
-                showModal("Campos Incompletos", "Por favor, completa todos los campos y asegúrate de que el precio sea un número válido.", [{ text: "Ok", className: "btn-secondary" }]);
-                return;
-            }
-
-            let brandImageUrl = '';
-            let productImageUrl = '';
-
-            // Read brand image
-            if (brandImageInput.files.length > 0) {
-                const file = brandImageInput.files[0];
-                brandImageUrl = await new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve(e.target.result);
-                    reader.readAsDataURL(file);
-                });
-            } else {
-                // If no new brand image, try to use one from history
-                const existingBrandImage = brandsHistory[brand.toLowerCase()];
-                if (existingBrandImage) {
-                    brandImageUrl = existingBrandImage;
-                }
-            }
-
-            // Read product image
-            if (productImageInput.files.length > 0) {
-                const file = productImageInput.files[0];
-                productImageUrl = await new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve(e.target.result);
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            const newProduct = {
-                category,
-                brand,
-                presentation,
-                price,
-                brandImageUrl: brandImageUrl || '', // Store brand image with the product for PDF
-                productImageUrl: productImageUrl || '',
-                timestamp: Date.now()
-            };
-
-            try {
-                // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta de la colección
-                await addDoc(collection(db, `users/${userId}/products`), newProduct);
-
-                // Update brand history with its image
-                if (brand && brandImageUrl) {
-                    // CAMBIO AQUÍ: Eliminado 'artifacts/${appId}/' de la ruta del documento
-                    await setDoc(doc(db, `users/${userId}/brands`, brand), {
-                        brandName: brand,
-                        brandImageUrl: brandImageUrl
-                    }, { merge: true }); // Use merge to update if exists, create if not
-                }
-
-                showModal("Éxito", "Producto añadido correctamente.", [{ text: "Ok", className: "btn-primary" }]);
-
-                // Clear form
-                categoryInput.value = '';
-                brandInput.value = '';
-                presentationInput.value = '';
-                priceInput.value = '';
-                brandImageInput.value = '';
-                productImageInput.value = '';
-                brandImagePreview.innerHTML = '<span>Previsualización de Marca</span>';
-                productImagePreview.innerHTML = '<span>Previsualización de Producto</span>';
-
-            } catch (error) {
-                console.error("Error adding product:", error);
-                showModal("Error al Añadir", "Hubo un error al añadir el producto. Inténtalo de nuevo.", [{ text: "Ok", className: "btn-secondary" }]);
-            }
-        });
-
-        // --- Brand Autocomplete Logic ---
-        brandInput.addEventListener('input', () => {
-            const currentBrand = brandInput.value.trim().toLowerCase();
-            if (brandsHistory[currentBrand]) {
-                // If brand exists in history, pre-fill brand image preview
-                brandImagePreview.innerHTML = `<img src="${brandsHistory[currentBrand]}" alt="Previsualización de Marca">`;
-            } else {
-                brandImagePreview.innerHTML = '<span>Previsualización de Marca</span>';
-            }
-        });
-
-        // --- Generate Portfolio PDF ---
-        generatePortfolioBtn.addEventListener('click', async () => {
-            if (products.length === 0) {
-                showModal("Portafolio Vacío", "No hay productos para generar el portafolio.", [{ text: "Ok", className: "btn-secondary" }]);
-                return;
-            }
-
-            showModal("Generando PDF", "Por favor, espera mientras se genera el portafolio...", []); // Show loading modal
-
-            // Create a temporary div to render content for PDF
-            const pdfContent = document.createElement('div');
-            pdfContent.style.width = '210mm'; // A4 width
-            pdfContent.style.padding = '10mm';
-            pdfContent.style.boxSizing = 'border-box';
-            pdfContent.style.backgroundColor = '#ffffff';
-            pdfContent.style.fontFamily = 'Inter, sans-serif';
-            pdfContent.style.color = '#374151';
-            pdfContent.style.display = 'none'; // Hide it from view
-
-            let contentHTML = `
-                <h1 style="text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 20px; color: #1f2937;">Portafolio de Productos</h1>
-                <p style="text-align: center; font-size: 14px; color: #6b7280; margin-bottom: 30px;">Generado el: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>
-            `;
-
-            // Group products by category
-            const productsByCategory = products.reduce((acc, product) => {
-                if (!acc[product.category]) {
-                    acc[product.category] = [];
-                }
-                acc[product.category].push(product);
-                return acc;
-            }, {});
-
-            for (const category in productsByCategory) {
-                contentHTML += `
-                    <h2 style="font-size: 22px; font-weight: 600; margin-top: 30px; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 2px solid #e5e7eb; color: #374151;">${category}</h2>
-                `;
-                productsByCategory[category].forEach(product => {
-                    contentHTML += `
-                        <div style="display: flex; align-items: center; margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 10px; background-color: #f9fafb; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);">
-                            <img src="${product.productImageUrl || 'https://placehold.co/80x80/cccccc/333333?text=Producto'}" alt="Imagen de Producto" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin-right: 20px; border: 1px solid #d1d5db;">
-                            <div style="flex-grow: 1;">
-                                <p style="margin-bottom: 5px; font-size: 16px; font-weight: 500; color: #1f2937;"><strong>Marca:</strong> ${product.brand}</p>
-                                <p style="margin-bottom: 5px; font-size: 14px; color: #4b5563;"><strong>Presentación:</strong> ${product.presentation}</p>
-                                <p style="margin-bottom: 5px; font-size: 14px; color: #4b5563;"><strong>Precio:</strong> $${parseFloat(product.price).toFixed(2)}</p>
-                                ${product.brandImageUrl ? `<p style="font-size: 14px; color: #4b5563;"><strong>Imagen de Marca:</strong> <img src="${product.brandImageUrl}" alt="Imagen de Marca" style="width: 50px; height: 50px; object-fit: contain; vertical-align: middle; margin-left: 10px; border-radius: 4px; border: 1px solid #d1d5db;"></p>` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-
-            pdfContent.innerHTML = contentHTML;
-            document.body.appendChild(pdfContent); // Append to body to be rendered by html2canvas
-
-            try {
-                // Access html2canvas and jsPDF from global scope
-                const canvas = await html2canvas(pdfContent, {
-                    scale: 2, // Increase scale for better quality
-                    useCORS: true, // Needed if images are from external sources
-                    logging: false, // Disable logging for cleaner console
-                });
-
-                const imgData = canvas.toDataURL('image/png');
-                const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4'); // Access jsPDF from global scope
-                const imgWidth = 210; // A4 width in mm
-                const pageHeight = 297; // A4 height in mm
-                const imgHeight = canvas.height * imgWidth / canvas.width;
-                let heightLeft = imgHeight;
-                let position = 0;
-
-                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                heightLeft -= pageHeight;
-
-                while (heightLeft >= 0) {
-                    position = heightLeft - imgHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                    heightLeft -= pageHeight;
-                }
-
-                pdf.save('portafolio_productos.pdf');
-                hideModal(); // Hide loading modal
-                showModal("PDF Generado", "El portafolio se ha generado y descargado como 'portafolio_productos.pdf'.", [{ text: "Ok", className: "btn-primary" }]);
-
-            } catch (error) {
-                console.error("Error generating PDF:", error);
-                hideModal(); // Hide loading modal
-                showModal("Error al Generar PDF", "Hubo un error al generar el PDF. Inténtalo de nuevo.", [{ text: "Ok", className: "btn-secondary" }]);
-            } finally {
-                document.body.removeChild(pdfContent); // Clean up the temporary div
-            }
-        });
-
-        // Initialize Firebase and load data when the window loads
-        window.onload = initializeFirebase;
+        // Inventory Logic (to be implemented in next step)
+        window.addProduct = async () => {
+            // Logic for adding a product will go here
+            showMessage("Función para agregar producto no implementada aún.", 'info');
+        };
     </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <!-- Message Box -->
+    <div id="message-box" class="fixed top-5 right-5 p-4 rounded-lg shadow-lg transition-transform duration-500 transform translate-x-full z-50">
+        <p id="message-text"></p>
+    </div>
+
+    <!-- Main Container -->
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+
+        <!-- Login Section -->
+        <div id="login-container" class="space-y-6">
+            <h1 class="text-3xl font-bold text-center text-gray-800">Iniciar Sesión</h1>
+            <input type="email" id="email" placeholder="Correo Electrónico" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="password" id="password" placeholder="Contraseña" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="login()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300">Entrar</button>
+        </div>
+
+        <!-- Main Menu Section -->
+        <div id="main-menu-container" class="hidden space-y-6">
+            <div id="main-menu">
+                <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Menú Principal</h1>
+                <button onclick="showInventory()" class="w-full bg-green-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-green-700 transition duration-300 mb-4">Inventario</button>
+                <button onclick="showSales()" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300">Ventas</button>
+            </div>
+
+            <!-- Inventory Sub-section -->
+            <div id="inventory-section" class="hidden space-y-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Gestión de Inventario</h2>
+                <!-- Product form will go here -->
+                <button onclick="backToMenu()" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-gray-600 transition duration-300">Regresar al Menú</button>
+            </div>
+
+            <!-- Sales Sub-section -->
+            <div id="sales-section" class="hidden space-y-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Gestión de Ventas</h2>
+                <!-- Sales functionality will go here -->
+                <button onclick="backToMenu()" class="w-full bg-gray-500 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-gray-600 transition duration-300">Regresar al Menú</button>
+            </div>
+            
+            <button onclick="logout()" class="w-full bg-red-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-red-700 transition duration-300 mt-6">Cerrar Sesión</button>
+        </div>
+    </div>
 </body>
 </html>
