@@ -27,6 +27,7 @@
         let isAuthReady = false;
         let productSuggestions = new Set();
         let presentationSuggestions = new Set();
+        let productsMap = {}; // Global store for product data by ID
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -308,7 +309,13 @@
             }
         };
 
-        window.editProduct = (productId, data) => {
+        window.editProduct = (productId) => {
+            const data = productsMap[productId];
+            if (!data) {
+                showMessage("Error: No se encontraron los datos del producto.", 'error');
+                return;
+            }
+
             showAddProductForm(); // Navigate to the add product form to edit
             document.getElementById('product-id').value = productId;
             document.getElementById('rubro').value = data.rubro;
@@ -379,8 +386,11 @@
             
             unsubscribeFromInventory = onSnapshot(inventoryCollection, (snapshot) => {
                 const products = [];
+                productsMap = {}; // Clear the map for a fresh load
                 snapshot.forEach(doc => {
-                    products.push({ id: doc.id, ...doc.data() });
+                    const productData = { id: doc.id, ...doc.data() };
+                    products.push(productData);
+                    productsMap[doc.id] = productData; // Store product in the map
                 });
                 if (view === 'list') {
                     renderProductsForList(products);
@@ -459,7 +469,7 @@
                             <p class="text-sm text-gray-700">Cantidad: ${product.cantidad}</p>
                         </div>
                         <div class="flex space-x-2">
-                            <button onclick="editProduct('${product.id}', ${JSON.stringify(product).replace(/'/g, "\\'")})" class="bg-yellow-500 text-white p-2 rounded-full hover:bg-yellow-600 transition duration-300">
+                            <button onclick="editProduct('${product.id}')" class="bg-yellow-500 text-white p-2 rounded-full hover:bg-yellow-600 transition duration-300">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
                                     <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
