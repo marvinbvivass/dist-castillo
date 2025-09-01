@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, signInAnonymously, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, deleteDoc, onSnapshot, query, where, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
 
@@ -60,6 +60,19 @@
             } catch (error) {
                 console.error("Error al iniciar sesión:", error);
                 showMessage("Error en el inicio de sesión. Verifica tu correo y contraseña.", 'error');
+            }
+        };
+
+        // Registration Logic
+        window.register = async () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessage("Registro exitoso. ¡Inicia sesión para continuar!", 'success');
+            } catch (error) {
+                console.error("Error al registrarse:", error);
+                showMessage("Error en el registro. " + error.message, 'error');
             }
         };
 
@@ -132,11 +145,12 @@
     <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
 
         <!-- Login Section -->
-        <div id="login-container" class="space-y-6">
+        <div id="login-container" class="space-y-4">
             <h1 class="text-3xl font-bold text-center text-gray-800">Iniciar Sesión</h1>
             <input type="email" id="email" placeholder="Correo Electrónico" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
             <input type="password" id="password" placeholder="Contraseña" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
             <button onclick="login()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300">Entrar</button>
+            <button onclick="register()" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-indigo-700 transition duration-300">Registrarse</button>
         </div>
 
         <!-- Main Menu Section -->
