@@ -22,6 +22,26 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
+        /* Estilo para el dropdown de búsqueda */
+        .autocomplete-list {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            width: 100%;
+            border-radius: 0 0 0.5rem 0.5rem;
+        }
+        .autocomplete-item {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .autocomplete-item:hover {
+            background-color: #f1f5f9;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -68,7 +88,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
@@ -95,6 +115,14 @@
         const modalContent = document.getElementById('modalContent');
         const loginForm = document.getElementById('loginForm');
         const authMessage = document.getElementById('authMessage');
+        
+        // Variables para la vista de ventas
+        let clientes = [];
+        let inventario = [];
+        let ventaActual = {
+            cliente: null,
+            productos: {}
+        };
 
         /**
          * Muestra un modal con un título y mensaje.
@@ -444,6 +472,7 @@
             const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             onSnapshot(inventarioRef, (snapshot) => {
                 const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                inventario = productos; // Guarda el inventario globalmente
                 if (productos.length === 0) {
                     container.innerHTML = `<p class="text-gray-500">No hay productos en el inventario.</p>`;
                     return;
@@ -763,13 +792,14 @@
 
             const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
             onSnapshot(clientesRef, (snapshot) => {
-                const clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                if (clientes.length === 0) {
+                const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                clientes = fetchedClientes; // Guarda los clientes globalmente
+                if (fetchedClientes.length === 0) {
                     container.innerHTML = `<p class="text-gray-500">No hay clientes registrados.</p>`;
                     return;
                 }
 
-                container.innerHTML = clientes.map(cliente => `
+                container.innerHTML = fetchedClientes.map(cliente => `
                     <div class="bg-gray-50 p-4 rounded-lg shadow">
                         <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
                         <p class="text-sm text-gray-600">
@@ -871,24 +901,337 @@
             });
         };
 
+        // --- Lógica del módulo de Ventas ---
+
         /**
-         * Renderiza la vista de ventas.
+         * Renderiza la vista principal de ventas.
          */
         function showVentasView() {
             mainContent.innerHTML = `
                 <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Vista de Ventas</h2>
-                            <p class="text-gray-600">Esta sección está en construcción. ¡Pronto podrás gestionar tus ventas aquí!</p>
-                            <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver al Menú Principal
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
+                            <div class="space-y-4">
+                                <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                                    Nueva Venta
+                                </button>
+                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                                    Ventas Totales
+                                </button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
+                                    Volver al Menú Principal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
+            document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+        
+        /**
+         * Renderiza la vista para iniciar una nueva venta.
+         */
+        function showNuevaVentaView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
+                            <div class="mb-6">
+                                <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
+                                <div class="relative">
+                                    <input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    <div id="clienteDropdown" class="autocomplete-list hidden"></div>
+                                </div>
+                            </div>
+
+                            <div id="inventarioTableContainer" class="hidden animate-fade-in">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Inventario</h3>
+                                <div class="overflow-x-auto rounded-lg shadow">
+                                    <table class="min-w-full bg-white">
+                                        <thead>
+                                            <tr class="bg-gray-200 text-gray-700 uppercase text-sm leading-normal">
+                                                <th class="py-3 px-6 text-left">Producto</th>
+                                                <th class="py-3 px-6 text-left">Marca</th>
+                                                <th class="py-3 px-6 text-left">Precio</th>
+                                                <th class="py-3 px-6 text-center">Stock</th>
+                                                <th class="py-3 px-6 text-center">Cantidad a Vender</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light">
+                                            <!-- Filas de productos se insertarán aquí -->
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="mt-6 flex justify-end space-x-4">
+                                    <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                                        Generar Ticket
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <button id="backToVentasBtn" class="mt-6 px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
                             </button>
                         </div>
                     </div>
                 </div>
             `;
-            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+            const clienteSearchInput = document.getElementById('clienteSearch');
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            const inventarioTableContainer = document.getElementById('inventarioTableContainer');
+
+            // Listener para el input de búsqueda de clientes
+            clienteSearchInput.addEventListener('input', () => {
+                const searchTerm = clienteSearchInput.value.toLowerCase();
+                const filteredClients = clientes.filter(c =>
+                    c.nombreComercial.toLowerCase().includes(searchTerm) ||
+                    c.nombrePersonal.toLowerCase().includes(searchTerm)
+                );
+                renderClienteDropdown(filteredClients);
+                clienteDropdown.classList.remove('hidden');
+            });
+
+            // Listener para ocultar el dropdown cuando se hace clic fuera
+            document.addEventListener('click', (event) => {
+                if (!clienteSearchInput.contains(event.target) && !clienteDropdown.contains(event.target)) {
+                    clienteDropdown.classList.add('hidden');
+                }
+            });
+
+            // Listener para el botón "Generar Ticket"
+            document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
+
+            // Cargar datos al entrar en la vista
+            loadClientesAndInventario();
+        }
+
+        /**
+         * Carga los datos de clientes e inventario desde Firestore.
+         */
+        function loadClientesAndInventario() {
+            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+            onSnapshot(clientesRef, (snapshot) => {
+                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            });
+
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            onSnapshot(inventarioRef, (snapshot) => {
+                inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderVentasInventario();
+            });
+        }
+        
+        /**
+         * Renderiza el dropdown de clientes.
+         * @param {Array<Object>} filteredClients Clientes a mostrar.
+         */
+        function renderClienteDropdown(filteredClients) {
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            clienteDropdown.innerHTML = '';
+            filteredClients.forEach(cliente => {
+                const item = document.createElement('div');
+                item.classList.add('autocomplete-item');
+                item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+                item.dataset.clienteId = cliente.id;
+                item.addEventListener('click', () => selectCliente(cliente));
+                clienteDropdown.appendChild(item);
+            });
+        }
+
+        /**
+         * Selecciona un cliente y muestra la tabla de inventario.
+         * @param {Object} cliente El cliente seleccionado.
+         */
+        function selectCliente(cliente) {
+            ventaActual.cliente = cliente;
+            const clienteSearchInput = document.getElementById('clienteSearch');
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            const inventarioTableContainer = document.getElementById('inventarioTableContainer');
+
+            clienteSearchInput.value = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+            clienteDropdown.classList.add('hidden');
+            inventarioTableContainer.classList.remove('hidden');
+        }
+
+        /**
+         * Renderiza la tabla de inventario para la vista de ventas.
+         */
+        function renderVentasInventario() {
+            const inventarioTableBody = document.getElementById('inventarioTableBody');
+            if (!inventarioTableBody) return;
+            inventarioTableBody.innerHTML = '';
+
+            if (inventario.length === 0) {
+                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos en el inventario.</td></tr>`;
+                return;
+            }
+
+            inventario.forEach(producto => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-100');
+                row.innerHTML = `
+                    <td class="py-3 px-6 text-left whitespace-nowrap">${producto.presentacion} (${producto.rubro})</td>
+                    <td class="py-3 px-6 text-left">${producto.marca}</td>
+                    <td class="py-3 px-6 text-left">$${producto.precio.toFixed(2)}</td>
+                    <td class="py-3 px-6 text-center">${producto.cantidad}</td>
+                    <td class="py-3 px-6 text-center">
+                        <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidad || 0}"
+                               class="w-20 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
+                               oninput="updateVentaCantidad(event)">
+                    </td>
+                `;
+                inventarioTableBody.appendChild(row);
+            });
+        }
+
+        /**
+         * Actualiza la cantidad de un producto en la venta actual.
+         * @param {Event} event
+         */
+        window.updateVentaCantidad = function(event) {
+            const input = event.target;
+            const productId = input.dataset.productId;
+            const cantidad = parseInt(input.value, 10);
+            
+            if (cantidad > 0) {
+                const producto = inventario.find(p => p.id === productId);
+                if (producto) {
+                    ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
+                }
+            } else {
+                delete ventaActual.productos[productId];
+            }
+        };
+
+        /**
+         * Genera un ticket de venta y lo guarda en Firestore.
+         */
+        async function generarTicket() {
+            if (!ventaActual.cliente) {
+                showModal('Error', 'Debe seleccionar un cliente para generar el ticket.');
+                return;
+            }
+            const productosVendidos = Object.values(ventaActual.productos);
+            if (productosVendidos.length === 0) {
+                showModal('Error', 'Debe seleccionar al menos un producto para vender.');
+                return;
+            }
+
+            // Muestra un modal de confirmación antes de guardar
+            showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+                try {
+                    // Prepara los datos para la transacción
+                    const batch = writeBatch(db);
+                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                    let totalVenta = 0;
+                    const itemsVenta = productosVendidos.map(p => {
+                        const subtotal = p.precio * p.cantidadVendida;
+                        totalVenta += subtotal;
+                        return {
+                            id: p.id,
+                            presentacion: p.presentacion,
+                            marca: p.marca,
+                            precio: p.precio,
+                            cantidad: p.cantidadVendida
+                        };
+                    });
+
+                    // Guarda la venta en Firestore
+                    batch.set(ventaRef, {
+                        clienteId: ventaActual.cliente.id,
+                        clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
+                        fecha: new Date(),
+                        total: totalVenta,
+                        productos: itemsVenta
+                    });
+                    
+                    // Actualiza el stock de los productos en una transacción
+                    await runTransaction(db, async (transaction) => {
+                        for (const p of productosVendidos) {
+                            const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                            const productoDoc = await transaction.get(productoRef);
+                            if (!productoDoc.exists()) {
+                                throw new Error(`El producto con ID ${p.id} no existe.`);
+                            }
+                            const newCantidad = productoDoc.data().cantidad - p.cantidadVendida;
+                            if (newCantidad < 0) {
+                                throw new Error(`Stock insuficiente para el producto: ${p.presentacion}`);
+                            }
+                            transaction.update(productoRef, { cantidad: newCantidad });
+                        }
+                    });
+
+                    // Genera y muestra el ticket en un modal
+                    const fecha = new Date().toLocaleDateString('es-ES');
+                    const ticketHTML = `
+                        <div class="text-left p-4">
+                            <h3 class="text-xl font-bold text-gray-800 text-center mb-4">Dist. Catillo Y.</h3>
+                            <p class="text-sm">Fecha: ${fecha}</p>
+                            <p class="text-sm mb-4">Cliente: ${ventaActual.cliente.nombreComercial}</p>
+                            <table class="min-w-full text-sm mt-4">
+                                <thead>
+                                    <tr>
+                                        <th class="py-2 text-left">Producto</th>
+                                        <th class="py-2 text-center">Cant.</th>
+                                        <th class="py-2 text-right">Precio</th>
+                                        <th class="py-2 text-right">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${productosVendidos.map(p => `
+                                        <tr>
+                                            <td class="py-1">${p.presentacion}</td>
+                                            <td class="py-1 text-center">${p.cantidadVendida}</td>
+                                            <td class="py-1 text-right">$${p.precio.toFixed(2)}</td>
+                                            <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div class="mt-4 text-right font-bold text-lg">
+                                Total: $${totalVenta.toFixed(2)}
+                            </div>
+                        </div>
+                    `;
+                    showModal('Ticket de Venta', ticketHTML);
+                    
+                    // Limpiar el estado de la venta
+                    ventaActual.cliente = null;
+                    ventaActual.productos = {};
+                    document.getElementById('clienteSearch').value = '';
+                    document.getElementById('inventarioTableContainer').classList.add('hidden');
+                } catch (e) {
+                    console.error("Error al generar el ticket o actualizar el stock: ", e);
+                    showModal('Error', 'Hubo un error al procesar la venta. Por favor, revise el stock o inténtelo de nuevo.');
+                }
+            });
+        }
+
+        /**
+         * Renderiza la vista de ventas totales.
+         */
+        function showVentasTotalesView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
+                            <p class="text-gray-600">Esta sección está en construcción. ¡Pronto podrás ver tus ventas totales aquí!</p>
+                            <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
         }
 
         /**
