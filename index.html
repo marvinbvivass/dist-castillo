@@ -607,9 +607,167 @@
         };
 
         /**
-         * Maneja la impresión del ticket.
+         * Maneja la impresión del ticket, intentando usar Web Bluetooth y
+         * recurriendo a la impresión estándar si no está disponible.
          */
-        function handlePrintTicket() {
+        async function handlePrintTicket() {
+            if ('bluetooth' in navigator) {
+                try {
+                    const productosVendidos = Object.values(ventaActual.productos);
+                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
+                    const escPosData = generateEscPosData(ventaActual, productosVendidos, totalVentaFinal);
+
+                    showModal('Impresión Bluetooth', 'Buscando impresora... Por favor, selecciona tu impresora térmica (ej. MP-58) en la ventana emergente.');
+
+                    const device = await navigator.bluetooth.requestDevice({
+                        acceptAllDevices: true,
+                        optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Serial Port Profile
+                    });
+
+                    modalContent.querySelector('.text-gray-600').textContent = `Conectando a ${device.name}...`;
+                    const server = await device.gatt.connect();
+                    
+                    modalContent.querySelector('.text-gray-600').textContent = 'Buscando servicio de impresión...';
+                    
+                    let characteristic;
+                    try {
+                        const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
+                        characteristic = await service.getCharacteristic('00001102-0000-1000-8000-00805f9b34fb');
+                    } catch (e) {
+                        modalContent.querySelector('.text-gray-600').textContent = 'Perfil estándar no encontrado. Buscando perfil alternativo...';
+                        const services = await server.getPrimaryServices();
+                        for (const service of services) {
+                            const characteristics = await service.getCharacteristics();
+                            const writableCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                            if (writableCharacteristic) {
+                                characteristic = writableCharacteristic;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!characteristic) {
+                        throw new Error('No se encontró una característica de escritura compatible en la impresora.');
+                    }
+                    
+                    modalContent.querySelector('.text-gray-600').textContent = 'Enviando datos a la impresora...';
+                    
+                    const chunkSize = 50; // Aumentar tamaño para velocidad
+                    for (let i = 0; i < escPosData.length; i += chunkSize) {
+                        const chunk = escPosData.slice(i, i + chunkSize);
+                        await characteristic.writeValueWithoutResponse(chunk);
+                    }
+
+                    modalContent.querySelector('.text-gray-600').textContent = '¡Impresión enviada con éxito!';
+                    device.gatt.disconnect();
+                    
+                    setTimeout(() => {
+                        if (modalContainer.classList.contains('hidden') === false) {
+                           document.getElementById('closeModalBtn')?.click();
+                        }
+                    }, 2000);
+
+                } catch (error) {
+                    console.error('Error de Web Bluetooth:', error);
+                    let errorMessage = 'No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida y vinculada.';
+                    if (error.name === 'NotFoundError') {
+                        errorMessage = 'No se seleccionó ninguna impresora. Proceso de impresión cancelado.';
+                    } else if (error.message.includes("GATT operation failed")) {
+                         errorMessage = 'Fallo en la conexión. Esta impresora puede no ser compatible o estar fuera de alcance.'
+                    }
+                    showModal('Error de Impresión', errorMessage);
+                }
+            } else {
+                showModal('Impresión Web', 'Tu navegador no soporta la impresión directa por Bluetooth. Se usará el método de impresión estándar.', () => {
+                    legacyPrint();
+                });
+            }
+        }
+        
+        /**
+         * Genera los datos del ticket en formato ESC/POS para impresoras térmicas.
+         */
+        function generateEscPosData(venta, productos, total) {
+            const encoder = new TextEncoder();
+            const commands = [];
+            const width = 32;
+
+            const init = '\x1B\x40';
+            const center = '\x1B\x61\x01';
+            const left = '\x1B\x61\x00';
+            const doubleHeight = '\x1D\x21\x10';
+            const normal = '\x1D\x21\x00';
+            const lf = '\n';
+            const cut = '\x1D\x56\x41';
+
+            const add = (text) => commands.push(encoder.encode(text));
+            
+            add(init);
+            add(center);
+            add(doubleHeight);
+            add('Distribuidora Castillo Yanez' + lf);
+            add(normal);
+            add('-'.repeat(width) + lf);
+            add(left);
+            add(`Fecha: ${new Date().toLocaleDateString('es-ES')}`.padEnd(width) + lf);
+            add(`Cliente: ${venta.cliente.nombreComercial}`.substring(0, width).padEnd(width) + lf);
+            add('-'.repeat(width) + lf);
+            
+            productos.forEach(p => {
+                const desc = `${p.cantidadVendida}x ${p.segmento} ${p.marca} ${p.presentacion}`;
+                const subtotal = `$${(p.cantidadVendida * p.precio).toFixed(2)}`;
+                
+                let lines = [];
+                if (desc.length > (width - subtotal.length -1)) {
+                    let tempDesc = desc;
+                    while(tempDesc.length > (width - subtotal.length -1)){
+                        let wrapIndex = tempDesc.lastIndexOf(' ', width - subtotal.length -1);
+                        if (wrapIndex === -1) wrapIndex = width - subtotal.length -1;
+                        lines.push(tempDesc.substring(0, wrapIndex));
+                        tempDesc = '  ' + tempDesc.substring(wrapIndex + 1);
+                    }
+                    lines.push(tempDesc)
+                } else {
+                    lines.push(desc);
+                }
+
+                lines.forEach((line, index) => {
+                    if (index === lines.length - 1) {
+                        const padding = ' '.repeat(Math.max(0, width - line.length - subtotal.length));
+                        add(line + padding + subtotal + lf);
+                    } else {
+                        add(line + lf);
+                    }
+                });
+            });
+
+            add('-'.repeat(width) + lf);
+            const totalStr = `$${total.toFixed(2)}`;
+            const totalLabel = 'Total:';
+            const paddingTotal = ' '.repeat(width - totalLabel.length - totalStr.length);
+            add(doubleHeight);
+            add(totalLabel + paddingTotal + totalStr + lf);
+            add(normal + lf + lf);
+
+            add(center);
+            add('________________' + lf);
+            add(venta.cliente.nombrePersonal + lf + lf + lf + lf);
+            add(cut);
+
+            const totalLength = commands.reduce((acc, val) => acc + val.length, 0);
+            const data = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const cmd of commands) {
+                data.set(cmd, offset);
+                offset += cmd.length;
+            }
+            return data;
+        }
+
+        /**
+         * Método de impresión tradicional como fallback.
+         */
+        function legacyPrint() {
             const ticketContent = document.getElementById('ticket-content');
             if (!ticketContent) return;
             
@@ -642,7 +800,7 @@
                 </html>
             `);
             printWindow.document.close();
-            setTimeout(() => { // Timeout to ensure content is loaded
+            setTimeout(() => { 
                 printWindow.print();
                 printWindow.close();
             }, 250);
@@ -1724,4 +1882,5 @@
     </script>
 </body>
 </html>
+
 
