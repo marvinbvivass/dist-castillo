@@ -804,8 +804,9 @@
             `);
             printWindow.document.close();
             setTimeout(() => { 
+                printWindow.focus();
                 printWindow.print();
-                printWindow.close();
+                // No cerramos la ventana automáticamente para evitar errores en Android
             }, 250);
         }
 
