@@ -1,303 +1,493 @@
-import { collection, onSnapshot, query, addDoc, getDocs, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, onSnapshot, query, addDoc, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Variable global para el ID de la aplicación, esencial para los datos públicos
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+// Referencias a la base de datos y al usuario, pasadas desde index.html
+let db;
+let userId;
+let firebaseAppId;
 
 /**
- * Muestra la tabla del inventario de productos.
- * @param {object} mainContent El contenedor principal donde se mostrará el contenido.
- * @param {object} db La instancia de Firestore.
- * @param {string} userId El ID del usuario actual.
+ * @param {object} firestoreDB
+ * @param {string} currentUserId
+ * @param {string} appId
  */
-function showVerInventario(mainContent, db, userId) {
-    mainContent.innerHTML = `
-        <h2 class="text-2xl font-semibold text-gray-700 mb-4">Inventario de Productos</h2>
-        <div id="product-list" class="bg-gray-50 p-4 rounded-lg shadow-inner">
-            <p class="text-center text-gray-500">Cargando productos...</p>
+export function setupInventario(firestoreDB, currentUserId, appId) {
+  db = firestoreDB;
+  userId = currentUserId;
+  firebaseAppId = appId;
+}
+
+const mainContent = document.getElementById('mainContent');
+
+/**
+ * Renderiza el menú principal de inventario.
+ */
+export function showInventarioSubMenu() {
+  mainContent.innerHTML = `
+    <div class="p-6 bg-gray-100 min-h-screen">
+      <div class="container mx-auto">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+          <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
+          <div class="space-y-4">
+            <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+              Ver Inventario
+            </button>
+            <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+              Agregar Nuevo Producto
+            </button>
+            <button id="modificarEliminarBtn" class="w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50">
+              Modificar o Eliminar Producto
+            </button>
+          </div>
         </div>
-    `;
+      </div>
+    </div>
+  `;
+  document.getElementById('verInventarioBtn').addEventListener('click', showVerInventario);
+  document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProducto);
+  document.getElementById('modificarEliminarBtn').addEventListener('click', showModifyDeleteView);
+}
 
-    // Ruta de la colección de productos para el usuario actual
-    const productsCollectionRef = collection(db, `users/${userId}/productos`);
-    const q = query(productsCollectionRef);
+/**
+ * Renderiza la vista para ver el inventario.
+ */
+export function showVerInventario() {
+  mainContent.innerHTML = `
+    <div class="p-6 bg-gray-100 min-h-screen">
+      <div class="container mx-auto">
+        <div class="bg-white p-8 rounded-lg shadow-xl">
+          <h2 class="text-2xl font-bold text-gray-800 mb-6">Inventario de Productos</h2>
+          <div id="loadingIndicator" class="text-center text-gray-500">Cargando productos...</div>
+          <div id="productosTableContainer" class="overflow-x-auto">
+            <table class="min-w-full bg-white rounded-lg shadow-md">
+              <thead class="bg-gray-200">
+                <tr>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Rubro</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Segmento</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Marca</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Presentación</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Precio</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody id="productosTableBody">
+                <!-- Data will be populated here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 
-    // Escuchar cambios en la colección en tiempo real
-    onSnapshot(q, (querySnapshot) => {
-        let productListHtml = '';
-        if (querySnapshot.empty) {
-            productListHtml = '<p class="text-center text-gray-500">No hay productos en el inventario.</p>';
-        } else {
-            productListHtml = `
-                <div class="overflow-x-auto rounded-lg shadow-md">
-                    <table class="min-w-full bg-white rounded-lg">
-                        <thead>
-                            <tr class="w-full bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                <th class="py-3 px-6 text-left">Rubro</th>
-                                <th class="py-3 px-6 text-left">Segmento</th>
-                                <th class="py-3 px-6 text-left">Marca</th>
-                                <th class="py-3 px-6 text-left">Presentación</th>
-                                <th class="py-3 px-6 text-left">Precio</th>
-                                <th class="py-3 px-6 text-left">Cantidad</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-gray-600 text-sm font-light">
-            `;
-            querySnapshot.forEach((doc) => {
-                const product = doc.data();
-                productListHtml += `
-                    <tr class="border-b border-gray-200 hover:bg-gray-100">
-                        <td class="py-3 px-6 text-left whitespace-nowrap">${product.rubro}</td>
-                        <td class="py-3 px-6 text-left">${product.segmento}</td>
-                        <td class="py-3 px-6 text-left">${product.marca}</td>
-                        <td class="py-3 px-6 text-left">${product.presentacion}</td>
-                        <td class="py-3 px-6 text-left">$${product.precio.toFixed(2)}</td>
-                        <td class="py-3 px-6 text-left">${product.cantidad}</td>
-                    </tr>
-                `;
-            });
-            productListHtml += `
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        }
-        document.getElementById('product-list').innerHTML = productListHtml;
+  // Listener en tiempo real para la colección de productos del usuario
+  onSnapshot(collection(db, `users/${userId}/inventario`), (snapshot) => {
+    const productos = [];
+    snapshot.forEach((doc) => {
+      productos.push(doc.data());
     });
+    renderProductosTable(productos);
+  });
 }
 
 /**
- * Obtiene los datos de una colección pública de Firestore.
- * @param {object} db La instancia de Firestore.
- * @param {string} collectionName El nombre de la colección a buscar.
- * @returns {Promise<Array<string>>} Una promesa que se resuelve con un array de nombres.
+ * Renderiza la tabla de productos.
+ * @param {Array<object>} productos
  */
-async function getPublicOptions(db, collectionName) {
-    const publicDataRef = collection(db, `artifacts/${appId}/public/data/${collectionName}`);
-    const querySnapshot = await getDocs(publicDataRef);
-    return querySnapshot.docs.map(doc => doc.data().nombre);
+function renderProductosTable(productos) {
+  const tableBody = document.getElementById('productosTableBody');
+  if (!tableBody) return; // Salir si no se encuentra el elemento
+
+  tableBody.innerHTML = '';
+  if (productos.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500">No hay productos en el inventario.</td></tr>`;
+  } else {
+    productos.forEach(producto => {
+      const row = document.createElement('tr');
+      row.className = 'border-b hover:bg-gray-50 transition duration-150';
+      row.innerHTML = `
+        <td class="py-3 px-4 text-gray-700">${producto.rubro}</td>
+        <td class="py-3 px-4 text-gray-700">${producto.segmento}</td>
+        <td class="py-3 px-4 text-gray-700">${producto.marca}</td>
+        <td class="py-3 px-4 text-gray-700">${producto.presentacion}</td>
+        <td class="py-3 px-4 text-gray-700">$${producto.precio.toFixed(2)}</td>
+        <td class="py-3 px-4 text-gray-700">${producto.cantidad}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
 }
 
 /**
- * Agrega un nuevo elemento a una colección pública de Firestore.
- * @param {object} db La instancia de Firestore.
- * @param {string} collectionName El nombre de la colección.
- * @param {string} newName El nombre del nuevo elemento a agregar.
- * @returns {Promise<void>}
+ * Renderiza la vista para agregar un nuevo producto.
  */
-async function addPublicOption(db, collectionName, newName) {
-    const publicDataRef = collection(db, `artifacts/${appId}/public/data/${collectionName}`);
-    await addDoc(publicDataRef, { nombre: newName });
+export async function showAgregarProducto() {
+  mainContent.innerHTML = `
+    <div class="p-6 bg-gray-100 min-h-screen">
+      <div class="container mx-auto">
+        <div class="bg-white p-8 rounded-lg shadow-xl">
+          <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Nuevo Producto</h2>
+          <form id="productoForm" class="space-y-4">
+            <div>
+              <label class="block text-gray-700 font-medium">Rubro:</label>
+              <div class="flex items-center space-x-2">
+                <select id="rubroSelect" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <input type="text" id="rubroInput" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 hidden" placeholder="Nuevo Rubro">
+                <button type="button" id="toggleRubroBtn" class="p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Agregar</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-gray-700 font-medium">Segmento:</label>
+              <div class="flex items-center space-x-2">
+                <select id="segmentoSelect" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <input type="text" id="segmentoInput" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 hidden" placeholder="Nuevo Segmento">
+                <button type="button" id="toggleSegmentoBtn" class="p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Agregar</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-gray-700 font-medium">Marca:</label>
+              <div class="flex items-center space-x-2">
+                <select id="marcaSelect" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+                <input type="text" id="marcaInput" class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 hidden" placeholder="Nueva Marca">
+                <button type="button" id="toggleMarcaBtn" class="p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Agregar</button>
+              </div>
+            </div>
+
+            <div>
+              <label for="presentacion" class="block text-gray-700 font-medium">Presentación:</label>
+              <input type="text" id="presentacion" name="presentacion" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="precio" class="block text-gray-700 font-medium">Precio:</label>
+              <input type="number" id="precio" name="precio" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label for="cantidad" class="block text-gray-700 font-medium">Cantidad:</label>
+              <input type="number" id="cantidad" name="cantidad" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" class="w-full py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">Guardar Producto</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Se configura el formulario y los listeners una vez que el HTML está en el DOM
+  setupFormListeners();
+  await populateSelects();
 }
 
 /**
- * Muestra el formulario para agregar un nuevo producto.
- * @param {object} mainContent El contenedor principal donde se mostrará el contenido.
- * @param {function} showModal Función para mostrar mensajes modales.
- * @param {object} db La instancia de Firestore.
- * @param {string} userId El ID del usuario actual.
+ * Configura los listeners del formulario para agregar un producto.
  */
-function showAgregarProducto(mainContent, showModal, db, userId) {
-    mainContent.innerHTML = `
-        <h2 class="text-2xl font-semibold text-gray-700 mb-4">Agregar Nuevo Producto</h2>
-        <form id="add-product-form" class="bg-gray-50 p-6 rounded-lg shadow-inner w-full max-w-lg mx-auto">
-            
-            <!-- Rubro -->
-            <div class="mb-4">
-                <label for="product-rubro" class="block text-gray-700 font-semibold mb-2">Rubro</label>
-                <div class="flex items-center space-x-2">
-                    <select id="product-rubro" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
-                    <input type="text" id="new-rubro-input" placeholder="Nuevo Rubro" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
-                    <button type="button" id="add-rubro-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
-                        <span id="add-rubro-text">Agregar</span>
-                    </button>
-                </div>
-            </div>
+function setupFormListeners() {
+  const productoForm = document.getElementById('productoForm');
+  if (productoForm) {
+    productoForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await addProducto();
+      showVerInventario(); // Redirige a la vista de inventario después de guardar
+    });
+  }
 
-            <!-- Segmento -->
-            <div class="mb-4">
-                <label for="product-segmento" class="block text-gray-700 font-semibold mb-2">Segmento</label>
-                <div class="flex items-center space-x-2">
-                    <select id="product-segmento" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
-                    <input type="text" id="new-segmento-input" placeholder="Nuevo Segmento" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
-                    <button type="button" id="add-segmento-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
-                        <span id="add-segmento-text">Agregar</span>
-                    </button>
-                </div>
-            </div>
+  const toggleRubroBtn = document.getElementById('toggleRubroBtn');
+  const rubroSelect = document.getElementById('rubroSelect');
+  const rubroInput = document.getElementById('rubroInput');
 
-            <!-- Marca -->
-            <div class="mb-4">
-                <label for="product-marca" class="block text-gray-700 font-semibold mb-2">Marca</label>
-                <div class="flex items-center space-x-2">
-                    <select id="product-marca" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
-                    <input type="text" id="new-marca-input" placeholder="Nueva Marca" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
-                    <button type="button" id="add-marca-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
-                        <span id="add-marca-text">Agregar</span>
-                    </button>
-                </div>
-            </div>
+  if (toggleRubroBtn && rubroSelect && rubroInput) {
+    toggleRubroBtn.addEventListener('click', () => {
+      const isInputVisible = rubroInput.classList.toggle('hidden');
+      rubroSelect.classList.toggle('hidden', !isInputVisible);
+      rubroInput.focus();
+    });
+  }
 
-            <!-- Presentación -->
-            <div class="mb-4">
-                <label for="product-presentacion" class="block text-gray-700 font-semibold mb-2">Presentación</label>
-                <input type="text" id="product-presentacion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
-            </div>
-            
-            <!-- Precio -->
-            <div class="mb-4">
-                <label for="product-precio" class="block text-gray-700 font-semibold mb-2">Precio</label>
-                <input type="number" step="0.01" id="product-precio" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
-            </div>
-            
-            <!-- Cantidad -->
-            <div class="mb-4">
-                <label for="product-cantidad" class="block text-gray-700 font-semibold mb-2">Cantidad</label>
-                <input type="number" id="product-cantidad" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
-            </div>
-            
-            <div class="flex justify-end space-x-4">
-                <button type="button" id="back-button" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-md hover:bg-gray-400 transition duration-200">Cancelar</button>
-                <button type="submit" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">Agregar Producto</button>
-            </div>
-        </form>
-    `;
+  const toggleSegmentoBtn = document.getElementById('toggleSegmentoBtn');
+  const segmentoSelect = document.getElementById('segmentoSelect');
+  const segmentoInput = document.getElementById('segmentoInput');
+  if (toggleSegmentoBtn && segmentoSelect && segmentoInput) {
+    toggleSegmentoBtn.addEventListener('click', () => {
+      const isInputVisible = segmentoInput.classList.toggle('hidden');
+      segmentoSelect.classList.toggle('hidden', !isInputVisible);
+      segmentoInput.focus();
+    });
+  }
 
-    const addProductForm = document.getElementById('add-product-form');
-    const backButton = document.getElementById('back-button');
+  const toggleMarcaBtn = document.getElementById('toggleMarcaBtn');
+  const marcaSelect = document.getElementById('marcaSelect');
+  const marcaInput = document.getElementById('marcaInput');
+  if (toggleMarcaBtn && marcaSelect && marcaInput) {
+    toggleMarcaBtn.addEventListener('click', () => {
+      const isInputVisible = marcaInput.classList.toggle('hidden');
+      marcaSelect.classList.toggle('hidden', !isInputVisible);
+      marcaInput.focus();
+    });
+  }
+}
 
-    const rubroSelect = document.getElementById('product-rubro');
-    const newRubroInput = document.getElementById('new-rubro-input');
-    const addRubroBtn = document.getElementById('add-rubro-btn');
-    const addRubroText = document.getElementById('add-rubro-text');
+/**
+ * Agrega un nuevo producto a la base de datos de Firebase.
+ */
+async function addProducto() {
+  const rubro = document.getElementById('rubroSelect').value || document.getElementById('rubroInput').value;
+  const segmento = document.getElementById('segmentoSelect').value || document.getElementById('segmentoInput').value;
+  const marca = document.getElementById('marcaSelect').value || document.getElementById('marcaInput').value;
+  const presentacion = document.getElementById('presentacion').value;
+  const precio = parseFloat(document.getElementById('precio').value);
+  const cantidad = parseInt(document.getElementById('cantidad').value, 10);
 
-    const segmentoSelect = document.getElementById('product-segmento');
-    const newSegmentoInput = document.getElementById('new-segmento-input');
-    const addSegmentoBtn = document.getElementById('add-segmento-btn');
-    const addSegmentoText = document.getElementById('add-segmento-text');
+  // Validación básica
+  if (!rubro || !segmento || !marca || !presentacion || isNaN(precio) || isNaN(cantidad)) {
+    console.error("Todos los campos deben estar llenos y ser válidos.");
+    return;
+  }
 
-    const marcaSelect = document.getElementById('product-marca');
-    const newMarcaInput = document.getElementById('new-marca-input');
-    const addMarcaBtn = document.getElementById('add-marca-btn');
-    const addMarcaText = document.getElementById('add-marca-text');
+  try {
+    const inventarioRef = collection(db, `users/${userId}/inventario`);
+    await addDoc(inventarioRef, {
+      rubro,
+      segmento,
+      marca,
+      presentacion,
+      precio,
+      cantidad,
+    });
+    console.log("Producto agregado exitosamente.");
+  } catch (e) {
+    console.error("Error al agregar el producto: ", e);
+  }
+}
 
-    async function populateDropdowns() {
-        const rubros = await getPublicOptions(db, 'rubros');
-        const segmentos = await getPublicOptions(db, 'segmentos');
-        const marcas = await getPublicOptions(db, 'marcas');
-        
-        rubroSelect.innerHTML = rubros.map(r => `<option>${r}</option>`).join('');
-        segmentoSelect.innerHTML = segmentos.map(s => `<option>${s}</option>`).join('');
-        marcaSelect.innerHTML = marcas.map(m => `<option>${m}</option>`).join('');
-    }
+/**
+ * Llena los menús desplegables con datos de Firestore.
+ */
+async function populateSelects() {
+  const rubroSelect = document.getElementById('rubroSelect');
+  const segmentoSelect = document.getElementById('segmentoSelect');
+  const marcaSelect = document.getElementById('marcaSelect');
 
-    populateDropdowns();
-    
-    // Lógica para alternar entre select e input de texto
-    const setupToggleButton = (select, input, btn, textElement, collectionName) => {
-        btn.addEventListener('click', async () => {
-            if (input.classList.contains('hidden')) {
-                // Primer clic: Ocultar el select y mostrar el input
-                select.classList.add('hidden');
-                input.classList.remove('hidden');
-                input.focus();
-                textElement.textContent = 'Guardar';
-            } else {
-                // Segundo clic: Intentar guardar el nuevo valor
-                const newName = input.value.trim();
-                if (newName) {
-                    try {
-                        await addPublicOption(db, collectionName, newName);
-                        input.value = '';
-                        input.classList.add('hidden');
-                        select.classList.remove('hidden');
-                        textElement.textContent = 'Agregar';
-                        populateDropdowns();
-                        showModal('Éxito', `"${newName}" agregado correctamente.`);
-                    } catch (error) {
-                        console.error(`Error al guardar ${collectionName}:`, error);
-                        showModal('Error', `No se pudo guardar "${newName}". Verifique los permisos de Firestore.`);
-                    }
-                } else {
-                    showModal('Error', 'Por favor, ingrese un nombre.');
-                }
-            }
-        });
-    };
+  // Limpia las opciones existentes
+  rubroSelect.innerHTML = '';
+  segmentoSelect.innerHTML = '';
+  marcaSelect.innerHTML = '';
 
-    setupToggleButton(rubroSelect, newRubroInput, addRubroBtn, addRubroText, 'rubros');
-    setupToggleButton(segmentoSelect, newSegmentoInput, addSegmentoBtn, addSegmentoText, 'segmentos');
-    setupToggleButton(marcaSelect, newMarcaInput, addMarcaBtn, addMarcaText, 'marcas');
+  const addOption = (selectElement, value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    selectElement.appendChild(option);
+  };
 
-    addProductForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+  try {
+    // Escucha en tiempo real para la colección de Rubros
+    onSnapshot(collection(db, `artifacts/${firebaseAppId}/public/data/rubros`), (snapshot) => {
+      rubroSelect.innerHTML = '';
+      snapshot.forEach(doc => addOption(rubroSelect, doc.data().nombre));
+    });
 
-        const rubro = rubroSelect.value;
-        const segmento = segmentoSelect.value;
-        const marca = marcaSelect.value;
-        const presentacion = document.getElementById('product-presentacion').value;
-        const precio = parseFloat(document.getElementById('product-precio').value);
-        const cantidad = parseInt(document.getElementById('product-cantidad').value, 10);
+    // Escucha en tiempo real para la colección de Segmentos
+    onSnapshot(collection(db, `artifacts/${firebaseAppId}/public/data/segmentos`), (snapshot) => {
+      segmentoSelect.innerHTML = '';
+      snapshot.forEach(doc => addOption(segmentoSelect, doc.data().nombre));
+    });
 
-        if (!rubro || !segmento || !marca || !presentacion || isNaN(precio) || isNaN(cantidad)) {
-            showModal('Error', 'Por favor, complete todos los campos.');
-            return;
-        }
+    // Escucha en tiempo real para la colección de Marcas
+    onSnapshot(collection(db, `artifacts/${firebaseAppId}/public/data/marcas`), (snapshot) => {
+      marcaSelect.innerHTML = '';
+      snapshot.forEach(doc => addOption(marcaSelect, doc.data().nombre));
+    });
 
+  } catch (e) {
+    console.error("Error al poblar los selectores: ", e);
+  }
+
+  // Manejar el agregar nuevo elemento a la base de datos
+  const toggleRubroBtn = document.getElementById('toggleRubroBtn');
+  const rubroInput = document.getElementById('rubroInput');
+
+  if (toggleRubroBtn && rubroInput) {
+    toggleRubroBtn.onclick = async () => {
+      const isInputVisible = rubroInput.classList.contains('hidden');
+      if (!isInputVisible && rubroInput.value) {
         try {
-            const productsCollectionRef = collection(db, `users/${userId}/productos`);
-            await addDoc(productsCollectionRef, {
-                rubro,
-                segmento,
-                marca,
-                presentacion,
-                precio,
-                cantidad,
-            });
-            showModal('Éxito', 'Producto agregado correctamente.');
-            addProductForm.reset();
-        } catch (error) {
-            console.error("Error al agregar producto:", error);
-            showModal('Error', 'No se pudo agregar el producto.');
+          const nombre = rubroInput.value;
+          await addDoc(collection(db, `artifacts/${firebaseAppId}/public/data/rubros`), { nombre });
+          rubroInput.value = '';
+          rubroInput.classList.add('hidden');
+          rubroSelect.classList.remove('hidden');
+        } catch (e) {
+          console.error("Error al agregar nuevo rubro:", e);
         }
-    });
+      } else {
+        rubroSelect.classList.add('hidden');
+        rubroInput.classList.remove('hidden');
+        rubroInput.focus();
+      }
+    };
+  }
 
-    backButton.addEventListener('click', () => {
-        showInventarioSubMenu(mainContent, showModal, db, userId);
-    });
+  const toggleSegmentoBtn = document.getElementById('toggleSegmentoBtn');
+  const segmentoInput = document.getElementById('segmentoInput');
+  if (toggleSegmentoBtn && segmentoInput) {
+    toggleSegmentoBtn.onclick = async () => {
+      const isInputVisible = segmentoInput.classList.contains('hidden');
+      if (!isInputVisible && segmentoInput.value) {
+        try {
+          const nombre = segmentoInput.value;
+          await addDoc(collection(db, `artifacts/${firebaseAppId}/public/data/segmentos`), { nombre });
+          segmentoInput.value = '';
+          segmentoInput.classList.add('hidden');
+          segmentoSelect.classList.remove('hidden');
+        } catch (e) {
+          console.error("Error al agregar nuevo segmento:", e);
+        }
+      } else {
+        segmentoSelect.classList.add('hidden');
+        segmentoInput.classList.remove('hidden');
+        segmentoInput.focus();
+      }
+    };
+  }
+
+  const toggleMarcaBtn = document.getElementById('toggleMarcaBtn');
+  const marcaInput = document.getElementById('marcaInput');
+  if (toggleMarcaBtn && marcaInput) {
+    toggleMarcaBtn.onclick = async () => {
+      const isInputVisible = marcaInput.classList.contains('hidden');
+      if (!isInputVisible && marcaInput.value) {
+        try {
+          const nombre = marcaInput.value;
+          await addDoc(collection(db, `artifacts/${firebaseAppId}/public/data/marcas`), { nombre });
+          marcaInput.value = '';
+          marcaInput.classList.add('hidden');
+          marcaSelect.classList.remove('hidden');
+        } catch (e) {
+          console.error("Error al agregar nueva marca:", e);
+        }
+      } else {
+        marcaSelect.classList.add('hidden');
+        marcaInput.classList.remove('hidden');
+        marcaInput.focus();
+      }
+    };
+  }
 }
 
 /**
- * Muestra el sub-menú principal de inventario.
- * @param {object} mainContent El contenedor principal donde se mostrará el contenido.
- * @param {function} showModal Función para mostrar mensajes modales.
- * @param {object} db La instancia de Firestore.
- * @param {string} userId El ID del usuario actual.
+ * Muestra la vista de modificar o eliminar productos.
  */
-export function showInventarioSubMenu(mainContent, showModal, db, userId) {
-    mainContent.innerHTML = `
-        <div class="flex flex-col items-center gap-4">
-            <h2 class="text-2xl font-semibold text-gray-700 mb-2">Menú de Inventario</h2>
-            <button id="view-inventory-button" class="w-full py-3 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition duration-200">
-                Ver Inventario
-            </button>
-            <button id="add-product-button" class="w-full py-3 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition duration-200">
-                Agregar Nuevo Producto
-            </button>
-            <button id="modify-delete-button" class="w-full py-3 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-gray-300 transition duration-200">
-                Modificar o Eliminar Producto
-            </button>
+export function showModifyDeleteView() {
+  mainContent.innerHTML = `
+    <div class="p-6 bg-gray-100 min-h-screen">
+      <div class="container mx-auto">
+        <div class="bg-white p-8 rounded-lg shadow-xl">
+          <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar o Eliminar Producto</h2>
+          <div id="loadingIndicator" class="text-center text-gray-500">Cargando productos...</div>
+          <div id="productosModifyContainer" class="overflow-x-auto">
+            <table class="min-w-full bg-white rounded-lg shadow-md">
+              <thead class="bg-gray-200">
+                <tr>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Presentación</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Precio</th>
+                  <th class="py-2 px-4 text-left text-sm font-semibold text-gray-600">Cantidad</th>
+                  <th class="py-2 px-4 text-center text-sm font-semibold text-gray-600">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="productosModifyBody">
+                <!-- Data will be populated here -->
+              </tbody>
+            </table>
+          </div>
         </div>
-    `;
+      </div>
+    </div>
+  `;
 
-    document.getElementById('view-inventory-button').addEventListener('click', () => {
-        showVerInventario(mainContent, db, userId);
+  // Listener en tiempo real para la colección de productos
+  onSnapshot(collection(db, `users/${userId}/inventario`), (snapshot) => {
+    const productos = [];
+    snapshot.forEach((doc) => {
+      productos.push({ id: doc.id, ...doc.data() });
     });
-
-    document.getElementById('add-product-button').addEventListener('click', () => {
-        showAgregarProducto(mainContent, showModal, db, userId);
-    });
-
-    document.getElementById('modify-delete-button').addEventListener('click', () => {
-        showModal('Función en desarrollo', 'La lista para modificar y eliminar productos se mostrará aquí.');
-    });
+    renderModifyDeleteTable(productos);
+  });
 }
+
+/**
+ * Renderiza la tabla para modificar y eliminar productos.
+ * @param {Array<object>} productos
+ */
+function renderModifyDeleteTable(productos) {
+  const tableBody = document.getElementById('productosModifyBody');
+  if (!tableBody) return;
+
+  tableBody.innerHTML = '';
+  if (productos.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4 text-gray-500">No hay productos para modificar.</td></tr>`;
+  } else {
+    productos.forEach(producto => {
+      const row = document.createElement('tr');
+      row.className = 'border-b hover:bg-gray-50 transition duration-150';
+      row.innerHTML = `
+        <td class="py-3 px-4 text-gray-700">${producto.presentacion}</td>
+        <td class="py-3 px-4 text-gray-700">$${producto.precio.toFixed(2)}</td>
+        <td class="py-3 px-4 text-gray-700">${producto.cantidad}</td>
+        <td class="py-3 px-4 text-center space-x-2">
+          <button class="bg-yellow-500 text-white p-2 rounded-lg hover:bg-yellow-600 transition duration-300 transform hover:scale-105" data-id="${producto.id}" onclick="editProducto('${producto.id}', '${producto.presentacion}', ${producto.precio}, ${producto.cantidad})">Modificar</button>
+          <button class="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition duration-300 transform hover:scale-105" data-id="${producto.id}" onclick="deleteProducto('${producto.id}')">Eliminar</button>
+        </td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
+}
+
+/**
+ * Elimina un producto de la base de datos.
+ * @param {string} productId
+ */
+window.deleteProducto = async function(productId) {
+  try {
+    const confirmDelete = window.confirm("¿Estás seguro de que quieres eliminar este producto?");
+    if (confirmDelete) {
+      await deleteDoc(doc(db, `users/${userId}/inventario`, productId));
+      console.log("Producto eliminado exitosamente.");
+    }
+  } catch (e) {
+    console.error("Error al eliminar el producto: ", e);
+  }
+};
+
+/**
+ * Muestra el formulario para modificar un producto.
+ * @param {string} productId
+ * @param {string} presentacion
+ * @param {number} precio
+ * @param {number} cantidad
+ */
+window.editProducto = async function(productId, presentacion, precio, cantidad) {
+  // Aquí se podría mostrar un modal o un formulario en línea para editar
+  // Para simplificar, llenaremos el formulario de agregar producto
+  showAgregarProducto();
+  setTimeout(() => {
+    document.getElementById('presentacion').value = presentacion;
+    document.getElementById('precio').value = precio;
+    document.getElementById('cantidad').value = cantidad;
+    const form = document.getElementById('productoForm');
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await setDoc(doc(db, `users/${userId}/inventario`, productId), {
+          presentacion: document.getElementById('presentacion').value,
+          precio: parseFloat(document.getElementById('precio').value),
+          cantidad: parseInt(document.getElementById('cantidad').value, 10)
+        }, { merge: true });
+        console.log("Producto modificado exitosamente.");
+        showModifyDeleteView();
+      } catch (e) {
+        console.error("Error al modificar el producto: ", e);
+      }
+    };
+  }, 100);
+};
