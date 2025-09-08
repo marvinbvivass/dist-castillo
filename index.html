@@ -806,7 +806,8 @@
             setTimeout(() => { 
                 printWindow.focus();
                 printWindow.print();
-                // No cerramos la ventana automáticamente para evitar errores en Android
+                // No cerramos la ventana automáticamente para evitar errores ("crashes") en Android.
+                // El usuario o el sistema operativo se encargarán de cerrarla.
             }, 250);
         }
 
