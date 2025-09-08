@@ -193,69 +193,40 @@ function showAgregarProducto(mainContent, showModal, db, userId) {
     populateDropdowns();
     
     // Lógica para alternar entre select e input de texto
-    function toggleInputAndButton(select, input, textElement) {
-        if (input.classList.contains('hidden')) {
-            select.classList.add('hidden');
-            input.classList.remove('hidden');
-            input.focus();
-            textElement.textContent = 'Guardar';
-        } else {
-            input.classList.add('hidden');
-            select.classList.remove('hidden');
-            textElement.textContent = 'Agregar';
-        }
-    }
-
-    addRubroBtn.addEventListener('click', async () => {
-        console.log("Click en el botón de Rubro");
-        if (addRubroText.textContent === 'Guardar') {
-            const newRubroName = newRubroInput.value.trim();
-            if (newRubroName) {
-                await addPublicOption(db, 'rubros', newRubroName);
-                newRubroInput.value = '';
-                toggleInputAndButton(rubroSelect, newRubroInput, addRubroText);
-                populateDropdowns();
+    const setupToggleButton = (select, input, btn, textElement, collectionName) => {
+        btn.addEventListener('click', async () => {
+            if (input.classList.contains('hidden')) {
+                // Primer clic: Ocultar el select y mostrar el input
+                select.classList.add('hidden');
+                input.classList.remove('hidden');
+                input.focus();
+                textElement.textContent = 'Guardar';
             } else {
-                showModal('Error', 'Por favor, ingrese un nombre para el nuevo Rubro.');
+                // Segundo clic: Intentar guardar el nuevo valor
+                const newName = input.value.trim();
+                if (newName) {
+                    try {
+                        await addPublicOption(db, collectionName, newName);
+                        input.value = '';
+                        input.classList.add('hidden');
+                        select.classList.remove('hidden');
+                        textElement.textContent = 'Agregar';
+                        populateDropdowns();
+                        showModal('Éxito', `"${newName}" agregado correctamente.`);
+                    } catch (error) {
+                        console.error(`Error al guardar ${collectionName}:`, error);
+                        showModal('Error', `No se pudo guardar "${newName}". Verifique los permisos de Firestore.`);
+                    }
+                } else {
+                    showModal('Error', 'Por favor, ingrese un nombre.');
+                }
             }
-        } else {
-            toggleInputAndButton(rubroSelect, newRubroInput, addRubroText);
-        }
-    });
+        });
+    };
 
-    addSegmentoBtn.addEventListener('click', async () => {
-        console.log("Click en el botón de Segmento");
-        if (addSegmentoText.textContent === 'Guardar') {
-            const newSegmentoName = newSegmentoInput.value.trim();
-            if (newSegmentoName) {
-                await addPublicOption(db, 'segmentos', newSegmentoName);
-                newSegmentoInput.value = '';
-                toggleInputAndButton(segmentoSelect, newSegmentoInput, addSegmentoText);
-                populateDropdowns();
-            } else {
-                showModal('Error', 'Por favor, ingrese un nombre para el nuevo Segmento.');
-            }
-        } else {
-            toggleInputAndButton(segmentoSelect, newSegmentoInput, addSegmentoText);
-        }
-    });
-
-    addMarcaBtn.addEventListener('click', async () => {
-        console.log("Click en el botón de Marca");
-        if (addMarcaText.textContent === 'Guardar') {
-            const newMarcaName = newMarcaInput.value.trim();
-            if (newMarcaName) {
-                await addPublicOption(db, 'marcas', newMarcaName);
-                newMarcaInput.value = '';
-                toggleInputAndButton(marcaSelect, newMarcaInput, addMarcaText);
-                populateDropdowns();
-            } else {
-                showModal('Error', 'Por favor, ingrese un nombre para la nueva Marca.');
-            }
-        } else {
-            toggleInputAndButton(marcaSelect, newMarcaInput, addMarcaText);
-        }
-    });
+    setupToggleButton(rubroSelect, newRubroInput, addRubroBtn, addRubroText, 'rubros');
+    setupToggleButton(segmentoSelect, newSegmentoInput, addSegmentoBtn, addSegmentoText, 'segmentos');
+    setupToggleButton(marcaSelect, newMarcaInput, addMarcaBtn, addMarcaText, 'marcas');
 
     addProductForm.addEventListener('submit', async (e) => {
         e.preventDefault();
