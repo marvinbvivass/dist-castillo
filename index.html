@@ -12,11 +12,14 @@
         body {
             font-family: 'Inter', sans-serif;
         }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <div id="app" class="flex flex-col min-h-screen">
-        <header class="bg-white shadow-md p-4 flex justify-between items-center">
+        <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
             <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
             <div id="authStatus" class="flex items-center space-x-4">
                 <span id="userIdDisplay" class="text-sm font-medium text-gray-600"></span>
@@ -75,6 +78,7 @@
         }
 
         onAuthStateChanged(auth, (user) => {
+            const appHeader = document.getElementById('appHeader');
             const authBtn = document.getElementById('authBtn');
             const userIdDisplay = document.getElementById('userIdDisplay');
 
@@ -86,12 +90,14 @@
                 authBtn.textContent = 'Salir';
                 authBtn.onclick = () => signOut(auth);
                 showMainMenuView();
+                appHeader.classList.remove('hidden');
             } else {
                 userId = null;
                 userIdDisplay.textContent = 'No autenticado';
                 authBtn.textContent = 'Iniciar Sesión';
                 authBtn.onclick = () => showAuthView();
                 showAuthView();
+                appHeader.classList.add('hidden');
             }
         });
 
