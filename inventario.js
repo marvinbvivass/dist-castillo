@@ -1,4 +1,7 @@
-import { collection, onSnapshot, query, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, onSnapshot, query, addDoc, getDocs, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// Variable global para el ID de la aplicación, esencial para los datos públicos
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 /**
  * Muestra la tabla del inventario de productos.
@@ -29,9 +32,12 @@ function showVerInventario(mainContent, db, userId) {
                     <table class="min-w-full bg-white rounded-lg">
                         <thead>
                             <tr class="w-full bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                <th class="py-3 px-6 text-left">Nombre</th>
+                                <th class="py-3 px-6 text-left">Rubro</th>
+                                <th class="py-3 px-6 text-left">Segmento</th>
+                                <th class="py-3 px-6 text-left">Marca</th>
+                                <th class="py-3 px-6 text-left">Presentación</th>
                                 <th class="py-3 px-6 text-left">Precio</th>
-                                <th class="py-3 px-6 text-left">Stock</th>
+                                <th class="py-3 px-6 text-left">Cantidad</th>
                             </tr>
                         </thead>
                         <tbody class="text-gray-600 text-sm font-light">
@@ -40,9 +46,12 @@ function showVerInventario(mainContent, db, userId) {
                 const product = doc.data();
                 productListHtml += `
                     <tr class="border-b border-gray-200 hover:bg-gray-100">
-                        <td class="py-3 px-6 text-left whitespace-nowrap">${product.nombre}</td>
-                        <td class="py-3 px-6 text-left">${product.precio.toFixed(2)}</td>
-                        <td class="py-3 px-6 text-left">${product.stock}</td>
+                        <td class="py-3 px-6 text-left whitespace-nowrap">${product.rubro}</td>
+                        <td class="py-3 px-6 text-left">${product.segmento}</td>
+                        <td class="py-3 px-6 text-left">${product.marca}</td>
+                        <td class="py-3 px-6 text-left">${product.presentacion}</td>
+                        <td class="py-3 px-6 text-left">$${product.precio.toFixed(2)}</td>
+                        <td class="py-3 px-6 text-left">${product.cantidad}</td>
                     </tr>
                 `;
             });
@@ -57,6 +66,30 @@ function showVerInventario(mainContent, db, userId) {
 }
 
 /**
+ * Obtiene los datos de una colección pública de Firestore.
+ * @param {object} db La instancia de Firestore.
+ * @param {string} collectionName El nombre de la colección a buscar.
+ * @returns {Promise<Array<string>>} Una promesa que se resuelve con un array de nombres.
+ */
+async function getPublicOptions(db, collectionName) {
+    const publicDataRef = collection(db, `artifacts/${appId}/public/data/${collectionName}`);
+    const querySnapshot = await getDocs(publicDataRef);
+    return querySnapshot.docs.map(doc => doc.data().nombre);
+}
+
+/**
+ * Agrega un nuevo elemento a una colección pública de Firestore.
+ * @param {object} db La instancia de Firestore.
+ * @param {string} collectionName El nombre de la colección.
+ * @param {string} newName El nombre del nuevo elemento a agregar.
+ * @returns {Promise<void>}
+ */
+async function addPublicOption(db, collectionName, newName) {
+    const publicDataRef = collection(db, `artifacts/${appId}/public/data/${collectionName}`);
+    await addDoc(publicDataRef, { nombre: newName });
+}
+
+/**
  * Muestra el formulario para agregar un nuevo producto.
  * @param {object} mainContent El contenedor principal donde se mostrará el contenido.
  * @param {function} showModal Función para mostrar mensajes modales.
@@ -66,19 +99,62 @@ function showVerInventario(mainContent, db, userId) {
 function showAgregarProducto(mainContent, showModal, db, userId) {
     mainContent.innerHTML = `
         <h2 class="text-2xl font-semibold text-gray-700 mb-4">Agregar Nuevo Producto</h2>
-        <form id="add-product-form" class="bg-gray-50 p-6 rounded-lg shadow-inner w-full max-w-md mx-auto">
+        <form id="add-product-form" class="bg-gray-50 p-6 rounded-lg shadow-inner w-full max-w-lg mx-auto">
+            
+            <!-- Rubro -->
             <div class="mb-4">
-                <label for="product-name" class="block text-gray-700 font-semibold mb-2">Nombre del Producto</label>
-                <input type="text" id="product-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+                <label for="product-rubro" class="block text-gray-700 font-semibold mb-2">Rubro</label>
+                <div class="flex items-center space-x-2">
+                    <select id="product-rubro" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
+                    <input type="text" id="new-rubro-input" placeholder="Nuevo Rubro" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
+                    <button type="button" id="add-rubro-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
+                        <span id="add-rubro-text">Agregar</span>
+                    </button>
+                </div>
             </div>
+
+            <!-- Segmento -->
             <div class="mb-4">
-                <label for="product-price" class="block text-gray-700 font-semibold mb-2">Precio</label>
-                <input type="number" step="0.01" id="product-price" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+                <label for="product-segmento" class="block text-gray-700 font-semibold mb-2">Segmento</label>
+                <div class="flex items-center space-x-2">
+                    <select id="product-segmento" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
+                    <input type="text" id="new-segmento-input" placeholder="Nuevo Segmento" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
+                    <button type="button" id="add-segmento-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
+                        <span id="add-segmento-text">Agregar</span>
+                    </button>
+                </div>
             </div>
+
+            <!-- Marca -->
             <div class="mb-4">
-                <label for="product-stock" class="block text-gray-700 font-semibold mb-2">Stock</label>
-                <input type="number" id="product-stock" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+                <label for="product-marca" class="block text-gray-700 font-semibold mb-2">Marca</label>
+                <div class="flex items-center space-x-2">
+                    <select id="product-marca" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required></select>
+                    <input type="text" id="new-marca-input" placeholder="Nueva Marca" class="hidden flex-1 px-3 py-2 border border-gray-300 rounded-md">
+                    <button type="button" id="add-marca-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">
+                        <span id="add-marca-text">Agregar</span>
+                    </button>
+                </div>
             </div>
+
+            <!-- Presentación -->
+            <div class="mb-4">
+                <label for="product-presentacion" class="block text-gray-700 font-semibold mb-2">Presentación</label>
+                <input type="text" id="product-presentacion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+            </div>
+            
+            <!-- Precio -->
+            <div class="mb-4">
+                <label for="product-precio" class="block text-gray-700 font-semibold mb-2">Precio</label>
+                <input type="number" step="0.01" id="product-precio" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+            </div>
+            
+            <!-- Cantidad -->
+            <div class="mb-4">
+                <label for="product-cantidad" class="block text-gray-700 font-semibold mb-2">Cantidad</label>
+                <input type="number" id="product-cantidad" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-blue-500" required>
+            </div>
+            
             <div class="flex justify-end space-x-4">
                 <button type="button" id="back-button" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-md hover:bg-gray-400 transition duration-200">Cancelar</button>
                 <button type="submit" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition duration-200">Agregar Producto</button>
@@ -86,29 +162,127 @@ function showAgregarProducto(mainContent, showModal, db, userId) {
         </form>
     `;
 
-    document.getElementById('add-product-form').addEventListener('submit', async (e) => {
+    const addProductForm = document.getElementById('add-product-form');
+    const backButton = document.getElementById('back-button');
+
+    const rubroSelect = document.getElementById('product-rubro');
+    const newRubroInput = document.getElementById('new-rubro-input');
+    const addRubroBtn = document.getElementById('add-rubro-btn');
+    const addRubroText = document.getElementById('add-rubro-text');
+
+    const segmentoSelect = document.getElementById('product-segmento');
+    const newSegmentoInput = document.getElementById('new-segmento-input');
+    const addSegmentoBtn = document.getElementById('add-segmento-btn');
+    const addSegmentoText = document.getElementById('add-segmento-text');
+
+    const marcaSelect = document.getElementById('product-marca');
+    const newMarcaInput = document.getElementById('new-marca-input');
+    const addMarcaBtn = document.getElementById('add-marca-btn');
+    const addMarcaText = document.getElementById('add-marca-text');
+
+    async function populateDropdowns() {
+        const rubros = await getPublicOptions(db, 'rubros');
+        const segmentos = await getPublicOptions(db, 'segmentos');
+        const marcas = await getPublicOptions(db, 'marcas');
+        
+        rubroSelect.innerHTML = rubros.map(r => `<option>${r}</option>`).join('');
+        segmentoSelect.innerHTML = segmentos.map(s => `<option>${s}</option>`).join('');
+        marcaSelect.innerHTML = marcas.map(m => `<option>${m}</option>`).join('');
+    }
+
+    populateDropdowns();
+    
+    // Toggle para mostrar/ocultar el input y el botón de agregar
+    function toggleAddInput(select, input, btn, text) {
+        if (select.value === 'addNew') {
+            select.classList.add('hidden');
+            input.classList.remove('hidden');
+            input.focus();
+            text.textContent = 'Guardar';
+        } else {
+            input.classList.add('hidden');
+            select.classList.remove('hidden');
+            text.textContent = 'Agregar';
+        }
+    }
+    
+    // Event Listeners para agregar nuevos elementos
+    addRubroBtn.addEventListener('click', async () => {
+        const newRubroName = newRubroInput.value.trim();
+        if (newRubroName) {
+            await addPublicOption(db, 'rubros', newRubroName);
+            newRubroInput.value = '';
+            newRubroInput.classList.add('hidden');
+            rubroSelect.classList.remove('hidden');
+            addRubroText.textContent = 'Agregar';
+            populateDropdowns();
+        } else {
+            toggleAddInput(rubroSelect, newRubroInput, addRubroBtn, addRubroText);
+        }
+    });
+
+    addSegmentoBtn.addEventListener('click', async () => {
+        const newSegmentoName = newSegmentoInput.value.trim();
+        if (newSegmentoName) {
+            await addPublicOption(db, 'segmentos', newSegmentoName);
+            newSegmentoInput.value = '';
+            newSegmentoInput.classList.add('hidden');
+            segmentoSelect.classList.remove('hidden');
+            addSegmentoText.textContent = 'Agregar';
+            populateDropdowns();
+        } else {
+            toggleAddInput(segmentoSelect, newSegmentoInput, addSegmentoBtn, addSegmentoText);
+        }
+    });
+
+    addMarcaBtn.addEventListener('click', async () => {
+        const newMarcaName = newMarcaInput.value.trim();
+        if (newMarcaName) {
+            await addPublicOption(db, 'marcas', newMarcaName);
+            newMarcaInput.value = '';
+            newMarcaInput.classList.add('hidden');
+            marcaSelect.classList.remove('hidden');
+            addMarcaText.textContent = 'Agregar';
+            populateDropdowns();
+        } else {
+            toggleAddInput(marcaSelect, newMarcaInput, addMarcaBtn, addMarcaText);
+        }
+    });
+
+    addProductForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const productName = document.getElementById('product-name').value;
-        const productPrice = parseFloat(document.getElementById('product-price').value);
-        const productStock = parseInt(document.getElementById('product-stock').value, 10);
+
+        const rubro = rubroSelect.value;
+        const segmento = segmentoSelect.value;
+        const marca = marcaSelect.value;
+        const presentacion = document.getElementById('product-presentacion').value;
+        const precio = parseFloat(document.getElementById('product-precio').value);
+        const cantidad = parseInt(document.getElementById('product-cantidad').value, 10);
+
+        if (!rubro || !segmento || !marca || !presentacion || isNaN(precio) || isNaN(cantidad)) {
+            showModal('Error', 'Por favor, complete todos los campos.');
+            return;
+        }
 
         try {
             const productsCollectionRef = collection(db, `users/${userId}/productos`);
             await addDoc(productsCollectionRef, {
-                nombre: productName,
-                precio: productPrice,
-                stock: productStock
+                rubro,
+                segmento,
+                marca,
+                presentacion,
+                precio,
+                cantidad,
             });
             showModal('Éxito', 'Producto agregado correctamente.');
-            // Volver al menú de inventario
-            showInventarioSubMenu(mainContent, showModal, db, userId);
+            addProductForm.reset();
         } catch (error) {
             console.error("Error al agregar producto:", error);
             showModal('Error', 'No se pudo agregar el producto.');
         }
     });
 
-    document.getElementById('back-button').addEventListener('click', () => {
+    backButton.addEventListener('click', () => {
         showInventarioSubMenu(mainContent, showModal, db, userId);
     });
 }
@@ -148,3 +322,4 @@ export function showInventarioSubMenu(mainContent, showModal, db, userId) {
         showModal('Función en desarrollo', 'La lista para modificar y eliminar productos se mostrará aquí.');
     });
 }
+
