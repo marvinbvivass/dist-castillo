@@ -9,7 +9,7 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
@@ -45,6 +45,7 @@
         const salesButton = document.getElementById('sales-button');
         const inventoryButton = document.getElementById('inventory-button');
         const mainContent = document.getElementById('main-content');
+        const logoutButton = document.getElementById('logout-button');
         
         // Funciones para la UI
         function showModal(title, content) {
@@ -77,16 +78,20 @@
                 // El usuario ha iniciado sesión
                 authView.classList.add('hidden');
                 appView.classList.remove('hidden');
-                document.getElementById('user-id').textContent = `ID de Usuario: ${user.uid}`;
+                const userId = user.uid;
+                document.getElementById('user-id').textContent = `ID de Usuario: ${userId}`;
                 
                 // Configurar los botones principales de navegación
                 inventoryButton.addEventListener('click', () => {
                     toggleButtonStyles('inventory');
-                    showInventarioSubMenu(mainContent, showModal);
+                    showInventarioSubMenu(mainContent, showModal, db, userId);
                 });
                 salesButton.addEventListener('click', () => {
                     toggleButtonStyles('sales');
                     showVentasView(mainContent);
+                });
+                logoutButton.addEventListener('click', async () => {
+                    await signOut(auth);
                 });
             } else {
                 // No hay usuario logeado
@@ -155,6 +160,7 @@
         <header class="w-full text-center mb-6">
             <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Gestión de Ventas</h1>
             <p id="user-id" class="text-sm text-gray-500"></p>
+            <button id="logout-button" class="mt-2 py-1 px-3 bg-red-500 text-white text-xs font-semibold rounded-md shadow-sm hover:bg-red-600 transition duration-200">Cerrar Sesión</button>
         </header>
         
         <!-- Main Navigation Menu -->
