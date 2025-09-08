@@ -609,13 +609,14 @@
         /**
          * Maneja la impresión del ticket, intentando usar Web Bluetooth y
          * recurriendo a la impresión estándar si no está disponible.
+         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
+         * @param {Array} productosVendidos - La lista de productos de esa venta.
          */
-        async function handlePrintTicket() {
+        async function handlePrintTicket(currentVenta, productosVendidos) {
             if ('bluetooth' in navigator) {
                 try {
-                    const productosVendidos = Object.values(ventaActual.productos);
                     const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
-                    const escPosData = generateEscPosData(ventaActual, productosVendidos, totalVentaFinal);
+                    const escPosData = generateEscPosData(currentVenta, productosVendidos, totalVentaFinal);
 
                     showModal('Impresión Bluetooth', 'Buscando impresora... Por favor, selecciona tu impresora térmica (ej. MP-58) en la ventana emergente.');
 
@@ -672,6 +673,8 @@
                     let errorMessage = 'No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida y vinculada.';
                     if (error.name === 'NotFoundError') {
                         errorMessage = 'No se seleccionó ninguna impresora. Proceso de impresión cancelado.';
+                    } else if (error.name === 'SecurityError') {
+                        errorMessage = 'El acceso a Bluetooth está bloqueado en este entorno de previsualización por seguridad. Esta función se activará al usar la aplicación en un navegador móvil estándar (como Chrome en Android).';
                     } else if (error.message.includes("GATT operation failed")) {
                          errorMessage = 'Fallo en la conexión. Esta impresora puede no ser compatible o estar fuera de alcance.'
                     }
@@ -1429,14 +1432,18 @@
                     });
 
                     // Si la transacción fue exitosa, genera y muestra el ticket
+                    // Captura los datos de la venta ANTES de limpiar el estado global
+                    const ventaParaTicket = { ...ventaActual };
+                    const productosParaTicket = [...productosVendidos];
+
                     const fecha = new Date().toLocaleDateString('es-ES');
-                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
+                    const totalVentaFinal = productosParaTicket.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
                     const ticketHTML = `
                         <div id="ticket-content">
                             <div class="text-left p-4">
                                 <h3 class="text-xl font-bold text-gray-800 text-center mb-4">Distribuidora Castillo Yañez</h3>
                                 <p class="text-sm">Fecha: ${fecha}</p>
-                                <p class="text-sm mb-4">Cliente: ${ventaActual.cliente.nombreComercial}</p>
+                                <p class="text-sm mb-4">Cliente: ${ventaParaTicket.cliente.nombreComercial}</p>
                                 <table class="min-w-full text-sm mt-4">
                                     <thead>
                                         <tr>
@@ -1447,7 +1454,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${productosVendidos.map(p => `
+                                        ${productosParaTicket.map(p => `
                                             <tr>
                                                 <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
                                                 <td class="py-1 text-center">${p.cantidadVendida}</td>
@@ -1462,7 +1469,7 @@
                                 </div>
                                 <div class="mt-12 text-center text-sm signature">
                                     <p class="py-4">_________________________</p>
-                                    <p>${ventaActual.cliente.nombrePersonal}</p>
+                                    <p>${ventaParaTicket.cliente.nombrePersonal}</p>
                                 </div>
                             </div>
                         </div>
@@ -1481,11 +1488,12 @@
                         </div>`;
                     
                     document.getElementById('closeTicketBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
-                    document.getElementById('printTicketBtn').addEventListener('click', handlePrintTicket);
-                    document.getElementById('shareTicketBtn').addEventListener('click', handleShareTicket);
+                    // Pasamos los datos de la venta directamente a las funciones de los botones
+                    document.getElementById('printTicketBtn').addEventListener('click', () => handlePrintTicket(ventaParaTicket, productosParaTicket));
+                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket()); // Compartir lee del HTML, no necesita los datos
                     modalContainer.classList.remove('hidden');
 
-                    // Limpiar el estado de la venta
+                    // AHORA es seguro limpiar el estado para la próxima venta
                     ventaActual.cliente = null;
                     ventaActual.productos = {};
                     showNuevaVentaView();
@@ -1882,5 +1890,3 @@
     </script>
 </body>
 </html>
-
-
