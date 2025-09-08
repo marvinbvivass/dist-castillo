@@ -14,8 +14,9 @@
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Importar las funciones de las otras vistas
-        import { setupInventario, showInventarioSubMenu } from './inventario.js';
-        import { setupVentas, showVentasView } from './ventas.js';
+        // Se ha corregido la importación para solo incluir las funciones que se exportan en cada archivo
+        import { showInventarioSubMenu } from './inventario.js';
+        import { showVentasView } from './ventas.js';
 
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
@@ -84,6 +85,7 @@
                 // Configurar los botones principales de navegación
                 inventoryButton.addEventListener('click', () => {
                     toggleButtonStyles('inventory');
+                    // Ahora se llama directamente a la función exportada desde el módulo
                     showInventarioSubMenu(mainContent, showModal, db, userId);
                 });
                 salesButton.addEventListener('click', () => {
