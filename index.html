@@ -37,89 +37,102 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Importa las funciones desde los archivos de lógica
         import { showInventarioSubMenu, setupInventario } from "./inventario.js";
         import { showVentasView, setupVentas } from "./ventas.js";
 
-        // Global variables for Firestore connection.
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // Configuración de Firebase incrustada para uso universal
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
+            authDomain: "ventas-9a210.firebaseapp.com",
+            projectId: "ventas-9a210",
+            storageBucket: "ventas-9a210.firebasestorage.app",
+            messagingSenderId: "815890981146",
+            appId: "1:815890981146:web:938fe5e09babe511e98ca3",
+            measurementId: "G-N0QXG70WM1"
+        };
+        const appId = "ventas-9a210";
 
         let db;
         let auth;
         let userId;
-
-        // Logging: Set to debug to see firestore logs
         setLogLevel('Debug');
 
-        // Check if firebase config is provided
-        if (Object.keys(firebaseConfig).length > 0) {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
 
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('/service-worker.js').then(registration => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    }).catch(err => {
-                        console.log('ServiceWorker registration failed: ', err);
-                    });
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js').then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
                 });
-            }
-
-            onAuthStateChanged(auth, async (user) => {
-                const authBtn = document.getElementById('authBtn');
-                const userIdDisplay = document.getElementById('userIdDisplay');
-
-                if (user) {
-                    userId = user.uid;
-                    setupInventario(db, userId, appId);
-                    setupVentas(db, userId);
-                    userIdDisplay.textContent = `ID de usuario: ${userId}`;
-                    authBtn.textContent = 'Salir';
-                    authBtn.onclick = () => auth.signOut();
-                    showMainMenuView();
-                } else {
-                    userId = null;
-                    userIdDisplay.textContent = 'No autenticado';
-                    authBtn.textContent = 'Iniciar Sesión';
-                    authBtn.onclick = () => signInAnonymously(auth);
-                    showLoginView();
-                }
             });
-
-            // If an auth token is provided, sign in with it. Otherwise, sign in anonymously.
-            if (initialAuthToken) {
-                signInWithCustomToken(auth, initialAuthToken).catch((error) => {
-                    console.error('Error signing in with custom token:', error);
-                    signInAnonymously(auth);
-                });
-            } else {
-                signInAnonymously(auth);
-            }
-
-        } else {
-            console.error("Firebase config is missing.");
         }
+
+        onAuthStateChanged(auth, (user) => {
+            const authBtn = document.getElementById('authBtn');
+            const userIdDisplay = document.getElementById('userIdDisplay');
+
+            if (user) {
+                userId = user.uid;
+                setupInventario(db, userId, appId);
+                setupVentas(db, userId);
+                userIdDisplay.textContent = `ID de usuario: ${userId}`;
+                authBtn.textContent = 'Salir';
+                authBtn.onclick = () => signOut(auth);
+                showMainMenuView();
+            } else {
+                userId = null;
+                userIdDisplay.textContent = 'No autenticado';
+                authBtn.textContent = 'Iniciar Sesión';
+                authBtn.onclick = () => showAuthView();
+                showAuthView();
+            }
+        });
 
         const mainContent = document.getElementById('mainContent');
 
-        function showLoginView() {
+        function showAuthView() {
             mainContent.innerHTML = `
                 <div class="p-6 bg-gray-100 min-h-screen flex items-center justify-center">
-                    <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Iniciar Sesión</h2>
-                        <p class="text-gray-600 mb-6">Inicia sesión anónimamente para usar la aplicación.</p>
-                        <button id="anonLoginBtn" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">Iniciar Sesión</button>
+                    <div class="bg-white p-8 rounded-lg shadow-xl text-center w-full max-w-md">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Iniciar Sesión / Registrarse</h2>
+                        <form id="authForm" class="space-y-4">
+                            <input type="email" id="email" placeholder="Correo electrónico" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="password" id="password" placeholder="Contraseña" required class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button type="submit" id="loginBtn" class="w-full py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">Iniciar Sesión</button>
+                            <button type="button" id="registerBtn" class="w-full py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">Registrarse</button>
+                        </form>
                     </div>
                 </div>
             `;
-            document.getElementById('anonLoginBtn').addEventListener('click', () => signInAnonymously(auth));
+
+            document.getElementById('authForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                try {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } catch (error) {
+                    console.error("Error al iniciar sesión:", error);
+                    // Ocultar la pantalla de inicio de sesión o mostrar un mensaje de error
+                }
+            });
+
+            document.getElementById('registerBtn').addEventListener('click', async () => {
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                try {
+                    await createUserWithEmailAndPassword(auth, email, password);
+                } catch (error) {
+                    console.error("Error al registrarse:", error);
+                }
+            });
         }
 
         function showMainMenuView() {
