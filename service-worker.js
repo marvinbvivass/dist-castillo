@@ -1,51 +1,56 @@
-// Nombre del caché. Incrementa este número para forzar la actualización de todos los archivos en los navegadores.
-const CACHE_NAME = 'gestion-ventas-v1';
+const CACHE_NAME = 'ventas-cache-v1';
 
-// Archivos que se almacenarán en caché
+// Lista de archivos que queremos cachear
 const urlsToCache = [
     '/',
-    '/index.html',
-    '/ventas.js',
+    'index.html',
+    'inventario.js',
+    'ventas.js',
     'https://cdn.tailwindcss.com',
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
 ];
 
-// Evento de instalación: Almacena en caché los archivos estáticos
+// Instalar el service worker y cachear los archivos
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                console.log('Caché abierto, precargando archivos.');
+                console.log('Opened cache');
                 return cache.addAll(urlsToCache);
             })
     );
 });
 
-// Evento de activación: Elimina cachés antiguos
+// Servir los archivos desde el caché cuando sea posible
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request)
+            .then((response) => {
+                // Si el recurso está en el caché, lo devuelve
+                if (response) {
+                    return response;
+                }
+                // Si no, lo busca en la red
+                return fetch(event.request);
+            })
+    );
+});
+
+// Limpiar cachés antiguos
 self.addEventListener('activate', (event) => {
+    const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
-                cacheNames.filter((cacheName) => cacheName !== CACHE_NAME)
-                    .map((cacheName) => caches.delete(cacheName))
+                cacheNames.map((cacheName) => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                        return caches.delete(cacheName);
+                    }
+                })
             );
         })
     );
 });
 
-// Evento de obtención (fetch): Sirve archivos desde el caché si están disponibles
-self.addEventListener('fetch', (event) => {
-    event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                // Si la solicitud está en caché, la devuelve
-                if (response) {
-                    return response;
-                }
-                // Si no, la busca en la red
-                return fetch(event.request);
-            })
-    );
-});
