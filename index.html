@@ -9,79 +9,134 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Importar las funciones de las otras vistas
-        import { setupInventario, showInventarioSubMenu } from './inventario.js';
-        import { setupVentas, showVentasView } from './ventas.js';
+        // Configuración de Firebase proporcionada por el usuario
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
+            authDomain: "ventas-9a210.firebaseapp.com",
+            projectId: "ventas-9a210",
+            storageBucket: "ventas-9a210.firebasestorage.app",
+            messagingSenderId: "815890981146",
+            appId: "1:815890981146:web:938fe5e09babe511e98ca3",
+            measurementId: "G-N0QXG70WM1"
+        };
 
-        // Global variables for Firebase
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        let db, auth, userId;
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        setLogLevel('debug');
 
-        async function initFirebase() {
-            try {
-                setLogLevel('debug');
-                auth = getAuth(app);
-                db = getFirestore(app);
-
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                auth.onAuthStateChanged(user => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('user-id').textContent = `ID de Usuario: ${userId}`;
-                        console.log("Firebase y autenticación inicializada. ID de usuario:", userId);
-                        setupInventario(db, auth, userId, appId);
-                        setupVentas(db, auth, userId, appId);
-                    } else {
-                        console.log("No user signed in.");
-                    }
-                });
-
-            } catch (e) {
-                console.error("Error al inicializar Firebase o al autenticar: ", e);
-            }
+        // Referencias a elementos de la UI
+        const authView = document.getElementById('auth-view');
+        const appView = document.getElementById('app-view');
+        const emailInput = document.getElementById('email-input');
+        const passwordInput = document.getElementById('password-input');
+        const loginButton = document.getElementById('login-button');
+        const registerButton = document.getElementById('register-button');
+        const messageModal = document.getElementById('message-modal');
+        const modalOkButton = document.getElementById('modal-ok-button');
+        
+        // Funciones para la UI
+        function showModal(title, content) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-content').textContent = content;
+            messageModal.classList.remove('hidden');
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const inventoryButton = document.getElementById('inventory-button');
-            const salesButton = document.getElementById('sales-button');
-
-            inventoryButton.addEventListener('click', showInventarioSubMenu);
-            salesButton.addEventListener('click', showVentasView);
+        modalOkButton.addEventListener('click', () => {
+            messageModal.classList.add('hidden');
         });
 
-        window.onload = initFirebase;
+        // Manejar el estado de autenticación
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // El usuario ha iniciado sesión
+                authView.classList.add('hidden');
+                appView.classList.remove('hidden');
+                document.getElementById('user-id').textContent = `ID de Usuario: ${user.uid}`;
+            } else {
+                // No hay usuario logeado
+                appView.classList.add('hidden');
+                authView.classList.remove('hidden');
+            }
+        });
+
+        // Manejar el inicio de sesión
+        loginButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showModal('Éxito', 'Inicio de sesión exitoso.');
+            } catch (error) {
+                console.error("Error al iniciar sesión:", error);
+                showModal('Error', 'No se pudo iniciar sesión. Verifique sus credenciales.');
+            }
+        });
+
+        // Manejar el registro
+        registerButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showModal('Éxito', 'Registro exitoso.');
+            } catch (error) {
+                console.error("Error al registrarse:", error);
+                showModal('Error', 'No se pudo registrar. Intente de nuevo o verifique el formato del email y la contraseña.');
+            }
+        });
     </script>
 </head>
 <body class="bg-gray-100 font-sans p-4 flex flex-col items-center">
-    <!-- Header -->
-    <header class="w-full max-w-4xl text-center mb-6">
-        <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Gestión de Ventas</h1>
-        <p id="user-id" class="text-sm text-gray-500"></p>
-    </header>
-
-    <!-- Main Navigation Menu -->
-    <div class="flex justify-center gap-4 mb-6 w-full max-w-4xl">
-        <button id="sales-button" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-full shadow-md hover:bg-blue-700 transition duration-200">Ventas</button>
-        <button id="inventory-button" class="py-2 px-6 bg-gray-300 text-gray-800 font-semibold rounded-full shadow-md hover:bg-gray-400 transition duration-200">Inventario</button>
+    
+    <!-- Authentication View -->
+    <div id="auth-view" class="w-full max-w-sm mt-20 p-8 bg-white rounded-lg shadow-md">
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Iniciar Sesión / Registrarse</h2>
+        <form class="space-y-4">
+            <div>
+                <label for="email-input" class="block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" id="email-input" placeholder="tu_email@ejemplo.com" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+                <label for="password-input" class="block text-sm font-medium text-gray-700">Contraseña</label>
+                <input type="password" id="password-input" placeholder="••••••••" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div class="flex flex-col space-y-3">
+                <button type="button" id="login-button" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Iniciar Sesión
+                </button>
+                <button type="button" id="register-button" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-blue-600 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Registrarse
+                </button>
+            </div>
+        </form>
     </div>
 
-    <!-- Main Content Container -->
-    <main id="main-content" class="w-full max-w-4xl bg-white p-6 rounded-lg shadow-md">
-        <p class="text-gray-500 text-center">Seleccione una opción para comenzar.</p>
-    </main>
+    <!-- Main Application View (Hidden by default) -->
+    <div id="app-view" class="hidden w-full max-w-4xl p-4 flex flex-col items-center">
+        <!-- Header -->
+        <header class="w-full text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Gestión de Ventas</h1>
+            <p id="user-id" class="text-sm text-gray-500"></p>
+        </header>
+        
+        <!-- Main Navigation Menu -->
+        <div class="flex justify-center gap-4 mb-6 w-full max-w-4xl">
+            <button id="sales-button" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-full shadow-md hover:bg-blue-700 transition duration-200">Ventas</button>
+            <button id="inventory-button" class="py-2 px-6 bg-gray-300 text-gray-800 font-semibold rounded-full shadow-md hover:bg-gray-400 transition duration-200">Inventario</button>
+        </div>
+        
+        <!-- Main Content Container -->
+        <main id="main-content" class="w-full max-w-4xl bg-white p-6 rounded-lg shadow-md">
+            <p class="text-gray-500 text-center">Seleccione una opción para comenzar.</p>
+        </main>
+    </div>
 
     <!-- Modal for messages -->
     <div id="message-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
