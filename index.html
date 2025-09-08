@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplicación de Gestión de Ventas</title>
@@ -32,181 +33,198 @@
             overflow-y: auto;
             z-index: 10;
             width: 100%;
-            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 0 0 0.5rem 0.5rem;
         }
-        .autocomplete-list-item {
-            padding: 12px;
+        .autocomplete-item {
+            padding: 0.5rem 1rem;
             cursor: pointer;
-            border-bottom: 1px solid #e2e8f0;
+            transition: background-color 0.2s;
         }
-        .autocomplete-list-item:hover {
-            background-color: #f7fafc;
-        }
-        /* Estilo para el modal */
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 50;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 0.5rem;
-            width: 90%;
-            max-width: 600px;
-            position: relative;
-        }
-        .close-btn {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            font-size: 1.5rem;
-            cursor: pointer;
+        .autocomplete-item:hover {
+            background-color: #f1f5f9;
         }
     </style>
 </head>
-<body class="bg-gray-100 font-sans leading-normal tracking-normal">
-
-    <div id="loginView" class="container mx-auto p-4 flex justify-center items-center min-h-screen">
-        <div class="w-full max-w-sm">
-            <div class="bg-white rounded-lg shadow-lg p-8">
-                <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Iniciar Sesión</h1>
-                <form id="loginForm">
-                    <div class="mb-4">
-                        <label for="email" class="block text-gray-700 font-semibold mb-2">Correo Electrónico</label>
-                        <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="ejemplo@correo.com" required>
-                    </div>
-                    <div class="mb-6">
-                        <label for="password" class="block text-gray-700 font-semibold mb-2">Contraseña</label>
-                        <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="********" required>
-                    </div>
-                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                        Entrar
-                    </button>
-                    <p id="loginMessage" class="mt-4 text-center text-red-500"></p>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div id="mainView" class="hidden">
-        <header class="bg-white shadow-sm p-4 sticky top-0 z-40">
-            <div class="container mx-auto flex justify-between items-center">
-                <h1 class="text-xl font-bold text-gray-800">App de Ventas</h1>
-                <nav>
-                    <button id="menuInventarioBtn" class="mx-2 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition duration-300">Inventario</button>
-                    <button id="menuClientesBtn" class="mx-2 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition duration-300">Clientes</button>
-                    <button id="menuVentasBtn" class="mx-2 px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition duration-300">Ventas</button>
-                    <button id="logoutBtn" class="ml-4 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">Salir</button>
-                </nav>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <div id="app" class="flex flex-col min-h-screen">
+        <!-- Encabezado de la aplicación, visible solo cuando el usuario está autenticado -->
+        <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
+            <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
+            <div id="authStatus" class="flex items-center space-x-4">
+                <span id="userIdDisplay" class="text-sm font-medium text-gray-600"></span>
+                <button id="logoutBtn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
+                    Cerrar Sesión
+                </button>
             </div>
         </header>
 
-        <main id="content" class="container mx-auto p-4">
-            </main>
-    </div>
+        <!-- Contenido principal para el menú y otras vistas, visible solo cuando el usuario está autenticado -->
+        <main id="mainContent" class="flex-grow hidden">
+            <!-- El contenido de la página se inserta aquí dinámicamente -->
+        </main>
 
-    <div id="ventaFinalModal" class="modal hidden">
-        <div class="modal-content animate-fade-in">
-            <span class="close-btn" onclick="closeModal('ventaFinalModal')">&times;</span>
-            <h2 class="text-2xl font-bold text-gray-800 text-center mb-4">Ticket de Venta</h2>
-            <div id="ticketContent" class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
-                </div>
-            <div class="mt-4 flex justify-between space-x-4">
-                <button id="printTicketBtn" class="flex-1 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M5 2a2 2 0 012-2h6a2 2 0 012 2v2h2a2 2 0 012 2v8a2 2 0 01-2 2h-2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2H3a2 2 0 01-2-2V6a2 2 0 012-2h2V2zm6 2H9v2h2V4zM3 6v8h14V6H3zm2 2h10a1 1 0 000-2H5a1 1 0 000 2z" clip-rule="evenodd" />
-                    </svg>
-                    Imprimir
-                </button>
-                <button id="shareTicketBtn" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M15 11a4 4 0 10-4-4 4 4 0 004 4zM10 18a8 8 0 100-16 8 8 0 000 16zM10 1a9 9 0 110 18A9 9 0 0110 1zm0 13a4 4 0 100-8 4 4 0 000 8z" />
-                    </svg>
-                    Compartir
-                </button>
+        <!-- Contenido para la vista de login, visible solo cuando el usuario no está autenticado -->
+        <main id="loginContent" class="flex-grow flex items-center justify-center">
+            <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
+                <form id="loginForm" class="space-y-4">
+                    <input type="email" id="emailInput" placeholder="Email" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="passwordInput" placeholder="Contraseña" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                        Ingresar
+                    </button>
+                    <p id="authMessage" class="text-sm text-red-500 mt-2"></p>
+                </form>
             </div>
-        </div>
-    </div>
-    
-    <div id="confirmModal" class="modal hidden">
-        <div class="modal-content">
-            <p id="confirmMessage" class="text-lg font-semibold mb-4 text-center"></p>
-            <div class="flex justify-around">
-                <button id="confirmBtn" class="px-6 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
-                    Confirmar
-                </button>
-                <button id="cancelBtn" class="px-6 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                    Cancelar
-                </button>
-            </div>
+        </main>
+
+        <!-- Modal para mensajes y formularios -->
+        <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
+            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4"></div>
         </div>
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, getDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Configuración de Firebase
+        // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
             apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
             authDomain: "ventas-9a210.firebaseapp.com",
             projectId: "ventas-9a210",
             storageBucket: "ventas-9a210.firebasestorage.app",
             messagingSenderId: "815890981146",
-            appId: "1:815890981146:web:938fe5e09babe511e98ca3"
+            appId: "1:815890981146:web:938fe5e09babe511e98ca3",
+            measurementId: "G-N0QXG70WM1"
         };
+        const appId = firebaseConfig.appId;
 
-        // Inicialización de variables globales
         let db;
         let auth;
-        let currentUserId;
+        let userId;
 
         // Referencias a los elementos del DOM
-        const loginView = document.getElementById('loginView');
-        const mainView = document.getElementById('mainView');
-        const content = document.getElementById('content');
-        const loginForm = document.getElementById('loginForm');
+        const appHeader = document.getElementById('appHeader');
+        const mainContent = document.getElementById('mainContent');
+        const userIdDisplay = document.getElementById('userIdDisplay');
         const logoutBtn = document.getElementById('logoutBtn');
-
-        // Referencias de los botones del menú
-        const menuInventarioBtn = document.getElementById('menuInventarioBtn');
-        const menuClientesBtn = document.getElementById('menuClientesBtn');
-        const menuVentasBtn = document.getElementById('menuVentasBtn');
-
-        // Event listeners para el menú
-        menuInventarioBtn.addEventListener('click', showInventarioView);
-        menuClientesBtn.addEventListener('click', showClientesView);
-        menuVentasBtn.addEventListener('click', showVentasView);
-
-        // Variables para la venta
-        let currentSale = [];
-        let currentSearchQuery = '';
+        const modalContainer = document.getElementById('modalContainer');
+        const modalContent = document.getElementById('modalContent');
+        const loginForm = document.getElementById('loginForm');
+        const authMessage = document.getElementById('authMessage');
+        
+        // Variables para la vista de ventas
+        let clientes = [];
+        let inventario = [];
+        let ventaActual = {
+            cliente: null,
+            productos: {}
+        };
 
         /**
-         * Maneja el inicio de sesión del usuario.
+         * Muestra un modal con un título y mensaje.
+         * @param {string} title Título del modal.
+         * @param {string} message Mensaje o contenido HTML del modal.
+         * @param {function} onConfirm Callback opcional para el botón de confirmar.
          */
-        async function handleLogin(event) {
-            event.preventDefault();
-            const email = loginForm.email.value;
-            const password = loginForm.password.value;
-            const loginMessage = document.getElementById('loginMessage');
+        function showModal(title, message, onConfirm = null) {
+            modalContent.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
+                    <p class="text-gray-600 mb-6">${message}</p>
+                    <div class="space-x-4">
+                        <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
+                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Confirmar</button>` : ''}
+                    </div>
+                </div>
+            `;
+            document.getElementById('closeModalBtn').addEventListener('click', () => {
+                modalContainer.classList.add('hidden');
+            });
+            if (onConfirm) {
+                document.getElementById('confirmBtn').addEventListener('click', () => {
+                    onConfirm();
+                    modalContainer.classList.add('hidden');
+                });
+            }
+            modalContainer.classList.remove('hidden');
+        }
+
+        /**
+         * Muestra un modal con un formulario para agregar un nuevo elemento.
+         * @param {string} collectionName Nombre de la colección en Firestore.
+         * @param {string} itemName Nombre del item (ej: 'Rubro').
+         */
+        function showAddItemModal(collectionName, itemName) {
+            modalContent.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                    <form id="addItemForm" class="space-y-4">
+                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <div class="flex justify-center space-x-4">
+                            <button type="button" id="cancelItemBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
+
+            document.getElementById('cancelItemBtn').addEventListener('click', () => {
+                modalContainer.classList.add('hidden');
+            });
+
+            document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newItem = document.getElementById('newItemInput').value;
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
+                    // Muestra el mensaje de éxito y luego actualiza la vista
+                    showModal('Éxito', `${itemName} "${newItem}" agregado correctamente.`);
+                } catch (e) {
+                    console.error(`Error al agregar ${itemName}: `, e);
+                    showModal('Error', `Hubo un error al agregar el ${itemName}.`);
+                } finally {
+                    modalContainer.classList.add('hidden');
+                }
+            });
+        }
+        
+        /**
+         * Maneja el inicio de sesión del usuario.
+         * @param {Event} e
+         */
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            authMessage.textContent = '';
 
             try {
                 await signInWithEmailAndPassword(auth, email, password);
-                loginMessage.textContent = "Inicio de sesión exitoso.";
             } catch (error) {
                 console.error("Error al iniciar sesión:", error);
-                loginMessage.textContent = "Error al iniciar sesión. Verifica tus credenciales.";
+                switch (error.code) {
+                    case 'auth/invalid-email':
+                        authMessage.textContent = 'Email inválido.';
+                        break;
+                    case 'auth/user-disabled':
+                        authMessage.textContent = 'El usuario ha sido deshabilitado.';
+                        break;
+                    case 'auth/user-not-found':
+                        authMessage.textContent = 'No existe un usuario con este email.';
+                        break;
+                    case 'auth/wrong-password':
+                        authMessage.textContent = 'Contraseña incorrecta.';
+                        break;
+                    default:
+                        authMessage.textContent = 'Error al iniciar sesión. Por favor, inténtelo de nuevo.';
+                        break;
+                }
             }
         }
 
@@ -225,691 +243,1446 @@
          * Muestra la vista de inicio de sesión.
          */
         function showLoginView() {
-            loginView.classList.remove('hidden');
-            mainView.classList.add('hidden');
+            appHeader.classList.add('hidden');
+            mainContent.classList.add('hidden');
+            document.getElementById('loginContent').classList.remove('hidden');
+            loginForm.reset();
+            authMessage.textContent = '';
         }
 
         /**
-         * Muestra la vista principal.
+         * Muestra la vista principal de la aplicación.
+         * @param {string} currentUserId
          */
-        function showMainView(userId) {
-            currentUserId = userId;
-            loginView.classList.add('hidden');
-            mainView.classList.remove('hidden');
-            showVentasView(); // Vista por defecto al iniciar sesión
+        function showMainView(currentUserId) {
+            userId = currentUserId;
+            userIdDisplay.textContent = `ID de Usuario: ${userId}`;
+            appHeader.classList.remove('hidden');
+            mainContent.classList.remove('hidden');
+            document.getElementById('loginContent').classList.add('hidden');
+            showMainMenu();
         }
 
         /**
-         * Abre un modal específico.
+         * Renderiza el menú principal de la aplicación.
          */
-        function openModal(modalId) {
-            document.getElementById(modalId).classList.remove('hidden');
-        }
-
-        /**
-         * Cierra un modal específico.
-         */
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-        }
-
-        /**
-         * Muestra el modal de confirmación.
-         */
-        function showConfirmModal(message, onConfirm) {
-            document.getElementById('confirmMessage').textContent = message;
-            openModal('confirmModal');
-
-            const confirmBtn = document.getElementById('confirmBtn');
-            const cancelBtn = document.getElementById('cancelBtn');
-
-            confirmBtn.onclick = () => {
-                onConfirm();
-                closeModal('confirmModal');
-            };
-            cancelBtn.onclick = () => {
-                closeModal('confirmModal');
-            };
-        }
-
-        /**
-         * Muestra la vista de Inventario.
-         */
-        async function showInventarioView() {
-            content.innerHTML = `
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Inventario de Productos</h2>
-                    <form id="productForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <input type="hidden" id="productId">
-                        <div>
-                            <label for="productName" class="block text-gray-700 font-semibold mb-2">Nombre del Producto</label>
-                            <input type="text" id="productName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        function showMainMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
+                            <div class="space-y-4">
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Inventario
+                                </button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                                    Clientes
+                                </button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                                    Ventas
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <label for="productPrice" class="block text-gray-700 font-semibold mb-2">Precio</label>
-                            <input type="number" id="productPrice" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="0.01" step="0.01" required>
-                        </div>
-                        <div>
-                            <label for="productStock" class="block text-gray-700 font-semibold mb-2">Stock</label>
-                            <input type="number" id="productStock" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="0" step="1" required>
-                        </div>
-                        <div class="col-span-1 md:col-span-2 flex space-x-4">
-                            <button type="submit" id="saveProductBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                                Guardar Producto
-                            </button>
-                            <button type="button" id="cancelEditBtn" class="w-full px-4 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 hidden">
-                                Cancelar Edición
-                            </button>
-                        </div>
-                    </form>
-                    <div id="productList" class="overflow-x-auto">
-                        </div>
+                    </div>
                 </div>
             `;
-            const productForm = document.getElementById('productForm');
-            productForm.addEventListener('submit', handleProductForm);
-            document.getElementById('cancelEditBtn').addEventListener('click', cancelEditProduct);
-            await fetchProducts();
+            document.getElementById('inventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('clientesBtn').addEventListener('click', showClientesSubMenu);
+            document.getElementById('ventasBtn').addEventListener('click', showVentasView);
         }
 
         /**
-         * Maneja el formulario de productos (guardar/editar).
+         * Renderiza el menú de subopciones de inventario.
          */
-        async function handleProductForm(event) {
-            event.preventDefault();
-            const productId = document.getElementById('productId').value;
-            const productName = document.getElementById('productName').value;
-            const productPrice = parseFloat(document.getElementById('productPrice').value);
-            const productStock = parseInt(document.getElementById('productStock').value);
+        function showInventarioSubMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
+                            <div class="space-y-4">
+                                <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Ver Inventario
+                                </button>
+                                <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Agregar Producto
+                                </button>
+                                <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Modificar / Eliminar Producto
+                                </button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
+                                    Volver al Menú Principal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
+            document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
+            document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
 
-            if (productId) {
-                // Editar producto
-                await updateProduct(productId, { name: productName, price: productPrice, stock: productStock });
-            } else {
-                // Nuevo producto
-                await addProduct({ name: productName, price: productPrice, stock: productStock });
-            }
-            document.getElementById('productForm').reset();
-            document.getElementById('productId').value = '';
-            document.getElementById('saveProductBtn').textContent = 'Guardar Producto';
-            document.getElementById('cancelEditBtn').classList.add('hidden');
-            await fetchProducts();
+        function showAgregarProductoView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
+                            <form id="productoForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="rubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione un rubro</option>
+                                        </select>
+                                        <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="segmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione un segmento</option>
+                                        </select>
+                                        <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="marca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione una marca</option>
+                                        </select>
+                                        <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="precio" class="block text-gray-700 font-medium mb-2">Precio:</label>
+                                    <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
+                                    <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                                    Guardar Producto
+                                </button>
+                            </form>
+                            <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('rubros', 'rubro');
+            populateDropdown('segmentos', 'segmento');
+            populateDropdown('marcas', 'marca');
+            
+            document.getElementById('productoForm').addEventListener('submit', agregarProducto);
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('addRubroBtn').addEventListener('click', () => showAddItemModal('rubros', 'Rubro'));
+            document.getElementById('addSegmentoBtn').addEventListener('click', () => showAddItemModal('segmentos', 'Segmento'));
+            document.getElementById('addMarcaBtn').addEventListener('click', () => showAddItemModal('marcas', 'Marca'));
         }
 
         /**
-         * Agrega un nuevo producto a la base de datos.
+         * Llena un dropdown con datos de una colección de Firestore.
+         * @param {string} collectionName Nombre de la colección.
+         * @param {string} elementId ID del elemento <select>.
          */
-        async function addProduct(product) {
-            try {
-                await addDoc(collection(db, `users/${currentUserId}/products`), product);
-            } catch (e) {
-                console.error("Error al agregar producto: ", e);
-            }
-        }
+        function populateDropdown(collectionName, elementId) {
+            const selectElement = document.getElementById(elementId);
+            if (!selectElement) return;
 
-        /**
-         * Actualiza un producto existente.
-         */
-        async function updateProduct(id, product) {
-            try {
-                const docRef = doc(db, `users/${currentUserId}/products`, id);
-                await updateDoc(docRef, product);
-            } catch (e) {
-                console.error("Error al actualizar producto: ", e);
-            }
-        }
-
-        /**
-         * Elimina un producto.
-         */
-        async function deleteProduct(id) {
-            showConfirmModal('¿Estás seguro de que quieres eliminar este producto?', async () => {
-                try {
-                    const docRef = doc(db, `users/${currentUserId}/products`, id);
-                    await deleteDoc(docRef);
-                    await fetchProducts();
-                } catch (e) {
-                    console.error("Error al eliminar producto: ", e);
-                }
+            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            onSnapshot(collectionRef, (snapshot) => {
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                selectElement.innerHTML = `<option value="">Seleccione un ${elementId}</option>`;
+                items.forEach(item => {
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                });
             });
         }
 
+
         /**
-         * Carga los datos de un producto en el formulario para editar.
+         * Muestra la vista de modificar/eliminar producto.
          */
-        async function editProduct(id) {
-            try {
-                const docRef = doc(db, `users/${currentUserId}/products`, id);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    document.getElementById('productId').value = id;
-                    document.getElementById('productName').value = data.name;
-                    document.getElementById('productPrice').value = data.price;
-                    document.getElementById('productStock').value = data.stock;
-                    document.getElementById('saveProductBtn').textContent = 'Actualizar Producto';
-                    document.getElementById('cancelEditBtn').classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("Error al cargar producto para edición: ", e);
-            }
+        function showModifyDeleteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Producto</h2>
+                            <p class="text-gray-600 mb-4">Selecciona un producto de la lista para modificarlo o eliminarlo.</p>
+                            <div id="productosList" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando productos...</p>
+                            </div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList();
         }
 
         /**
-         * Cancela la edición y resetea el formulario.
+         * Muestra la vista de Ver Inventario.
          */
-        function cancelEditProduct() {
-            document.getElementById('productForm').reset();
-            document.getElementById('productId').value = '';
-            document.getElementById('saveProductBtn').textContent = 'Guardar Producto';
-            document.getElementById('cancelEditBtn').classList.add('hidden');
+        function showVerInventarioView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Inventario</h2>
+                            <div id="productosListVer" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando productos...</p>
+                            </div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList('productosListVer', true); // Renderiza en vista de solo lectura
         }
 
-        /**
-         * Obtiene y muestra la lista de productos del inventario.
-         */
-        async function fetchProducts() {
-            const productList = document.getElementById('productList');
-            productList.innerHTML = '<p class="text-center text-gray-500">Cargando inventario...</p>';
-            try {
-                const productsCol = collection(db, `users/${currentUserId}/products`);
-                const productSnapshot = await getDocs(productsCol);
-                const products = productSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                if (products.length === 0) {
-                    productList.innerHTML = '<p class="text-center text-gray-500 mt-4">No hay productos en el inventario.</p>';
+        /**
+         * Renderiza la lista de productos en el DOM.
+         * @param {string} elementId ID del elemento donde se renderizará la lista.
+         * @param {boolean} readOnly Indica si la lista es de solo lectura.
+         */
+        function renderProductosList(elementId = 'productosList', readOnly = false) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            onSnapshot(inventarioRef, (snapshot) => {
+                const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                inventario = productos; // Guarda el inventario globalmente
+                if (productos.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500">No hay productos en el inventario.</p>`;
                     return;
                 }
 
-                let tableHtml = `
-                    <table class="min-w-full bg-white rounded-lg shadow-md mt-4">
-                        <thead>
-                            <tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                <th class="py-3 px-6 text-left">Nombre</th>
-                                <th class="py-3 px-6 text-left">Precio</th>
-                                <th class="py-3 px-6 text-left">Stock</th>
-                                <th class="py-3 px-6 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-gray-600 text-sm font-light">
-                `;
-                products.forEach(product => {
-                    tableHtml += `
-                        <tr class="border-b border-gray-200 hover:bg-gray-100">
-                            <td class="py-3 px-6 text-left whitespace-nowrap">${product.name}</td>
-                            <td class="py-3 px-6 text-left">$${product.price.toFixed(2)}</td>
-                            <td class="py-3 px-6 text-left">${product.stock}</td>
-                            <td class="py-3 px-6 text-center">
-                                <div class="flex item-center justify-center space-x-2">
-                                    <button onclick="editProduct('${product.id}')" class="text-blue-500 hover:text-blue-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
-                                            <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                    <button onclick="deleteProduct('${product.id}')" class="text-red-500 hover:text-red-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-                tableHtml += `</tbody></table>`;
-                productList.innerHTML = tableHtml;
-
-                // Hacer las funciones globales para que los botones onclick las encuentren
-                window.editProduct = editProduct;
-                window.deleteProduct = deleteProduct;
-
-            } catch (e) {
-                console.error("Error al obtener productos: ", e);
-                productList.innerHTML = '<p class="text-center text-red-500 mt-4">Error al cargar los productos.</p>';
-            }
+                container.innerHTML = productos.map(producto => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-gray-800">${producto.presentacion} (${producto.rubro} - ${producto.segmento})</p>
+                            <p class="text-sm text-gray-600">Marca: ${producto.marca} | Precio: $${producto.precio.toFixed(2)} | Cantidad: ${producto.cantidad}</p>
+                        </div>
+                        ${!readOnly ? `
+                        <div class="space-x-2">
+                            <button onclick="editProducto('${producto.id}', '${producto.presentacion}', ${producto.precio}, ${producto.cantidad}, '${producto.rubro}', '${producto.segmento}', '${producto.marca}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
+                            <button onclick="deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            });
         }
 
+
         /**
-         * Muestra la vista de Clientes.
+         * Agrega un nuevo producto al inventario en Firestore.
          */
-        async function showClientesView() {
-            content.innerHTML = `
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Gestión de Clientes</h2>
-                    <form id="clientForm" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                        <input type="hidden" id="clientId">
-                        <div>
-                            <label for="clientName" class="block text-gray-700 font-semibold mb-2">Nombre del Cliente</label>
-                            <input type="text" id="clientName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                        </div>
-                        <div>
-                            <label for="clientPhone" class="block text-gray-700 font-semibold mb-2">Teléfono</label>
-                            <input type="tel" id="clientPhone" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        <div class="col-span-1 md:col-span-2 flex space-x-4">
-                            <button type="submit" id="saveClientBtn" class="w-full px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                                Guardar Cliente
-                            </button>
-                            <button type="button" id="cancelEditClientBtn" class="w-full px-4 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 hidden">
-                                Cancelar Edición
-                            </button>
-                        </div>
-                    </form>
-                    <div id="clientList" class="overflow-x-auto">
-                        </div>
+        asy<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplicación de Gestión de Ventas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .hidden {
+            display: none;
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        /* Estilo para el dropdown de búsqueda */
+        .autocomplete-list {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            width: 100%;
+            border-radius: 0 0 0.5rem 0.5rem;
+        }
+        .autocomplete-item {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .autocomplete-item:hover {
+            background-color: #f1f5f9;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <div id="app" class="flex flex-col min-h-screen">
+        <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
+            <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
+            <div id="authStatus" class="flex items-center space-x-4">
+                <span id="userIdDisplay" class="text-sm font-medium text-gray-600"></span>
+                <button id="logoutBtn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
+                    Cerrar Sesión
+                </button>
+            </div>
+        </header>
+
+        <main id="mainContent" class="flex-grow hidden">
+            </main>
+
+        <main id="loginContent" class="flex-grow flex items-center justify-center">
+            <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
+                <form id="loginForm" class="space-y-4">
+                    <input type="email" id="emailInput" placeholder="Email" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="passwordInput" placeholder="Contraseña" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                        Ingresar
+                    </button>
+                    <p id="authMessage" class="text-sm text-red-500 mt-2"></p>
+                </form>
+            </div>
+        </main>
+
+        <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
+            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4"></div>
+        </div>
+        
+        <div id="ventaFinalModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
+            <div class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4">
+                <h2 class="text-2xl font-bold text-center mb-6">Venta Finalizada</h2>
+                <div id="ticketContent" class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
+                    </div>
+                <div class="mt-4 flex justify-between space-x-4">
+                    <button id="printTicketBtn" class="flex-1 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5 2a2 2 0 012-2h6a2 2 0 012 2v2h2a2 2 0 012 2v8a2 2 0 01-2 2h-2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2H3a2 2 0 01-2-2V6a2 2 0 012-2h2V2zm6 2H9v2h2V4zM3 6v8h14V6H3zm2 2h10a1 1 0 000-2H5a1 1 0 000 2z" clip-rule="evenodd" />
+                        </svg>
+                        Imprimir
+                    </button>
+                    <button id="shareTicketBtn" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M15 11a4 4 0 10-4-4 4 4 0 004 4zM10 18a8 8 0 100-16 8 8 0 000 16zM10 1a9 9 0 110 18A9 9 0 0110 1zm0 13a4 4 0 100-8 4 4 0 000 8z" />
+                        </svg>
+                        Compartir
+                    </button>
+                </div>
+                <div class="mt-4 text-center">
+                    <button id="closeVentaFinalModalBtn" class="px-4 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuración de Firebase proporcionada por el usuario
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
+            authDomain: "ventas-9a210.firebaseapp.com",
+            projectId: "ventas-9a210",
+            storageBucket: "ventas-9a210.firebasestorage.app",
+            messagingSenderId: "815890981146",
+            appId: "1:815890981146:web:938fe5e09babe511e98ca3",
+            measurementId: "G-N0QXG70WM1"
+        };
+        const appId = firebaseConfig.appId;
+
+        let db;
+        let auth;
+        let userId;
+
+        // Referencias a los elementos del DOM
+        const appHeader = document.getElementById('appHeader');
+        const mainContent = document.getElementById('mainContent');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const modalContainer = document.getElementById('modalContainer');
+        const modalContent = document.getElementById('modalContent');
+        const loginForm = document.getElementById('loginForm');
+        const authMessage = document.getElementById('authMessage');
+        const ventaFinalModal = document.getElementById('ventaFinalModal');
+        const closeVentaFinalModalBtn = document.getElementById('closeVentaFinalModalBtn');
+
+        // Variables para la vista de ventas
+        let clientes = [];
+        let inventario = [];
+        let ventaActual = {
+            cliente: null,
+            productos: {}
+        };
+
+        /**
+         * Muestra un modal con un título y mensaje.
+         * @param {string} title Título del modal.
+         * @param {string} message Mensaje o contenido HTML del modal.
+         * @param {function} onConfirm Callback opcional para el botón de confirmar.
+         */
+        function showModal(title, message, onConfirm = null) {
+            modalContent.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
+                    <p class="text-gray-600 mb-6">${message}</p>
+                    <div class="space-x-4">
+                        <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
+                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Confirmar</button>` : ''}
+                    </div>
                 </div>
             `;
-            const clientForm = document.getElementById('clientForm');
-            clientForm.addEventListener('submit', handleClientForm);
-            document.getElementById('cancelEditClientBtn').addEventListener('click', cancelEditClient);
-            await fetchClients();
+            document.getElementById('closeModalBtn').addEventListener('click', () => {
+                modalContainer.classList.add('hidden');
+            });
+            if (onConfirm) {
+                document.getElementById('confirmBtn').addEventListener('click', () => {
+                    onConfirm();
+                    modalContainer.classList.add('hidden');
+                });
+            }
+            modalContainer.classList.remove('hidden');
         }
 
         /**
-         * Maneja el formulario de clientes.
+         * Muestra un modal con un formulario para agregar un nuevo elemento.
+         * @param {string} collectionName Nombre de la colección en Firestore.
+         * @param {string} itemName Nombre del item (ej: 'Rubro').
          */
-        async function handleClientForm(event) {
-            event.preventDefault();
-            const clientId = document.getElementById('clientId').value;
-            const clientName = document.getElementById('clientName').value;
-            const clientPhone = document.getElementById('clientPhone').value;
+        function showAddItemModal(collectionName, itemName) {
+            modalContent.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                    <form id="addItemForm" class="space-y-4">
+                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <div class="flex justify-center space-x-4">
+                            <button type="button" id="cancelItemBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
 
-            if (clientId) {
-                // Editar cliente
-                await updateClient(clientId, { name: clientName, phone: clientPhone });
-            } else {
-                // Nuevo cliente
-                await addClient({ name: clientName, phone: clientPhone });
+            document.getElementById('cancelItemBtn').addEventListener('click', () => {
+                modalContainer.classList.add('hidden');
+            });
+            document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newItem = document.getElementById('newItemInput').value;
+                try {
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
+                    // Muestra el mensaje de éxito y luego actualiza la vista
+                    showModal('Éxito', `${itemName} "${newItem}" agregado correctamente.`);
+                } catch (e) {
+                    console.error(`Error al agregar ${itemName}: `, e);
+                    showModal('Error', `Hubo un error al agregar el ${itemName}.`);
+                } finally {
+                    modalContainer.classList.add('hidden');
+                }
+            });
+        }
+        
+        /**
+         * Maneja el inicio de sesión del usuario.
+         * @param {Event} e
+         */
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            authMessage.textContent = '';
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (error) {
+                console.error("Error al iniciar sesión:", error);
+                switch (error.code) {
+                    case 'auth/invalid-email':
+                        authMessage.textContent = 'Email inválido.';
+                        break;
+                    case 'auth/user-disabled':
+                        authMessage.textContent = 'El usuario ha sido deshabilitado.';
+                        break;
+                    case 'auth/user-not-found':
+                        authMessage.textContent = 'No existe un usuario con este email.';
+                        break;
+                    case 'auth/wrong-password':
+                        authMessage.textContent = 'Contraseña incorrecta.';
+                        break;
+                    default:
+                        authMessage.textContent = 'Error al iniciar sesión. Por favor, inténtelo de nuevo.';
+                        break;
+                }
             }
-            document.getElementById('clientForm').reset();
-            document.getElementById('clientId').value = '';
-            document.getElementById('saveClientBtn').textContent = 'Guardar Cliente';
-            document.getElementById('cancelEditClientBtn').classList.add('hidden');
-            await fetchClients();
+        }
+
+        /**
+         * Maneja el cierre de sesión del usuario.
+         */
+        async function handleLogout() {
+            try {
+                await signOut(auth);
+            } catch (error) {
+                console.error("Error al cerrar sesión:", error);
+            }
+        }
+
+        /**
+         * Muestra la vista de inicio de sesión.
+         */
+        function showLoginView() {
+            appHeader.classList.add('hidden');
+            mainContent.classList.add('hidden');
+            document.getElementById('loginContent').classList.remove('hidden');
+            loginForm.reset();
+            authMessage.textContent = '';
+        }
+
+        /**
+         * Muestra la vista principal de la aplicación.
+         * @param {string} currentUserId
+         */
+        function showMainView(currentUserId) {
+            userId = currentUserId;
+            userIdDisplay.textContent = `ID de Usuario: ${userId}`;
+            appHeader.classList.remove('hidden');
+            mainContent.classList.remove('hidden');
+            document.getElementById('loginContent').classList.add('hidden');
+            showMainMenu();
+        }
+
+        /**
+         * Renderiza el menú principal de la aplicación.
+         */
+        function showMainMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
+                            <div class="space-y-4">
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Inventario
+                                </button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                                    Clientes
+                                </button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                                    Ventas
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('inventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('clientesBtn').addEventListener('click', showClientesSubMenu);
+            document.getElementById('ventasBtn').addEventListener('click', showVentasView);
+        }
+
+        /**
+         * Renderiza el menú de subopciones de inventario.
+         */
+        function showInventarioSubMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
+                            <div class="space-y-4">
+                                <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Ver Inventario
+                                </button>
+                                <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Agregar Producto
+                                </button>
+                                <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Modificar / Eliminar Producto
+                                </button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
+                                    Volver al Menú Principal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
+            document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
+            document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        function showAgregarProductoView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
+                            <form id="productoForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="rubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione un rubro</option>
+                                        </select>
+                                        <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="segmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione un segmento</option>
+                                        </select>
+                                        <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="marca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione una marca</option>
+                                        </select>
+                                        <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="precio" class="block text-gray-700 font-medium mb-2">Precio:</label>
+                                    <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
+                                    <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                                    Guardar Producto
+                                </button>
+                            </form>
+                            <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('rubros', 'rubro');
+            populateDropdown('segmentos', 'segmento');
+            populateDropdown('marcas', 'marca');
+            
+            document.getElementById('productoForm').addEventListener('submit', agregarProducto);
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('addRubroBtn').addEventListener('click', () => showAddItemModal('rubros', 'Rubro'));
+            document.getElementById('addSegmentoBtn').addEventListener('click', () => showAddItemModal('segmentos', 'Segmento'));
+            document.getElementById('addMarcaBtn').addEventListener('click', () => showAddItemModal('marcas', 'Marca'));
+        }
+
+        /**
+         * Llena un dropdown con datos de una colección de Firestore.
+         * @param {string} collectionName Nombre de la colección.
+         * @param {string} elementId ID del elemento <select>.
+         */
+        function populateDropdown(collectionName, elementId) {
+            const selectElement = document.getElementById(elementId);
+            if (!selectElement) return;
+
+            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            onSnapshot(collectionRef, (snapshot) => {
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                selectElement.innerHTML = `<option value="">Seleccione un ${elementId}</option>`;
+                items.forEach(item => {
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                });
+            });
+        }
+
+
+        /**
+         * Muestra la vista de modificar/eliminar producto.
+         */
+        function showModifyDeleteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Producto</h2>
+                            <p class="text-gray-600 mb-4">Selecciona un producto de la lista para modificarlo o eliminarlo.</p>
+                            <div id="productosList" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando productos...</p>
+                            </div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList();
+        }
+
+        /**
+         * Muestra la vista de Ver Inventario.
+         */
+        function showVerInventarioView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Inventario</h2>
+                            <div id="productosListVer" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando productos...</p>
+                            </div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList('productosListVer', true); // Renderiza en vista de solo lectura
+        }
+
+
+        /**
+         * Renderiza la lista de productos en el DOM.
+         * @param {string} elementId ID del elemento donde se renderizará la lista.
+         * @param {boolean} readOnly Indica si la lista es de solo lectura.
+         */
+        function renderProductosList(elementId = 'productosList', readOnly = false) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            onSnapshot(inventarioRef, (snapshot) => {
+                const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                inventario = productos; // Guarda el inventario globalmente
+                if (productos.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500">No hay productos en el inventario.</p>`;
+                    return;
+                }
+
+                container.innerHTML = productos.map(producto => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold text-gray-800">${producto.presentacion} (${producto.rubro} - ${producto.segmento})</p>
+                            <p class="text-sm text-gray-600">Marca: ${producto.marca} | Precio: $${producto.precio.toFixed(2)} | Cantidad: ${producto.cantidad}</p>
+                        </div>
+                        ${!readOnly ? `
+                        <div class="space-x-2">
+                            <button onclick="editProducto('${producto.id}', '${producto.presentacion}', ${producto.precio}, ${producto.cantidad}, '${producto.rubro}', '${producto.segmento}', '${producto.marca}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
+                            <button onclick="deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            });
+        }
+
+
+        /**
+         * Agrega un nuevo producto al inventario en Firestore.
+         */
+        async function agregarProducto(e) {
+            e.preventDefault();
+            const rubro = document.getElementById('rubro').value;
+            const segmento = document.getElementById('segmento').value;
+            const marca = document.getElementById('marca').value;
+            const presentacion = document.getElementById('presentacion').value;
+            const precio = parseFloat(document.getElementById('precio').value);
+            const cantidad = parseInt(document.getElementById('cantidad').value, 10);
+
+            try {
+                const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+                await addDoc(inventarioRef, {
+                    rubro,
+                    segmento,
+                    marca,
+                    presentacion,
+                    precio,
+                    cantidad
+                });
+                showModal('Éxito', 'Producto agregado correctamente.');
+                document.getElementById('productoForm').reset();
+            } catch (e) {
+                console.error("Error al agregar el producto: ", e);
+                showModal('Error', 'Hubo un error al guardar el producto.');
+            }
+        }
+
+        /**
+         * Elimina un producto del inventario.
+         * @param {string} productId ID del producto a eliminar.
+         */
+        window.deleteProducto = function(productId) {
+            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId));
+                    showModal('Éxito', 'Producto eliminado correctamente.');
+                } catch (e) {
+                    console.error("Error al eliminar el producto: ", e);
+                    showModal('Error', 'Hubo un error al eliminar el producto.');
+                }
+            });
+        };
+        /**
+         * Edita un producto en el inventario.
+         */
+        window.editProducto = function(productId, presentacion, precio, cantidad, rubro, segmento, marca) {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
+                            <form id="editProductoForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="editRubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                    <select id="editRubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="${rubro}">${rubro}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="editSegmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                    <select id="editSegmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="${segmento}">${segmento}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="editMarca" class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                    <select id="editMarca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="${marca}">${marca}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="editPresentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                    <input type="text" id="editPresentacion" value="${presentacion}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio:</label>
+                                    <input type="number" step="0.01" id="editPrecio" value="${precio}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
+                                    <input type="number" id="editCantidad" value="${cantidad}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
+                                    Guardar Cambios
+                                </button>
+                            </form>
+                            <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('rubros', 'editRubro');
+            populateDropdown('segmentos', 'editSegmento');
+            populateDropdown('marcas', 'editMarca');
+
+            document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                try {
+                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId), {
+                        rubro: document.getElementById('editRubro').value,
+                        segmento: document.getElementById('editSegmento').value,
+                        marca: document.getElementById('editMarca').value,
+                        presentacion: document.getElementById('editPresentacion').value,
+                        precio: parseFloat(document.getElementById('editPrecio').value),
+                        cantidad: parseInt(document.getElementById('editCantidad').value, 10)
+                    }, { merge: true });
+                    showModal('Éxito', 'Producto modificado exitosamente.');
+                    showModifyDeleteView();
+                } catch (e) {
+                    console.error("Error al modificar el producto: ", e);
+                    showModal('Error', 'Hubo un error al modificar el producto.');
+                }
+            });
+            document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+        };
+        
+        // --- Lógica del módulo de Clientes ---
+        
+        /**
+         * Renderiza el menú de subopciones de clientes.
+         */
+        function showClientesSubMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
+                            <div class="space-y-4">
+                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                                    Ver Clientes
+                                </button>
+                                <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                                    Agregar Cliente
+                                </button>
+                                <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                                    Modificar / Eliminar Cliente
+                                </button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
+                                    Volver al Menú Principal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
+            document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
+            document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        /**
+         * Muestra la vista de agregar cliente.
+         */
+        function showAgregarClienteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
+                            <form id="clienteForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="sector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                            <option value="">Seleccione un sector</option>
+                                        </select>
+                                        <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
+                                    <input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
+                                    <input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
+                                    <input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                                    Guardar Cliente
+                                </button>
+                            </form>
+                            <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('sectores', 'sector');
+            document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            document.getElementById('addSectorBtn').addEventListener('click', () => showAddItemModal('sectores', 'Sector'));
         }
 
         /**
          * Agrega un nuevo cliente a la base de datos.
+         * @param {Event} e
          */
-        async function addClient(client) {
+        async function agregarCliente(e) {
+            e.preventDefault();
+            const sector = document.getElementById('sector').value;
+            const nombreComercial = document.getElementById('nombreComercial').value;
+            const nombrePersonal = document.getElementById('nombrePersonal').value;
+            const telefono = document.getElementById('telefono').value;
             try {
-                await addDoc(collection(db, `users/${currentUserId}/clients`), client);
+                const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+                await addDoc(clientesRef, { sector, nombreComercial, nombrePersonal, telefono });
+                showModal('Éxito', 'Cliente agregado correctamente.');
+                document.getElementById('clienteForm').reset();
             } catch (e) {
-                console.error("Error al agregar cliente: ", e);
+                console.error("Error al agregar el cliente: ", e);
+                showModal('Error', 'Hubo un error al guardar el cliente.');
             }
         }
 
         /**
-         * Actualiza un cliente existente.
+         * Muestra la vista de Ver Clientes.
          */
-        async function updateClient(id, client) {
-            try {
-                const docRef = doc(db, `users/${currentUserId}/clients`, id);
-                await updateDoc(docRef, client);
-            } catch (e) {
-                console.error("Error al actualizar cliente: ", e);
-            }
-        }
-
-        /**
-         * Elimina un cliente.
-         */
-        async function deleteClient(id) {
-            showConfirmModal('¿Estás seguro de que quieres eliminar este cliente?', async () => {
-                try {
-                    const docRef = doc(db, `users/${currentUserId}/clients`, id);
-                    await deleteDoc(docRef);
-                    await fetchClients();
-                } catch (e) {
-                    console.error("Error al eliminar cliente: ", e);
-                }
-            });
-        }
-
-        /**
-         * Carga los datos de un cliente en el formulario para editar.
-         */
-        async function editClient(id) {
-            try {
-                const docRef = doc(db, `users/${currentUserId}/clients`, id);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    document.getElementById('clientId').value = id;
-                    document.getElementById('clientName').value = data.name;
-                    document.getElementById('clientPhone').value = data.phone;
-                    document.getElementById('saveClientBtn').textContent = 'Actualizar Cliente';
-                    document.getElementById('cancelEditClientBtn').classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("Error al cargar cliente para edición: ", e);
-            }
-        }
-
-        /**
-         * Cancela la edición y resetea el formulario de clientes.
-         */
-        function cancelEditClient() {
-            document.getElementById('clientForm').reset();
-            document.getElementById('clientId').value = '';
-            document.getElementById('saveClientBtn').textContent = 'Guardar Cliente';
-            document.getElementById('cancelEditClientBtn').classList.add('hidden');
-        }
-
-        /**
-         * Obtiene y muestra la lista de clientes.
-         */
-        async function fetchClients() {
-            const clientList = document.getElementById('clientList');
-            clientList.innerHTML = '<p class="text-center text-gray-500">Cargando clientes...</p>';
-            try {
-                const clientsCol = collection(db, `users/${currentUserId}/clients`);
-                const clientSnapshot = await getDocs(clientsCol);
-                const clients = clientSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                if (clients.length === 0) {
-                    clientList.innerHTML = '<p class="text-center text-gray-500 mt-4">No hay clientes registrados.</p>';
-                    return;
-                }
-
-                let tableHtml = `
-                    <table class="min-w-full bg-white rounded-lg shadow-md mt-4">
-                        <thead>
-                            <tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                <th class="py-3 px-6 text-left">Nombre</th>
-                                <th class="py-3 px-6 text-left">Teléfono</th>
-                                <th class="py-3 px-6 text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-gray-600 text-sm font-light">
-                `;
-                clients.forEach(client => {
-                    tableHtml += `
-                        <tr class="border-b border-gray-200 hover:bg-gray-100">
-                            <td class="py-3 px-6 text-left whitespace-nowrap">${client.name}</td>
-                            <td class="py-3 px-6 text-left">${client.phone || 'N/A'}</td>
-                            <td class="py-3 px-6 text-center">
-                                <div class="flex item-center justify-center space-x-2">
-                                    <button onclick="editClient('${client.id}')" class="text-blue-500 hover:text-blue-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
-                                            <path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                    <button onclick="deleteClient('${client.id}')" class="text-red-500 hover:text-red-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-                tableHtml += `</tbody></table>`;
-                clientList.innerHTML = tableHtml;
-                window.editClient = editClient;
-                window.deleteClient = deleteClient;
-
-            } catch (e) {
-                console.error("Error al obtener clientes: ", e);
-                clientList.innerHTML = '<p class="text-center text-red-500 mt-4">Error al cargar los clientes.</p>';
-            }
-        }
-
-        /**
-         * Muestra la vista de Ventas.
-         */
-        async function showVentasView() {
-            content.innerHTML = `
-                <div class="bg-white p-6 rounded-lg shadow-lg">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Generar Venta</h2>
-                    <div class="mb-4 relative">
-                        <label for="searchProduct" class="block text-gray-700 font-semibold mb-2">Buscar Producto</label>
-                        <input type="text" id="searchProduct" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nombre o código del producto">
-                        <div id="autocompleteList" class="autocomplete-list hidden"></div>
-                    </div>
-
-                    <div id="currentSaleList" class="overflow-x-auto mb-6">
-                        <h3 class="text-xl font-bold text-gray-800 mb-2">Productos en Carrito</h3>
-                        <table id="saleTable" class="min-w-full bg-white rounded-lg shadow-md">
-                            <thead>
-                                <tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
-                                    <th class="py-3 px-6 text-left">Producto</th>
-                                    <th class="py-3 px-6 text-left">Precio</th>
-                                    <th class="py-3 px-6 text-left">Cantidad</th>
-                                    <th class="py-3 px-6 text-left">Total</th>
-                                    <th class="py-3 px-6 text-center">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody id="saleTableBody" class="text-gray-600 text-sm font-light">
-                                </tbody>
-                        </table>
-                        <p id="emptySaleMessage" class="mt-4 text-center text-gray-500">Aún no hay productos en el carrito.</p>
-                    </div>
-
-                    <div class="text-right text-2xl font-bold text-gray-800 mb-6">
-                        Total: <span id="saleTotal">$0.00</span>
-                    </div>
-
-                    <div class="flex space-x-4">
-                        <button id="clearSaleBtn" class="flex-1 px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
-                            Cancelar Venta
-                        </button>
-                        <button id="finalizeSaleBtn" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                            Finalizar Venta
-                        </button>
-                    </div>
-                </div>
-                <div id="ventasTotalesView" class="hidden">
-                    <div class="bg-white p-6 rounded-lg shadow-lg">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
-                        <p class="text-gray-600">Esta sección está en construcción. ¡Pronto podrás ver tus ventas totales aquí!</p>
-                        <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                            Volver
-                        </button>
+        function showVerClientesView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Clientes</h2>
+                            <div id="clientesListVer" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando clientes...</p>
+                            </div>
+                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
-            const searchProductInput = document.getElementById('searchProduct');
-            const clearSaleBtn = document.getElementById('clearSaleBtn');
-            const finalizeSaleBtn = document.getElementById('finalizeSaleBtn');
-            const backToVentasBtn = document.getElementById('backToVentasBtn');
-
-            searchProductInput.addEventListener('input', handleProductSearch);
-            clearSaleBtn.addEventListener('click', clearSale);
-            finalizeSaleBtn.addEventListener('click', finalizeSale);
-            backToVentasBtn.addEventListener('click', showVentasView);
-            updateSaleList();
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            renderClientesList('clientesListVer', true);
         }
 
         /**
-         * Maneja la búsqueda de productos en tiempo real.
+         * Muestra la vista de modificar/eliminar cliente.
          */
-        async function handleProductSearch() {
-            const query = this.value.toLowerCase();
-            const autocompleteList = document.getElementById('autocompleteList');
-            if (query.length < 2) {
-                autocompleteList.classList.add('hidden');
-                return;
-            }
-
-            try {
-                const productsCol = collection(db, `users/${currentUserId}/products`);
-                const q = query(productsCol, where('name', '>=', query), where('name', '<=', query + '\uf8ff'));
-                const productSnapshot = await getDocs(q);
-                const products = productSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-                autocompleteList.innerHTML = '';
-                if (products.length > 0) {
-                    products.forEach(product => {
-                        const div = document.createElement('div');
-                        div.className = 'autocomplete-list-item';
-                        div.textContent = `${product.name} - $${product.price.toFixed(2)}`;
-                        div.addEventListener('click', () => addProductToSale(product));
-                        autocompleteList.appendChild(div);
-                    });
-                    autocompleteList.classList.remove('hidden');
-                } else {
-                    autocompleteList.classList.add('hidden');
-                }
-            } catch (e) {
-                console.error("Error al buscar productos: ", e);
-            }
-        }
-
-        /**
-         * Agrega un producto a la venta actual.
-         */
-        function addProductToSale(product) {
-            const existingItem = currentSale.find(item => item.id === product.id);
-            if (existingItem) {
-                if (existingItem.quantity < product.stock) {
-                    existingItem.quantity++;
-                } else {
-                    alert(`No hay más stock disponible para ${product.name}`);
-                }
-            } else {
-                if (product.stock > 0) {
-                    currentSale.push({ ...product, quantity: 1 });
-                } else {
-                    alert(`El producto ${product.name} está agotado.`);
-                }
-            }
-            document.getElementById('searchProduct').value = '';
-            document.getElementById('autocompleteList').classList.add('hidden');
-            updateSaleList();
-        }
-
-        /**
-         * Actualiza la visualización de la lista de productos en la venta.
-         */
-        function updateSaleList() {
-            const saleTableBody = document.getElementById('saleTableBody');
-            const emptySaleMessage = document.getElementById('emptySaleMessage');
-            const saleTotal = document.getElementById('saleTotal');
-
-            if (currentSale.length === 0) {
-                emptySaleMessage.classList.remove('hidden');
-                saleTableBody.innerHTML = '';
-                saleTotal.textContent = '$0.00';
-                return;
-            }
-
-            emptySaleMessage.classList.add('hidden');
-            let total = 0;
-            saleTableBody.innerHTML = '';
-
-            currentSale.forEach(item => {
-                const subtotal = item.price * item.quantity;
-                total += subtotal;
-                const row = document.createElement('tr');
-                row.className = 'border-b border-gray-200 hover:bg-gray-100';
-                row.innerHTML = `
-                    <td class="py-3 px-6 text-left">${item.name}</td>
-                    <td class="py-3 px-6 text-left">$${item.price.toFixed(2)}</td>
-                    <td class="py-3 px-6 text-left">
-                        <div class="flex items-center">
-                            <button onclick="changeQuantity('${item.id}', -1)" class="px-2 py-1 bg-gray-300 rounded-lg">-</button>
-                            <span class="mx-2">${item.quantity}</span>
-                            <button onclick="changeQuantity('${item.id}', 1)" class="px-2 py-1 bg-gray-300 rounded-lg">+</button>
+        function showModifyDeleteClienteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Cliente</h2>
+                            <p class="text-gray-600 mb-4">Selecciona un cliente de la lista para modificarlo o eliminarlo.</p>
+                            <div id="clientesList" class="space-y-4 text-left">
+                                <p class="text-gray-500">Cargando clientes...</p>
+                            </div>
+                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
                         </div>
-                    </td>
-                    <td class="py-3 px-6 text-left">$${subtotal.toFixed(2)}</td>
-                    <td class="py-3 px-6 text-center">
-                        <button onclick="removeFromSale('${item.id}')" class="text-red-500 hover:text-red-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </td>
-                `;
-                saleTableBody.appendChild(row);
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            renderClientesList();
+        }
+
+        /**
+         * Renderiza la lista de clientes en el DOM.
+         * @param {string} elementId ID del elemento donde se renderizará la lista.
+         * @param {boolean} readOnly Indica si la lista es de solo lectura.
+         */
+        function renderClientesList(elementId = 'clientesList', readOnly = false) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+
+            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+            onSnapshot(clientesRef, (snapshot) => {
+                const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                clientes = fetchedClientes; // Guarda los clientes globalmente
+                if (fetchedClientes.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500">No hay clientes registrados.</p>`;
+                    return;
+                }
+
+                container.innerHTML = fetchedClientes.map(cliente => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow">
+                        <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
+                        <p class="text-sm text-gray-600">
+                            ${cliente.nombreComercial && cliente.nombrePersonal ? `(${cliente.nombrePersonal}) ` : ''}
+                            | Sector: ${cliente.sector} | Teléfono: ${cliente.telefono}
+                        </p>
+                        ${!readOnly ? `
+                        <div class="mt-2 space-x-2">
+                            <button onclick="editCliente('${cliente.id}', '${cliente.nombreComercial}', '${cliente.nombrePersonal}', '${cliente.telefono}', '${cliente.sector}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
+                            <button onclick="deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            });
+        }
+
+        /**
+         * Edita un cliente en la base de datos.
+         */
+        window.editCliente = function(clienteId, nombreComercial, nombrePersonal, telefono, sector) {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
+                            <form id="editClienteForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label>
+                                    <select id="editSector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="${sector}">${sector}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="editNombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
+                                    <input type="text" id="editNombreComercial" value="${nombreComercial}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="editNombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
+                                    <input type="text" id="editNombrePersonal" value="${nombrePersonal}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
+                                    <input type="tel" id="editTelefono" value="${telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
+                                    Guardar Cambios
+                                </button>
+                            </form>
+                            <button id="backToModifyDeleteClienteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('sectores', 'editSector');
+
+            document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                try {
+                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId), {
+                        sector: document.getElementById('editSector').value,
+                        nombreComercial: document.getElementById('editNombreComercial').value,
+                        nombrePersonal: document.getElementById('editNombrePersonal').value,
+                        telefono: document.getElementById('editTelefono').value
+                    }, { merge: true });
+                    showModal('Éxito', 'Cliente modificado exitosamente.');
+                    showModifyDeleteClienteView();
+                } catch (e) {
+                    console.error("Error al modificar el cliente: ", e);
+                    showModal('Error', 'Hubo un error al modificar el cliente.');
+                }
+            });
+            document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
+        };
+
+        /**
+         * Elimina un cliente de la base de datos.
+         * @param {string} clienteId ID del cliente a eliminar.
+         */
+        window.deleteCliente = function(clienteId) {
+            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar a este cliente?', async () => {
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
+                    showModal('Éxito', 'Cliente eliminado correctamente.');
+                } catch (e) {
+                    console.error("Error al eliminar el cliente: ", e);
+                    showModal('Error', 'Hubo un error al eliminar el cliente.');
+                }
+            });
+        };
+
+        // --- Lógica del módulo de Ventas ---
+
+        /**
+         * Muestra la vista de ventas.
+         */
+        function showVentasView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
+                            <div class="space-y-4">
+                                <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                                    Nueva Venta
+                                </button>
+                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                    Ventas Totales
+                                </button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
+                                    Volver al Menú Principal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
+            document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        /**
+         * Muestra la vista para iniciar una nueva venta.
+         */
+        function showNuevaVentaView() {
+            ventaActual = {
+                cliente: null,
+                productos: {}
+            };
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Nueva Venta</h2>
+
+                            <div class="mb-6">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-700">1. Seleccionar Cliente</h3>
+                                <div class="relative">
+                                    <input type="text" id="clienteSearchInput" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <div id="clienteDropdown" class="autocomplete-list hidden"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-700">2. Agregar Productos</h3>
+                                <div class="relative">
+                                    <input type="text" id="productoSearchInput" placeholder="Buscar producto..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <div id="productoDropdown" class="autocomplete-list hidden"></div>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-700">3. Resumen de la Venta</h3>
+                                <div id="resumenVenta" class="p-4 border rounded-lg bg-gray-50">
+                                    <p class="text-sm text-gray-500">Aún no hay productos en la venta.</p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center mt-6">
+                                <span id="ventaTotal" class="text-2xl font-bold text-gray-800">$0.00</span>
+                                <button id="finalizarVentaBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105" disabled>
+                                    Finalizar Venta
+                                </button>
+                            </div>
+                            <button id="backToVentasBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
+            document.getElementById('finalizarVentaBtn').addEventListener('click', finalizarVenta);
+            setupAutocomplete('clienteSearchInput', 'clienteDropdown', clientes, 'clientes');
+            setupAutocomplete('productoSearchInput', 'productoDropdown', inventario, 'inventario');
+            updateResumenVenta();
+        }
+
+        /**
+         * Configura el autocompletado para los campos de búsqueda.
+         * @param {string} inputId
+         * @param {string} dropdownId
+         * @param {Array} dataList
+         * @param {string} type
+         */
+        function setupAutocomplete(inputId, dropdownId, dataList, type) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+            
+            input.addEventListener('input', () => {
+                const query = input.value.toLowerCase();
+                const filtered = dataList.filter(item => {
+                    if (type === 'clientes') {
+                        return (item.nombreComercial && item.nombreComercial.toLowerCase().includes(query)) ||
+                               (item.nombrePersonal && item.nombrePersonal.toLowerCase().includes(query));
+                    } else if (type === 'inventario') {
+                        return item.presentacion.toLowerCase().includes(query) ||
+                               item.marca.toLowerCase().includes(query) ||
+                               item.rubro.toLowerCase().includes(query) ||
+                               item.segmento.toLowerCase().includes(query);
+                    }
+                });
+
+                dropdown.innerHTML = '';
+                if (query.length > 0 && filtered.length > 0) {
+                    filtered.forEach(item => {
+                        const itemElement = document.createElement('div');
+                        itemElement.classList.add('autocomplete-item');
+                        if (type === 'clientes') {
+                            itemElement.textContent = item.nombreComercial || item.nombrePersonal;
+                            itemElement.addEventListener('click', () => {
+                                selectAutocompleteItem(item, type);
+                                dropdown.classList.add('hidden');
+                            });
+                        } else if (type === 'inventario') {
+                            itemElement.textContent = `${item.presentacion} (${item.marca})`;
+                            itemElement.addEventListener('click', () => {
+                                selectAutocompleteItem(item, type);
+                                dropdown.classList.add('hidden');
+                            });
+                        }
+                        dropdown.appendChild(itemElement);
+                    });
+                    dropdown.classList.remove('hidden');
+                } else {
+                    dropdown.classList.add('hidden');
+                }
             });
 
-            saleTotal.textContent = `$${total.toFixed(2)}`;
-
-            window.changeQuantity = changeQuantity;
-            window.removeFromSale = removeFromSale;
+            document.addEventListener('click', (e) => {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.classList.add('hidden');
+                }
+            });
         }
 
         /**
-         * Cambia la cantidad de un producto en la venta.
+         * Maneja la selección de un item de autocompletado.
+         * @param {Object} item
+         * @param {string} type
          */
-        function changeQuantity(productId, delta) {
-            const item = currentSale.find(p => p.id === productId);
-            if (!item) return;
-
-            const newQuantity = item.quantity + delta;
-            if (newQuantity <= 0) {
-                removeFromSale(productId);
-            } else if (newQuantity <= item.stock) {
-                item.quantity = newQuantity;
-                updateSaleList();
-            } else {
-                alert(`No puedes agregar más de ${item.stock} unidades de este producto.`);
+        function selectAutocompleteItem(item, type) {
+            if (type === 'clientes') {
+                ventaActual.cliente = item;
+                document.getElementById('clienteSearchInput').value = item.nombreComercial || item.nombrePersonal;
+            } else if (type === 'inventario') {
+                const cantidad = prompt(`¿Cuántas unidades de "${item.presentacion}" desea agregar?`);
+                if (cantidad && !isNaN(cantidad) && parseInt(cantidad, 10) > 0) {
+                    const cantidadInt = parseInt(cantidad, 10);
+                    if (cantidadInt > item.cantidad) {
+                        alert('No hay suficiente stock para esa cantidad.');
+                    } else {
+                        if (ventaActual.productos[item.id]) {
+                            ventaActual.productos[item.id].quantity += cantidadInt;
+                        } else {
+                            ventaActual.productos[item.id] = { ...item, quantity: cantidadInt };
+                        }
+                        document.getElementById('productoSearchInput').value = '';
+                        updateResumenVenta();
+                    }
+                }
             }
         }
 
         /**
-         * Remueve un producto de la venta actual.
+         * Actualiza la vista del resumen de la venta.
          */
-        function removeFromSale(productId) {
-            currentSale = currentSale.filter(item => item.id !== productId);
-            updateSaleList();
+        function updateResumenVenta() {
+            const resumenVentaDiv = document.getElementById('resumenVenta');
+            const ventaTotalSpan = document.getElementById('ventaTotal');
+            const finalizarBtn = document.getElementById('finalizarVentaBtn');
+            let total = 0;
+
+            let html = `
+                <div class="mb-4">
+                    <p class="font-semibold text-gray-700">Cliente:</p>
+                    <p class="text-sm text-gray-600">${ventaActual.cliente ? ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal : 'No seleccionado'}</p>
+                </div>
+                <div class="border-b border-dashed border-gray-300 mb-4"></div>
+            `;
+            const productosEnVenta = Object.values(ventaActual.productos);
+            if (productosEnVenta.length > 0) {
+                html += `
+                    <h4 class="font-semibold text-gray-700 mb-2">Productos:</h4>
+                    <ul>
+                `;
+                productosEnVenta.forEach(item => {
+                    const subtotal = item.precio * item.quantity;
+                    total += subtotal;
+                    html += `
+                        <li class="flex justify-between items-center py-1">
+                            <span>${item.presentacion} (${item.quantity})</span>
+                            <span class="font-medium">$${subtotal.toFixed(2)}</span>
+                        </li>
+                    `;
+                });
+                html += `</ul>`;
+            } else {
+                html += `<p class="text-sm text-gray-500">No hay productos en la venta.</p>`;
+            }
+
+            resumenVentaDiv.innerHTML = html;
+            ventaTotalSpan.textContent = `$${total.toFixed(2)}`;
+            finalizarBtn.disabled = productosEnVenta.length === 0 || !ventaActual.cliente;
         }
 
         /**
-         * Finaliza la venta, actualiza el stock y muestra el ticket.
+         * Finaliza la venta, guarda en Firestore y actualiza el inventario.
          */
-        async function finalizeSale() {
-            if (currentSale.length === 0) {
-                alert('No hay productos en el carrito.');
+        async function finalizarVenta() {
+            if (!ventaActual.cliente || Object.keys(ventaActual.productos).length === 0) {
+                alert('Debe seleccionar un cliente y agregar al menos un producto.');
                 return;
             }
 
-            // Guardar la venta en la base de datos
+            const batch = writeBatch(db);
+            let totalVenta = 0;
+            const productosParaGuardar = [];
+
+            // Actualizar stock y preparar la venta
+            for (const productId in ventaActual.productos) {
+                const item = ventaActual.productos[productId];
+                const newQuantity = item.cantidad - item.quantity;
+                if (newQuantity < 0) {
+                    showModal('Error', `Stock insuficiente para el producto: ${item.presentacion}`);
+                    return;
+                }
+                const inventarioDocRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId);
+                batch.update(inventarioDocRef, { cantidad: newQuantity });
+
+                totalVenta += item.precio * item.quantity;
+                productosParaGuardar.push({
+                    id: productId,
+                    name: item.presentacion,
+                    quantity: item.quantity,
+                    price: item.precio,
+                    subtotal: item.precio * item.quantity,
+                });
+            }
+
+            // Guardar la venta en la colección de ventas del usuario
+            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
             const venta = {
-                items: currentSale.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity
-                })),
-                total: currentSale.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-                date: new Date()
+                cliente: {
+                    id: ventaActual.cliente.id,
+                    nombreComercial: ventaActual.cliente.nombreComercial,
+                    nombrePersonal: ventaActual.cliente.nombrePersonal,
+                },
+                items: productosParaGuardar,
+                total: totalVenta,
+                date: new Date(),
             };
+            batch.set(doc(ventasRef), venta);
 
             try {
-                await addDoc(collection(db, `users/${currentUserId}/sales`), venta);
+                await batch.commit();
+                showVentaFinalModal(venta);
             } catch (e) {
-                console.error("Error al guardar la venta: ", e);
-                alert("Error al finalizar la venta. Intenta de nuevo.");
-                return;
+                console.error("Error al finalizar la venta: ", e);
+                showModal('Error', 'Hubo un error al procesar la venta. Intente de nuevo.');
             }
-
-            // Actualizar el stock de cada producto
-            const batch = db.batch();
-            for (const item of currentSale) {
-                const productRef = doc(db, `users/${currentUserId}/products`, item.id);
-                const productSnapshot = await getDoc(productRef);
-                const productData = productSnapshot.data();
-                const newStock = productData.stock - item.quantity;
-                batch.update(productRef, { stock: newStock });
-            }
-            await batch.commit();
-
-            // Muestra el modal de venta final con el ticket
-            showVentaFinalModal(venta);
-
-            // Reinicia la venta actual
-            currentSale = [];
-            updateSaleList();
         }
 
         /**
-         * Muestra el modal con el ticket de venta final.
+         * Muestra el modal con los detalles de la venta final.
+         * @param {Object} venta Objeto de la venta finalizada.
          */
         function showVentaFinalModal(venta) {
             const ticketContent = document.getElementById('ticketContent');
@@ -932,10 +1705,9 @@
             `;
             ticketContent.innerHTML = ticketHtml;
             openModal('ventaFinalModal');
-
+            
             // Agrega los event listeners a los nuevos botones
             document.getElementById('printTicketBtn').addEventListener('click', () => {
-                // Abre una nueva ventana con un formato de impresión simple
                 const printWindow = window.open('', '', 'height=500,width=300');
                 printWindow.document.write('<html><head><title>Ticket de Venta</title>');
                 printWindow.document.write('<style>');
@@ -979,16 +1751,53 @@
                 });
             });
         }
+        
+        /**
+         * Muestra la vista de ventas totales.
+         */
+        function showVentasTotalesView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
+                            <p class="text-gray-600">Esta sección está en construcción. ¡Pronto podrás ver tus ventas totales aquí!</p>
+                            <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
+        }
 
         /**
-         * Limpia la venta actual.
+         * Función para abrir un modal específico.
+         * @param {string} modalId
          */
-        function clearSale() {
-            showConfirmModal('¿Estás seguro de que quieres cancelar la venta actual?', () => {
-                currentSale = [];
-                updateSaleList();
-            });
+        function openModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
         }
+
+        /**
+         * Función para cerrar un modal específico.
+         * @param {string} modalId
+         */
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
+
+        // Event listener para cerrar el modal de venta final
+        closeVentaFinalModalBtn.addEventListener('click', () => {
+            closeModal('ventaFinalModal');
+        });
 
         /**
          * Inicia Firebase y establece los oyentes de estado de autenticación.
@@ -1014,6 +1823,5 @@
             logoutBtn.addEventListener('click', handleLogout);
         });
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </body>
 </html>
