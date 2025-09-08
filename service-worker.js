@@ -4,7 +4,6 @@ const FILES_TO_CACHE = [
   './index.html',
   './inventario.js',
   './ventas.js',
-  'https://cdn.tailwindcss.com',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
   'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
@@ -40,4 +39,3 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
-
