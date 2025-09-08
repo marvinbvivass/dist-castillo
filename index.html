@@ -13,6 +13,10 @@
         import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
+        // Importar las funciones de las otras vistas
+        import { setupInventario, showInventarioSubMenu } from './inventario.js';
+        import { setupVentas, showVentasView } from './ventas.js';
+
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
             apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
@@ -38,6 +42,9 @@
         const registerButton = document.getElementById('register-button');
         const messageModal = document.getElementById('message-modal');
         const modalOkButton = document.getElementById('modal-ok-button');
+        const salesButton = document.getElementById('sales-button');
+        const inventoryButton = document.getElementById('inventory-button');
+        const mainContent = document.getElementById('main-content');
         
         // Funciones para la UI
         function showModal(title, content) {
@@ -50,6 +57,20 @@
             messageModal.classList.add('hidden');
         });
 
+        function toggleButtonStyles(activeButton) {
+            if (activeButton === 'inventory') {
+                inventoryButton.classList.remove('bg-gray-300', 'text-gray-800', 'hover:bg-gray-400');
+                inventoryButton.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+                salesButton.classList.add('bg-gray-300', 'text-gray-800', 'hover:bg-gray-400');
+                salesButton.classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+            } else {
+                salesButton.classList.remove('bg-gray-300', 'text-gray-800', 'hover:bg-gray-400');
+                salesButton.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+                inventoryButton.classList.add('bg-gray-300', 'text-gray-800', 'hover:bg-gray-400');
+                inventoryButton.classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+            }
+        }
+        
         // Manejar el estado de autenticación
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -57,6 +78,16 @@
                 authView.classList.add('hidden');
                 appView.classList.remove('hidden');
                 document.getElementById('user-id').textContent = `ID de Usuario: ${user.uid}`;
+                
+                // Configurar los botones principales de navegación
+                inventoryButton.addEventListener('click', () => {
+                    toggleButtonStyles('inventory');
+                    showInventarioSubMenu(mainContent, showModal);
+                });
+                salesButton.addEventListener('click', () => {
+                    toggleButtonStyles('sales');
+                    showVentasView(mainContent);
+                });
             } else {
                 // No hay usuario logeado
                 appView.classList.add('hidden');
@@ -128,8 +159,8 @@
         
         <!-- Main Navigation Menu -->
         <div class="flex justify-center gap-4 mb-6 w-full max-w-4xl">
-            <button id="sales-button" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-full shadow-md hover:bg-blue-700 transition duration-200">Ventas</button>
-            <button id="inventory-button" class="py-2 px-6 bg-gray-300 text-gray-800 font-semibold rounded-full shadow-md hover:bg-gray-400 transition duration-200">Inventario</button>
+            <button id="sales-button" class="py-2 px-6 bg-gray-300 text-gray-800 font-semibold rounded-full shadow-md hover:bg-gray-400 transition duration-200">Ventas</button>
+            <button id="inventory-button" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-full shadow-md hover:bg-blue-700 transition duration-200">Inventario</button>
         </div>
         
         <!-- Main Content Container -->
