@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplicación de Gestión de Ventas</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -46,6 +47,7 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
     <div id="app" class="flex flex-col min-h-screen">
+        <!-- Encabezado de la aplicación, visible solo cuando el usuario está autenticado -->
         <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
             <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
             <div id="authStatus" class="flex items-center space-x-4">
@@ -56,9 +58,12 @@
             </div>
         </header>
 
+        <!-- Contenido principal para el menú y otras vistas, visible solo cuando el usuario está autenticado -->
         <main id="mainContent" class="flex-grow hidden">
-            </main>
+            <!-- El contenido de la página se inserta aquí dinámicamente -->
+        </main>
 
+        <!-- Contenido para la vista de login, visible solo cuando el usuario no está autenticado -->
         <main id="loginContent" class="flex-grow flex items-center justify-center">
             <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -75,44 +80,16 @@
             </div>
         </main>
 
+        <!-- Modal para mensajes y formularios -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
-            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4"></div>
-        </div>
-        
-        <div id="ventaFinalModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden">
-            <div class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4">
-                <h2 class="text-2xl font-bold text-center mb-6">Venta Finalizada</h2>
-                <div id="ticketContent" class="p-4 border border-gray-200 rounded-lg bg-gray-50 mb-4">
-                    </div>
-                <div class="mt-4 flex justify-between space-x-4">
-                    <button id="printTicketBtn" class="flex-1 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M5 2a2 2 0 012-2h6a2 2 0 012 2v2h2a2 2 0 012 2v8a2 2 0 01-2 2h-2v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2H3a2 2 0 01-2-2V6a2 2 0 012-2h2V2zm6 2H9v2h2V4zM3 6v8h14V6H3zm2 2h10a1 1 0 000-2H5a1 1 0 000 2z" clip-rule="evenodd" />
-                        </svg>
-                        Imprimir
-                    </button>
-                    <button id="shareTicketBtn" class="flex-1 px-4 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M15 11a4 4 0 10-4-4 4 4 0 004 4zM10 18a8 8 0 100-16 8 8 0 000 16zM10 1a9 9 0 110 18A9 9 0 0110 1zm0 13a4 4 0 100-8 4 4 0 000 8z" />
-                        </svg>
-                        Compartir
-                    </button>
-                </div>
-                <div class="mt-4 text-center">
-                    <button id="closeVentaFinalModalBtn" class="px-4 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                        Cerrar
-                    </button>
-                </div>
-            </div>
+            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4"></div>
         </div>
     </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
@@ -139,9 +116,7 @@
         const modalContent = document.getElementById('modalContent');
         const loginForm = document.getElementById('loginForm');
         const authMessage = document.getElementById('authMessage');
-        const ventaFinalModal = document.getElementById('ventaFinalModal');
-        const closeVentaFinalModalBtn = document.getElementById('closeVentaFinalModalBtn');
-
+        
         // Variables para la vista de ventas
         let clientes = [];
         let inventario = [];
@@ -160,7 +135,7 @@
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
-                    <p class="text-gray-600 mb-6">${message}</p>
+                    <div class="text-gray-600 mb-6">${message}</div>
                     <div class="space-x-4">
                         <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
                         ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Confirmar</button>` : ''}
@@ -202,6 +177,7 @@
             document.getElementById('cancelItemBtn').addEventListener('click', () => {
                 modalContainer.classList.add('hidden');
             });
+
             document.getElementById('addItemForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const newItem = document.getElementById('newItemInput').value;
@@ -227,6 +203,7 @@
             const email = document.getElementById('emailInput').value;
             const password = document.getElementById('passwordInput').value;
             authMessage.textContent = '';
+
             try {
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (error) {
@@ -565,6 +542,7 @@
                 }
             });
         };
+
         /**
          * Edita un producto en el inventario.
          */
@@ -576,26 +554,20 @@
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                             <form id="editProductoForm" class="space-y-4 text-left">
                                 <div>
-                                    <label for="editRubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
-                                    <select id="editRubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="${rubro}">${rubro}</option>
-                                    </select>
+                                    <label class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${rubro}</p>
                                 </div>
                                 <div>
-                                    <label for="editSegmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
-                                    <select id="editSegmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="${segmento}">${segmento}</option>
-                                    </select>
+                                    <label class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${segmento}</p>
                                 </div>
                                 <div>
-                                    <label for="editMarca" class="block text-gray-700 font-medium mb-2">Marca:</label>
-                                    <select id="editMarca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="${marca}">${marca}</option>
-                                    </select>
+                                    <label class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${marca}</p>
                                 </div>
                                 <div>
-                                    <label for="editPresentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                    <input type="text" id="editPresentacion" value="${presentacion}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <label class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${presentacion}</p>
                                 </div>
                                 <div>
                                     <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio:</label>
@@ -616,18 +588,11 @@
                     </div>
                 </div>
             `;
-            populateDropdown('rubros', 'editRubro');
-            populateDropdown('segmentos', 'editSegmento');
-            populateDropdown('marcas', 'editMarca');
-
+            
             document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 try {
                     await setDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId), {
-                        rubro: document.getElementById('editRubro').value,
-                        segmento: document.getElementById('editSegmento').value,
-                        marca: document.getElementById('editMarca').value,
-                        presentacion: document.getElementById('editPresentacion').value,
                         precio: parseFloat(document.getElementById('editPrecio').value),
                         cantidad: parseInt(document.getElementById('editCantidad').value, 10)
                     }, { merge: true });
@@ -640,9 +605,101 @@
             });
             document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
         };
-        
+
+        /**
+         * Maneja la impresión del ticket.
+         */
+        function handlePrintTicket() {
+            const ticketContent = document.getElementById('ticket-content');
+            if (!ticketContent) return;
+            
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Ticket</title>
+                    <style>
+                        body { 
+                            font-family: 'Courier New', Courier, monospace; 
+                            width: 58mm; 
+                            font-size: 10px;
+                            margin: 0;
+                            padding: 5px;
+                        }
+                        h3 { text-align: center; margin: 5px 0; font-size: 12px; }
+                        p { margin: 2px 0; }
+                        table { width: 100%; border-collapse: collapse; }
+                        th, td { text-align: left; padding: 1px; }
+                        .text-right { text-align: right; }
+                        .total { font-weight: bold; margin-top: 5px; border-top: 1px dashed black; padding-top: 5px; }
+                        .signature { margin-top: 25px; text-align: center; }
+                        .signature p { margin: 1px 0; }
+                    </style>
+                </head>
+                <body>
+                    ${ticketContent.innerHTML}
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+            setTimeout(() => { // Timeout to ensure content is loaded
+                printWindow.print();
+                printWindow.close();
+            }, 250);
+        }
+
+        /**
+         * Maneja el compartir el ticket como imagen.
+         */
+        async function handleShareTicket() {
+            const ticketElement = document.getElementById('ticket-content');
+            if (!ticketElement) return;
+
+            // Muestra un modal de carga temporal
+            const tempModal = document.createElement('div');
+            tempModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+            tempModal.innerHTML = `<div class="bg-white p-8 rounded-lg shadow-xl"><p class="text-gray-600">Generando imagen para compartir...</p></div>`;
+            document.body.appendChild(tempModal);
+
+            try {
+                const canvas = await html2canvas(ticketElement, { scale: 2 });
+                canvas.toBlob(async (blob) => {
+                    document.body.removeChild(tempModal); // Elimina el modal de carga
+                    if (navigator.share && blob) {
+                        try {
+                            await navigator.share({
+                                files: [new File([blob], "ticket.png", { type: "image/png" })],
+                                title: "Ticket de Venta",
+                            });
+                        } catch (err) {
+                            console.error("Error al compartir:", err);
+                            // Fallback si el usuario cancela o el navegador lo bloquea
+                            if (err.name === 'NotAllowedError') {
+                                showModal('Compartir no permitido', 'El navegador bloqueó la función de compartir. Abriendo la imagen en una nueva pestaña para que puedas guardarla y compartirla manualmente.');
+                                const imageUrl = URL.createObjectURL(blob);
+                                window.open(imageUrl, '_blank');
+                            } else if (err.name !== 'AbortError') { // No mostrar error si el usuario simplemente cancela
+                                showModal('Error', 'No se pudo compartir el ticket.');
+                            }
+                        }
+                    } else {
+                        // Fallback para cuando navigator.share no está disponible
+                        const imageUrl = URL.createObjectURL(blob);
+                        showModal('Compartir no disponible', `
+                            <p>La función de compartir no está disponible en este navegador. Puedes guardar la imagen y compartirla manualmente.</p>
+                            <a href="${imageUrl}" download="ticket.png" class="mt-4 inline-block px-4 py-2 bg-blue-500 text-white rounded-lg">Descargar Ticket</a>
+                        `);
+                    }
+                }, 'image/png');
+            } catch (err) {
+                document.body.removeChild(tempModal); // Asegúrate de eliminar el modal si hay un error
+                console.error('Error al generar la imagen del ticket:', err);
+                showModal('Error', 'No se pudo generar la imagen del ticket.');
+            }
+        }
+
         // --- Lógica del módulo de Clientes ---
-        
+
         /**
          * Renderiza el menú de subopciones de clientes.
          */
@@ -686,6 +743,7 @@
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
                             <form id="clienteForm" class="space-y-4 text-left">
+                                <!-- Campo Sector -->
                                 <div>
                                     <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
                                     <div class="flex items-center space-x-2">
@@ -695,17 +753,25 @@
                                         <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
                                     </div>
                                 </div>
+                                <!-- Campo Nombre Comercial -->
                                 <div>
                                     <label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
                                     <input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
+                                <!-- Campo Nombre Personal -->
                                 <div>
                                     <label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
                                     <input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
+                                <!-- Campo Teléfono -->
                                 <div>
                                     <label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
                                     <input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <!-- Campo Código CEP -->
+                                <div>
+                                    <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
+                                    <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
                                     Guardar Cliente
@@ -719,6 +785,7 @@
                 </div>
             `;
             populateDropdown('sectores', 'sector');
+
             document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
             document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
             document.getElementById('addSectorBtn').addEventListener('click', () => showAddItemModal('sectores', 'Sector'));
@@ -734,9 +801,17 @@
             const nombreComercial = document.getElementById('nombreComercial').value;
             const nombrePersonal = document.getElementById('nombrePersonal').value;
             const telefono = document.getElementById('telefono').value;
+            const codigoCEP = document.getElementById('codigoCEP').value;
+
             try {
                 const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-                await addDoc(clientesRef, { sector, nombreComercial, nombrePersonal, telefono });
+                await addDoc(clientesRef, {
+                    sector,
+                    nombreComercial,
+                    nombrePersonal,
+                    telefono,
+                    codigoCEP
+                });
                 showModal('Éxito', 'Cliente agregado correctamente.');
                 document.getElementById('clienteForm').reset();
             } catch (e) {
@@ -814,12 +889,12 @@
                     <div class="bg-gray-50 p-4 rounded-lg shadow">
                         <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
                         <p class="text-sm text-gray-600">
-                            ${cliente.nombreComercial && cliente.nombrePersonal ? `(${cliente.nombrePersonal}) ` : ''}
-                            | Sector: ${cliente.sector} | Teléfono: ${cliente.telefono}
+                            ${cliente.nombreComercial && cliente.nombrePersonal ? `(${cliente.nombrePersonal}) ` : ''} |
+                            Sector: ${cliente.sector} | Teléfono: ${cliente.telefono} | CEP: ${cliente.codigoCEP || 'N/A'}
                         </p>
                         ${!readOnly ? `
-                        <div class="mt-2 space-x-2">
-                            <button onclick="editCliente('${cliente.id}', '${cliente.nombreComercial}', '${cliente.nombrePersonal}', '${cliente.telefono}', '${cliente.sector}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
+                        <div class="space-x-2 mt-2">
+                            <button onclick="editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
                             <button onclick="deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
                         </div>
                         ` : ''}
@@ -827,34 +902,47 @@
                 `).join('');
             });
         }
-
+        
         /**
          * Edita un cliente en la base de datos.
+         * @param {string} clienteId ID del cliente a editar.
          */
-        window.editCliente = function(clienteId, nombreComercial, nombrePersonal, telefono, sector) {
+        window.editCliente = async function(clienteId) {
+            const clienteDoc = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
+            const cliente = clienteDoc.data();
+
             mainContent.innerHTML = `
                 <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
                             <form id="editClienteForm" class="space-y-4 text-left">
+                                <!-- Campo Sector -->
                                 <div>
                                     <label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label>
                                     <select id="editSector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="${sector}">${sector}</option>
+                                        <option value="${cliente.sector}">${cliente.sector}</option>
                                     </select>
                                 </div>
+                                <!-- Campo Nombre Comercial -->
                                 <div>
                                     <label for="editNombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
-                                    <input type="text" id="editNombreComercial" value="${nombreComercial}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
+                                <!-- Campo Nombre Personal -->
                                 <div>
                                     <label for="editNombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
-                                    <input type="text" id="editNombrePersonal" value="${nombrePersonal}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
+                                <!-- Campo Teléfono -->
                                 <div>
                                     <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
-                                    <input type="tel" id="editTelefono" value="${telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <!-- Campo Código CEP -->
+                                <div>
+                                    <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
+                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
                                     Guardar Cambios
@@ -876,7 +964,8 @@
                         sector: document.getElementById('editSector').value,
                         nombreComercial: document.getElementById('editNombreComercial').value,
                         nombrePersonal: document.getElementById('editNombrePersonal').value,
-                        telefono: document.getElementById('editTelefono').value
+                        telefono: document.getElementById('editTelefono').value,
+                        codigoCEP: document.getElementById('editCodigoCEP').value
                     }, { merge: true });
                     showModal('Éxito', 'Cliente modificado exitosamente.');
                     showModifyDeleteClienteView();
@@ -886,14 +975,14 @@
                 }
             });
             document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
-        };
+        }
 
         /**
          * Elimina un cliente de la base de datos.
          * @param {string} clienteId ID del cliente a eliminar.
          */
         window.deleteCliente = function(clienteId) {
-            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar a este cliente?', async () => {
+            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
                 try {
                     await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
                     showModal('Éxito', 'Cliente eliminado correctamente.');
@@ -907,7 +996,7 @@
         // --- Lógica del módulo de Ventas ---
 
         /**
-         * Muestra la vista de ventas.
+         * Renderiza la vista principal de ventas.
          */
         function showVentasView() {
             mainContent.innerHTML = `
@@ -919,7 +1008,7 @@
                                 <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
                                     Nueva Venta
                                 </button>
-                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
                                     Ventas Totales
                                 </button>
                                 <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-50">
@@ -934,324 +1023,324 @@
             document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
             document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
         }
-
+        
         /**
-         * Muestra la vista para iniciar una nueva venta.
+         * Renderiza la vista para iniciar una nueva venta.
          */
         function showNuevaVentaView() {
-            ventaActual = {
-                cliente: null,
-                productos: {}
-            };
             mainContent.innerHTML = `
                 <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Nueva Venta</h2>
-
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
                             <div class="mb-6">
-                                <h3 class="text-xl font-semibold mb-2 text-gray-700">1. Seleccionar Cliente</h3>
+                                <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
                                 <div class="relative">
-                                    <input type="text" id="clienteSearchInput" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
                                     <div id="clienteDropdown" class="autocomplete-list hidden"></div>
                                 </div>
                             </div>
+
+                            <div id="inventarioTableContainer" class="hidden animate-fade-in">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Inventario</h3>
+                                <div class="overflow-x-auto rounded-lg shadow">
+                                    <table class="min-w-full bg-white">
+                                        <thead>
+                                            <tr class="bg-gray-200 text-gray-700 uppercase text-sm leading-normal">
+                                                <th class="py-3 px-6 text-left">Producto</th>
+                                                <th class="py-3 px-6 text-left">Marca</th>
+                                                <th class="py-3 px-6 text-left">Precio</th>
+                                                <th class="py-3 px-6 text-center">Stock</th>
+                                                <th class="py-3 px-6 text-center">Cantidad a Vender</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light">
+                                            <!-- Filas de productos se insertarán aquí -->
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="mt-6 flex justify-end space-x-4">
+                                    <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                                        Generar Ticket
+                                    </button>
+                                </div>
+                            </div>
                             
-                            <div class="mb-6">
-                                <h3 class="text-xl font-semibold mb-2 text-gray-700">2. Agregar Productos</h3>
-                                <div class="relative">
-                                    <input type="text" id="productoSearchInput" placeholder="Buscar producto..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    <div id="productoDropdown" class="autocomplete-list hidden"></div>
-                                </div>
-                            </div>
-
-                            <div class="mb-6">
-                                <h3 class="text-xl font-semibold mb-2 text-gray-700">3. Resumen de la Venta</h3>
-                                <div id="resumenVenta" class="p-4 border rounded-lg bg-gray-50">
-                                    <p class="text-sm text-gray-500">Aún no hay productos en la venta.</p>
-                                </div>
-                            </div>
-
-                            <div class="flex justify-between items-center mt-6">
-                                <span id="ventaTotal" class="text-2xl font-bold text-gray-800">$0.00</span>
-                                <button id="finalizarVentaBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105" disabled>
-                                    Finalizar Venta
-                                </button>
-                            </div>
-                            <button id="backToVentasBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                            <button id="backToVentasBtn" class="mt-6 px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
                             </button>
                         </div>
                     </div>
                 </div>
             `;
+            const clienteSearchInput = document.getElementById('clienteSearch');
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            const inventarioTableContainer = document.getElementById('inventarioTableContainer');
 
+            // Listener para el input de búsqueda de clientes
+            clienteSearchInput.addEventListener('input', () => {
+                const searchTerm = clienteSearchInput.value.toLowerCase();
+                const filteredClients = clientes.filter(c =>
+                    c.nombreComercial.toLowerCase().includes(searchTerm) ||
+                    c.nombrePersonal.toLowerCase().includes(searchTerm)
+                );
+                renderClienteDropdown(filteredClients);
+                clienteDropdown.classList.remove('hidden');
+            });
+
+            // Listener para ocultar el dropdown cuando se hace clic fuera
+            document.addEventListener('click', (event) => {
+                if (!clienteSearchInput.contains(event.target) && !clienteDropdown.contains(event.target)) {
+                    clienteDropdown.classList.add('hidden');
+                }
+            });
+
+            // Listener para el botón "Generar Ticket"
+            document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
             document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-            document.getElementById('finalizarVentaBtn').addEventListener('click', finalizarVenta);
-            setupAutocomplete('clienteSearchInput', 'clienteDropdown', clientes, 'clientes');
-            setupAutocomplete('productoSearchInput', 'productoDropdown', inventario, 'inventario');
-            updateResumenVenta();
+
+            // Cargar datos al entrar en la vista
+            loadClientesAndInventario();
         }
 
         /**
-         * Configura el autocompletado para los campos de búsqueda.
-         * @param {string} inputId
-         * @param {string} dropdownId
-         * @param {Array} dataList
-         * @param {string} type
+         * Carga los datos de clientes e inventario desde Firestore.
          */
-        function setupAutocomplete(inputId, dropdownId, dataList, type) {
-            const input = document.getElementById(inputId);
-            const dropdown = document.getElementById(dropdownId);
-            
-            input.addEventListener('input', () => {
-                const query = input.value.toLowerCase();
-                const filtered = dataList.filter(item => {
-                    if (type === 'clientes') {
-                        return (item.nombreComercial && item.nombreComercial.toLowerCase().includes(query)) ||
-                               (item.nombrePersonal && item.nombrePersonal.toLowerCase().includes(query));
-                    } else if (type === 'inventario') {
-                        return item.presentacion.toLowerCase().includes(query) ||
-                               item.marca.toLowerCase().includes(query) ||
-                               item.rubro.toLowerCase().includes(query) ||
-                               item.segmento.toLowerCase().includes(query);
-                    }
-                });
-
-                dropdown.innerHTML = '';
-                if (query.length > 0 && filtered.length > 0) {
-                    filtered.forEach(item => {
-                        const itemElement = document.createElement('div');
-                        itemElement.classList.add('autocomplete-item');
-                        if (type === 'clientes') {
-                            itemElement.textContent = item.nombreComercial || item.nombrePersonal;
-                            itemElement.addEventListener('click', () => {
-                                selectAutocompleteItem(item, type);
-                                dropdown.classList.add('hidden');
-                            });
-                        } else if (type === 'inventario') {
-                            itemElement.textContent = `${item.presentacion} (${item.marca})`;
-                            itemElement.addEventListener('click', () => {
-                                selectAutocompleteItem(item, type);
-                                dropdown.classList.add('hidden');
-                            });
-                        }
-                        dropdown.appendChild(itemElement);
-                    });
-                    dropdown.classList.remove('hidden');
-                } else {
-                    dropdown.classList.add('hidden');
-                }
+        function loadClientesAndInventario() {
+            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+            onSnapshot(clientesRef, (snapshot) => {
+                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             });
 
-            document.addEventListener('click', (e) => {
-                if (!input.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.classList.add('hidden');
-                }
-            });
-        }
-
-        /**
-         * Maneja la selección de un item de autocompletado.
-         * @param {Object} item
-         * @param {string} type
-         */
-        function selectAutocompleteItem(item, type) {
-            if (type === 'clientes') {
-                ventaActual.cliente = item;
-                document.getElementById('clienteSearchInput').value = item.nombreComercial || item.nombrePersonal;
-            } else if (type === 'inventario') {
-                const cantidad = prompt(`¿Cuántas unidades de "${item.presentacion}" desea agregar?`);
-                if (cantidad && !isNaN(cantidad) && parseInt(cantidad, 10) > 0) {
-                    const cantidadInt = parseInt(cantidad, 10);
-                    if (cantidadInt > item.cantidad) {
-                        alert('No hay suficiente stock para esa cantidad.');
-                    } else {
-                        if (ventaActual.productos[item.id]) {
-                            ventaActual.productos[item.id].quantity += cantidadInt;
-                        } else {
-                            ventaActual.productos[item.id] = { ...item, quantity: cantidadInt };
-                        }
-                        document.getElementById('productoSearchInput').value = '';
-                        updateResumenVenta();
-                    }
-                }
-            }
-        }
-
-        /**
-         * Actualiza la vista del resumen de la venta.
-         */
-        function updateResumenVenta() {
-            const resumenVentaDiv = document.getElementById('resumenVenta');
-            const ventaTotalSpan = document.getElementById('ventaTotal');
-            const finalizarBtn = document.getElementById('finalizarVentaBtn');
-            let total = 0;
-
-            let html = `
-                <div class="mb-4">
-                    <p class="font-semibold text-gray-700">Cliente:</p>
-                    <p class="text-sm text-gray-600">${ventaActual.cliente ? ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal : 'No seleccionado'}</p>
-                </div>
-                <div class="border-b border-dashed border-gray-300 mb-4"></div>
-            `;
-            const productosEnVenta = Object.values(ventaActual.productos);
-            if (productosEnVenta.length > 0) {
-                html += `
-                    <h4 class="font-semibold text-gray-700 mb-2">Productos:</h4>
-                    <ul>
-                `;
-                productosEnVenta.forEach(item => {
-                    const subtotal = item.precio * item.quantity;
-                    total += subtotal;
-                    html += `
-                        <li class="flex justify-between items-center py-1">
-                            <span>${item.presentacion} (${item.quantity})</span>
-                            <span class="font-medium">$${subtotal.toFixed(2)}</span>
-                        </li>
-                    `;
-                });
-                html += `</ul>`;
-            } else {
-                html += `<p class="text-sm text-gray-500">No hay productos en la venta.</p>`;
-            }
-
-            resumenVentaDiv.innerHTML = html;
-            ventaTotalSpan.textContent = `$${total.toFixed(2)}`;
-            finalizarBtn.disabled = productosEnVenta.length === 0 || !ventaActual.cliente;
-        }
-
-        /**
-         * Finaliza la venta, guarda en Firestore y actualiza el inventario.
-         */
-        async function finalizarVenta() {
-            if (!ventaActual.cliente || Object.keys(ventaActual.productos).length === 0) {
-                alert('Debe seleccionar un cliente y agregar al menos un producto.');
-                return;
-            }
-
-            const batch = writeBatch(db);
-            let totalVenta = 0;
-            const productosParaGuardar = [];
-
-            // Actualizar stock y preparar la venta
-            for (const productId in ventaActual.productos) {
-                const item = ventaActual.productos[productId];
-                const newQuantity = item.cantidad - item.quantity;
-                if (newQuantity < 0) {
-                    showModal('Error', `Stock insuficiente para el producto: ${item.presentacion}`);
-                    return;
-                }
-                const inventarioDocRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId);
-                batch.update(inventarioDocRef, { cantidad: newQuantity });
-
-                totalVenta += item.precio * item.quantity;
-                productosParaGuardar.push({
-                    id: productId,
-                    name: item.presentacion,
-                    quantity: item.quantity,
-                    price: item.precio,
-                    subtotal: item.precio * item.quantity,
-                });
-            }
-
-            // Guardar la venta en la colección de ventas del usuario
-            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
-            const venta = {
-                cliente: {
-                    id: ventaActual.cliente.id,
-                    nombreComercial: ventaActual.cliente.nombreComercial,
-                    nombrePersonal: ventaActual.cliente.nombrePersonal,
-                },
-                items: productosParaGuardar,
-                total: totalVenta,
-                date: new Date(),
-            };
-            batch.set(doc(ventasRef), venta);
-
-            try {
-                await batch.commit();
-                showVentaFinalModal(venta);
-            } catch (e) {
-                console.error("Error al finalizar la venta: ", e);
-                showModal('Error', 'Hubo un error al procesar la venta. Intente de nuevo.');
-            }
-        }
-
-        /**
-         * Muestra el modal con los detalles de la venta final.
-         * @param {Object} venta Objeto de la venta finalizada.
-         */
-        function showVentaFinalModal(venta) {
-            const ticketContent = document.getElementById('ticketContent');
-            let ticketHtml = `
-                <h3 class="text-xl font-bold text-center mb-4">¡Gracias por tu compra!</h3>
-                <p class="text-xs text-gray-500 text-center mb-4">${venta.date.toLocaleString()}</p>
-                <div class="border-b border-dashed border-gray-400 mb-4"></div>
-                ${venta.items.map(item => `
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="flex-1">${item.name}</span>
-                        <span class="mx-2">${item.quantity}</span>
-                        <span class="w-1/4 text-right">$${(item.price * item.quantity).toFixed(2)}</span>
-                    </div>
-                `).join('')}
-                <div class="border-b border-dashed border-gray-400 mt-4 mb-4"></div>
-                <div class="flex justify-between items-center font-bold text-lg">
-                    <span>TOTAL:</span>
-                    <span>$${venta.total.toFixed(2)}</span>
-                </div>
-            `;
-            ticketContent.innerHTML = ticketHtml;
-            openModal('ventaFinalModal');
-            
-            // Agrega los event listeners a los nuevos botones
-            document.getElementById('printTicketBtn').addEventListener('click', () => {
-                const printWindow = window.open('', '', 'height=500,width=300');
-                printWindow.document.write('<html><head><title>Ticket de Venta</title>');
-                printWindow.document.write('<style>');
-                printWindow.document.write('body { font-family: monospace; font-size: 12px; }');
-                printWindow.document.write('h2 { text-align: center; }');
-                printWindow.document.write('</style>');
-                printWindow.document.write('</head><body>');
-                printWindow.document.write(ticketContent.innerHTML);
-                printWindow.document.write('</body></html>');
-                printWindow.document.close();
-                printWindow.focus();
-                printWindow.print();
-                printWindow.close();
-            });
-
-            document.getElementById('shareTicketBtn').addEventListener('click', () => {
-                const ticketElement = document.getElementById('ticketContent');
-
-                html2canvas(ticketElement).then(canvas => {
-                    const imageData = canvas.toDataURL('image/png');
-
-                    if (navigator.share) {
-                        navigator.share({
-                            title: 'Ticket de Venta',
-                            text: 'Aquí está el ticket de tu compra.',
-                            files: [new File([imageData], 'ticket.png', {type: 'image/png'})]
-                        }).then(() => {
-                            console.log('Ticket compartido exitosamente.');
-                        }).catch(error => {
-                            console.error('Error al compartir:', error);
-                        });
-                    } else {
-                        const a = document.createElement('a');
-                        a.href = imageData;
-                        a.download = 'ticket_de_venta.png';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        alert('Tu navegador no soporta la función de compartir. Se ha descargado una imagen del ticket.');
-                    }
-                });
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            onSnapshot(inventarioRef, (snapshot) => {
+                inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderVentasInventario();
             });
         }
         
         /**
-         * Muestra la vista de ventas totales.
+         * Renderiza el dropdown de clientes.
+         * @param {Array<Object>} filteredClients Clientes a mostrar.
+         */
+        function renderClienteDropdown(filteredClients) {
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            clienteDropdown.innerHTML = '';
+            filteredClients.forEach(cliente => {
+                const item = document.createElement('div');
+                item.classList.add('autocomplete-item');
+                item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+                item.dataset.clienteId = cliente.id;
+                item.addEventListener('click', () => selectCliente(cliente));
+                clienteDropdown.appendChild(item);
+            });
+        }
+
+        /**
+         * Selecciona un cliente y muestra la tabla de inventario.
+         * @param {Object} cliente El cliente seleccionado.
+         */
+        function selectCliente(cliente) {
+            ventaActual.cliente = cliente;
+            const clienteSearchInput = document.getElementById('clienteSearch');
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            const inventarioTableContainer = document.getElementById('inventarioTableContainer');
+
+            clienteSearchInput.value = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+            clienteDropdown.classList.add('hidden');
+            inventarioTableContainer.classList.remove('hidden');
+        }
+
+        /**
+         * Renderiza la tabla de inventario para la vista de ventas.
+         */
+        function renderVentasInventario() {
+            const inventarioTableBody = document.getElementById('inventarioTableBody');
+            if (!inventarioTableBody) return;
+            inventarioTableBody.innerHTML = '';
+
+            if (inventario.length === 0) {
+                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos en el inventario.</td></tr>`;
+                return;
+            }
+
+            inventario.forEach(producto => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-100');
+                row.innerHTML = `
+                    <td class="py-3 px-6 text-left whitespace-nowrap">${producto.presentacion} (${producto.rubro})</td>
+                    <td class="py-3 px-6 text-left">${producto.marca}</td>
+                    <td class="py-3 px-6 text-left">$${producto.precio.toFixed(2)}</td>
+                    <td class="py-3 px-6 text-center">${producto.cantidad}</td>
+                    <td class="py-3 px-6 text-center">
+                        <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidad || 0}"
+                               class="w-20 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
+                               oninput="updateVentaCantidad(event)">
+                    </td>
+                `;
+                inventarioTableBody.appendChild(row);
+            });
+        }
+
+        /**
+         * Actualiza la cantidad de un producto en la venta actual.
+         * @param {Event} event
+         */
+        window.updateVentaCantidad = function(event) {
+            const input = event.target;
+            const productId = input.dataset.productId;
+            const cantidad = parseInt(input.value, 10);
+            
+            if (cantidad > 0) {
+                const producto = inventario.find(p => p.id === productId);
+                if (producto) {
+                    ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
+                }
+            } else {
+                delete ventaActual.productos[productId];
+            }
+        };
+
+        /**
+         * Genera un ticket de venta y lo guarda en Firestore.
+         */
+        async function generarTicket() {
+            if (!ventaActual.cliente) {
+                showModal('Error', 'Debe seleccionar un cliente para generar el ticket.');
+                return;
+            }
+            const productosVendidos = Object.values(ventaActual.productos);
+            if (productosVendidos.length === 0) {
+                showModal('Error', 'Debe seleccionar al menos un producto para vender.');
+                return;
+            }
+
+            // Muestra un modal de confirmación antes de guardar
+            showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+                try {
+                    await runTransaction(db, async (transaction) => {
+                        const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                        let totalVenta = 0;
+                        const itemsVenta = [];
+                        const stockUpdates = [];
+
+                        // FASE 1: LECTURAS Y VALIDACIONES
+                        for (const p of productosVendidos) {
+                            const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                            const productoDoc = await transaction.get(productoRef);
+
+                            if (!productoDoc.exists()) {
+                                throw new Error(`El producto "${p.presentacion}" ya no existe en el inventario.`);
+                            }
+                            
+                            const stockActual = productoDoc.data().cantidad;
+                            if (stockActual < p.cantidadVendida) {
+                                throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${stockActual}, Solicitado: ${p.cantidadVendida}`);
+                            }
+                            
+                            const nuevaCantidad = stockActual - p.cantidadVendida;
+                            stockUpdates.push({ ref: productoRef, nuevaCantidad });
+
+                            const subtotal = p.precio * p.cantidadVendida;
+                            totalVenta += subtotal;
+                            itemsVenta.push({
+                                id: p.id,
+                                presentacion: p.presentacion,
+                                marca: p.marca,
+                                segmento: p.segmento,
+                                precio: p.precio,
+                                cantidad: p.cantidadVendida
+                            });
+                        }
+
+                        // FASE 2: ESCRITURAS
+                        // Primero, crea el documento de la venta
+                        transaction.set(ventaRef, {
+                            clienteId: ventaActual.cliente.id,
+                            clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
+                            fecha: new Date(),
+                            total: totalVenta,
+                            productos: itemsVenta
+                        });
+
+                        // Luego, actualiza el stock de cada producto
+                        stockUpdates.forEach(update => {
+                            transaction.update(update.ref, { cantidad: update.nuevaCantidad });
+                        });
+                    });
+
+                    // Si la transacción fue exitosa, genera y muestra el ticket
+                    const fecha = new Date().toLocaleDateString('es-ES');
+                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
+                    const ticketHTML = `
+                        <div id="ticket-content">
+                            <div class="text-left p-4">
+                                <h3 class="text-xl font-bold text-gray-800 text-center mb-4">Distribuidora Castillo Yañez</h3>
+                                <p class="text-sm">Fecha: ${fecha}</p>
+                                <p class="text-sm mb-4">Cliente: ${ventaActual.cliente.nombreComercial}</p>
+                                <table class="min-w-full text-sm mt-4">
+                                    <thead>
+                                        <tr>
+                                            <th class="py-2 text-left">Producto</th>
+                                            <th class="py-2 text-center">Cant.</th>
+                                            <th class="py-2 text-right">Precio</th>
+                                            <th class="py-2 text-right">Subtotal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${productosVendidos.map(p => `
+                                            <tr>
+                                                <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                                <td class="py-1 text-center">${p.cantidadVendida}</td>
+                                                <td class="py-1 text-right">$${p.precio.toFixed(2)}</td>
+                                                <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                                <div class="mt-4 text-right font-bold text-lg total">
+                                    Total: $${totalVentaFinal.toFixed(2)}
+                                </div>
+                                <div class="mt-12 text-center text-sm signature">
+                                    <p class="py-4">_________________________</p>
+                                    <p>${ventaActual.cliente.nombrePersonal}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-center space-x-2">
+                             <button id="closeTicketBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
+                            <button id="printTicketBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Imprimir</button>
+                            <button id="shareTicketBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300">Compartir</button>
+                        </div>
+                    `;
+
+                    // Usamos un modal que no se cierra automáticamente al confirmar
+                    modalContent.innerHTML = `
+                        <div class="text-center">
+                            <h3 class="text-xl font-bold text-gray-800 mb-4">Ticket de Venta</h3>
+                            ${ticketHTML}
+                        </div>`;
+                    
+                    document.getElementById('closeTicketBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+                    document.getElementById('printTicketBtn').addEventListener('click', handlePrintTicket);
+                    document.getElementById('shareTicketBtn').addEventListener('click', handleShareTicket);
+                    modalContainer.classList.remove('hidden');
+
+                    // Limpiar el estado de la venta
+                    ventaActual.cliente = null;
+                    ventaActual.productos = {};
+                    showNuevaVentaView();
+
+                } catch (e) {
+                    console.error("Error al generar el ticket o actualizar el stock: ", e);
+                    showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
+                }
+            });
+        }
+
+        /**
+         * Renderiza la vista de ventas totales.
          */
         function showVentasTotalesView() {
             mainContent.innerHTML = `
@@ -1259,7 +1348,14 @@
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
-                            <p class="text-gray-600">Esta sección está en construcción. ¡Pronto podrás ver tus ventas totales aquí!</p>
+                            <div class="space-y-4">
+                                <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300">
+                                    Ventas Actuales
+                                </button>
+                                <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
+                                    Cierre de Ventas
+                                </button>
+                            </div>
                             <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
                             </button>
@@ -1267,35 +1363,340 @@
                     </div>
                 </div>
             `;
+            document.getElementById('ventasActualesBtn').addEventListener('click', showVentasActualesView);
+            document.getElementById('cierreVentasBtn').addEventListener('click', showCierreSubMenuView);
             document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
         }
 
         /**
-         * Función para abrir un modal específico.
-         * @param {string} modalId
+         * Muestra el submenú de opciones para el cierre de ventas.
          */
-        function openModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.remove('hidden');
+        function showCierreSubMenuView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Opciones de Cierre</h2>
+                            <div class="space-y-4">
+                                <button id="verCierreBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
+                                    Ver Cierre (Vista Previa)
+                                </button>
+                                <button id="realizarCierreBtn" class="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
+                                    Realizar Cierre Definitivo
+                                </button>
+                            </div>
+                            <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('verCierreBtn').addEventListener('click', showVerCierreView);
+            document.getElementById('realizarCierreBtn').addEventListener('click', handleCierreDeVentas);
+            document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
+        }
+
+        /**
+         * Muestra una vista previa del reporte de cierre de ventas.
+         */
+        async function showVerCierreView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Vista Previa de Cierre de Ventas</h2>
+                            <div id="cierreContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Generando vista previa...</p>
+                            </div>
+                            <button id="backToCierreSubMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToCierreSubMenuBtn').addEventListener('click', showCierreSubMenuView);
+
+            const container = document.getElementById('cierreContainer');
+            try {
+                const closingData = await getClosingData();
+
+                if (!closingData) {
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay ventas para mostrar en el cierre.</p>`;
+                    return;
+                }
+
+                const { header, rows, totalRow } = closingData;
+                
+                // Rotar los nombres de productos para mejor visualización
+                const productHeaders = header.slice(2, -1).map(name => `<th class="py-2 px-3 border-b border-l transform -rotate-45 whitespace-nowrap"><span class="inline-block text-sm">${name}</span></th>`).join('');
+
+                let tableHTML = `
+                    <table class="min-w-full bg-white border border-gray-200 text-sm">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left">Fecha</th>
+                                <th class="py-2 px-4 border-b text-left">Cliente</th>
+                                ${productHeaders}
+                                <th class="py-2 px-4 border-b border-l text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                rows.forEach(row => {
+                    const cantidadesHTML = row.cantidades.map(cant => `<td class="py-2 px-3 border-b border-l text-center">${cant}</td>`).join('');
+                    tableHTML += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b whitespace-nowrap">${row.fecha}</td>
+                            <td class="py-2 px-4 border-b">${row.cliente}</td>
+                            ${cantidadesHTML}
+                            <td class="py-2 px-4 border-b border-l text-right font-semibold">$${row.total}</td>
+                        </tr>
+                    `;
+                });
+                
+                // Fila de totales
+                const totalesCantHTML = totalRow.cantidades.map(cant => `<td class="py-2 px-3 border-b border-l text-center font-bold">${cant}</td>`).join('');
+                tableHTML += `
+                    <tr class="bg-gray-100 font-bold">
+                        <td class="py-2 px-4 border-b" colspan="2">${totalRow.label}</td>
+                        ${totalesCantHTML}
+                        <td class="py-2 px-4 border-b border-l text-right text-lg">$${totalRow.total}</td>
+                    </tr>
+                `;
+
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                container.innerHTML = tableHTML;
+            } catch (error) {
+                console.error("Error al generar la vista previa del cierre: ", error);
+                container.innerHTML = `<p class="text-red-500 text-center">Ocurrió un error al generar la vista previa.</p>`;
             }
         }
 
         /**
-         * Función para cerrar un modal específico.
-         * @param {string} modalId
+         * Muestra la vista con la lista de todas las ventas actuales.
          */
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.classList.add('hidden');
-            }
+        function showVentasActualesView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ventas Actuales</h2>
+                            <div id="ventasListContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Cargando ventas...</p>
+                            </div>
+                            <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
+            renderVentasList();
         }
 
-        // Event listener para cerrar el modal de venta final
-        closeVentaFinalModalBtn.addEventListener('click', () => {
-            closeModal('ventaFinalModal');
-        });
+        /**
+         * Renderiza la lista de ventas en el DOM en formato de tabla.
+         */
+        function renderVentasList() {
+            const container = document.getElementById('ventasListContainer');
+            if (!container) return;
+
+            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
+            onSnapshot(ventasRef, (snapshot) => {
+                const ventas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                ventas.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
+
+                if (ventas.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay ventas registradas.</p>`;
+                    return;
+                }
+
+                let tableHTML = `
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left">Cliente</th>
+                                <th class="py-2 px-4 border-b text-left">Fecha</th>
+                                <th class="py-2 px-4 border-b text-left">Producto</th>
+                                <th class="py-2 px-4 border-b text-center">Cant</th>
+                                <th class="py-2 px-4 border-b text-right">Subtotal</th>
+                                <th class="py-2 px-4 border-b text-right">Total Venta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                ventas.forEach(venta => {
+                    const totalProductos = venta.productos.length;
+                    venta.productos.forEach((producto, index) => {
+                        tableHTML += `
+                            <tr class="hover:bg-gray-50">
+                        `;
+                        // Celdas de Cliente y Fecha solo en la primera fila del producto
+                        if (index === 0) {
+                            tableHTML += `
+                                <td class="py-2 px-4 border-b" rowspan="${totalProductos}">${venta.clienteNombre}</td>
+                                <td class="py-2 px-4 border-b" rowspan="${totalProductos}">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
+                            `;
+                        }
+                        
+                        tableHTML += `
+                            <td class="py-2 px-4 border-b">${producto.segmento} ${producto.marca} ${producto.presentacion}</td>
+                            <td class="py-2 px-4 border-b text-center">${producto.cantidad}</td>
+                            <td class="py-2 px-4 border-b text-right">$${(producto.cantidad * producto.precio).toFixed(2)}</td>
+                        `;
+
+                        // Celda de Total Venta solo en la primera fila del producto
+                        if (index === 0) {
+                            tableHTML += `
+                                <td class="py-2 px-4 border-b text-right font-bold" rowspan="${totalProductos}">$${venta.total.toFixed(2)}</td>
+                            `;
+                        }
+
+                        tableHTML += `</tr>`;
+                    });
+                });
+
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                container.innerHTML = tableHTML;
+            });
+        }
+
+        /**
+         * Obtiene y procesa los datos necesarios para el cierre de ventas.
+         * @returns {Object|null} Un objeto con los datos del cierre o null si no hay ventas.
+         */
+        async function getClosingData() {
+            // Obtener todas las ventas y todos los productos del inventario
+            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+
+            const [ventasSnapshot, inventarioSnapshot] = await Promise.all([
+                getDocs(ventasRef),
+                getDocs(inventarioRef)
+            ]);
+            
+            const ventas = ventasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            if (ventas.length === 0) {
+                return null;
+            }
+            
+            // Crear una lista maestra de productos para las columnas
+            const productosMaestros = inventarioSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return `${data.segmento} ${data.marca} ${data.presentacion}`;
+            }).sort();
+
+            // Mapear productos a índices para un acceso rápido
+            const productoIndexMap = new Map(productosMaestros.map((p, i) => [p, i]));
+
+            const columnTotals = new Array(productosMaestros.length).fill(0);
+            let grandTotal = 0;
+
+            const header = ['Fecha', 'Cliente', ...productosMaestros, 'Total'];
+            
+            const rows = ventas.map(venta => {
+                const rowData = new Array(productosMaestros.length).fill(0);
+                venta.productos.forEach(p => {
+                    const productoNombreCompleto = `${p.segmento} ${p.marca} ${p.presentacion}`;
+                    const index = productoIndexMap.get(productoNombreCompleto);
+                    if (index !== undefined) {
+                        rowData[index] = p.cantidad;
+                        columnTotals[index] += p.cantidad;
+                    }
+                });
+                grandTotal += venta.total;
+                
+                return {
+                    fecha: venta.fecha.toDate().toLocaleDateString('es-ES'),
+                    cliente: venta.clienteNombre,
+                    cantidades: rowData,
+                    total: venta.total.toFixed(2)
+                };
+            });
+            
+            const totalRow = {
+                label: 'Total',
+                cantidades: columnTotals,
+                total: grandTotal.toFixed(2)
+            };
+            
+            return { header, rows, totalRow, ventasSnapshot };
+        }
+
+
+        /**
+         * Maneja el proceso de cierre de ventas: genera un reporte y borra los datos.
+         */
+        async function handleCierreDeVentas() {
+            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará un archivo Excel (.csv) de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
+                mainContent.innerHTML = `<div class="p-6 text-center"><p class="text-lg text-gray-700">Procesando cierre de ventas, por favor espera...</p></div>`;
+
+                try {
+                    const closingData = await getClosingData();
+
+                    if (!closingData) {
+                        showModal('Aviso', 'No hay ventas para cerrar.');
+                        showCierreSubMenuView(); // Go back to the new sub-menu
+                        return;
+                    }
+                    
+                    const { header, rows, totalRow, ventasSnapshot } = closingData;
+                    
+                    // Convertir a formato de array para CSV
+                    const csvRows = rows.map(row => {
+                         const clienteNombre = `"${row.cliente.replace(/"/g, '""')}"`;
+                         return [row.fecha, clienteNombre, ...row.cantidades, row.total];
+                    });
+                    const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
+                    
+                    // Convertir array de arrays a string CSV
+                    const csvContent = [header, ...csvRows, csvTotalRow]
+                        .map(e => e.join(","))
+                        .join("\n");
+                    
+                    // Crear Blob y enlace de descarga para el archivo .csv
+                    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    const fechaArchivo = new Date().toISOString().slice(0, 10);
+                    a.href = url;
+                    a.download = `cierre_ventas_${fechaArchivo}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    // Eliminar todas las ventas
+                    const batch = writeBatch(db);
+                    ventasSnapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    
+                    showModal('Éxito', 'El cierre de ventas se completó. Se ha descargado un archivo de respaldo y se han eliminado los registros de ventas.');
+                    showCierreSubMenuView();
+
+                } catch (error) {
+                    console.error("Error durante el cierre de ventas: ", error);
+                    showModal('Error', 'Ocurrió un error durante el proceso de cierre. No se eliminó ninguna venta.');
+                    showCierreSubMenuView();
+                }
+            });
+        }
+
 
         /**
          * Inicia Firebase y establece los oyentes de estado de autenticación.
@@ -1323,3 +1724,4 @@
     </script>
 </body>
 </html>
+
