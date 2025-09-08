@@ -1487,16 +1487,17 @@
                             ${ticketHTML}
                         </div>`;
                     
-                    document.getElementById('closeTicketBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+                    document.getElementById('closeTicketBtn').addEventListener('click', () => {
+                        modalContainer.classList.add('hidden');
+                        // El estado se limpia y la vista se recarga SOLO al cerrar el ticket.
+                        ventaActual.cliente = null;
+                        ventaActual.productos = {};
+                        showNuevaVentaView();
+                    });
                     // Pasamos los datos de la venta directamente a las funciones de los botones
                     document.getElementById('printTicketBtn').addEventListener('click', () => handlePrintTicket(ventaParaTicket, productosParaTicket));
                     document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket()); // Compartir lee del HTML, no necesita los datos
                     modalContainer.classList.remove('hidden');
-
-                    // AHORA es seguro limpiar el estado para la próxima venta
-                    ventaActual.cliente = null;
-                    ventaActual.productos = {};
-                    showNuevaVentaView();
 
                 } catch (e) {
                     console.error("Error al generar el ticket o actualizar el stock: ", e);
