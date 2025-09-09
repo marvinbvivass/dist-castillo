@@ -182,7 +182,6 @@
             if (onConfirm) {
                 document.getElementById('confirmBtn').addEventListener('click', () => {
                     onConfirm();
-                    // No cerramos el modal aquí, la función onConfirm se encargará si es necesario
                 });
             }
             modalContainer.classList.remove('hidden');
@@ -217,7 +216,6 @@
                 const newItem = document.getElementById('newItemInput').value;
                 try {
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
-                    // Muestra el mensaje de éxito y luego actualiza la vista
                     showModal('Éxito', `${itemName} "${newItem}" agregado correctamente.`);
                 } catch (e) {
                     console.error(`Error al agregar ${itemName}: `, e);
@@ -693,245 +691,85 @@
             document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
         };
 
-        /**
-         * Maneja la impresión del ticket, intentando usar Web Bluetooth y
-         * recurriendo a la impresión estándar si no está disponible.
+       /**
+         * Maneja la impresión del ticket usando la API de "Compartir" para enviarlo a una app nativa.
          * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
          * @param {Array} productosVendidos - La lista de productos de esa venta.
          */
         async function handlePrintTicket(currentVenta, productosVendidos) {
-            if ('bluetooth' in navigator) {
-                try {
-                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
-                    const escPosData = generateEscPosData(currentVenta, productosVendidos, totalVentaFinal);
+            try {
+                const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
+                const plainTextTicket = generatePlainTextTicket(currentVenta, productosVendidos, totalVentaFinal);
 
-                    showModal('Impresión Bluetooth', 'Por favor, selecciona tu impresora térmica (ej. MP-58) en la ventana emergente.');
-
-                    const device = await navigator.bluetooth.requestDevice({
-                        acceptAllDevices: true,
-                        optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // SPP Profile, aunque buscaremos genéricamente
+                if (navigator.share) {
+                    await navigator.share({
+                        title: 'Ticket de Venta',
+                        text: plainTextTicket,
                     });
-
-                    modalContent.querySelector('.text-gray-600').textContent = `Conectando a ${device.name}...`;
-                    const server = await device.gatt.connect();
-                    
-                    modalContent.querySelector('.text-gray-600').textContent = 'Buscando canal de comunicación...';
-                    
-                    // Lógica robusta: Iterar sobre todos los servicios para encontrar una característica de escritura.
-                    let characteristic;
-                    const services = await server.getPrimaryServices();
-                    for (const service of services) {
-                        const characteristics = await service.getCharacteristics();
-                        // Priorizar 'write-without-response' que es más común en impresoras, pero aceptar 'write' también.
-                        const writableCharacteristic = characteristics.find(c => c.properties.writeWithoutResponse) || characteristics.find(c => c.properties.write);
-                        if (writableCharacteristic) {
-                            characteristic = writableCharacteristic;
-                            break; // Encontramos un canal, dejamos de buscar.
-                        }
-                    }
-
-                    if (!characteristic) {
-                        device.gatt.disconnect();
-                        throw new Error('No se encontró un canal de escritura compatible en esta impresora. El dispositivo puede no ser una impresora ESC/POS o no ser compatible con Web Bluetooth.');
-                    }
-
-                    modalContent.querySelector('.text-gray-600').textContent = 'Enviando datos a la impresora...';
-                    
-                    const chunkSize = 20;
-                    for (let i = 0; i < escPosData.length; i += chunkSize) {
-                        const chunk = escPosData.slice(i, i + chunkSize);
-                        await characteristic.writeValueWithoutResponse(chunk);
-                    }
-
-                    modalContent.querySelector('.text-gray-600').textContent = '¡Impresión enviada con éxito!';
-                    device.gatt.disconnect();
-                    
-                    setTimeout(() => {
-                        if (modalContainer.classList.contains('hidden') === false) {
-                           document.getElementById('closeModalBtn')?.click();
-                        }
-                    }, 2000);
-
-                } catch (error) {
-                    console.error('Error de Web Bluetooth:', error);
-                    
-                    if (error.name === 'NotFoundError') {
-                        showModal(
-                            'Impresora no seleccionada', 
-                            'No se seleccionó ninguna impresora Bluetooth. ¿Deseas intentar con el método de impresión estándar?',
-                            () => { 
-                                modalContainer.classList.add('hidden');
-                                legacyPrint(currentVenta, productosVendidos); 
-                            },
-                            'Sí, intentar impresión estándar'
-                        );
-                    } else {
-                        let errorMessage = `${error.message}`;
-                         if (error.name === 'SecurityError') {
-                            errorMessage = 'El acceso a Bluetooth está bloqueado en este entorno por seguridad. Esta función se activará al usar la aplicación en un navegador móvil estándar (como Chrome en Android).';
-                        }
-                        showModal('Error de Impresión', errorMessage);
-                    }
+                } else {
+                    // Fallback para navegadores de escritorio o sin API de compartir
+                    showModal('Imprimir Ticket', `
+                        <p class="text-left mb-4">La impresión directa no está disponible. Por favor, copia el siguiente texto y pégalo en tu aplicación de impresión:</p>
+                        <textarea id="ticket-textarea" class="w-full h-48 p-2 border rounded-lg bg-gray-100 font-mono text-sm" readonly>${plainTextTicket}</textarea>
+                        <button id="copyTicketBtn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg">Copiar Texto</button>
+                    `);
+                    document.getElementById('copyTicketBtn').addEventListener('click', () => {
+                        const textarea = document.getElementById('ticket-textarea');
+                        textarea.select();
+                        document.execCommand('copy');
+                        alert('¡Texto copiado!');
+                    });
                 }
-            } else {
-                showModal('Impresión no disponible', 'Tu navegador no soporta la impresión directa por Bluetooth. Se usará el método de impresión estándar.', () => {
-                    modalContainer.classList.add('hidden');
-                    legacyPrint(currentVenta, productosVendidos);
-                }, 'Continuar');
+            } catch (error) {
+                console.error("Error al compartir el ticket para imprimir:", error);
+                if (error.name !== 'AbortError') { // No mostrar error si el usuario cancela la acción de compartir
+                    showModal('Error', 'No se pudo iniciar la acción para compartir el ticket.');
+                }
             }
         }
         
         /**
-         * Genera los datos del ticket en formato ESC/POS para impresoras térmicas.
+         * Genera el ticket en formato de texto plano para compartir e imprimir.
          */
-        function generateEscPosData(venta, productos, total) {
-            const encoder = new TextEncoder();
-            const commands = [];
-            const width = 32;
+        function generatePlainTextTicket(venta, productos, total) {
+            const width = 32; // Ancho para papel de 58mm
+            let ticket = '';
 
-            const init = '\x1B\x40';
-            const center = '\x1B\x61\x01';
-            const left = '\x1B\x61\x00';
-            const doubleHeight = '\x1D\x21\x10';
-            const normal = '\x1D\x21\x00';
-            const lf = '\n';
-            const cut = '\x1D\x56\x41';
+            const center = (text) => text.padStart(Math.floor((width + text.length) / 2), ' ').padEnd(width, ' ');
+            const line = '-'.repeat(width);
 
-            const add = (text) => commands.push(encoder.encode(text));
-            
-            add(init);
-            add(center);
-            add(doubleHeight);
-            add('Distribuidora Castillo Yanez' + lf);
-            add(normal);
-            add('-'.repeat(width) + lf);
-            add(left);
-            add(`Fecha: ${new Date().toLocaleDateString('es-ES')}`.padEnd(width) + lf);
-            add(`Cliente: ${venta.cliente.nombreComercial}`.substring(0, width).padEnd(width) + lf);
-            add('-'.repeat(width) + lf);
-            
+            ticket += center('Distribuidora Castillo Yanez') + '\n';
+            ticket += line + '\n';
+            ticket += `Fecha: ${new Date().toLocaleDateString('es-ES')}` + '\n';
+            ticket += `Cliente: ${venta.cliente.nombreComercial}` + '\n';
+            ticket += line + '\n';
+
             productos.forEach(p => {
                 const desc = `${p.cantidadVendida}x ${p.segmento} ${p.marca} ${p.presentacion}`;
                 const subtotal = `$${(p.cantidadVendida * p.precio).toFixed(2)}`;
                 
-                let lines = [];
-                if (desc.length > (width - subtotal.length -1)) {
-                    let tempDesc = desc;
-                    while(tempDesc.length > (width - subtotal.length -1)){
-                        let wrapIndex = tempDesc.lastIndexOf(' ', width - subtotal.length -1);
-                        if (wrapIndex === -1) wrapIndex = width - subtotal.length -1;
-                        lines.push(tempDesc.substring(0, wrapIndex));
-                        tempDesc = '  ' + tempDesc.substring(wrapIndex + 1);
-                    }
-                    lines.push(tempDesc)
-                } else {
-                    lines.push(desc);
+                let tempDesc = desc;
+                while (tempDesc.length > (width - subtotal.length - 1)) {
+                    let wrapIndex = tempDesc.lastIndexOf(' ', width - subtotal.length - 1);
+                    if (wrapIndex === -1) wrapIndex = width - subtotal.length - 1;
+                    ticket += tempDesc.substring(0, wrapIndex) + '\n';
+                    tempDesc = '  ' + tempDesc.substring(wrapIndex + 1);
                 }
-
-                lines.forEach((line, index) => {
-                    if (index === lines.length - 1) {
-                        const padding = ' '.repeat(Math.max(0, width - line.length - subtotal.length));
-                        add(line + padding + subtotal + lf);
-                    } else {
-                        add(line + lf);
-                    }
-                });
+                const padding = ' '.repeat(Math.max(0, width - tempDesc.length - subtotal.length));
+                ticket += tempDesc + padding + subtotal + '\n';
             });
 
-            add('-'.repeat(width) + lf);
+            ticket += line + '\n';
             const totalStr = `$${total.toFixed(2)}`;
             const totalLabel = 'Total:';
             const paddingTotal = ' '.repeat(width - totalLabel.length - totalStr.length);
-            add(doubleHeight);
-            add(totalLabel + paddingTotal + totalStr + lf);
-            add(normal + lf + lf);
+            ticket += totalLabel + paddingTotal + totalStr + '\n\n';
 
-            add(center);
-            add('________________' + lf);
-            add(venta.cliente.nombrePersonal + lf + lf + lf + lf);
-            add(cut);
+            ticket += center('________________') + '\n';
+            ticket += center(venta.cliente.nombrePersonal) + '\n\n\n';
 
-            const totalLength = commands.reduce((acc, val) => acc + val.length, 0);
-            const data = new Uint8Array(totalLength);
-            let offset = 0;
-            for (const cmd of commands) {
-                data.set(cmd, offset);
-                offset += cmd.length;
-            }
-            return data;
+            return ticket;
         }
-
-        /**
-         * Método de impresión tradicional como fallback, usando un iframe para máxima compatibilidad.
-         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
-         * @param {Array} productosVendidos - La lista de productos de esa venta.
-         */
-        function legacyPrint(currentVenta, productosVendidos) {
-            if (!currentVenta || !productosVendidos) {
-                showModal('Error de Impresión', 'No se pudieron recuperar los datos del ticket para la impresión estándar.');
-                return;
-            }
-
-            const fecha = new Date().toLocaleDateString('es-ES');
-            const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
-
-            const ticketInnerHtml = `
-                <div style="font-family: 'Courier New', monospace; width: 58mm; font-size: 10px; margin: 0; padding: 5px;">
-                    <h3 style="text-align: center; margin: 5px 0; font-size: 12px;">Distribuidora Castillo Yañez</h3>
-                    <p>Fecha: ${fecha}</p>
-                    <p>Cliente: ${currentVenta.cliente.nombreComercial}</p>
-                    <hr>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
-                        <thead>
-                            <tr>
-                                <th style="text-align: left; padding: 1px;">Producto</th>
-                                <th style="text-align: center; padding: 1px;">Cant.</th>
-                                <th style="text-align: right; padding: 1px;">Precio</th>
-                                <th style="text-align: right; padding: 1px;">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${productosVendidos.map(p => `
-                                <tr>
-                                    <td>${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td style="text-align: center;">${p.cantidadVendida}</td>
-                                    <td style="text-align: right;">$${p.precio.toFixed(2)}</td>
-                                    <td style="text-align: right;">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <hr>
-                    <div style="text-align: right; font-weight: bold; margin-top: 5px;">
-                        Total: $${totalVentaFinal.toFixed(2)}
-                    </div>
-                    <div style="margin-top: 25px; text-align: center;">
-                        <p>_________________________</p>
-                        <p>${currentVenta.cliente.nombrePersonal}</p>
-                    </div>
-                </div>
-            `;
-
-            // Usar un iframe invisible para evitar problemas con pop-ups
-            const iframe = document.createElement('iframe');
-            iframe.style.position = 'absolute';
-            iframe.style.width = '0';
-            iframe.style.height = '0';
-            iframe.style.border = '0';
-            document.body.appendChild(iframe);
-
-            iframe.contentDocument.write(ticketInnerHtml);
-            iframe.contentDocument.close();
-            
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-
-            // Eliminar el iframe después de un tiempo prudencial
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
-        }
-
 
         /**
          * Maneja el compartir el ticket como imagen.
@@ -940,7 +778,6 @@
             const ticketElement = document.getElementById('ticket-content');
             if (!ticketElement) return;
 
-            // Muestra un modal de carga temporal
             const tempModal = document.createElement('div');
             tempModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
             tempModal.innerHTML = `<div class="bg-white p-8 rounded-lg shadow-xl"><p class="text-gray-600">Generando imagen para compartir...</p></div>`;
@@ -949,7 +786,7 @@
             try {
                 const canvas = await html2canvas(ticketElement, { scale: 2 });
                 canvas.toBlob(async (blob) => {
-                    document.body.removeChild(tempModal); // Elimina el modal de carga
+                    document.body.removeChild(tempModal);
                     if (navigator.share && blob) {
                         try {
                             await navigator.share({
@@ -958,26 +795,24 @@
                             });
                         } catch (err) {
                             console.error("Error al compartir:", err);
-                            // Fallback si el usuario cancela o el navegador lo bloquea
                             if (err.name === 'NotAllowedError') {
                                 showModal('Compartir no permitido', 'El navegador bloqueó la función de compartir. Abriendo la imagen en una nueva pestaña para que puedas guardarla y compartirla manualmente.');
                                 const imageUrl = URL.createObjectURL(blob);
                                 window.open(imageUrl, '_blank');
-                            } else if (err.name !== 'AbortError') { // No mostrar error si el usuario simplemente cancela
+                            } else if (err.name !== 'AbortError') {
                                 showModal('Error', 'No se pudo compartir el ticket.');
                             }
                         }
                     } else {
-                        // Fallback para cuando navigator.share no está disponible
                         const imageUrl = URL.createObjectURL(blob);
                         showModal('Compartir no disponible', `
-                            <p>La función de compartir no está disponible en este navegador. Puedes guardar la imagen y compartirla manualmente.</p>
+                            <p>La función de compartir no está disponible. Puedes guardar la imagen y compartirla manualmente.</p>
                             <a href="${imageUrl}" download="ticket.png" class="mt-4 inline-block px-4 py-2 bg-blue-500 text-white rounded-lg">Descargar Ticket</a>
                         `);
                     }
                 }, 'image/png');
             } catch (err) {
-                document.body.removeChild(tempModal); // Asegúrate de eliminar el modal si hay un error
+                document.body.removeChild(tempModal);
                 console.error('Error al generar la imagen del ticket:', err);
                 showModal('Error', 'No se pudo generar la imagen del ticket.');
             }
