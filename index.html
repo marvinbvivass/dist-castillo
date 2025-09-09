@@ -130,15 +130,16 @@
          * @param {string} title Título del modal.
          * @param {string} message Mensaje o contenido HTML del modal.
          * @param {function} onConfirm Callback opcional para el botón de confirmar.
+         * @param {string} confirmText Texto para el botón de confirmación.
          */
-        function showModal(title, message, onConfirm = null) {
+        function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
                     <div class="text-gray-600 mb-6">${message}</div>
                     <div class="space-x-4">
                         <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
-                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Confirmar</button>` : ''}
+                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">${confirmText}</button>` : ''}
                     </div>
                 </div>
             `;
@@ -148,7 +149,7 @@
             if (onConfirm) {
                 document.getElementById('confirmBtn').addEventListener('click', () => {
                     onConfirm();
-                    modalContainer.classList.add('hidden');
+                    // No cerramos el modal aquí, la función onConfirm se encargará si es necesario
                 });
             }
             modalContainer.classList.remove('hidden');
@@ -628,32 +629,11 @@
                     modalContent.querySelector('.text-gray-600').textContent = `Conectando a ${device.name}...`;
                     const server = await device.gatt.connect();
                     
-                    modalContent.querySelector('.text-gray-600').textContent = 'Buscando servicio de impresión...';
-                    
-                    let characteristic;
-                    try {
-                        const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
-                        characteristic = await service.getCharacteristic('00001102-0000-1000-8000-00805f9b34fb');
-                    } catch (e) {
-                        modalContent.querySelector('.text-gray-600').textContent = 'Perfil estándar no encontrado. Buscando perfil alternativo...';
-                        const services = await server.getPrimaryServices();
-                        for (const service of services) {
-                            const characteristics = await service.getCharacteristics();
-                            const writableCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
-                            if (writableCharacteristic) {
-                                characteristic = writableCharacteristic;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!characteristic) {
-                        throw new Error('No se encontró una característica de escritura compatible en la impresora.');
-                    }
-                    
                     modalContent.querySelector('.text-gray-600').textContent = 'Enviando datos a la impresora...';
                     
-                    const chunkSize = 50; // Aumentar tamaño para velocidad
+                    // Reducimos el tamaño del paquete a 20 bytes. Este es un valor mucho más seguro
+                    // y compatible con la mayoría de impresoras BLE como la mp58-04.
+                    const chunkSize = 20;
                     for (let i = 0; i < escPosData.length; i += chunkSize) {
                         const chunk = escPosData.slice(i, i + chunkSize);
                         await characteristic.writeValueWithoutResponse(chunk);
@@ -670,20 +650,32 @@
 
                 } catch (error) {
                     console.error('Error de Web Bluetooth:', error);
-                    let errorMessage = 'No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida y vinculada.';
+                    
                     if (error.name === 'NotFoundError') {
-                        errorMessage = 'No se seleccionó ninguna impresora. Proceso de impresión cancelado.';
-                    } else if (error.name === 'SecurityError') {
-                        errorMessage = 'El acceso a Bluetooth está bloqueado en este entorno de previsualización por seguridad. Esta función se activará al usar la aplicación en un navegador móvil estándar (como Chrome en Android).';
-                    } else if (error.message.includes("GATT operation failed")) {
-                         errorMessage = 'Fallo en la conexión. Esta impresora puede no ser compatible o estar fuera de alcance.'
+                        showModal(
+                            'Impresora no seleccionada', 
+                            'No se seleccionó ninguna impresora Bluetooth. ¿Deseas intentar con el método de impresión estándar?',
+                            () => { 
+                                modalContainer.classList.add('hidden');
+                                legacyPrint(); 
+                            },
+                            'Sí, intentar impresión estándar'
+                        );
+                    } else {
+                        let errorMessage = 'No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida y vinculada.';
+                        if (error.name === 'SecurityError') {
+                            errorMessage = 'El acceso a Bluetooth está bloqueado en este entorno por seguridad. Esta función se activará al usar la aplicación en un navegador móvil estándar (como Chrome en Android).';
+                        } else if (error.message.includes("GATT operation failed")) {
+                             errorMessage = 'Fallo en la conexión. Esta impresora puede no ser compatible o estar fuera de alcance.'
+                        }
+                        showModal('Error de Impresión', errorMessage);
                     }
-                    showModal('Error de Impresión', errorMessage);
                 }
             } else {
-                showModal('Impresión Web', 'Tu navegador no soporta la impresión directa por Bluetooth. Se usará el método de impresión estándar.', () => {
+                showModal('Impresión no disponible', 'Tu navegador no soporta la impresión directa por Bluetooth. Se usará el método de impresión estándar.', () => {
+                    modalContainer.classList.add('hidden');
                     legacyPrint();
-                });
+                }, 'Continuar');
             }
         }
         
