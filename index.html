@@ -784,43 +784,19 @@
         /**
          * Maneja el compartir el ticket como imagen.
          */
-        async function handleShareTicket(currentVenta, productosVendidos) {
-            const fecha = new Date().toLocaleDateString('es-ES');
-            const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
-            
-            const ticketModalContent = document.createElement('div');
-            ticketModalContent.innerHTML = `
-                <div id="ticket-content-for-image" class="p-4 uppercase-ticket bg-white text-black">
-                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
-                    <h3 class="text-lg font-bold text-center mb-4">Distribuidora Castillo Yañez</h3>
-                    <p class="text-sm">Fecha: ${fecha}</p>
-                    <p class="text-sm mb-4">Cliente: ${currentVenta.cliente.nombreComercial}</p>
-                    <table class="min-w-full text-sm mt-4">
-                        <thead><tr><th class="py-1 text-left">Producto</th><th class="py-1 text-center">Cant.</th><th class="py-1 text-right">Subtotal</th></tr></thead>
-                        <tbody>
-                            ${productosVendidos.map(p => `
-                                <tr>
-                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td class="py-1 text-center">${p.cantidadVendida}</td>
-                                    <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
-                                </tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <div class="mt-4 text-right font-bold text-lg">Total: $${totalVentaFinal.toFixed(2)}</div>
-                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${currentVenta.cliente.nombrePersonal}</p></div>
-                </div>`;
-            
-            ticketModalContent.style.position = 'absolute';
-            ticketModalContent.style.left = '-9999px';
-            document.body.appendChild(ticketModalContent);
-
+        async function handleShareTicket() {
             const ticketElement = document.getElementById('ticket-content-for-image');
+            if(!ticketElement) {
+                showModal('Error', 'No se encontró el contenido del ticket para generar la imagen.');
+                return;
+            }
 
-            showModal('Progreso', 'Generando imagen para compartir...');
+            const shareButton = document.getElementById('shareTicketBtn');
+            shareButton.textContent = 'Generando...';
+            shareButton.disabled = true;
             
             try {
                 const canvas = await html2canvas(ticketElement, { scale: 2 });
-                document.body.removeChild(ticketModalContent);
                 canvas.toBlob(async (blob) => {
                     if (navigator.share && blob) {
                         try {
@@ -828,18 +804,22 @@
                                 files: [new File([blob], "ticket.png", { type: "image/png" })],
                                 title: "Ticket de Venta",
                             });
-                            modalContainer.classList.add('hidden');
                         } catch (err) {
-                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
+                            if (err.name !== 'AbortError') {
+                                showModal('Error', 'No se pudo compartir el ticket.');
+                            }
                         }
                     } else {
-                        showModal('Error', 'La función de compartir no está disponible.');
+                        showModal('Error', 'La función de compartir no está disponible en este navegador.');
                     }
                 }, 'image/png');
             } catch (err) {
-                 document.body.removeChild(ticketModalContent);
                 console.error('Error al generar la imagen del ticket:', err);
                 showModal('Error', 'No se pudo generar la imagen del ticket.');
+            } finally {
+                 // No cerramos el modal, solo reactivamos el botón
+                shareButton.textContent = 'Compartir Imagen';
+                shareButton.disabled = false;
             }
         }
 
@@ -1456,13 +1436,8 @@
                         ventaActual.productos = {};
                         showNuevaVentaView();
                     });
-                    
-                    const ventaDataForActions = {
-                        cliente: ventaParaTicket.cliente,
-                        productos: productosParaTicket,
-                    };
-                    
-                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket(ventaDataForActions.cliente, ventaDataForActions.productos)); 
+                                        
+                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket()); 
                     modalContainer.classList.remove('hidden');
 
                 } catch (e) {
@@ -1739,22 +1714,33 @@
             
             document.getElementById('shareFacturaBtn').addEventListener('click', async () => {
                 const facturaElement = document.getElementById('factura-content');
-                showModal('Progreso', 'Generando imagen de la factura...');
+                const shareButton = document.getElementById('shareFacturaBtn');
+                shareButton.textContent = 'Generando...';
+                shareButton.disabled = true;
+
                 try {
                     const canvas = await html2canvas(facturaElement, { scale: 2 });
                     canvas.toBlob(async (blob) => {
                          if (navigator.share && blob) {
-                            await navigator.share({
-                                files: [new File([blob], "factura.png", { type: "image/png" })],
-                                title: "Factura Fiscal",
-                            });
-                            modalContainer.classList.add('hidden');
+                            try {
+                                await navigator.share({
+                                    files: [new File([blob], "factura.png", { type: "image/png" })],
+                                    title: "Factura Fiscal",
+                                });
+                            } catch (err) {
+                                if (err.name !== 'AbortError') {
+                                    showModal('Error', 'No se pudo compartir la factura.');
+                                }
+                            }
                         } else {
                             showModal('Error', 'La función de compartir no está disponible.');
                         }
                     }, 'image/png');
                 } catch(e) {
                     showModal('Error', 'No se pudo generar la imagen de la factura.');
+                } finally {
+                    shareButton.textContent = 'Compartir Factura';
+                    shareButton.disabled = false;
                 }
             });
         }
