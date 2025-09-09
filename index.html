@@ -43,6 +43,9 @@
         .autocomplete-item:hover {
             background-color: #f1f5f9;
         }
+        .uppercase-ticket {
+            text-transform: uppercase;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -153,6 +156,7 @@
         // Variables para la vista de ventas
         let clientes = [];
         let inventario = [];
+        let ventasGlobal = []; // Almacenar ventas para re-impresión
         let ventaActual = {
             cliente: null,
             productos: {}
@@ -691,15 +695,19 @@
             document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
         };
 
-       /**
+        /**
          * Maneja la impresión del ticket usando la API de "Compartir" para enviarlo a una app nativa.
-         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
-         * @param {Array} productosVendidos - La lista de productos de esa venta.
+         * @param {Object} venta - Los datos de la venta para imprimir.
          */
-        async function handlePrintTicket(currentVenta, productosVendidos) {
+        async function handlePrintTicket(venta) {
             try {
-                const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
-                const plainTextTicket = generatePlainTextTicket(currentVenta, productosVendidos, totalVentaFinal);
+                const clienteInfo = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, venta.clienteId));
+                if (!clienteInfo.exists()) {
+                    throw new Error("No se encontró la información del cliente para esta venta.");
+                }
+                const cliente = { id: venta.clienteId, ...clienteInfo.data() };
+                
+                const plainTextTicket = generatePlainTextTicket({ cliente }, venta.productos, venta.total);
 
                 if (navigator.share) {
                     await navigator.share({
@@ -707,23 +715,16 @@
                         text: plainTextTicket,
                     });
                 } else {
-                    // Fallback para navegadores de escritorio o sin API de compartir
                     showModal('Imprimir Ticket', `
-                        <p class="text-left mb-4">La impresión directa no está disponible. Por favor, copia el siguiente texto y pégalo en tu aplicación de impresión:</p>
+                        <p class="text-left mb-4">La impresión directa no está disponible. Copia el siguiente texto y pégalo en tu aplicación de impresión:</p>
                         <textarea id="ticket-textarea" class="w-full h-48 p-2 border rounded-lg bg-gray-100 font-mono text-sm" readonly>${plainTextTicket}</textarea>
-                        <button id="copyTicketBtn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg">Copiar Texto</button>
+                        <button onclick="document.getElementById('ticket-textarea').select(); document.execCommand('copy'); alert('¡Texto copiado!');" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg">Copiar Texto</button>
                     `);
-                    document.getElementById('copyTicketBtn').addEventListener('click', () => {
-                        const textarea = document.getElementById('ticket-textarea');
-                        textarea.select();
-                        document.execCommand('copy');
-                        alert('¡Texto copiado!');
-                    });
                 }
             } catch (error) {
                 console.error("Error al compartir el ticket para imprimir:", error);
-                if (error.name !== 'AbortError') { // No mostrar error si el usuario cancela la acción de compartir
-                    showModal('Error', 'No se pudo iniciar la acción para compartir el ticket.');
+                if (error.name !== 'AbortError') {
+                    showModal('Error', `No se pudo iniciar la acción para compartir el ticket. ${error.message}`);
                 }
             }
         }
@@ -732,23 +733,32 @@
          * Genera el ticket en formato de texto plano para compartir e imprimir.
          */
         function generatePlainTextTicket(venta, productos, total) {
-            const width = 32; // Ancho para papel de 58mm
+            const width = 32;
             let ticket = '';
 
             const center = (text) => text.padStart(Math.floor((width + text.length) / 2), ' ').padEnd(width, ' ');
             const line = '-'.repeat(width);
+            
+            const init = '\x1B\x40'; // Reset printer
+            const doubleHeightWidth = '\x1D\x21\x11'; // Double height and width
+            const doubleHeight = '\x1D\x21\x10'; // Double height
+            const normal = '\x1D\x21\x00';
+            
+            let allCaps = (text) => text.toUpperCase();
 
-            ticket += center('Distribuidora Castillo Yanez') + '\n';
+            ticket += init;
+            ticket += doubleHeightWidth + center(allCaps('TICKET DE VENTA')) + '\n';
+            ticket += normal + center(allCaps('Distribuidora Castillo Yanez')) + '\n';
             ticket += line + '\n';
-            ticket += `Fecha: ${new Date().toLocaleDateString('es-ES')}` + '\n';
-            ticket += `Cliente: ${venta.cliente.nombreComercial}` + '\n';
+            ticket += allCaps(`Fecha: ${new Date().toLocaleDateString('es-ES')}`) + '\n';
+            ticket += allCaps(`Cliente: ${venta.cliente.nombreComercial}`) + '\n';
             ticket += line + '\n';
 
             productos.forEach(p => {
-                const desc = `${p.cantidadVendida}x ${p.segmento} ${p.marca} ${p.presentacion}`;
-                const subtotal = `$${(p.cantidadVendida * p.precio).toFixed(2)}`;
+                const desc = `${p.cantidad}x ${p.segmento} ${p.marca} ${p.presentacion}`;
+                const subtotal = `$${(p.cantidad * p.precio).toFixed(2)}`;
                 
-                let tempDesc = desc;
+                let tempDesc = allCaps(desc);
                 while (tempDesc.length > (width - subtotal.length - 1)) {
                     let wrapIndex = tempDesc.lastIndexOf(' ', width - subtotal.length - 1);
                     if (wrapIndex === -1) wrapIndex = width - subtotal.length - 1;
@@ -761,12 +771,12 @@
 
             ticket += line + '\n';
             const totalStr = `$${total.toFixed(2)}`;
-            const totalLabel = 'Total:';
+            const totalLabel = allCaps('Total:');
             const paddingTotal = ' '.repeat(width - totalLabel.length - totalStr.length);
-            ticket += totalLabel + paddingTotal + totalStr + '\n\n';
+            ticket += doubleHeight + totalLabel + paddingTotal + totalStr + '\n\n';
 
-            ticket += center('________________') + '\n';
-            ticket += center(venta.cliente.nombrePersonal) + '\n\n\n';
+            ticket += normal + center('________________') + '\n';
+            ticket += normal + center(allCaps(venta.cliente.nombrePersonal)) + '\n\n\n\n';
 
             return ticket;
         }
@@ -774,45 +784,60 @@
         /**
          * Maneja el compartir el ticket como imagen.
          */
-        async function handleShareTicket() {
-            const ticketElement = document.getElementById('ticket-content');
-            if (!ticketElement) return;
+        async function handleShareTicket(currentVenta, productosVendidos) {
+            const fecha = new Date().toLocaleDateString('es-ES');
+            const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
+            
+            const ticketModalContent = document.createElement('div');
+            ticketModalContent.innerHTML = `
+                <div id="ticket-content-for-image" class="p-4 uppercase-ticket bg-white text-black">
+                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
+                    <h3 class="text-lg font-bold text-center mb-4">Distribuidora Castillo Yañez</h3>
+                    <p class="text-sm">Fecha: ${fecha}</p>
+                    <p class="text-sm mb-4">Cliente: ${currentVenta.cliente.nombreComercial}</p>
+                    <table class="min-w-full text-sm mt-4">
+                        <thead><tr><th class="py-1 text-left">Producto</th><th class="py-1 text-center">Cant.</th><th class="py-1 text-right">Subtotal</th></tr></thead>
+                        <tbody>
+                            ${productosVendidos.map(p => `
+                                <tr>
+                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                    <td class="py-1 text-center">${p.cantidadVendida}</td>
+                                    <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-4 text-right font-bold text-lg">Total: $${totalVentaFinal.toFixed(2)}</div>
+                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${currentVenta.cliente.nombrePersonal}</p></div>
+                </div>`;
+            
+            ticketModalContent.style.position = 'absolute';
+            ticketModalContent.style.left = '-9999px';
+            document.body.appendChild(ticketModalContent);
 
-            const tempModal = document.createElement('div');
-            tempModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
-            tempModal.innerHTML = `<div class="bg-white p-8 rounded-lg shadow-xl"><p class="text-gray-600">Generando imagen para compartir...</p></div>`;
-            document.body.appendChild(tempModal);
+            const ticketElement = document.getElementById('ticket-content-for-image');
 
+            showModal('Progreso', 'Generando imagen para compartir...');
+            
             try {
                 const canvas = await html2canvas(ticketElement, { scale: 2 });
+                document.body.removeChild(ticketModalContent);
                 canvas.toBlob(async (blob) => {
-                    document.body.removeChild(tempModal);
                     if (navigator.share && blob) {
                         try {
                             await navigator.share({
                                 files: [new File([blob], "ticket.png", { type: "image/png" })],
                                 title: "Ticket de Venta",
                             });
+                            modalContainer.classList.add('hidden');
                         } catch (err) {
-                            console.error("Error al compartir:", err);
-                            if (err.name === 'NotAllowedError') {
-                                showModal('Compartir no permitido', 'El navegador bloqueó la función de compartir. Abriendo la imagen en una nueva pestaña para que puedas guardarla y compartirla manualmente.');
-                                const imageUrl = URL.createObjectURL(blob);
-                                window.open(imageUrl, '_blank');
-                            } else if (err.name !== 'AbortError') {
-                                showModal('Error', 'No se pudo compartir el ticket.');
-                            }
+                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
                         }
                     } else {
-                        const imageUrl = URL.createObjectURL(blob);
-                        showModal('Compartir no disponible', `
-                            <p>La función de compartir no está disponible. Puedes guardar la imagen y compartirla manualmente.</p>
-                            <a href="${imageUrl}" download="ticket.png" class="mt-4 inline-block px-4 py-2 bg-blue-500 text-white rounded-lg">Descargar Ticket</a>
-                        `);
+                        showModal('Error', 'La función de compartir no está disponible.');
                     }
                 }, 'image/png');
             } catch (err) {
-                document.body.removeChild(tempModal);
+                 document.body.removeChild(ticketModalContent);
                 console.error('Error al generar la imagen del ticket:', err);
                 showModal('Error', 'No se pudo generar la imagen del ticket.');
             }
@@ -1391,75 +1416,57 @@
                     });
 
                     // Si la transacción fue exitosa, genera y muestra el ticket
-                    // Captura los datos de la venta ANTES de limpiar el estado global
                     const ventaParaTicket = { ...ventaActual };
                     const productosParaTicket = [...productosVendidos];
 
-                    const fecha = new Date().toLocaleDateString('es-ES');
-                    const totalVentaFinal = productosParaTicket.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
                     const ticketHTML = `
-                        <div id="ticket-content">
-                            <div class="text-left p-4">
-                                <h3 class="text-xl font-bold text-gray-800 text-center mb-4">Distribuidora Castillo Yañez</h3>
-                                <p class="text-sm">Fecha: ${fecha}</p>
-                                <p class="text-sm mb-4">Cliente: ${ventaParaTicket.cliente.nombreComercial}</p>
+                        <div class="uppercase-ticket">
+                            <h4 class="text-xl font-bold text-center mb-4">TICKET DE VENTA</h4>
+                            <!-- Contenido del ticket para la imagen -->
+                            <div id="ticket-content-for-image" class="bg-white p-4">
+                                <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
+                                <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
+                                <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
                                 <table class="min-w-full text-sm mt-4">
-                                    <thead>
-                                        <tr>
-                                            <th class="py-2 text-left">Producto</th>
-                                            <th class="py-2 text-center">Cant.</th>
-                                            <th class="py-2 text-right">Precio</th>
-                                            <th class="py-2 text-right">Subtotal</th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
                                     <tbody>
                                         ${productosParaTicket.map(p => `
                                             <tr>
                                                 <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
                                                 <td class="py-1 text-center">${p.cantidadVendida}</td>
-                                                <td class="py-1 text-right">$${p.precio.toFixed(2)}</td>
                                                 <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
-                                            </tr>
-                                        `).join('')}
+                                            </tr>`).join('')}
                                     </tbody>
                                 </table>
-                                <div class="mt-4 text-right font-bold text-lg total">
-                                    Total: $${totalVentaFinal.toFixed(2)}
-                                </div>
-                                <div class="mt-12 text-center text-sm signature">
-                                    <p class="py-4">_________________________</p>
-                                    <p>${ventaParaTicket.cliente.nombrePersonal}</p>
-                                </div>
+                                <div class="mt-4 text-right font-bold text-lg">TOTAL: $${productosParaTicket.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0).toFixed(2)}</div>
+                                <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${ventaParaTicket.cliente.nombrePersonal}</p></div>
                             </div>
                         </div>
                         <div class="mt-4 flex justify-center space-x-2">
                              <button id="closeTicketBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
-                            <button id="printTicketBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Imprimir</button>
-                            <button id="shareTicketBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300">Compartir</button>
+                             <button id="shareTicketBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300">Compartir Imagen</button>
                         </div>
                     `;
 
-                    // Usamos un modal que no se cierra automáticamente al confirmar
-                    modalContent.innerHTML = `
-                        <div class="text-center">
-                            <h3 class="text-xl font-bold text-gray-800 mb-4">Ticket de Venta</h3>
-                            ${ticketHTML}
-                        </div>`;
+                    modalContent.innerHTML = ticketHTML;
                     
                     document.getElementById('closeTicketBtn').addEventListener('click', () => {
                         modalContainer.classList.add('hidden');
-                        // El estado se limpia y la vista se recarga SOLO al cerrar el ticket.
                         ventaActual.cliente = null;
                         ventaActual.productos = {};
                         showNuevaVentaView();
                     });
-                    // Pasamos los datos de la venta directamente a las funciones de los botones
-                    document.getElementById('printTicketBtn').addEventListener('click', () => handlePrintTicket(ventaParaTicket, productosParaTicket));
-                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket()); // Compartir lee del HTML, no necesita los datos
+                    
+                    const ventaDataForActions = {
+                        cliente: ventaParaTicket.cliente,
+                        productos: productosParaTicket,
+                    };
+                    
+                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket(ventaDataForActions.cliente, ventaDataForActions.productos)); 
                     modalContainer.classList.remove('hidden');
 
                 } catch (e) {
-                    console.error("Error al generar el ticket o actualizar el stock: ", e);
+                    console.error("Error al generar el ticket: ", e);
                     showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
                 }
             });
@@ -1555,8 +1562,8 @@
 
                 const { header, rows, totalRow } = closingData;
                 
-                // Rotar los nombres de productos para mejor visualización
-                const productHeaders = header.slice(2, -1).map(name => `<th class="py-2 px-3 border-b border-l transform -rotate-45 whitespace-nowrap"><span class="inline-block text-sm">${name}</span></th>`).join('');
+                // Nombres de productos horizontales y con ajuste de línea para mejor lectura
+                const productHeaders = header.slice(2, -1).map(name => `<th class="py-2 px-2 border-b border-l text-left align-bottom"><div class="w-20 text-xs break-words">${name}</div></th>`).join('');
 
                 let tableHTML = `
                     <table class="min-w-full bg-white border border-gray-200 text-sm">
@@ -1576,7 +1583,7 @@
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
                             <td class="py-2 px-4 border-b whitespace-nowrap">${row.fecha}</td>
-                            <td class="py-2 px-4 border-b">${row.cliente}</td>
+                             <td class="py-2 px-4 border-b"><div class="w-20 text-xs break-words">${row.cliente}</div></td>
                             ${cantidadesHTML}
                             <td class="py-2 px-4 border-b border-l text-right font-semibold">$${row.total}</td>
                         </tr>
@@ -1593,10 +1600,7 @@
                     </tr>
                 `;
 
-                tableHTML += `
-                        </tbody>
-                    </table>
-                `;
+                tableHTML += `</tbody></table>`;
                 container.innerHTML = tableHTML;
             } catch (error) {
                 console.error("Error al generar la vista previa del cierre: ", error);
@@ -1636,11 +1640,11 @@
 
             const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
             onSnapshot(ventasRef, (snapshot) => {
-                const ventas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                ventasGlobal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
-                ventas.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
+                ventasGlobal.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
 
-                if (ventas.length === 0) {
+                if (ventasGlobal.length === 0) {
                     container.innerHTML = `<p class="text-gray-500 text-center">No hay ventas registradas.</p>`;
                     return;
                 }
@@ -1651,53 +1655,110 @@
                             <tr>
                                 <th class="py-2 px-4 border-b text-left">Cliente</th>
                                 <th class="py-2 px-4 border-b text-left">Fecha</th>
-                                <th class="py-2 px-4 border-b text-left">Producto</th>
-                                <th class="py-2 px-4 border-b text-center">Cant</th>
-                                <th class="py-2 px-4 border-b text-right">Subtotal</th>
-                                <th class="py-2 px-4 border-b text-right">Total Venta</th>
+                                <th class="py-2 px-4 border-b text-left">Total</th>
+                                <th class="py-2 px-4 border-b text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
 
-                ventas.forEach(venta => {
-                    const totalProductos = venta.productos.length;
-                    venta.productos.forEach((producto, index) => {
-                        tableHTML += `
-                            <tr class="hover:bg-gray-50">
-                        `;
-                        // Celdas de Cliente y Fecha solo en la primera fila del producto
-                        if (index === 0) {
-                            tableHTML += `
-                                <td class="py-2 px-4 border-b" rowspan="${totalProductos}">${venta.clienteNombre}</td>
-                                <td class="py-2 px-4 border-b" rowspan="${totalProductos}">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
-                            `;
-                        }
-                        
-                        tableHTML += `
-                            <td class="py-2 px-4 border-b">${producto.segmento} ${producto.marca} ${producto.presentacion}</td>
-                            <td class="py-2 px-4 border-b text-center">${producto.cantidad}</td>
-                            <td class="py-2 px-4 border-b text-right">$${(producto.cantidad * producto.precio).toFixed(2)}</td>
-                        `;
-
-                        // Celda de Total Venta solo en la primera fila del producto
-                        if (index === 0) {
-                            tableHTML += `
-                                <td class="py-2 px-4 border-b text-right font-bold" rowspan="${totalProductos}">$${venta.total.toFixed(2)}</td>
-                            `;
-                        }
-
-                        tableHTML += `</tr>`;
-                    });
+                ventasGlobal.forEach(venta => {
+                    tableHTML += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b">${venta.clienteNombre}</td>
+                            <td class="py-2 px-4 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
+                            <td class="py-2 px-4 border-b font-semibold">$${venta.total.toFixed(2)}</td>
+                            <td class="py-2 px-4 border-b text-center">
+                                <button onclick="window.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">Factura Fiscal</button>
+                            </td>
+                        </tr>
+                    `;
                 });
 
-                tableHTML += `
-                        </tbody>
-                    </table>
-                `;
+                tableHTML += `</tbody></table>`;
                 container.innerHTML = tableHTML;
             });
         }
+        
+        window.reimprimirTicket = (ventaId) => {
+            const venta = ventasGlobal.find(v => v.id === ventaId);
+            if (venta) {
+                handlePrintTicket(venta);
+            }
+        };
+
+        window.mostrarFactura = (ventaId) => {
+            const venta = ventasGlobal.find(v => v.id === ventaId);
+            if (venta) {
+                showFacturaFiscal(venta);
+            }
+        };
+
+        async function showFacturaFiscal(venta) {
+            const subTotal = venta.total / 1.16;
+            const iva = venta.total - subTotal;
+
+            const facturaHTML = `
+                <div id="factura-content" class="bg-white p-4 text-black text-sm font-mono uppercase">
+                    <h4 class="text-lg font-bold text-center mb-4">FACTURA FISCAL</h4>
+                    <p><strong>CLIENTE:</strong> ${venta.clienteNombre}</p>
+                    <p><strong>FECHA:</strong> ${venta.fecha.toDate().toLocaleDateString('es-ES')}</p>
+                    <hr class="my-2 border-black border-dashed">
+                    <table class="w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left">CANT</th>
+                                <th class="text-left">DESCRIPCION</th>
+                                <th class="text-right">P. UNIT.</th>
+                                <th class="text-right">VALOR</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${venta.productos.map(p => `
+                                <tr>
+                                    <td>${p.cantidad}</td>
+                                    <td>${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                    <td class="text-right">$${(p.precio / 1.16).toFixed(2)}</td>
+                                    <td class="text-right">$${(p.cantidad * (p.precio / 1.16)).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <hr class="my-2 border-black border-dashed">
+                    <div class="text-right">
+                        <p><strong>SUB-TOTAL:</strong> $${subTotal.toFixed(2)}</p>
+                        <p><strong>IVA 16%:</strong> $${iva.toFixed(2)}</p>
+                        <p class="font-bold text-lg"><strong>TOTAL:</strong> $${venta.total.toFixed(2)}</p>
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-center">
+                    <button id="shareFacturaBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg">Compartir Factura</button>
+                </div>
+            `;
+            showModal('Factura Fiscal', facturaHTML);
+            
+            document.getElementById('shareFacturaBtn').addEventListener('click', async () => {
+                const facturaElement = document.getElementById('factura-content');
+                showModal('Progreso', 'Generando imagen de la factura...');
+                try {
+                    const canvas = await html2canvas(facturaElement, { scale: 2 });
+                    canvas.toBlob(async (blob) => {
+                         if (navigator.share && blob) {
+                            await navigator.share({
+                                files: [new File([blob], "factura.png", { type: "image/png" })],
+                                title: "Factura Fiscal",
+                            });
+                            modalContainer.classList.add('hidden');
+                        } else {
+                            showModal('Error', 'La función de compartir no está disponible.');
+                        }
+                    }, 'image/png');
+                } catch(e) {
+                    showModal('Error', 'No se pudo generar la imagen de la factura.');
+                }
+            });
+        }
+
 
         /**
          * Obtiene y procesa los datos necesarios para el cierre de ventas.
