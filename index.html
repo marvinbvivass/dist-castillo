@@ -169,6 +169,7 @@
         let db;
         let auth;
         let userId;
+        let activeListeners = []; // Array para almacenar los listeners activos
 
         // Referencias a los elementos del DOM
         const appHeader = document.getElementById('appHeader');
@@ -338,20 +339,30 @@
         }
 
         /**
-         * Maneja el cierre de sesión del usuario.
+         * Cierra la sesión del usuario y limpia los listeners de Firestore.
          */
         async function handleLogout() {
+            cleanupListeners();
             try {
                 await signOut(auth);
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
             }
         }
+        
+        /**
+         * Desconecta todos los listeners activos de onSnapshot.
+         */
+        function cleanupListeners() {
+            activeListeners.forEach(unsubscribe => unsubscribe());
+            activeListeners = [];
+        }
 
         /**
          * Muestra la vista de inicio de sesión.
          */
         function showLoginView() {
+            cleanupListeners();
             appHeader.classList.add('hidden');
             mainContent.classList.add('hidden');
             registerContent.classList.add('hidden');
@@ -426,7 +437,7 @@
             
             // Iniciar el listener de estado de conexión
             const rubrosRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
-            onSnapshot(rubrosRef, { includeMetadataChanges: true }, (snapshot) => {
+            const unsubscribe = onSnapshot(rubrosRef, { includeMetadataChanges: true }, (snapshot) => {
                 const statusEl = document.getElementById('connectionStatus');
                 if (!statusEl) return;
                 
@@ -438,6 +449,7 @@
                     statusEl.className = "text-xs font-bold px-2 py-1 rounded-full bg-green-400 text-green-900";
                 }
             });
+            activeListeners.push(unsubscribe);
 
             // Inicializar el módulo de catálogo con las dependencias necesarias
             window.initCatalogo(db, userId, appId, mainContent, showMainMenu, collection, getDocs);
@@ -596,13 +608,14 @@
             if (!selectElement) return;
 
             const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
-            onSnapshot(collectionRef, (snapshot) => {
+            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                 const items = snapshot.docs.map(doc => doc.data().name).sort();
                 selectElement.innerHTML = `<option value="">Seleccione un ${elementId}</option>`;
                 items.forEach(item => {
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
+            activeListeners.push(unsubscribe);
         }
 
 
@@ -664,7 +677,7 @@
             if (!container) return;
 
             const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-            onSnapshot(inventarioRef, (snapshot) => {
+            const unsubscribe = onSnapshot(inventarioRef, (snapshot) => {
                 const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 inventario = productos; // Guarda el inventario globalmente
                 if (productos.length === 0) {
@@ -709,6 +722,7 @@
                 tableHTML += `</tbody></table>`;
                 container.innerHTML = tableHTML;
             });
+             activeListeners.push(unsubscribe);
         }
 
 
@@ -1142,7 +1156,7 @@
             if (!container) return;
 
             const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            onSnapshot(clientesRef, (snapshot) => {
+            const unsubscribe = onSnapshot(clientesRef, (snapshot) => {
                 const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 clientes = fetchedClientes; // Guarda los clientes globalmente
                 if (fetchedClientes.length === 0) {
@@ -1186,6 +1200,7 @@
                 tableHTML += `</tbody></table>`;
                 container.innerHTML = tableHTML;
             });
+            activeListeners.push(unsubscribe);
         }
         
         /**
@@ -1315,9 +1330,9 @@
         function showNuevaVentaView() {
              monedaActual = 'USD'; // Reset currency view on new sale
             mainContent.innerHTML = `
-                <div class="p-4">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                <div class="p-2 sm:p-4">
+                    <div class="container mx-auto max-w-full">
+                        <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                 <div>
@@ -1338,12 +1353,12 @@
                                 <div class="overflow-x-auto rounded-lg shadow">
                                     <table class="min-w-full bg-white">
                                         <thead class="bg-gray-200">
-                                            <tr class="text-gray-700 uppercase text-sm leading-normal">
-                                                <th class="py-3 px-6 text-left">Producto</th>
-                                                <th class="py-3 px-6 text-left">Marca</th>
-                                                <th class="py-3 px-6 text-left price-toggle" onclick="window.toggleMoneda()">Precio</th>
-                                                <th class="py-3 px-6 text-center">Stock</th>
-                                                <th class="py-3 px-6 text-center">Cantidad a Vender</th>
+                                            <tr class="text-gray-700 uppercase text-xs leading-normal">
+                                                <th class="py-3 px-2 text-center">Cant.</th>
+                                                <th class="py-3 px-4 text-left">Producto</th>
+                                                <th class="py-3 px-4 text-left">Marca</th>
+                                                <th class="py-3 px-4 text-left price-toggle" onclick="window.toggleMoneda()">Precio</th>
+                                                <th class="py-3 px-2 text-center">Stock</th>
                                             </tr>
                                         </thead>
                                         <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light">
@@ -1352,7 +1367,7 @@
                                     </table>
                                 </div>
 
-                                <div class="mt-6 flex justify-end space-x-4">
+                                <div class="mt-6 flex justify-start space-x-4">
                                     <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
                                         Generar Ticket
                                     </button>
@@ -1415,15 +1430,17 @@
          */
         function loadClientesAndInventario() {
             const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            onSnapshot(clientesRef, (snapshot) => {
+            const unsubscribeClientes = onSnapshot(clientesRef, (snapshot) => {
                 clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             });
+            activeListeners.push(unsubscribeClientes);
 
             const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-            onSnapshot(inventarioRef, (snapshot) => {
+            const unsubscribeInventario = onSnapshot(inventarioRef, (snapshot) => {
                 inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderVentasInventario();
             });
+            activeListeners.push(unsubscribeInventario);
         }
         
         /**
@@ -1503,15 +1520,15 @@
                 }
 
                 row.innerHTML = `
-                    <td class="py-3 px-6 text-left whitespace-nowrap">${producto.presentacion} (${producto.segmento})</td>
-                    <td class="py-3 px-6 text-left">${producto.marca}</td>
-                    <td class="py-3 px-6 text-left price-toggle" onclick="window.toggleMoneda()">${precioMostrado}</td>
-                    <td class="py-3 px-6 text-center">${producto.cantidad}</td>
-                    <td class="py-3 px-6 text-center">
+                    <td class="py-2 px-1 text-center">
                         <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidad || 0}"
-                               class="w-20 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
+                               class="w-16 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
                                oninput="updateVentaCantidad(event)">
                     </td>
+                    <td class="py-2 px-4 text-left whitespace-nowrap">${producto.presentacion} (${producto.segmento})</td>
+                    <td class="py-2 px-4 text-left">${producto.marca}</td>
+                    <td class="py-2 px-4 text-left price-toggle" onclick="window.toggleMoneda()">${precioMostrado}</td>
+                    <td class="py-2 px-2 text-center">${producto.cantidad}</td>
                 `;
                 inventarioTableBody.appendChild(row);
             });
@@ -1790,7 +1807,7 @@
             if (!container) return;
 
             const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
-            onSnapshot(ventasRef, (snapshot) => {
+            const unsubscribe = onSnapshot(ventasRef, (snapshot) => {
                 ventasGlobal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 
                 ventasGlobal.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
@@ -1830,6 +1847,7 @@
                 tableHTML += `</tbody></table>`;
                 container.innerHTML = tableHTML;
             });
+            activeListeners.push(unsubscribe);
         }
         
         /**
@@ -2256,3 +2274,5 @@
     </script>
 </body>
 </html>
+
+
