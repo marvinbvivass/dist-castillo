@@ -6,16 +6,21 @@
     let _appId;
     let _mainContent;
     let _showMainMenu;
+    let _collection;
+    let _getDocs;
+
 
     /**
      * Inicializa el módulo de catálogo con las dependencias necesarias.
      */
-    window.initCatalogo = function(db, userId, appId, mainContentElement, showMainMenuCallback) {
+    window.initCatalogo = function(db, userId, appId, mainContentElement, showMainMenuCallback, firestoreCollection, firestoreGetDocs) {
         _db = db;
         _userId = userId;
         _appId = appId;
         _mainContent = mainContentElement;
         _showMainMenu = showMainMenuCallback;
+        _collection = firestoreCollection;
+        _getDocs = firestoreGetDocs;
     };
 
     /**
@@ -28,7 +33,7 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button data-rubros='["Cervecería", "Vinos"]' class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition">
+                            <button data-rubros='["Cerveceria", "Vinos"]' class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition">
                                 Cerveza y Vinos
                             </button>
                             <button data-rubros='["Maltin", "Pepsicola"]' class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800 transition">
@@ -94,13 +99,13 @@
      */
     async function renderCatalogo(container, rubrosFiltro) {
         try {
-            const inventarioRef = collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const snapshot = await getDocs(inventarioRef);
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const snapshot = await _getDocs(inventarioRef);
             let productos = snapshot.docs.map(doc => doc.data());
 
             // Filtrar por rubros si es necesario
             if (rubrosFiltro && rubrosFiltro.length > 0) {
-                productos = productos.filter(p => rubrosFiltro.includes(p.rubro));
+                productos = productos.filter(p => rubrosFiltro.some(filtro => p.rubro.toLowerCase().includes(filtro.toLowerCase())));
             }
             
             if (productos.length === 0) {
@@ -152,3 +157,4 @@
         }
     }
 })();
+
