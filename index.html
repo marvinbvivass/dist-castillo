@@ -616,10 +616,10 @@
         async function handlePrintTicket(currentVenta, productosVendidos) {
             if ('bluetooth' in navigator) {
                 try {
-                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
+                    const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0);
                     const escPosData = generateEscPosData(currentVenta, productosVendidos, totalVentaFinal);
 
-                    showModal('Impresión Bluetooth', 'Buscando impresora... Por favor, selecciona tu impresora térmica (ej. MP-58) en la ventana emergente.');
+                    showModal('Impresión Bluetooth', 'Por favor, selecciona tu impresora térmica (ej. MP-58) en la ventana emergente.');
 
                     const device = await navigator.bluetooth.requestDevice({
                         acceptAllDevices: true,
@@ -629,10 +629,18 @@
                     modalContent.querySelector('.text-gray-600').textContent = `Conectando a ${device.name}...`;
                     const server = await device.gatt.connect();
                     
+                    modalContent.querySelector('.text-gray-600').textContent = 'Buscando servicio de impresión...';
+                    
+                    // Lógica corregida para encontrar el servicio y la característica
+                    const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
+                    const characteristic = await service.getCharacteristic('00001102-0000-1000-8000-00805f9b34fb');
+
+                    if (!characteristic) {
+                        throw new Error('No se encontró una característica de escritura compatible en la impresora.');
+                    }
+
                     modalContent.querySelector('.text-gray-600').textContent = 'Enviando datos a la impresora...';
                     
-                    // Reducimos el tamaño del paquete a 20 bytes. Este es un valor mucho más seguro
-                    // y compatible con la mayoría de impresoras BLE como la mp58-04.
                     const chunkSize = 20;
                     for (let i = 0; i < escPosData.length; i += chunkSize) {
                         const chunk = escPosData.slice(i, i + chunkSize);
@@ -662,11 +670,13 @@
                             'Sí, intentar impresión estándar'
                         );
                     } else {
-                        let errorMessage = 'No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida y vinculada.';
-                        if (error.name === 'SecurityError') {
+                        let errorMessage = `No se pudo conectar a la impresora Bluetooth. Asegúrate de que esté encendida, vinculada y sea compatible.`;
+                         if (error.name === 'SecurityError') {
                             errorMessage = 'El acceso a Bluetooth está bloqueado en este entorno por seguridad. Esta función se activará al usar la aplicación en un navegador móvil estándar (como Chrome en Android).';
                         } else if (error.message.includes("GATT operation failed")) {
                              errorMessage = 'Fallo en la conexión. Esta impresora puede no ser compatible o estar fuera de alcance.'
+                        } else if (error.message.includes("not found")) {
+                            errorMessage = `Se conectó a la impresora, pero no se encontró el servicio de impresión estándar (SPP). La impresora puede no ser compatible con esta aplicación web.`;
                         }
                         showModal('Error de Impresión', errorMessage);
                     }
