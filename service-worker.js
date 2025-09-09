@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ventas-app-cache-v1';
+const CACHE_NAME = 'ventas-app-cache-v2'; // Incrementamos la versión para forzar la actualización
 const urlsToCache = [
     './index.html',
     './', // Alias para index.html
@@ -8,9 +8,10 @@ const urlsToCache = [
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
     'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
-    './manifest.json', // Es buena práctica cachear el manifest también
+    './manifest.json',
     './images/icons/icon-192x192.png',
-    './images/icons/icon-512x512.png'
+    './images/icons/icon-512x512.png',
+    './images/fondo.png' // Agregamos la imagen de fondo a la caché
 ];
 
 self.addEventListener('install', event => {
@@ -18,8 +19,16 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('Opened cache and caching URLs');
-                return cache.addAll(urlsToCache);
+                console.log('Cache opened, caching files.');
+                // Solución para el error de CORS
+                // Creamos un array de Requests en modo 'no-cors' para las URLs externas
+                const requests = urlsToCache.map(url => {
+                    if (url.startsWith('http')) {
+                        return new Request(url, { mode: 'no-cors' });
+                    }
+                    return url;
+                });
+                return cache.addAll(requests);
             })
     );
 });
@@ -33,31 +42,19 @@ self.addEventListener('fetch', event => {
                     return response;
                 }
                 // Si no, la buscamos en la red
-                return fetch(event.request).then(
-                    (networkResponse) => {
-                        // Opcional: si queremos actualizar la caché dinámicamente
-                        // if(networkResponse && networkResponse.status === 200) {
-                        //     const responseToCache = networkResponse.clone();
-                        //     caches.open(CACHE_NAME)
-                        //         .then(cache => {
-                        //             cache.put(event.request, responseToCache);
-                        //         });
-                        // }
-                        return networkResponse;
-                    }
-                );
+                return fetch(event.request);
             })
     );
 });
 
 self.addEventListener('activate', event => {
+    // Eliminamos las cachés antiguas para mantener todo limpio
     const cacheWhitelist = [CACHE_NAME];
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
                     if (cacheWhitelist.indexOf(cacheName) === -1) {
-                        // Borramos las cachés viejas
                         return caches.delete(cacheName);
                     }
                 })
@@ -65,3 +62,4 @@ self.addEventListener('activate', event => {
         })
     );
 });
+
