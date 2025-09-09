@@ -90,7 +90,7 @@
                         <div id="catalogo-para-imagen">
                             <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">${title}</h2>
                             <p class="text-center text-gray-600 mb-4 text-xs">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
-                            <div class="mb-4">
+                            <div class="mb-4" id="tasa-input-container">
                                 <label for="catalogoTasaCopInput" class="block text-gray-700 text-sm font-medium mb-1">Tasa de Cambio (USD a COP):</label>
                                 <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
                             </div>
@@ -157,6 +157,7 @@
             const snapshot = await _getDocs(inventarioRef);
             let productos = snapshot.docs.map(doc => doc.data());
 
+            // Filtrar por rubros si es necesario
             if (rubrosFiltro && rubrosFiltro.length > 0) {
                 productos = productos.filter(p => rubrosFiltro.some(filtro => p.rubro.toLowerCase().includes(filtro.toLowerCase())));
             }
@@ -168,57 +169,51 @@
                 return;
             }
 
-            const productosAgrupados = productos.reduce((acc, p) => {
-                const rubro = p.rubro || 'Sin Rubro';
-                const marca = p.marca || 'Sin Marca';
-                if (!acc[rubro]) acc[rubro] = {};
-                if (!acc[rubro][marca]) acc[rubro][marca] = [];
-                acc[rubro][marca].push(p);
+            // Agrupar productos por marca
+            const productosPorMarca = productos.reduce((acc, p) => {
+                (acc[p.marca] = acc[p.marca] || []).push(p);
                 return acc;
             }, {});
 
             let catalogoHTML = '';
-            for (const rubro in productosAgrupados) {
-                catalogoHTML += `<h3 class="text-xl font-bold text-gray-800 mt-6 pb-2 border-b-2 border-gray-300">${rubro}</h3>`;
-                for (const marca in productosAgrupados[rubro]) {
-                    catalogoHTML += `
-                        <div class="mt-4">
-                            <h4 class="text-lg font-semibold text-gray-700">${marca}</h4>
-                            <table class="min-w-full bg-transparent text-sm">
-                                <thead class="text-gray-600">
-                                    <tr>
-                                        <th class="py-2 px-2 text-left font-semibold">PRODUCTO</th>
-                                        <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO SIN IVA</th>
-                                        <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO CON IVA</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${productosAgrupados[rubro][marca].map(p => {
-                                        const precioBase = p.iva === 16 ? p.precio / 1.16 : p.precio;
-                                        const precioFinal = p.precio;
-                                        let precioSinIvaMostrado, precioConIvaMostrado;
+            for (const marca in productosPorMarca) {
+                catalogoHTML += `
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2 pb-2 border-b-2 border-gray-300">${marca}</h3>
+                        <table class="min-w-full bg-transparent">
+                            <thead class="text-gray-700">
+                                <tr>
+                                    <th class="py-2 px-2 text-left font-semibold">PRODUCTO</th>
+                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO SIN IVA</th>
+                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO CON IVA</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${productosPorMarca[marca].map(p => {
+                                    const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
+                                    const precioConIva = p.precio;
+                                    let precioSinIvaMostrado, precioConIvaMostrado;
 
-                                        if (catalogoMonedaActual === 'COP') {
-                                            precioSinIvaMostrado = `COP ${ (Math.ceil((precioBase * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                                            precioConIvaMostrado = `COP ${ (Math.ceil((precioFinal * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                                        } else {
-                                            precioSinIvaMostrado = `$${precioBase.toFixed(2)}`;
-                                            precioConIvaMostrado = `$${precioFinal.toFixed(2)}`;
-                                        }
+                                    if (catalogoMonedaActual === 'COP') {
+                                        precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                                        precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                                    } else {
+                                        precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
+                                        precioConIvaMostrado = `$${precioConIva.toFixed(2)}`;
+                                    }
 
-                                        return `
-                                            <tr class="border-b border-gray-200">
-                                                <td class="py-2 px-2">${p.presentacion}</td>
-                                                <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
-                                                <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
+                                    return `
+                                        <tr class="border-b border-gray-200">
+                                            <td class="py-2 px-2">${p.presentacion}</td>
+                                            <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
+                                            <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
             }
             container.innerHTML = catalogoHTML;
 
@@ -239,11 +234,14 @@
         }
 
         const shareButton = document.getElementById('generateCatalogoImageBtn');
+        const tasaInputContainer = document.getElementById('tasa-input-container');
+
         shareButton.textContent = 'Generando...';
         shareButton.disabled = true;
+        tasaInputContainer.classList.add('hidden'); // Ocultar el input
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 100));
             const canvas = await html2canvas(reportElement, { scale: 3, useCORS: true });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
@@ -265,7 +263,9 @@
         } finally {
             shareButton.textContent = 'Generar Imagen y Compartir';
             shareButton.disabled = false;
+            tasaInputContainer.classList.remove('hidden'); // Volver a mostrar el input
         }
     }
 
 })();
+
