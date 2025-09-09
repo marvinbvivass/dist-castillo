@@ -776,6 +776,12 @@
          */
         function legacyPrint(currentVenta, productosVendidos) {
             if (!currentVenta || !productosVendidos) {
+         * Método de impresión tradicional como fallback, usando un iframe para máxima compatibilidad.
+         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
+         * @param {Array} productosVendidos - La lista de productos de esa venta.
+         */
+        function legacyPrint(currentVenta, productosVendidos) {
+            if (!currentVenta || !productosVendidos) {
                 showModal('Error de Impresión', 'No se pudieron recuperar los datos del ticket para la impresión estándar.');
                 return;
             }
@@ -784,18 +790,18 @@
             const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
 
             const ticketInnerHtml = `
-                <div class="text-left p-4">
+                <div style="font-family: 'Courier New', monospace; width: 58mm; font-size: 10px; margin: 0; padding: 5px;">
                     <h3 style="text-align: center; margin: 5px 0; font-size: 12px;">Distribuidora Castillo Yañez</h3>
                     <p>Fecha: ${fecha}</p>
                     <p>Cliente: ${currentVenta.cliente.nombreComercial}</p>
                     <hr>
-                    <table>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 9px;">
                         <thead>
                             <tr>
-                                <th style="text-align: left;">Producto</th>
-                                <th style="text-align: center;">Cant.</th>
-                                <th style="text-align: right;">Precio</th>
-                                <th style="text-align: right;">Subtotal</th>
+                                <th style="text-align: left; padding: 1px;">Producto</th>
+                                <th style="text-align: center; padding: 1px;">Cant.</th>
+                                <th style="text-align: right; padding: 1px;">Precio</th>
+                                <th style="text-align: right; padding: 1px;">Subtotal</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -819,32 +825,27 @@
                     </div>
                 </div>
             `;
+
+            // Usar un iframe invisible para evitar problemas con pop-ups
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'absolute';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+
+            iframe.contentDocument.write(ticketInnerHtml);
+            iframe.contentDocument.close();
             
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>Ticket</title>
-                    <style>
-                        body { 
-                            font-family: 'Courier New', Courier, monospace; 
-                            width: 58mm; 
-                            font-size: 10px;
-                            margin: 0;
-                            padding: 5px;
-                        }
-                        table { width: 100%; border-collapse: collapse; font-size: 9px; }
-                        td, th { padding: 1px; }
-                        hr { border: none; border-top: 1px dashed black; margin: 4px 0; }
-                    </style>
-                </head>
-                <body onload="window.focus(); window.print();">
-                    ${ticketInnerHtml}
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+
+            // Eliminar el iframe después de un tiempo prudencial
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
         }
+
 
         /**
          * Maneja el compartir el ticket como imagen.
@@ -1928,3 +1929,9 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
