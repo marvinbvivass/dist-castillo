@@ -1401,9 +1401,9 @@
 
                     const ticketHTML = `
                         <div class="uppercase-ticket">
-                            <h4 class="text-xl font-bold text-center mb-4">TICKET DE VENTA</h4>
                             <!-- Contenido del ticket para la imagen -->
                             <div id="ticket-content-for-image" class="bg-white p-4">
+                                <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
                                 <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
                                 <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
                                 <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
@@ -1808,63 +1808,125 @@
             
             return { header, rows, totalRow, ventasSnapshot };
         }
+        
+        /**
+         * Genera el HTML para el reporte de cierre (para imagen y vista previa).
+         */
+        function generateClosingReportHTML(closingData) {
+            const { header, rows, totalRow } = closingData;
+            
+            const productHeaders = header.slice(2, -1).map(name => `<th style="padding: 4px; border: 1px solid #ddd; font-size: 10px; word-break: break-word; vertical-align: bottom; text-align: left;">${name}</th>`).join('');
+
+            let tableHTML = `
+                <div style="width: 1280px; background: white; padding: 20px; font-family: 'Inter', sans-serif;">
+                    <h2 style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 16px;">CIERRE DE VENTAS</h2>
+                    <p style="text-align: center; font-size: 16px; margin-bottom: 24px;">FECHA DEL CIERRE: ${new Date().toLocaleDateString('es-ES')}</p>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead style="background-color: #f2f2f2;">
+                            <tr>
+                                <th style="padding: 4px; border: 1px solid #ddd; text-align: left;">Fecha</th>
+                                <th style="padding: 4px; border: 1px solid #ddd; text-align: left;">Cliente</th>
+                                ${productHeaders}
+                                <th style="padding: 4px; border: 1px solid #ddd; text-align: right;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            rows.forEach(row => {
+                const cantidadesHTML = row.cantidades.map(cant => `<td style="padding: 4px; border: 1px solid #ddd; text-align: center;">${cant}</td>`).join('');
+                tableHTML += `
+                    <tr>
+                        <td style="padding: 4px; border: 1px solid #ddd; white-space: nowrap;">${row.fecha}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; max-width: 120px; word-break: break-word; font-size: 10px;">${row.cliente}</td>
+                        ${cantidadesHTML}
+                        <td style="padding: 4px; border: 1px solid #ddd; text-align: right; font-weight: bold;">$${row.total}</td>
+                    </tr>
+                `;
+            });
+            
+            const totalesCantHTML = totalRow.cantidades.map(cant => `<td style="padding: 4px; border: 1px solid #ddd; text-align: center; font-weight: bold;">${cant}</td>`).join('');
+            tableHTML += `
+                <tr style="background-color: #f2f2f2; font-weight: bold;">
+                    <td style="padding: 4px; border: 1px solid #ddd;" colspan="2">${totalRow.label}</td>
+                    ${totalesCantHTML}
+                    <td style="padding: 4px; border: 1px solid #ddd; text-align: right; font-size: 14px;">$${totalRow.total}</td>
+                </tr>
+            `;
+
+            tableHTML += `</tbody></table></div>`;
+            return tableHTML;
+        }
 
 
         /**
          * Maneja el proceso de cierre de ventas: genera un reporte y borra los datos.
          */
         async function handleCierreDeVentas() {
-            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará un archivo Excel (.csv) de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
-                mainContent.innerHTML = `<div class="p-6 text-center"><p class="text-lg text-gray-700">Procesando cierre de ventas, por favor espera...</p></div>`;
-
+            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará una imagen y un archivo CSV de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
+                
                 try {
                     const closingData = await getClosingData();
 
                     if (!closingData) {
                         showModal('Aviso', 'No hay ventas para cerrar.');
-                        showCierreSubMenuView(); // Go back to the new sub-menu
+                        showCierreSubMenuView();
                         return;
                     }
                     
-                    const { header, rows, totalRow, ventasSnapshot } = closingData;
+                    showModal('Progreso', 'Generando imagen del reporte. Por favor, espera...');
                     
-                    // Convertir a formato de array para CSV
-                    const csvRows = rows.map(row => {
-                         const clienteNombre = `"${row.cliente.replace(/"/g, '""')}"`;
-                         return [row.fecha, clienteNombre, ...row.cantidades, row.total];
+                    const reportHTML = generateClosingReportHTML(closingData);
+                    const tempDiv = document.createElement('div');
+                    tempDiv.style.position = 'absolute';
+                    tempDiv.style.left = '-9999px';
+                    tempDiv.innerHTML = reportHTML;
+                    document.body.appendChild(tempDiv);
+                    
+                    const canvas = await html2canvas(tempDiv.firstChild, { scale: 2 });
+                    document.body.removeChild(tempDiv);
+                    
+                    canvas.toBlob(async (blob) => {
+                        if (navigator.share && blob) {
+                            try {
+                                await navigator.share({
+                                    files: [new File([blob], "cierre_de_ventas.png", { type: "image/png" })],
+                                    title: "Cierre de Ventas",
+                                });
+                            } catch(err) {
+                                if (err.name !== 'AbortError') throw new Error("No se pudo compartir la imagen del cierre.");
+                            }
+                        } else {
+                           showModal('Aviso', 'La función para compartir no está disponible. Se descargará solo el archivo CSV.');
+                        }
+                        
+                        // Continuar con el CSV y borrado
+                        showModal('Progreso', 'Generando archivo CSV y finalizando...');
+                        const { header, rows, totalRow, ventasSnapshot } = closingData;
+                        
+                        const csvRows = rows.map(row => [`"${row.fecha}"`, `"${row.cliente.replace(/"/g, '""')}"`, ...row.cantidades, row.total]);
+                        const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
+                        const csvContent = [header, ...csvRows, csvTotalRow].map(e => e.join(",")).join("\n");
+                        
+                        const csvBlob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(csvBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `cierre_ventas_${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        
+                        const batch = writeBatch(db);
+                        ventasSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+                        await batch.commit();
+                        
+                        showModal('Éxito', 'El cierre de ventas se completó. Se ha compartido la imagen, descargado el CSV y eliminado los registros de ventas.');
+                        showCierreSubMenuView();
                     });
-                    const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
-                    
-                    // Convertir array de arrays a string CSV
-                    const csvContent = [header, ...csvRows, csvTotalRow]
-                        .map(e => e.join(","))
-                        .join("\n");
-                    
-                    // Crear Blob y enlace de descarga para el archivo .csv
-                    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    const fechaArchivo = new Date().toISOString().slice(0, 10);
-                    a.href = url;
-                    a.download = `cierre_ventas_${fechaArchivo}.csv`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    
-                    // Eliminar todas las ventas
-                    const batch = writeBatch(db);
-                    ventasSnapshot.docs.forEach(doc => {
-                        batch.delete(doc.ref);
-                    });
-                    await batch.commit();
-                    
-                    showModal('Éxito', 'El cierre de ventas se completó. Se ha descargado un archivo de respaldo y se han eliminado los registros de ventas.');
-                    showCierreSubMenuView();
 
                 } catch (error) {
                     console.error("Error durante el cierre de ventas: ", error);
-                    showModal('Error', 'Ocurrió un error durante el proceso de cierre. No se eliminó ninguna venta.');
+                    showModal('Error', `Ocurrió un error durante el proceso de cierre. No se eliminó ninguna venta. Detalle: ${error.message}`);
                     showCierreSubMenuView();
                 }
             });
