@@ -922,7 +922,7 @@
             
             try {
                 await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
-                const canvas = await html2canvas(ticketElement, { scale: 2 });
+                const canvas = await html2canvas(ticketElement, { scale: 3 }); // Calidad de imagen mejorada
                 canvas.toBlob(async (blob) => {
                     if (navigator.share && blob) {
                         try {
@@ -1963,7 +1963,7 @@
 
                 try {
                     await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
-                    const canvas = await html2canvas(facturaElement, { scale: 2 });
+                    const canvas = await html2canvas(facturaElement, { scale: 3 }); // Calidad de imagen mejorada
                     canvas.toBlob(async (blob) => {
                          if (navigator.share && blob) {
                             try {
@@ -2118,7 +2118,7 @@
 
             try {
                 await new Promise(resolve => setTimeout(resolve, 300));
-                const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
+                const canvas = await html2canvas(reportElement, { scale: 3, useCORS: true }); // Calidad de imagen mejorada
                 canvas.toBlob(async (blob) => {
                     if (navigator.share && blob) {
                         try {
