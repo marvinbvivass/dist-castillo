@@ -665,7 +665,7 @@
                             'No se seleccionó ninguna impresora Bluetooth. ¿Deseas intentar con el método de impresión estándar?',
                             () => { 
                                 modalContainer.classList.add('hidden');
-                                legacyPrint(); 
+                                legacyPrint(currentVenta, productosVendidos); 
                             },
                             'Sí, intentar impresión estándar'
                         );
@@ -684,7 +684,7 @@
             } else {
                 showModal('Impresión no disponible', 'Tu navegador no soporta la impresión directa por Bluetooth. Se usará el método de impresión estándar.', () => {
                     modalContainer.classList.add('hidden');
-                    legacyPrint();
+                    legacyPrint(currentVenta, productosVendidos);
                 }, 'Continuar');
             }
         }
@@ -771,10 +771,54 @@
 
         /**
          * Método de impresión tradicional como fallback.
+         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
+         * @param {Array} productosVendidos - La lista de productos de esa venta.
          */
-        function legacyPrint() {
-            const ticketContent = document.getElementById('ticket-content');
-            if (!ticketContent) return;
+        function legacyPrint(currentVenta, productosVendidos) {
+            if (!currentVenta || !productosVendidos) {
+                showModal('Error de Impresión', 'No se pudieron recuperar los datos del ticket para la impresión estándar.');
+                return;
+            }
+
+            const fecha = new Date().toLocaleDateString('es-ES');
+            const totalVentaFinal = productosVendidos.reduce((total, p) => total + (p.precio * p.cantidadVendida), 0);
+
+            const ticketInnerHtml = `
+                <div class="text-left p-4">
+                    <h3 style="text-align: center; margin: 5px 0; font-size: 12px;">Distribuidora Castillo Yañez</h3>
+                    <p>Fecha: ${fecha}</p>
+                    <p>Cliente: ${currentVenta.cliente.nombreComercial}</p>
+                    <hr>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="text-align: left;">Producto</th>
+                                <th style="text-align: center;">Cant.</th>
+                                <th style="text-align: right;">Precio</th>
+                                <th style="text-align: right;">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${productosVendidos.map(p => `
+                                <tr>
+                                    <td>${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                    <td style="text-align: center;">${p.cantidadVendida}</td>
+                                    <td style="text-align: right;">$${p.precio.toFixed(2)}</td>
+                                    <td style="text-align: right;">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <hr>
+                    <div style="text-align: right; font-weight: bold; margin-top: 5px;">
+                        Total: $${totalVentaFinal.toFixed(2)}
+                    </div>
+                    <div style="margin-top: 25px; text-align: center;">
+                        <p>_________________________</p>
+                        <p>${currentVenta.cliente.nombrePersonal}</p>
+                    </div>
+                </div>
+            `;
             
             const printWindow = window.open('', '_blank');
             printWindow.document.write(`
@@ -789,18 +833,13 @@
                             margin: 0;
                             padding: 5px;
                         }
-                        h3 { text-align: center; margin: 5px 0; font-size: 12px; }
-                        p { margin: 2px 0; }
-                        table { width: 100%; border-collapse: collapse; }
-                        th, td { text-align: left; padding: 1px; }
-                        .text-right { text-align: right; }
-                        .total { font-weight: bold; margin-top: 5px; border-top: 1px dashed black; padding-top: 5px; }
-                        .signature { margin-top: 25px; text-align: center; }
-                        .signature p { margin: 1px 0; }
+                        table { width: 100%; border-collapse: collapse; font-size: 9px; }
+                        td, th { padding: 1px; }
+                        hr { border: none; border-top: 1px dashed black; margin: 4px 0; }
                     </style>
                 </head>
                 <body onload="window.focus(); window.print();">
-                    ${ticketContent.innerHTML}
+                    ${ticketInnerHtml}
                 </body>
                 </html>
             `);
