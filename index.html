@@ -19,7 +19,6 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: rgba(0, 0, 0, 0.5); /* Color de superposición para mejorar contraste */
         }
         body::before {
             content: "";
@@ -29,11 +28,10 @@
             width: 100vw;
             height: 100vh;
             z-index: -1;
-            /* CORRECCIÓN: Se usa la ruta local a la imagen .png */
             background-image: url('images/fondo.png'); 
             background-size: cover;
             background-position: center;
-            filter: blur(3px) brightness(0.6); /* Desenfoque y oscurecimiento para legibilidad */
+            filter: blur(3px) brightness(0.6);
         }
         .hidden {
             display: none;
@@ -73,7 +71,7 @@
 <body class="min-h-screen flex flex-col">
     <div id="app" class="flex flex-col min-h-screen">
         <!-- Encabezado de la aplicación, visible solo cuando el usuario está autenticado -->
-        <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
+        <header id="appHeader" class="bg-white/80 backdrop-blur-sm shadow-md p-4 flex justify-between items-center hidden sticky top-0 z-10">
             <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
             <div id="authStatus" class="flex items-center space-x-4">
                 <span id="connectionStatus" class="text-xs font-bold px-2 py-1 rounded-full"></span>
@@ -90,8 +88,8 @@
         </main>
 
         <!-- Contenido para la vista de login, visible solo cuando el usuario no está autenticado -->
-        <main id="loginContent" class="flex-grow flex items-center justify-center">
-            <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+        <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
+            <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
                 <form id="loginForm" class="space-y-4">
                     <input type="email" id="emailInput" placeholder="Email" required
@@ -103,16 +101,16 @@
                     </button>
                     <p id="authMessage" class="text-sm text-red-500 mt-2"></p>
                 </form>
-                 <p class="mt-6 text-sm">
+                 <p class="mt-6 text-sm text-gray-800">
                     ¿No tienes una cuenta? 
-                    <button id="goToRegisterBtn" class="font-semibold text-blue-500 hover:underline">Regístrate aquí</button>
+                    <button id="goToRegisterBtn" class="font-semibold text-blue-600 hover:underline">Regístrate aquí</button>
                 </p>
             </div>
         </main>
         
         <!-- Contenido para la vista de registro -->
-        <main id="registerContent" class="flex-grow flex items-center justify-center hidden">
-            <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+        <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
+            <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
                 <form id="registerForm" class="space-y-4">
                     <input type="email" id="registerEmailInput" placeholder="Email" required
@@ -126,9 +124,9 @@
                     </button>
                     <p id="registerMessage" class="text-sm text-red-500 mt-2"></p>
                 </form>
-                <p class="mt-6 text-sm">
+                <p class="mt-6 text-sm text-gray-800">
                     ¿Ya tienes una cuenta? 
-                    <button id="goToLoginBtn" class="font-semibold text-blue-500 hover:underline">Inicia sesión</button>
+                    <button id="goToLoginBtn" class="font-semibold text-blue-600 hover:underline">Inicia sesión</button>
                 </p>
             </div>
         </main>
@@ -396,8 +394,8 @@
             
             // Mostrar pantalla de carga mientras se sincronizan los datos
             mainContent.innerHTML = `
-                <div class="p-6 flex flex-col items-center justify-center min-h-screen">
-                    <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                <div class="p-4 flex flex-col items-center justify-center min-h-full">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h2 class="text-2xl font-bold text-gray-800 mb-4">Sincronizando datos...</h2>
                         <p class="text-gray-600">Por favor, espera un momento. Estamos preparando la aplicación para su uso sin conexión.</p>
                     </div>
@@ -436,9 +434,9 @@
          */
         function showMainMenu() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
                             <div class="space-y-4">
                                 <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
@@ -465,9 +463,9 @@
          */
         function showInventarioSubMenu() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                             <div class="space-y-4">
                                 <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
@@ -495,9 +493,9 @@
 
         function showAgregarProductoView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
                             <form id="productoForm" class="space-y-4 text-left">
                                 <div>
@@ -586,13 +584,13 @@
          */
         function showModifyDeleteView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Producto</h2>
-                            <p class="text-gray-600 mb-4">Selecciona un producto de la lista para modificarlo o eliminarlo.</p>
-                            <div id="productosList" class="space-y-4 text-left">
-                                <p class="text-gray-500">Cargando productos...</p>
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
+                            <p class="text-gray-600 mb-4 text-center">Selecciona un producto de la lista para modificarlo o eliminarlo.</p>
+                            <div id="productosListContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Cargando productos...</p>
                             </div>
                             <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
@@ -602,7 +600,7 @@
                 </div>
             `;
             document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            renderProductosList();
+            renderProductosList('productosListContainer');
         }
 
         /**
@@ -610,12 +608,12 @@
          */
         function showVerInventarioView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Inventario</h2>
-                            <div id="productosListVer" class="space-y-4 text-left">
-                                <p class="text-gray-500">Cargando productos...</p>
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
+                            <div id="productosListContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Cargando productos...</p>
                             </div>
                             <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
@@ -625,7 +623,7 @@
                 </div>
             `;
             document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            renderProductosList('productosListVer', true); // Renderiza en vista de solo lectura
+            renderProductosList('productosListContainer', true); // Renderiza en vista de solo lectura
         }
 
 
@@ -634,7 +632,7 @@
          * @param {string} elementId ID del elemento donde se renderizará la lista.
          * @param {boolean} readOnly Indica si la lista es de solo lectura.
          */
-        function renderProductosList(elementId = 'productosList', readOnly = false) {
+        function renderProductosList(elementId = 'productosListContainer', readOnly = false) {
             const container = document.getElementById(elementId);
             if (!container) return;
 
@@ -643,24 +641,44 @@
                 const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 inventario = productos; // Guarda el inventario globalmente
                 if (productos.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500">No hay productos en el inventario.</p>`;
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay productos en el inventario.</p>`;
                     return;
                 }
 
-                container.innerHTML = productos.map(producto => `
-                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center">
-                        <div>
-                            <p class="font-semibold text-gray-800">${producto.presentacion} (${producto.rubro} - ${producto.segmento})</p>
-                            <p class="text-sm text-gray-600">Marca: ${producto.marca} | Precio: $${producto.precio.toFixed(2)} | Cantidad: ${producto.cantidad}</p>
-                        </div>
-                        ${!readOnly ? `
-                        <div class="space-x-2">
-                            <button onclick="editProducto('${producto.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
-                            <button onclick="deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
-                        </div>
-                        ` : ''}
-                    </div>
-                `).join('');
+                let tableHTML = `
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">Rubro</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">Marca</th>
+                                <th class="py-2 px-4 border-b text-right text-sm">Precio</th>
+                                <th class="py-2 px-4 border-b text-center text-sm">Cantidad</th>
+                                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                productos.forEach(producto => {
+                    tableHTML += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b text-sm">${producto.presentacion} (${producto.segmento})</td>
+                            <td class="py-2 px-4 border-b text-sm">${producto.rubro}</td>
+                            <td class="py-2 px-4 border-b text-sm">${producto.marca}</td>
+                            <td class="py-2 px-4 border-b text-right text-sm">$${producto.precio.toFixed(2)}</td>
+                            <td class="py-2 px-4 border-b text-center text-sm">${producto.cantidad}</td>
+                            ${!readOnly ? `
+                            <td class="py-2 px-4 border-b text-center space-x-2">
+                                <button onclick="window.editProducto('${producto.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                                <button onclick="window.deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                            </td>` : ''}
+                        </tr>
+                    `;
+                });
+
+                tableHTML += `</tbody></table>`;
+                container.innerHTML = tableHTML;
             });
         }
 
@@ -719,9 +737,9 @@
             if (!producto) return;
 
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                             <form id="editProductoForm" class="space-y-4 text-left">
                                 <div>
@@ -913,9 +931,9 @@
          */
         function showClientesSubMenu() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                             <div class="space-y-4">
                                 <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
@@ -946,9 +964,9 @@
          */
         function showAgregarClienteView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
                             <form id="clienteForm" class="space-y-4 text-left">
                                 <!-- Campo Sector -->
@@ -1026,12 +1044,12 @@
          */
         function showVerClientesView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Clientes</h2>
-                            <div id="clientesListVer" class="space-y-4 text-left">
-                                <p class="text-gray-500">Cargando clientes...</p>
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
+                            <div id="clientesListContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Cargando clientes...</p>
                             </div>
                             <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
@@ -1041,7 +1059,7 @@
                 </div>
             `;
             document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            renderClientesList('clientesListVer', true);
+            renderClientesList('clientesListContainer', true);
         }
 
         /**
@@ -1049,13 +1067,13 @@
          */
         function showModifyDeleteClienteView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Cliente</h2>
-                            <p class="text-gray-600 mb-4">Selecciona un cliente de la lista para modificarlo o eliminarlo.</p>
-                            <div id="clientesList" class="space-y-4 text-left">
-                                <p class="text-gray-500">Cargando clientes...</p>
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Cliente</h2>
+                            <p class="text-gray-600 mb-4 text-center">Selecciona un cliente de la lista para modificarlo o eliminarlo.</p>
+                            <div id="clientesListContainer" class="overflow-x-auto">
+                                <p class="text-gray-500 text-center">Cargando clientes...</p>
                             </div>
                             <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
@@ -1065,7 +1083,7 @@
                 </div>
             `;
             document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            renderClientesList();
+            renderClientesList('clientesListContainer');
         }
 
         /**
@@ -1073,7 +1091,7 @@
          * @param {string} elementId ID del elemento donde se renderizará la lista.
          * @param {boolean} readOnly Indica si la lista es de solo lectura.
          */
-        function renderClientesList(elementId = 'clientesList', readOnly = false) {
+        function renderClientesList(elementId = 'clientesListContainer', readOnly = false) {
             const container = document.getElementById(elementId);
             if (!container) return;
 
@@ -1082,25 +1100,45 @@
                 const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 clientes = fetchedClientes; // Guarda los clientes globalmente
                 if (fetchedClientes.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500">No hay clientes registrados.</p>`;
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes registrados.</p>`;
                     return;
                 }
 
-                container.innerHTML = fetchedClientes.map(cliente => `
-                    <div class="bg-gray-50 p-4 rounded-lg shadow">
-                        <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
-                        <p class="text-sm text-gray-600">
-                            ${cliente.nombreComercial && cliente.nombrePersonal ? `(${cliente.nombrePersonal}) ` : ''} |
-                            Sector: ${cliente.sector} | Teléfono: ${cliente.telefono}
-                        </p>
-                        ${!readOnly ? `
-                        <div class="space-x-2 mt-2">
-                            <button onclick="editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
-                            <button onclick="deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
-                        </div>
-                        ` : ''}
-                    </div>
-                `).join('');
+                 let tableHTML = `
+                    <table class="min-w-full bg-white border border-gray-200">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">Sector</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
+                                <th class="py-2 px-4 border-b text-left text-sm">Código CEP</th>
+                                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                fetchedClientes.forEach(cliente => {
+                    tableHTML += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
+                            <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
+                            <td class="py-2 px-4 border-b text-sm">${cliente.sector}</td>
+                            <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
+                            <td class="py-2 px-4 border-b text-sm">${cliente.codigoCEP || 'N/A'}</td>
+                            ${!readOnly ? `
+                            <td class="py-2 px-4 border-b text-center space-x-2">
+                                <button onclick="window.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                                <button onclick="window.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                            </td>
+                            ` : ''}
+                        </tr>
+                    `;
+                });
+
+                tableHTML += `</tbody></table>`;
+                container.innerHTML = tableHTML;
             });
         }
         
@@ -1109,13 +1147,13 @@
          * @param {string} clienteId ID del cliente a editar.
          */
         window.editCliente = async function(clienteId) {
-            const clienteDoc = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
-            const cliente = clienteDoc.data();
+            const cliente = clientes.find(c => c.id === clienteId);
+            if (!cliente) return;
 
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
                             <form id="editClienteForm" class="space-y-4 text-left">
                                 <!-- Campo Sector -->
@@ -1140,6 +1178,11 @@
                                     <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
                                     <input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
+                                <!-- Campo Código CEP -->
+                                <div>
+                                    <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
+                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
                                     Guardar Cambios
                                 </button>
@@ -1160,7 +1203,8 @@
                         sector: document.getElementById('editSector').value,
                         nombreComercial: document.getElementById('editNombreComercial').value,
                         nombrePersonal: document.getElementById('editNombrePersonal').value,
-                        telefono: document.getElementById('editTelefono').value
+                        telefono: document.getElementById('editTelefono').value,
+                        codigoCEP: document.getElementById('editCodigoCEP').value
                     }, { merge: true });
                     showModal('Éxito', 'Cliente modificado exitosamente.');
                     showModifyDeleteClienteView();
@@ -1195,9 +1239,9 @@
          */
         function showVentasView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
                             <div class="space-y-4">
                                 <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
@@ -1224,9 +1268,9 @@
          */
         function showNuevaVentaView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
                             <div class="mb-6">
                                 <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
@@ -1522,9 +1566,9 @@
          */
         function showVentasTotalesView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                             <div class="space-y-4">
                                 <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300">
@@ -1551,9 +1595,9 @@
          */
         function showCierreSubMenuView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Opciones de Cierre</h2>
                             <div class="space-y-4">
                                 <button id="verCierreBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
@@ -1580,9 +1624,9 @@
          */
         async function showVerCierreView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Vista Previa de Cierre de Ventas</h2>
                             <div id="cierreContainer" class="overflow-x-auto">
                                 <p class="text-gray-500 text-center">Generando vista previa...</p>
@@ -1624,9 +1668,9 @@
          */
         function showVentasActualesView() {
             mainContent.innerHTML = `
-                <div class="p-6">
+                <div class="p-4">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ventas Actuales</h2>
                             <div id="ventasListContainer" class="overflow-x-auto">
                                 <p class="text-gray-500 text-center">Cargando ventas...</p>
