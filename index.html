@@ -19,6 +19,20 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            background-color: rgba(0, 0, 0, 0.5); /* Color de superposición para mejorar contraste */
+        }
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background-image: url('images/fondo.jpg'); /* Ruta a tu imagen de fondo */
+            background-size: cover;
+            background-position: center;
+            filter: blur(3px) brightness(0.6); /* Desenfoque y oscurecimiento para legibilidad */
         }
         .hidden {
             display: none;
@@ -55,7 +69,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col">
     <div id="app" class="flex flex-col min-h-screen">
         <!-- Encabezado de la aplicación, visible solo cuando el usuario está autenticado -->
         <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
@@ -421,7 +435,7 @@
          */
         function showMainMenu() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
@@ -450,7 +464,7 @@
          */
         function showInventarioSubMenu() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
@@ -480,7 +494,7 @@
 
         function showAgregarProductoView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
@@ -571,7 +585,7 @@
          */
         function showModifyDeleteView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Producto</h2>
@@ -595,7 +609,7 @@
          */
         function showVerInventarioView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Inventario</h2>
@@ -640,7 +654,7 @@
                         </div>
                         ${!readOnly ? `
                         <div class="space-x-2">
-                            <button onclick="editProducto('${producto.id}', '${producto.presentacion}', ${producto.precio}, ${producto.cantidad}, '${producto.rubro}', '${producto.segmento}', '${producto.marca}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
+                            <button onclick="editProducto('${producto.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600 transition duration-300">Editar</button>
                             <button onclick="deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition duration-300">Eliminar</button>
                         </div>
                         ` : ''}
@@ -699,36 +713,39 @@
         /**
          * Edita un producto en el inventario.
          */
-        window.editProducto = function(productId, presentacion, precio, cantidad, rubro, segmento, marca) {
+        window.editProducto = function(productId) {
+            const producto = inventario.find(p => p.id === productId);
+            if (!producto) return;
+
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                             <form id="editProductoForm" class="space-y-4 text-left">
                                 <div>
                                     <label class="block text-gray-700 font-medium mb-2">Rubro:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${rubro}</p>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.rubro}</p>
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-medium mb-2">Segmento:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${segmento}</p>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.segmento}</p>
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-medium mb-2">Marca:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${marca}</p>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.marca}</p>
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${presentacion}</p>
+                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.presentacion}</p>
                                 </div>
                                 <div>
                                     <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio:</label>
-                                    <input type="number" step="0.01" id="editPrecio" value="${precio}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <input type="number" step="0.01" id="editPrecio" value="${producto.precio}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <div>
                                     <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
-                                    <input type="number" id="editCantidad" value="${cantidad}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                    <input type="number" id="editCantidad" value="${producto.cantidad}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
                                     Guardar Cambios
@@ -895,7 +912,7 @@
          */
         function showClientesSubMenu() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
@@ -928,7 +945,7 @@
          */
         function showAgregarClienteView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
@@ -958,11 +975,6 @@
                                     <label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
                                     <input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
-                                <!-- Campo Código CEP -->
-                                <div>
-                                    <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                    <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
                                     Guardar Cliente
                                 </button>
@@ -991,7 +1003,6 @@
             const nombreComercial = document.getElementById('nombreComercial').value;
             const nombrePersonal = document.getElementById('nombrePersonal').value;
             const telefono = document.getElementById('telefono').value;
-            const codigoCEP = document.getElementById('codigoCEP').value;
 
             try {
                 const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
@@ -999,8 +1010,7 @@
                     sector,
                     nombreComercial,
                     nombrePersonal,
-                    telefono,
-                    codigoCEP
+                    telefono
                 });
                 showModal('Éxito', 'Cliente agregado correctamente.');
                 document.getElementById('clienteForm').reset();
@@ -1015,7 +1025,7 @@
          */
         function showVerClientesView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Clientes</h2>
@@ -1038,7 +1048,7 @@
          */
         function showModifyDeleteClienteView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Cliente</h2>
@@ -1080,7 +1090,7 @@
                         <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
                         <p class="text-sm text-gray-600">
                             ${cliente.nombreComercial && cliente.nombrePersonal ? `(${cliente.nombrePersonal}) ` : ''} |
-                            Sector: ${cliente.sector} | Teléfono: ${cliente.telefono} | CEP: ${cliente.codigoCEP || 'N/A'}
+                            Sector: ${cliente.sector} | Teléfono: ${cliente.telefono}
                         </p>
                         ${!readOnly ? `
                         <div class="space-x-2 mt-2">
@@ -1102,7 +1112,7 @@
             const cliente = clienteDoc.data();
 
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
@@ -1129,11 +1139,6 @@
                                     <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
                                     <input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
-                                <!-- Campo Código CEP -->
-                                <div>
-                                    <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
                                     Guardar Cambios
                                 </button>
@@ -1154,8 +1159,7 @@
                         sector: document.getElementById('editSector').value,
                         nombreComercial: document.getElementById('editNombreComercial').value,
                         nombrePersonal: document.getElementById('editNombrePersonal').value,
-                        telefono: document.getElementById('editTelefono').value,
-                        codigoCEP: document.getElementById('editCodigoCEP').value
+                        telefono: document.getElementById('editTelefono').value
                     }, { merge: true });
                     showModal('Éxito', 'Cliente modificado exitosamente.');
                     showModifyDeleteClienteView();
@@ -1190,7 +1194,7 @@
          */
         function showVentasView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
@@ -1219,7 +1223,7 @@
          */
         function showNuevaVentaView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
@@ -1517,7 +1521,7 @@
          */
         function showVentasTotalesView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
@@ -1546,7 +1550,7 @@
          */
         function showCierreSubMenuView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Opciones de Cierre</h2>
@@ -1575,7 +1579,7 @@
          */
         async function showVerCierreView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Vista Previa de Cierre de Ventas</h2>
@@ -1619,7 +1623,7 @@
          */
         function showVentasActualesView() {
             mainContent.innerHTML = `
-                <div class="p-6 bg-gray-100 min-h-screen">
+                <div class="p-6">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ventas Actuales</h2>
@@ -2030,3 +2034,4 @@
     </script>
 </body>
 </html>
+
