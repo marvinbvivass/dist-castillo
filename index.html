@@ -54,6 +54,7 @@
         <header id="appHeader" class="bg-white shadow-md p-4 flex justify-between items-center hidden">
             <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
             <div id="authStatus" class="flex items-center space-x-4">
+                <span id="connectionStatus" class="text-xs font-bold px-2 py-1 rounded-full"></span>
                 <span id="userIdDisplay" class="text-sm font-medium text-gray-600"></span>
                 <button id="logoutBtn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
                     Cerrar Sesión
@@ -120,7 +121,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
@@ -344,11 +345,27 @@
          */
         function showMainView(currentUserId) {
             userId = currentUserId;
-            userIdDisplay.textContent = `ID de Usuario: ${userId}`;
+            userIdDisplay.textContent = `ID: ${userId.substring(0, 6)}...`;
             appHeader.classList.remove('hidden');
             mainContent.classList.remove('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
+            
+            // Iniciar el listener de estado de conexión
+            const rubrosRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
+            onSnapshot(rubrosRef, { includeMetadataChanges: true }, (snapshot) => {
+                const statusEl = document.getElementById('connectionStatus');
+                if (!statusEl) return;
+                
+                if (snapshot.metadata.fromCache) {
+                    statusEl.textContent = "SIN CONEXIÓN";
+                    statusEl.className = "text-xs font-bold px-2 py-1 rounded-full bg-yellow-400 text-yellow-900";
+                } else {
+                    statusEl.textContent = "EN LÍNEA";
+                    statusEl.className = "text-xs font-bold px-2 py-1 rounded-full bg-green-400 text-green-900";
+                }
+            });
+
             showMainMenu();
         }
 
@@ -796,6 +813,7 @@
             shareButton.disabled = true;
             
             try {
+                await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
                 const canvas = await html2canvas(ticketElement, { scale: 2 });
                 canvas.toBlob(async (blob) => {
                     if (navigator.share && blob) {
@@ -1517,7 +1535,8 @@
                             <div id="cierreContainer" class="overflow-x-auto">
                                 <p class="text-gray-500 text-center">Generando vista previa...</p>
                             </div>
-                            <button id="backToCierreSubMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                            <div id="cierreActions" class="mt-6 text-center"></div>
+                            <button id="backToCierreSubMenuBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
                                 Volver
                             </button>
                         </div>
@@ -1527,6 +1546,7 @@
             document.getElementById('backToCierreSubMenuBtn').addEventListener('click', showCierreSubMenuView);
 
             const container = document.getElementById('cierreContainer');
+            const actionsContainer = document.getElementById('cierreActions');
             try {
                 const closingData = await getClosingData();
 
@@ -1535,48 +1555,12 @@
                     return;
                 }
 
-                const { header, rows, totalRow } = closingData;
-                
-                // Nombres de productos horizontales y con ajuste de línea para mejor lectura
-                const productHeaders = header.slice(2, -1).map(name => `<th class="py-2 px-2 border-b border-l text-left align-bottom"><div class="w-20 text-xs break-words">${name}</div></th>`).join('');
+                const reportHTML = generateClosingReportHTML(closingData);
+                container.innerHTML = reportHTML;
 
-                let tableHTML = `
-                    <table class="min-w-full bg-white border border-gray-200 text-sm">
-                        <thead class="bg-gray-200">
-                            <tr>
-                                <th class="py-2 px-4 border-b text-left">Fecha</th>
-                                <th class="py-2 px-4 border-b text-left">Cliente</th>
-                                ${productHeaders}
-                                <th class="py-2 px-4 border-b border-l text-right">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                
-                rows.forEach(row => {
-                    const cantidadesHTML = row.cantidades.map(cant => `<td class="py-2 px-3 border-b border-l text-center">${cant}</td>`).join('');
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b whitespace-nowrap">${row.fecha}</td>
-                             <td class="py-2 px-4 border-b"><div class="w-20 text-xs break-words">${row.cliente}</div></td>
-                            ${cantidadesHTML}
-                            <td class="py-2 px-4 border-b border-l text-right font-semibold">$${row.total}</td>
-                        </tr>
-                    `;
-                });
-                
-                // Fila de totales
-                const totalesCantHTML = totalRow.cantidades.map(cant => `<td class="py-2 px-3 border-b border-l text-center font-bold">${cant}</td>`).join('');
-                tableHTML += `
-                    <tr class="bg-gray-100 font-bold">
-                        <td class="py-2 px-4 border-b" colspan="2">${totalRow.label}</td>
-                        ${totalesCantHTML}
-                        <td class="py-2 px-4 border-b border-l text-right text-lg">$${totalRow.total}</td>
-                    </tr>
-                `;
+                actionsContainer.innerHTML = `<button id="generateCierreImageBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Imagen y Compartir</button>`;
+                document.getElementById('generateCierreImageBtn').addEventListener('click', handleGenerateCierreImage);
 
-                tableHTML += `</tbody></table>`;
-                container.innerHTML = tableHTML;
             } catch (error) {
                 console.error("Error al generar la vista previa del cierre: ", error);
                 container.innerHTML = `<p class="text-red-500 text-center">Ocurrió un error al generar la vista previa.</p>`;
@@ -1719,6 +1703,7 @@
                 shareButton.disabled = true;
 
                 try {
+                    await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
                     const canvas = await html2canvas(facturaElement, { scale: 2 });
                     canvas.toBlob(async (blob) => {
                          if (navigator.share && blob) {
@@ -1818,7 +1803,7 @@
             const productHeaders = header.slice(2, -1).map(name => `<th style="padding: 4px; border: 1px solid #ddd; font-size: 10px; word-break: break-word; vertical-align: bottom; text-align: left;">${name}</th>`).join('');
 
             let tableHTML = `
-                <div style="width: 1280px; background: white; padding: 20px; font-family: 'Inter', sans-serif;">
+                <div id="cierre-report-for-image" style="width: 1280px; background: white; padding: 20px; font-family: 'Inter', sans-serif;">
                     <h2 style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 16px;">CIERRE DE VENTAS</h2>
                     <p style="text-align: center; font-size: 16px; margin-bottom: 24px;">FECHA DEL CIERRE: ${new Date().toLocaleDateString('es-ES')}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -1858,12 +1843,52 @@
             return tableHTML;
         }
 
+        /**
+         * Maneja la generación de la imagen del cierre de ventas desde la vista previa.
+         */
+        async function handleGenerateCierreImage() {
+            const reportElement = document.getElementById('cierre-report-for-image');
+            if (!reportElement) {
+                showModal('Error', 'No se encontró el reporte para generar la imagen.');
+                return;
+            }
+
+            const shareButton = document.getElementById('generateCierreImageBtn');
+            shareButton.textContent = 'Generando...';
+            shareButton.disabled = true;
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
+                canvas.toBlob(async (blob) => {
+                    if (navigator.share && blob) {
+                        try {
+                            await navigator.share({
+                                files: [new File([blob], "cierre_de_ventas.png", { type: "image/png" })],
+                                title: "Reporte de Cierre de Ventas",
+                            });
+                        } catch (err) {
+                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir la imagen del reporte.');
+                        }
+                    } else {
+                        showModal('No Soportado', 'La función para compartir no está disponible en este navegador.');
+                    }
+                }, 'image/png');
+            } catch (error) {
+                console.error("Error al generar la imagen del cierre: ", error);
+                showModal('Error', `Ocurrió un error al generar la imagen: ${error.message}`);
+            } finally {
+                shareButton.textContent = 'Generar Imagen y Compartir';
+                shareButton.disabled = false;
+            }
+        }
+
 
         /**
-         * Maneja el proceso de cierre de ventas: genera un reporte y borra los datos.
+         * Maneja el proceso de cierre de ventas: genera un CSV y borra los datos.
          */
         async function handleCierreDeVentas() {
-            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará una imagen y un archivo CSV de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
+            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará un archivo CSV de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
                 
                 try {
                     const closingData = await getClosingData();
@@ -1874,55 +1899,28 @@
                         return;
                     }
                     
-                    showModal('Progreso', 'Generando imagen del reporte. Por favor, espera...');
+                    showModal('Progreso', 'Generando archivo CSV y finalizando...');
+
+                    const { header, rows, totalRow, ventasSnapshot } = closingData;
                     
-                    const reportHTML = generateClosingReportHTML(closingData);
-                    const tempDiv = document.createElement('div');
-                    tempDiv.style.position = 'absolute';
-                    tempDiv.style.left = '-9999px';
-                    tempDiv.innerHTML = reportHTML;
-                    document.body.appendChild(tempDiv);
+                    const csvRows = rows.map(row => [`"${row.fecha}"`, `"${row.cliente.replace(/"/g, '""')}"`, ...row.cantidades, row.total]);
+                    const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
+                    const csvContent = [header, ...csvRows, csvTotalRow].map(e => e.join(",")).join("\n");
                     
-                    const canvas = await html2canvas(tempDiv.firstChild, { scale: 2 });
-                    document.body.removeChild(tempDiv);
+                    const csvBlob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(csvBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `cierre_ventas_${new Date().toISOString().slice(0, 10)}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
                     
-                    canvas.toBlob(async (blob) => {
-                        if (navigator.share && blob) {
-                            try {
-                                await navigator.share({
-                                    files: [new File([blob], "cierre_de_ventas.png", { type: "image/png" })],
-                                    title: "Cierre de Ventas",
-                                });
-                            } catch(err) {
-                                if (err.name !== 'AbortError') throw new Error("No se pudo compartir la imagen del cierre.");
-                            }
-                        } else {
-                           showModal('Aviso', 'La función para compartir no está disponible. Se descargará solo el archivo CSV.');
-                        }
-                        
-                        // Continuar con el CSV y borrado
-                        showModal('Progreso', 'Generando archivo CSV y finalizando...');
-                        const { header, rows, totalRow, ventasSnapshot } = closingData;
-                        
-                        const csvRows = rows.map(row => [`"${row.fecha}"`, `"${row.cliente.replace(/"/g, '""')}"`, ...row.cantidades, row.total]);
-                        const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
-                        const csvContent = [header, ...csvRows, csvTotalRow].map(e => e.join(",")).join("\n");
-                        
-                        const csvBlob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(csvBlob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `cierre_ventas_${new Date().toISOString().slice(0, 10)}.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        
-                        const batch = writeBatch(db);
-                        ventasSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-                        await batch.commit();
-                        
-                        showModal('Éxito', 'El cierre de ventas se completó. Se ha compartido la imagen, descargado el CSV y eliminado los registros de ventas.');
-                        showCierreSubMenuView();
-                    });
+                    const batch = writeBatch(db);
+                    ventasSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                    
+                    showModal('Éxito', 'El cierre de ventas se completó. Se ha descargado el CSV y eliminado los registros de ventas.');
+                    showCierreSubMenuView();
 
                 } catch (error) {
                     console.error("Error durante el cierre de ventas: ", error);
@@ -1936,11 +1934,22 @@
         /**
          * Inicia Firebase y establece los oyentes de estado de autenticación.
          */
-        function initializeAppAndListeners() {
+        async function initializeAppAndListeners() {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
             setLogLevel('debug');
+
+            try {
+                await enableIndexedDbPersistence(db);
+                console.log("Persistencia sin conexión habilitada.");
+            } catch (err) {
+                if (err.code == 'failed-precondition') {
+                    console.warn("Múltiples pestañas abiertas, la persistencia sin conexión solo se puede habilitar en una.");
+                } else if (err.code == 'unimplemented') {
+                    console.warn("El navegador actual no soporta la persistencia sin conexión.");
+                }
+            }
 
             onAuthStateChanged(auth, (user) => {
                 if (user) {
@@ -1951,8 +1960,8 @@
             });
         }
 
-        window.addEventListener('load', () => {
-            initializeAppAndListeners();
+        window.addEventListener('load', async () => {
+            await initializeAppAndListeners();
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
             logoutBtn.addEventListener('click', handleLogout);
