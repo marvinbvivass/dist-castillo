@@ -142,8 +142,17 @@
             return;
         }
         catalogoMonedaActual = catalogoMonedaActual === 'USD' ? 'COP' : 'USD';
-        const activeRubros = JSON.parse(document.querySelector('.catalogo-btn:focus')?.dataset.rubros || '[]');
-        renderCatalogo(document.getElementById('catalogo-container'), activeRubros);
+        
+        const titleElement = _mainContent.querySelector('h2');
+        const title = titleElement ? titleElement.textContent.trim() : '';
+        let rubros = [];
+        // Encontrar los rubros del catálogo actual (esto es un poco frágil, depende de la implementación)
+        if (title.includes('Cerveza y Vinos')) rubros = ["Cerveceria", "Vinos"];
+        else if (title.includes('Maltin y Pepsicola')) rubros = ["Maltin", "Pepsicola"];
+        else if (title.includes('Alimentos Polar')) rubros = ["Alimentos"];
+        else if (title.includes('Procter & Gamble')) rubros = ["P&G"];
+        
+        renderCatalogo(document.getElementById('catalogo-container'), rubros);
     };
 
     /**
@@ -169,51 +178,58 @@
                 return;
             }
 
-            // Agrupar productos por marca
-            const productosPorMarca = productos.reduce((acc, p) => {
-                (acc[p.marca] = acc[p.marca] || []).push(p);
+            // Agrupar productos por segmento y luego por marca
+            const productosAgrupados = productos.reduce((acc, p) => {
+                const segmento = p.segmento || 'General';
+                const marca = p.marca || 'Sin Marca';
+                if (!acc[segmento]) acc[segmento] = {};
+                if (!acc[segmento][marca]) acc[segmento][marca] = [];
+                acc[segmento][marca].push(p);
                 return acc;
             }, {});
 
             let catalogoHTML = '';
-            for (const marca in productosPorMarca) {
+            for (const segmento in productosAgrupados) {
+                catalogoHTML += `<h3 class="text-xl font-bold text-gray-800 mt-6 pb-2 border-b-2 border-gray-300">${segmento}</h3>`;
+                
                 catalogoHTML += `
-                    <div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-2 pb-2 border-b-2 border-gray-300">${marca}</h3>
-                        <table class="min-w-full bg-transparent">
-                            <thead class="text-gray-700">
-                                <tr>
-                                    <th class="py-2 px-2 text-left font-semibold">PRODUCTO</th>
-                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO SIN IVA</th>
-                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO CON IVA</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${productosPorMarca[marca].map(p => {
-                                    const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
-                                    const precioConIva = p.precio;
-                                    let precioSinIvaMostrado, precioConIvaMostrado;
-
-                                    if (catalogoMonedaActual === 'COP') {
-                                        precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                                        precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                                    } else {
-                                        precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
-                                        precioConIvaMostrado = `$${precioConIva.toFixed(2)}`;
-                                    }
-
-                                    return `
-                                        <tr class="border-b border-gray-200">
-                                            <td class="py-2 px-2">${p.presentacion}</td>
-                                            <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
-                                            <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    <table class="min-w-full bg-transparent text-sm mt-2">
+                        <thead class="text-gray-700">
+                            <tr>
+                                <th class="py-2 px-2 text-left font-semibold">MARCA</th>
+                                <th class="py-2 px-2 text-left font-semibold">PRESENTACIÓN</th>
+                                <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO SIN IVA</th>
+                                <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO CON IVA</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                 `;
+
+                for (const marca in productosAgrupados[segmento]) {
+                    productosAgrupados[segmento][marca].forEach(p => {
+                        const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
+                        const precioConIva = p.precio;
+                        let precioSinIvaMostrado, precioConIvaMostrado;
+
+                        if (catalogoMonedaActual === 'COP') {
+                            precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                            precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                        } else {
+                            precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
+                            precioConIvaMostrado = `$${precioConIva.toFixed(2)}`;
+                        }
+
+                        catalogoHTML += `
+                            <tr class="border-b border-gray-200">
+                                <td class="py-2 px-2 font-bold">${p.marca}</td>
+                                <td class="py-2 px-2">${p.presentacion}</td>
+                                <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
+                                <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
+                            </tr>
+                        `;
+                    });
+                }
+                 catalogoHTML += `</tbody></table>`;
             }
             container.innerHTML = catalogoHTML;
 
@@ -268,4 +284,5 @@
     }
 
 })();
+
 
