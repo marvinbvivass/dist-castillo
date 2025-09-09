@@ -347,16 +347,56 @@
         }
 
         /**
+         * Carga todos los datos necesarios para el uso sin conexión.
+         */
+        async function preloadAllData() {
+            const collectionsToPreload = [
+                'inventario',
+                'clientes',
+                'ventas',
+                'rubros',
+                'segmentos',
+                'marcas',
+                'sectores'
+            ];
+
+            const preloadPromises = collectionsToPreload.map(colName => {
+                const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${colName}`);
+                return getDocs(collectionRef);
+            });
+
+            await Promise.all(preloadPromises);
+        }
+
+        /**
          * Muestra la vista principal de la aplicación.
          * @param {string} currentUserId
          */
-        function showMainView(currentUserId) {
+        async function showMainView(currentUserId) {
             userId = currentUserId;
             userIdDisplay.textContent = `ID: ${userId.substring(0, 6)}...`;
             appHeader.classList.remove('hidden');
-            mainContent.classList.remove('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
+            
+            // Mostrar pantalla de carga mientras se sincronizan los datos
+            mainContent.innerHTML = `
+                <div class="p-6 flex flex-col items-center justify-center min-h-screen">
+                    <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Sincronizando datos...</h2>
+                        <p class="text-gray-600">Por favor, espera un momento. Estamos preparando la aplicación para su uso sin conexión.</p>
+                    </div>
+                </div>
+            `;
+            mainContent.classList.remove('hidden');
+
+            try {
+                await preloadAllData();
+                console.log("Sincronización inicial completada.");
+            } catch (error) {
+                console.error("Error durante la sincronización inicial:", error);
+                showModal('Error de Sincronización', 'No se pudieron cargar todos los datos para el modo sin conexión. La aplicación puede no funcionar correctamente si pierde la conexión.');
+            }
             
             // Iniciar el listener de estado de conexión
             const rubrosRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
@@ -1865,7 +1905,7 @@
             shareButton.disabled = true;
 
             try {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise(resolve => setTimeout(resolve, 300));
                 const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
                 canvas.toBlob(async (blob) => {
                     if (navigator.share && blob) {
