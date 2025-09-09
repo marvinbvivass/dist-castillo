@@ -181,10 +181,8 @@
             // Agrupar productos por segmento y luego por marca
             const productosAgrupados = productos.reduce((acc, p) => {
                 const segmento = p.segmento || 'General';
-                const marca = p.marca || 'Sin Marca';
-                if (!acc[segmento]) acc[segmento] = {};
-                if (!acc[segmento][marca]) acc[segmento][marca] = [];
-                acc[segmento][marca].push(p);
+                if (!acc[segmento]) acc[segmento] = [];
+                acc[segmento].push(p);
                 return acc;
             }, {});
 
@@ -205,30 +203,28 @@
                         <tbody>
                 `;
 
-                for (const marca in productosAgrupados[segmento]) {
-                    productosAgrupados[segmento][marca].forEach(p => {
-                        const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
-                        const precioConIva = p.precio;
-                        let precioSinIvaMostrado, precioConIvaMostrado;
+                productosAgrupados[segmento].forEach(p => {
+                    const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
+                    const precioConIva = p.precio;
+                    let precioSinIvaMostrado, precioConIvaMostrado;
 
-                        if (catalogoMonedaActual === 'COP') {
-                            precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                            precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                        } else {
-                            precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
-                            precioConIvaMostrado = `$${precioConIva.toFixed(2)}`;
-                        }
+                    if (catalogoMonedaActual === 'COP') {
+                        precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                        precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                    } else {
+                        precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
+                        precioConIvaMostrado = `$${precioConIva.toFixed(2)}`;
+                    }
 
-                        catalogoHTML += `
-                            <tr class="border-b border-gray-200">
-                                <td class="py-2 px-2 font-bold">${p.marca}</td>
-                                <td class="py-2 px-2">${p.presentacion}</td>
-                                <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
-                                <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
-                            </tr>
-                        `;
-                    });
-                }
+                    catalogoHTML += `
+                        <tr class="border-b border-gray-200">
+                            <td class="py-2 px-2 font-bold">${p.marca}</td>
+                            <td class="py-2 px-2">${p.presentacion}</td>
+                            <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
+                            <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
+                        </tr>
+                    `;
+                });
                  catalogoHTML += `</tbody></table>`;
             }
             container.innerHTML = catalogoHTML;
