@@ -32,6 +32,10 @@
             background-size: cover;
             background-position: center;
             filter: blur(3px) brightness(0.6);
+            transition: background-image 0.5s ease-in-out;
+        }
+        body.catalogo-active::before {
+            background-image: var(--catalogo-bg-image, url('images/fondo.png'));
         }
         .hidden {
             display: none;
@@ -2252,3 +2256,4 @@
     </script>
 </body>
 </html>
+
