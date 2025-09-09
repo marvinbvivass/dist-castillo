@@ -536,12 +536,19 @@
                                     <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <div>
-                                    <label for="precio" class="block text-gray-700 font-medium mb-2">Precio:</label>
+                                    <label for="precio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
                                     <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <div>
                                     <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
                                     <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                <div>
+                                    <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                    <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="16">IVA 16%</option>
+                                        <option value="0">Excento</option>
+                                    </select>
                                 </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
                                     Guardar Producto
@@ -658,7 +665,8 @@
                                 <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
                                 <th class="py-2 px-4 border-b text-left text-sm">Rubro</th>
                                 <th class="py-2 px-4 border-b text-left text-sm">Marca</th>
-                                <th class="py-2 px-4 border-b text-right text-sm">Precio</th>
+                                <th class="py-2 px-4 border-b text-right text-sm">Precio (USD)</th>
+                                <th class="py-2 px-4 border-b text-center text-sm">IVA</th>
                                 <th class="py-2 px-4 border-b text-center text-sm">Cantidad</th>
                                 ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
                             </tr>
@@ -673,6 +681,7 @@
                             <td class="py-2 px-4 border-b text-sm">${producto.rubro}</td>
                             <td class="py-2 px-4 border-b text-sm">${producto.marca}</td>
                             <td class="py-2 px-4 border-b text-right text-sm">$${producto.precio.toFixed(2)}</td>
+                            <td class="py-2 px-4 border-b text-center text-sm">${producto.iva === 0 ? 'Excento' : producto.iva + '%'}</td>
                             <td class="py-2 px-4 border-b text-center text-sm">${producto.cantidad}</td>
                             ${!readOnly ? `
                             <td class="py-2 px-4 border-b text-center space-x-2">
@@ -700,6 +709,7 @@
             const presentacion = document.getElementById('presentacion').value;
             const precio = parseFloat(document.getElementById('precio').value);
             const cantidad = parseInt(document.getElementById('cantidad').value, 10);
+            const iva = parseInt(document.getElementById('ivaTipo').value, 10);
 
             try {
                 const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
@@ -709,7 +719,8 @@
                     marca,
                     presentacion,
                     precio,
-                    cantidad
+                    cantidad,
+                    iva
                 });
                 showModal('Éxito', 'Producto agregado correctamente.');
                 document.getElementById('productoForm').reset();
@@ -765,12 +776,19 @@
                                     <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.presentacion}</p>
                                 </div>
                                 <div>
-                                    <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio:</label>
+                                    <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
                                     <input type="number" step="0.01" id="editPrecio" value="${producto.precio}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                 </div>
                                 <div>
                                     <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
                                     <input type="number" id="editCantidad" value="${producto.cantidad}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                </div>
+                                 <div>
+                                    <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                    <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                                        <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
+                                        <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
+                                    </select>
                                 </div>
                                 <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
                                     Guardar Cambios
@@ -789,7 +807,8 @@
                 try {
                     await setDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId), {
                         precio: parseFloat(document.getElementById('editPrecio').value),
-                        cantidad: parseInt(document.getElementById('editCantidad').value, 10)
+                        cantidad: parseInt(document.getElementById('editCantidad').value, 10),
+                        iva: parseInt(document.getElementById('editIvaTipo').value, 10)
                     }, { merge: true });
                     showModal('Éxito', 'Producto modificado exitosamente.');
                     showModifyDeleteView();
@@ -1462,7 +1481,9 @@
                 let precioMostrado;
                 if (monedaActual === 'COP') {
                     const precioConvertido = producto.precio * tasaCOP;
-                    precioMostrado = `COP ${Math.round(precioConvertido).toLocaleString('es-CO')}`;
+                    // Redondear al siguiente múltiplo de 100
+                    const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
+                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
                 } else {
                     precioMostrado = `$${producto.precio.toFixed(2)}`;
                 }
@@ -1549,7 +1570,8 @@
                                 marca: p.marca,
                                 segmento: p.segmento,
                                 precio: p.precio,
-                                cantidad: p.cantidadVendida
+                                cantidad: p.cantidadVendida,
+                                iva: p.iva // Guardar el IVA en el registro de la venta
                             });
                         }
 
@@ -1783,8 +1805,9 @@
                             <td class="py-2 px-4 border-b">${venta.clienteNombre}</td>
                             <td class="py-2 px-4 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
                             <td class="py-2 px-4 border-b font-semibold">$${venta.total.toFixed(2)}</td>
-                            <td class="py-2 px-4 border-b text-center">
-                                <button onclick="window.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">Factura Fiscal</button>
+                            <td class="py-2 px-4 border-b text-center space-x-1">
+                                <button onclick="window.shareSaleTicket('${venta.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
+                                <button onclick="window.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">F.F.</button>
                             </td>
                         </tr>
                     `;
@@ -1795,10 +1818,76 @@
             });
         }
         
-        window.reimprimirTicket = (ventaId) => {
+        /**
+         * Genera y comparte una imagen del ticket de una venta histórica.
+         * @param {string} ventaId El ID de la venta a compartir.
+         */
+        window.shareSaleTicket = async function(ventaId) {
             const venta = ventasGlobal.find(v => v.id === ventaId);
-            if (venta) {
-                handlePrintTicket(venta);
+            if (!venta) {
+                showModal('Error', 'No se encontraron los datos de la venta seleccionada.');
+                return;
+            }
+
+            const clienteInfo = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, venta.clienteId));
+            if (!clienteInfo.exists()) {
+                showModal('Error', 'No se pudo encontrar el cliente asociado a esta venta.');
+                return;
+            }
+            const cliente = clienteInfo.data();
+            
+            const ticketHTML = `
+                <div id="temp-ticket-for-image" class="bg-white p-4 uppercase-ticket" style="width: 302px; font-family: 'Inter', sans-serif;">
+                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
+                    <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
+                    <p class="text-sm">FECHA: ${venta.fecha.toDate().toLocaleDateString('es-ES')}</p>
+                    <p class="text-sm mb-4">CLIENTE: ${venta.clienteNombre}</p>
+                    <table class="w-full text-sm mt-4">
+                        <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
+                        <tbody>
+                            ${venta.productos.map(p => `
+                                <tr>
+                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                    <td class="py-1 text-center">${p.cantidad}</td>
+                                    <td class="py-1 text-right">$${(p.cantidad * p.precio).toFixed(2)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-4 text-right font-bold text-lg">TOTAL: $${venta.total.toFixed(2)}</div>
+                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${cliente.nombrePersonal}</p></div>
+                </div>
+            `;
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.innerHTML = ticketHTML;
+            document.body.appendChild(tempDiv);
+            
+            showModal('Progreso', 'Generando imagen del ticket...');
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const canvas = await html2canvas(document.getElementById('temp-ticket-for-image'), { scale: 2 });
+                document.body.removeChild(tempDiv);
+                canvas.toBlob(async (blob) => {
+                    if (navigator.share && blob) {
+                        try {
+                            await navigator.share({
+                                files: [new File([blob], "ticket_venta.png", { type: "image/png" })],
+                                title: "Ticket de Venta",
+                            });
+                            modalContainer.classList.add('hidden');
+                        } catch (err) {
+                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
+                        }
+                    } else {
+                         showModal('Error', 'La función de compartir no está disponible.');
+                    }
+                }, 'image/png');
+            } catch(e) {
+                document.body.removeChild(tempDiv);
+                showModal('Error', 'No se pudo generar la imagen del ticket.');
             }
         };
 
@@ -1810,8 +1899,19 @@
         };
 
         async function showFacturaFiscal(venta) {
-            const subTotal = venta.total / 1.16;
-            const iva = venta.total - subTotal;
+            let subTotal = 0;
+            let ivaTotal = 0;
+
+            venta.productos.forEach(p => {
+                const valorTotalProducto = p.cantidad * p.precio;
+                if (p.iva === 16) {
+                    const base = valorTotalProducto / 1.16;
+                    subTotal += base;
+                    ivaTotal += valorTotalProducto - base;
+                } else { // Excento
+                    subTotal += valorTotalProducto;
+                }
+            });
 
             const facturaHTML = `
                 <div id="factura-content" class="bg-white p-4 text-black text-sm font-mono uppercase">
@@ -1829,20 +1929,23 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${venta.productos.map(p => `
+                            ${venta.productos.map(p => {
+                                const precioUnitario = p.iva === 16 ? p.precio / 1.16 : p.precio;
+                                const valor = p.cantidad * precioUnitario;
+                                return `
                                 <tr>
                                     <td>${p.cantidad}</td>
                                     <td>${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td class="text-right">$${(p.precio / 1.16).toFixed(2)}</td>
-                                    <td class="text-right">$${(p.cantidad * (p.precio / 1.16)).toFixed(2)}</td>
+                                    <td class="text-right">$${precioUnitario.toFixed(2)}</td>
+                                    <td class="text-right">$${valor.toFixed(2)}</td>
                                 </tr>
-                            `).join('')}
+                            `}).join('')}
                         </tbody>
                     </table>
                     <hr class="my-2 border-black border-dashed">
                     <div class="text-right">
                         <p><strong>SUB-TOTAL:</strong> $${subTotal.toFixed(2)}</p>
-                        <p><strong>IVA 16%:</strong> $${iva.toFixed(2)}</p>
+                        <p><strong>IVA 16%:</strong> $${ivaTotal.toFixed(2)}</p>
                         <p class="font-bold text-lg"><strong>TOTAL:</strong> $${venta.total.toFixed(2)}</p>
                     </div>
                 </div>
