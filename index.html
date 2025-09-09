@@ -77,8 +77,36 @@
                     </button>
                     <p id="authMessage" class="text-sm text-red-500 mt-2"></p>
                 </form>
+                 <p class="mt-6 text-sm">
+                    ¿No tienes una cuenta? 
+                    <button id="goToRegisterBtn" class="font-semibold text-blue-500 hover:underline">Regístrate aquí</button>
+                </p>
             </div>
         </main>
+        
+        <!-- Contenido para la vista de registro -->
+        <main id="registerContent" class="flex-grow flex items-center justify-center hidden">
+            <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
+                <form id="registerForm" class="space-y-4">
+                    <input type="email" id="registerEmailInput" placeholder="Email" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="registerPasswordInput" placeholder="Contraseña" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="confirmPasswordInput" placeholder="Confirmar Contraseña" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                        Registrar
+                    </button>
+                    <p id="registerMessage" class="text-sm text-red-500 mt-2"></p>
+                </form>
+                <p class="mt-6 text-sm">
+                    ¿Ya tienes una cuenta? 
+                    <button id="goToLoginBtn" class="font-semibold text-blue-500 hover:underline">Inicia sesión</button>
+                </p>
+            </div>
+        </main>
+
 
         <!-- Modal para mensajes y formularios -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
@@ -88,7 +116,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase proporcionada por el usuario
@@ -116,6 +144,11 @@
         const modalContent = document.getElementById('modalContent');
         const loginForm = document.getElementById('loginForm');
         const authMessage = document.getElementById('authMessage');
+        const loginContent = document.getElementById('loginContent');
+        const registerContent = document.getElementById('registerContent');
+        const registerForm = document.getElementById('registerForm');
+        const registerMessage = document.getElementById('registerMessage');
+        
         
         // Variables para la vista de ventas
         let clientes = [];
@@ -196,6 +229,45 @@
         }
         
         /**
+         * Maneja el registro de un nuevo usuario.
+         * @param {Event} e
+         */
+        async function handleRegister(e) {
+            e.preventDefault();
+            const email = document.getElementById('registerEmailInput').value;
+            const password = document.getElementById('registerPasswordInput').value;
+            const confirmPassword = document.getElementById('confirmPasswordInput').value;
+            registerMessage.textContent = '';
+
+            if (password !== confirmPassword) {
+                registerMessage.textContent = 'Las contraseñas no coinciden.';
+                return;
+            }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                // El onAuthStateChanged se encargará de redirigir a la vista principal
+            } catch (error) {
+                console.error("Error al registrar:", error);
+                switch (error.code) {
+                    case 'auth/email-already-in-use':
+                        registerMessage.textContent = 'Este email ya está en uso.';
+                        break;
+                    case 'auth/invalid-email':
+                        registerMessage.textContent = 'El email no es válido.';
+                        break;
+                    case 'auth/weak-password':
+                        registerMessage.textContent = 'La contraseña es demasiado débil. Debe tener al menos 6 caracteres.';
+                        break;
+                    default:
+                        registerMessage.textContent = 'Error al registrar. Por favor, inténtelo de nuevo.';
+                        break;
+                }
+            }
+        }
+
+
+        /**
          * Maneja el inicio de sesión del usuario.
          * @param {Event} e
          */
@@ -246,9 +318,22 @@
         function showLoginView() {
             appHeader.classList.add('hidden');
             mainContent.classList.add('hidden');
-            document.getElementById('loginContent').classList.remove('hidden');
+            registerContent.classList.add('hidden');
+            loginContent.classList.remove('hidden');
             loginForm.reset();
             authMessage.textContent = '';
+        }
+
+        /**
+         * Muestra la vista de registro.
+         */
+        function showRegisterView() {
+            appHeader.classList.add('hidden');
+            mainContent.classList.add('hidden');
+            loginContent.classList.add('hidden');
+            registerContent.classList.remove('hidden');
+            registerForm.reset();
+            registerMessage.textContent = '';
         }
 
         /**
@@ -260,7 +345,8 @@
             userIdDisplay.textContent = `ID de Usuario: ${userId}`;
             appHeader.classList.remove('hidden');
             mainContent.classList.remove('hidden');
-            document.getElementById('loginContent').classList.add('hidden');
+            loginContent.classList.add('hidden');
+            registerContent.classList.add('hidden');
             showMainMenu();
         }
 
@@ -770,12 +856,6 @@
         }
 
         /**
-         * Método de impresión tradicional como fallback.
-         * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
-         * @param {Array} productosVendidos - La lista de productos de esa venta.
-         */
-        function legacyPrint(currentVenta, productosVendidos) {
-            if (!currentVenta || !productosVendidos) {
          * Método de impresión tradicional como fallback, usando un iframe para máxima compatibilidad.
          * @param {Object} currentVenta - Los datos de la venta actual para imprimir.
          * @param {Array} productosVendidos - La lista de productos de esa venta.
@@ -1924,14 +2004,12 @@
         window.addEventListener('load', () => {
             initializeAppAndListeners();
             loginForm.addEventListener('submit', handleLogin);
+            registerForm.addEventListener('submit', handleRegister);
             logoutBtn.addEventListener('click', handleLogout);
+             // Listeners para cambiar entre login y registro
+            document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
+            document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
         });
     </script>
 </body>
 </html>
-
-
-
-
-
-
