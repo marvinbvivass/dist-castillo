@@ -78,17 +78,7 @@
 </head>
 <body class="min-h-screen flex flex-col">
     <div id="app" class="flex flex-col min-h-screen">
-        <!-- Encabezado de la aplicación, visible solo cuando el usuario está autenticado -->
-        <header id="appHeader" class="bg-white/80 backdrop-blur-sm shadow-md p-4 flex justify-between items-center hidden sticky top-0 z-10">
-            <h1 class="text-2xl font-bold text-gray-800">Sistema de Ventas</h1>
-            <div id="authStatus" class="flex items-center space-x-4">
-                <span id="connectionStatus" class="text-xs font-bold px-2 py-1 rounded-full"></span>
-                <span id="userIdDisplay" class="text-sm font-medium text-gray-600"></span>
-                <button id="logoutBtn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
-                    Cerrar Sesión
-                </button>
-            </div>
-        </header>
+        <!-- El header ha sido eliminado -->
 
         <!-- Contenido principal para el menú y otras vistas, visible solo cuando el usuario está autenticado -->
         <main id="mainContent" class="flex-grow hidden">
@@ -144,6 +134,16 @@
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
             <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-lg w-full mx-4"></div>
         </div>
+
+        <!-- Controles Flotantes -->
+        <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-20 hidden">
+             <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg"></span>
+            <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+            </button>
+        </div>
     </div>
 
     <!-- Cargar el script del catálogo -->
@@ -172,10 +172,7 @@
         let activeListeners = []; // Array para almacenar los listeners activos
 
         // Referencias a los elementos del DOM
-        const appHeader = document.getElementById('appHeader');
         const mainContent = document.getElementById('mainContent');
-        const userIdDisplay = document.getElementById('userIdDisplay');
-        const logoutBtn = document.getElementById('logoutBtn');
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
         const loginForm = document.getElementById('loginForm');
@@ -184,7 +181,7 @@
         const registerContent = document.getElementById('registerContent');
         const registerForm = document.getElementById('registerForm');
         const registerMessage = document.getElementById('registerMessage');
-        
+        const floatingControls = document.getElementById('floating-controls');
         
         // Variables para la vista de ventas
         let clientes = [];
@@ -363,7 +360,7 @@
          */
         function showLoginView() {
             cleanupListeners();
-            appHeader.classList.add('hidden');
+            floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             loginContent.classList.remove('hidden');
@@ -375,7 +372,7 @@
          * Muestra la vista de registro.
          */
         function showRegisterView() {
-            appHeader.classList.add('hidden');
+            floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.remove('hidden');
@@ -411,8 +408,7 @@
          */
         async function showMainView(currentUserId) {
             userId = currentUserId;
-            userIdDisplay.textContent = `ID: ${userId.substring(0, 6)}...`;
-            appHeader.classList.remove('hidden');
+            floatingControls.classList.remove('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             
@@ -443,10 +439,10 @@
                 
                 if (snapshot.metadata.fromCache) {
                     statusEl.textContent = "SIN CONEXIÓN";
-                    statusEl.className = "text-xs font-bold px-2 py-1 rounded-full bg-yellow-400 text-yellow-900";
+                    statusEl.className = "text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-yellow-400 text-yellow-900";
                 } else {
                     statusEl.textContent = "EN LÍNEA";
-                    statusEl.className = "text-xs font-bold px-2 py-1 rounded-full bg-green-400 text-green-900";
+                    statusEl.className = "text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-green-400 text-green-900";
                 }
             });
             activeListeners.push(unsubscribe);
@@ -462,7 +458,7 @@
          */
         window.showMainMenu = function() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
@@ -495,7 +491,7 @@
          */
         function showInventarioSubMenu() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
@@ -525,7 +521,7 @@
 
         function showAgregarProductoView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
@@ -624,7 +620,7 @@
          */
         function showModifyDeleteView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
@@ -648,7 +644,7 @@
          */
         function showVerInventarioView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
@@ -2254,7 +2250,7 @@
             await initializeAppAndListeners();
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
-            logoutBtn.addEventListener('click', handleLogout);
+            document.getElementById('logoutBtn').addEventListener('click', handleLogout);
              // Listeners para cambiar entre login y registro
             document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
             document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
