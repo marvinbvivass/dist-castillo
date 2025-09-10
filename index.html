@@ -652,6 +652,12 @@
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
+                            <div class="mb-4">
+                               <label for="verInventarioRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                               <select id="verInventarioRubroFilter" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                   <option value="">Todos los Rubros</option>
+                               </select>
+                            </div>
                             <div id="productosListContainer" class="overflow-x-auto">
                                 <p class="text-gray-500 text-center">Cargando productos...</p>
                             </div>
@@ -663,7 +669,15 @@
                 </div>
             `;
             document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            renderProductosList('productosListContainer', true); // Renderiza en vista de solo lectura
+            
+            const rubroFilter = document.getElementById('verInventarioRubroFilter');
+            populateDropdown('rubros', 'verInventarioRubroFilter');
+
+            rubroFilter.addEventListener('change', () => {
+                 renderProductosList('productosListContainer', true, rubroFilter.value);
+            });
+
+            renderProductosList('productosListContainer', true, rubroFilter.value); // Renderiza en vista de solo lectura
         }
 
 
@@ -672,16 +686,22 @@
          * @param {string} elementId ID del elemento donde se renderizará la lista.
          * @param {boolean} readOnly Indica si la lista es de solo lectura.
          */
-        function renderProductosList(elementId = 'productosListContainer', readOnly = false) {
+        function renderProductosList(elementId = 'productosListContainer', readOnly = false, rubroFilter = '') {
             const container = document.getElementById(elementId);
             if (!container) return;
 
             const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             const unsubscribe = onSnapshot(inventarioRef, (snapshot) => {
-                const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 inventario = productos; // Guarda el inventario globalmente
+                
+                // Filtrar por rubro si se proporciona uno
+                if (rubroFilter) {
+                    productos = productos.filter(p => p.rubro === rubroFilter);
+                }
+
                 if (productos.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay productos en el inventario.</p>`;
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
                     return;
                 }
 
@@ -1557,7 +1577,7 @@
 
                 row.innerHTML = `
                     <td class="py-2 px-1 text-center">
-                        <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidad || 0}"
+                        <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidadVendida || 0}"
                                class="w-16 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
                                oninput="updateVentaCantidad(event)">
                     </td>
