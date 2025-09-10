@@ -408,7 +408,6 @@
          */
         async function showMainView(currentUserId) {
             userId = currentUserId;
-            floatingControls.classList.remove('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             
@@ -457,6 +456,7 @@
          * Renderiza el menú principal de la aplicación.
          */
         window.showMainMenu = function() {
+            floatingControls.classList.remove('hidden'); // Mostrar controles flotantes en el menú principal
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -490,6 +490,7 @@
          * Renderiza el menú de subopciones de inventario.
          */
         function showInventarioSubMenu() {
+            floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -520,6 +521,7 @@
         }
 
         function showAgregarProductoView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -619,6 +621,7 @@
          * Muestra la vista de modificar/eliminar producto.
          */
         function showModifyDeleteView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -643,6 +646,7 @@
          * Muestra la vista de Ver Inventario.
          */
         function showVerInventarioView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -774,6 +778,7 @@
          * Edita un producto en el inventario.
          */
         window.editProducto = function(productId) {
+             floatingControls.classList.add('hidden');
             const producto = inventario.find(p => p.id === productId);
             if (!producto) return;
 
@@ -979,6 +984,7 @@
          * Renderiza el menú de subopciones de clientes.
          */
         function showClientesSubMenu() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1012,6 +1018,7 @@
          * Muestra la vista de agregar cliente.
          */
         function showAgregarClienteView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1099,6 +1106,7 @@
          * Muestra la vista de Ver Clientes.
          */
         function showVerClientesView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1122,6 +1130,7 @@
          * Muestra la vista de modificar/eliminar cliente.
          */
         function showModifyDeleteClienteView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1204,6 +1213,7 @@
          * @param {string} clienteId ID del cliente a editar.
          */
         window.editCliente = async function(clienteId) {
+             floatingControls.classList.add('hidden');
             const cliente = clientes.find(c => c.id === clienteId);
             if (!cliente) return;
 
@@ -1295,6 +1305,7 @@
          * Renderiza la vista principal de ventas.
          */
         function showVentasView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1324,6 +1335,7 @@
          * Renderiza la vista para iniciar una nueva venta.
          */
         function showNuevaVentaView() {
+             floatingControls.classList.add('hidden');
              monedaActual = 'USD'; // Reset currency view on new sale
             mainContent.innerHTML = `
                 <div class="p-2 sm:p-4 w-full">
@@ -1725,6 +1737,7 @@
          * Renderiza la vista de ventas totales.
          */
         function showVentasTotalesView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1754,6 +1767,7 @@
          * Muestra el submenú de opciones para el cierre de ventas.
          */
         function showCierreSubMenuView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1783,6 +1797,7 @@
          * Muestra una vista previa del reporte de cierre de ventas.
          */
         async function showVerCierreView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
@@ -1827,6 +1842,7 @@
          * Muestra la vista con la lista de todas las ventas actuales.
          */
         function showVentasActualesView() {
+             floatingControls.classList.add('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
