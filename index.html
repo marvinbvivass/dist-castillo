@@ -1327,9 +1327,14 @@
              monedaActual = 'USD'; // Reset currency view on new sale
             mainContent.innerHTML = `
                 <div class="p-2 sm:p-4 w-full">
-                    <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-8 rounded-lg shadow-xl flex flex-col h-full">
+                    <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
                         <div id="venta-header-section" class="mb-4">
-                            <h2 class="text-xl font-bold text-gray-800 mb-4">Nueva Venta</h2>
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-xl font-bold text-gray-800">Nueva Venta</h2>
+                                <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                                    Volver
+                                </button>
+                            </div>
                             <div id="client-search-container">
                                 <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
                                 <div class="relative">
@@ -1337,29 +1342,33 @@
                                     <div id="clienteDropdown" class="autocomplete-list hidden"></div>
                                 </div>
                             </div>
-                            <div id="client-display-container" class="hidden">
-                                <p class="text-gray-700"><span class="font-medium">Cliente:</span> <span id="selected-client-name"></span></p>
-                                <div id="tasaCopContainer" class="mt-2">
-                                     <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium mb-1">Tasa (USD/COP):</label>
-                                    <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-4">
+                                <p class="text-gray-700 flex-grow"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
+                                <div id="tasaCopContainer" class="flex items-center space-x-2">
+                                     <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">Tasa (USD/COP):</label>
+                                    <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-28 px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
                                 </div>
                             </div>
                         </div>
 
-                        <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow overflow-auto">
-                             <h3 class="text-lg font-bold text-gray-800 mb-2 flex justify-between items-center">
-                                <span>Inventario</span>
-                                <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD/COP)</span>
-                            </h3>
-                            <div class="overflow-x-auto rounded-lg shadow">
+                        <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
+                             <div class="flex justify-between items-center mb-2">
+                                <h3 class="text-lg font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD/COP)</span></h3>
+                                 <div id="rubro-filter-container" class="w-1/2">
+                                    <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm">
+                                        <option value="">Todos los Rubros</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="overflow-auto flex-grow rounded-lg shadow">
                                 <table class="min-w-full bg-white">
-                                    <thead class="bg-gray-200">
+                                    <thead class="bg-gray-200 sticky top-0">
                                         <tr class="text-gray-700 uppercase text-xs leading-normal">
-                                            <th class="py-3 px-2 text-center">Cant.</th>
-                                            <th class="py-3 px-4 text-left">Producto</th>
-                                            <th class="py-3 px-4 text-left">Marca</th>
-                                            <th class="py-3 px-4 text-left price-toggle" onclick="window.toggleMoneda()">Precio</th>
-                                            <th class="py-3 px-2 text-center">Stock</th>
+                                            <th class="py-2 px-1 text-center">Cant.</th>
+                                            <th class="py-2 px-2 text-left">Producto</th>
+                                            <th class="py-2 px-2 text-left">Marca</th>
+                                            <th class="py-2 px-2 text-left price-toggle" onclick="window.toggleMoneda()">Precio</th>
+                                            <th class="py-2 px-1 text-center">Stock</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light">
@@ -1369,12 +1378,10 @@
                             </div>
                         </div>
                         
-                        <div class="mt-4 flex items-center space-x-4">
-                            <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
+                        <div id="venta-footer-section" class="mt-4 flex items-center justify-between hidden">
+                            <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
+                             <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
                                 Generar Ticket
-                            </button>
-                             <button id="backToVentasBtn" class="px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
                             </button>
                         </div>
                     </div>
@@ -1414,6 +1421,10 @@
                     clienteDropdown.classList.add('hidden');
                 }
             });
+            
+            document.getElementById('rubroFilter').addEventListener('change', () => {
+                 renderVentasInventario();
+            });
 
             // Listener para el botón "Generar Ticket"
             document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
@@ -1436,9 +1447,21 @@
             const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             const unsubscribeInventario = onSnapshot(inventarioRef, (snapshot) => {
                 inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                 populateRubroFilter();
                 renderVentasInventario();
             });
             activeListeners.push(unsubscribeInventario);
+        }
+
+        function populateRubroFilter() {
+            const rubroFilter = document.getElementById('rubroFilter');
+            if(!rubroFilter) return;
+
+            const rubros = [...new Set(inventario.map(p => p.rubro))].sort();
+            rubroFilter.innerHTML = '<option value="">Todos los Rubros</option>';
+            rubros.forEach(rubro => {
+                 rubroFilter.innerHTML += `<option value="${rubro}">${rubro}</option>`;
+            });
         }
         
         /**
@@ -1469,6 +1492,7 @@
             document.getElementById('selected-client-name').textContent = cliente.nombreComercial;
             clientDisplay.classList.remove('hidden');
             document.getElementById('inventarioTableContainer').classList.remove('hidden');
+            document.getElementById('venta-footer-section').classList.remove('hidden');
         }
         
         /**
@@ -1481,6 +1505,7 @@
             }
             monedaActual = monedaActual === 'USD' ? 'COP' : 'USD';
             renderVentasInventario();
+            updateVentaTotal();
         }
 
         /**
@@ -1489,18 +1514,22 @@
         function renderVentasInventario() {
             const inventarioTableBody = document.getElementById('inventarioTableBody');
             const monedaIndicator = document.getElementById('monedaIndicator');
+            const rubroFilter = document.getElementById('rubroFilter');
 
-            if (!inventarioTableBody || !monedaIndicator) return;
+            if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
             inventarioTableBody.innerHTML = '';
 
             monedaIndicator.textContent = `(${monedaActual})`;
+            
+            const selectedRubro = rubroFilter.value;
+            const filteredInventario = selectedRubro ? inventario.filter(p => p.rubro === selectedRubro) : inventario;
 
-            if (inventario.length === 0) {
-                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos en el inventario.</td></tr>`;
+            if (filteredInventario.length === 0) {
+                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
                 return;
             }
 
-            inventario.forEach(producto => {
+            filteredInventario.forEach(producto => {
                 const row = document.createElement('tr');
                 row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
@@ -1530,7 +1559,7 @@
         }
 
         /**
-         * Actualiza la cantidad de un producto en la venta actual.
+         * Actualiza la cantidad de un producto en la venta actual y recalcula el total.
          * @param {Event} event
          */
         window.updateVentaCantidad = function(event) {
@@ -1546,7 +1575,30 @@
             } else {
                 delete ventaActual.productos[productId];
             }
+            updateVentaTotal();
         };
+
+        /**
+         * Calcula y muestra el total de la venta actual.
+         */
+        function updateVentaTotal() {
+            const totalElement = document.getElementById('ventaTotal');
+            if (!totalElement) return;
+
+            let total = 0;
+            for (const id in ventaActual.productos) {
+                const p = ventaActual.productos[id];
+                total += p.precio * p.cantidadVendida;
+            }
+            
+            if (monedaActual === 'COP') {
+                const totalConvertido = total * tasaCOP;
+                const totalRedondeado = Math.ceil(totalConvertido / 100) * 100;
+                totalElement.textContent = `Total: COP ${totalRedondeado.toLocaleString('es-CO')}`;
+            } else {
+                totalElement.textContent = `Total: $${total.toFixed(2)}`;
+            }
+        }
 
         /**
          * Genera un ticket de venta y lo guarda en Firestore.
@@ -1674,7 +1726,7 @@
          */
         function showVentasTotalesView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
@@ -1703,7 +1755,7 @@
          */
         function showCierreSubMenuView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Opciones de Cierre</h2>
@@ -1732,7 +1784,7 @@
          */
         async function showVerCierreView() {
             mainContent.innerHTML = `
-                <div class="p-4">
+                <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Vista Previa de Cierre de Ventas</h2>
@@ -2269,5 +2321,3 @@
     </script>
 </body>
 </html>
-
-
