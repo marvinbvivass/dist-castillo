@@ -608,7 +608,7 @@
             const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                 const items = snapshot.docs.map(doc => doc.data().name).sort();
-                selectElement.innerHTML = `<option value="">Seleccione un ${elementId}</option>`;
+                selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
                 items.forEach(item => {
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
@@ -671,7 +671,7 @@
             document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
             
             const rubroFilter = document.getElementById('verInventarioRubroFilter');
-            populateDropdown('rubros', 'verInventarioRubroFilter');
+            populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
 
             rubroFilter.addEventListener('change', () => {
                  renderProductosList('productosListContainer', true, rubroFilter.value);
@@ -1649,47 +1649,101 @@
             // Muestra un modal de confirmación antes de guardar
             showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
                 try {
-                    const batch = writeBatch(db);
-                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
-                    let totalVenta = 0;
-                    const itemsVenta = [];
-
-                    for (const p of productosVendidos) {
-                         const productoInventario = inventario.find(item => item.id === p.id);
-                         if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) {
-                            throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${productoInventario?.cantidad || 0}, Solicitado: ${p.cantidadVendida}`);
-                        }
-                        const nuevaCantidad = productoInventario.cantidad - p.cantidadVendida;
-                        const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
-                        batch.update(productoRef, { cantidad: nuevaCantidad });
-                        
-                        const subtotal = p.precio * p.cantidadVendida;
-                        totalVenta += subtotal;
-                        itemsVenta.push({
-                            id: p.id,
-                            presentacion: p.presentacion,
-                            marca: p.marca,
-                            segmento: p.segmento,
-                            precio: p.precio,
-                            cantidad: p.cantidadVendida,
-                            iva: p.iva
-                        });
-                    }
-
-                    batch.set(ventaRef, {
-                        clienteId: ventaActual.cliente.id,
-                        clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
-                        fecha: new Date(),
-                        total: totalVenta,
-                        productos: itemsVenta
-                    });
-
-                    await batch.commit();
-
-                    // Si la transacción fue exitosa, genera y muestra el ticket
+                    const isOnline = document.getElementById('connectionStatus')?.textContent === 'EN LÍNEA';
+                    
                     const ventaParaTicket = { ...ventaActual };
                     const productosParaTicket = [...productosVendidos];
 
+                    if (isOnline) {
+                        await runTransaction(db, async (transaction) => {
+                            const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                            let totalVenta = 0;
+                            const itemsVenta = [];
+                            const stockUpdates = [];
+
+                            // FASE 1: LECTURAS Y VALIDACIONES
+                            for (const p of productosVendidos) {
+                                const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                                const productoDoc = await transaction.get(productoRef);
+
+                                if (!productoDoc.exists()) {
+                                    throw new Error(`El producto "${p.presentacion}" ya no existe en el inventario.`);
+                                }
+                                
+                                const stockActual = productoDoc.data().cantidad;
+                                if (stockActual < p.cantidadVendida) {
+                                    throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${stockActual}, Solicitado: ${p.cantidadVendida}`);
+                                }
+                                
+                                const nuevaCantidad = stockActual - p.cantidadVendida;
+                                stockUpdates.push({ ref: productoRef, nuevaCantidad });
+
+                                const subtotal = p.precio * p.cantidadVendida;
+                                totalVenta += subtotal;
+                                itemsVenta.push({
+                                    id: p.id,
+                                    presentacion: p.presentacion,
+                                    marca: p.marca,
+                                    segmento: p.segmento,
+                                    precio: p.precio,
+                                    cantidad: p.cantidadVendida,
+                                    iva: p.iva
+                                });
+                            }
+
+                            // FASE 2: ESCRITURAS
+                            transaction.set(ventaRef, {
+                                clienteId: ventaActual.cliente.id,
+                                clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
+                                fecha: new Date(),
+                                total: totalVenta,
+                                productos: itemsVenta
+                            });
+                            stockUpdates.forEach(update => {
+                                transaction.update(update.ref, { cantidad: update.nuevaCantidad });
+                            });
+                        });
+                    } else {
+                        // Lógica sin conexión
+                        const batch = writeBatch(db);
+                        const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                        let totalVenta = 0;
+                        const itemsVenta = [];
+
+                        for (const p of productosVendidos) {
+                             const productoInventario = inventario.find(item => item.id === p.id);
+                             if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) {
+                                throw new Error(`Stock insuficiente para: ${p.presentacion}. Disponible localmente: ${productoInventario?.cantidad || 0}`);
+                            }
+                            const nuevaCantidad = productoInventario.cantidad - p.cantidadVendida;
+                            const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                            batch.update(productoRef, { cantidad: nuevaCantidad });
+                            
+                            const subtotal = p.precio * p.cantidadVendida;
+                            totalVenta += subtotal;
+                            itemsVenta.push({
+                                id: p.id,
+                                presentacion: p.presentacion,
+                                marca: p.marca,
+                                segmento: p.segmento,
+                                precio: p.precio,
+                                cantidad: p.cantidadVendida,
+                                iva: p.iva
+                            });
+                        }
+
+                        batch.set(ventaRef, {
+                            clienteId: ventaActual.cliente.id,
+                            clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
+                            fecha: new Date(),
+                            total: totalVenta,
+                            productos: itemsVenta
+                        });
+
+                        await batch.commit();
+                    }
+
+                    // Genera y muestra el ticket
                     const ticketHTML = `
                         <div class="uppercase-ticket">
                             <!-- Contenido del ticket para la imagen -->
