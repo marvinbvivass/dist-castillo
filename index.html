@@ -1649,57 +1649,42 @@
             // Muestra un modal de confirmación antes de guardar
             showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
                 try {
-                    await runTransaction(db, async (transaction) => {
-                        const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
-                        let totalVenta = 0;
-                        const itemsVenta = [];
-                        const stockUpdates = [];
+                    const batch = writeBatch(db);
+                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                    let totalVenta = 0;
+                    const itemsVenta = [];
 
-                        // FASE 1: LECTURAS Y VALIDACIONES
-                        for (const p of productosVendidos) {
-                            const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
-                            const productoDoc = await transaction.get(productoRef);
-
-                            if (!productoDoc.exists()) {
-                                throw new Error(`El producto "${p.presentacion}" ya no existe en el inventario.`);
-                            }
-                            
-                            const stockActual = productoDoc.data().cantidad;
-                            if (stockActual < p.cantidadVendida) {
-                                throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${stockActual}, Solicitado: ${p.cantidadVendida}`);
-                            }
-                            
-                            const nuevaCantidad = stockActual - p.cantidadVendida;
-                            stockUpdates.push({ ref: productoRef, nuevaCantidad });
-
-                            const subtotal = p.precio * p.cantidadVendida;
-                            totalVenta += subtotal;
-                            itemsVenta.push({
-                                id: p.id,
-                                presentacion: p.presentacion,
-                                marca: p.marca,
-                                segmento: p.segmento,
-                                precio: p.precio,
-                                cantidad: p.cantidadVendida,
-                                iva: p.iva // Guardar el IVA en el registro de la venta
-                            });
+                    for (const p of productosVendidos) {
+                         const productoInventario = inventario.find(item => item.id === p.id);
+                         if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) {
+                            throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${productoInventario?.cantidad || 0}, Solicitado: ${p.cantidadVendida}`);
                         }
-
-                        // FASE 2: ESCRITURAS
-                        // Primero, crea el documento de la venta
-                        transaction.set(ventaRef, {
-                            clienteId: ventaActual.cliente.id,
-                            clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
-                            fecha: new Date(),
-                            total: totalVenta,
-                            productos: itemsVenta
+                        const nuevaCantidad = productoInventario.cantidad - p.cantidadVendida;
+                        const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                        batch.update(productoRef, { cantidad: nuevaCantidad });
+                        
+                        const subtotal = p.precio * p.cantidadVendida;
+                        totalVenta += subtotal;
+                        itemsVenta.push({
+                            id: p.id,
+                            presentacion: p.presentacion,
+                            marca: p.marca,
+                            segmento: p.segmento,
+                            precio: p.precio,
+                            cantidad: p.cantidadVendida,
+                            iva: p.iva
                         });
+                    }
 
-                        // Luego, actualiza el stock de cada producto
-                        stockUpdates.forEach(update => {
-                            transaction.update(update.ref, { cantidad: update.nuevaCantidad });
-                        });
+                    batch.set(ventaRef, {
+                        clienteId: ventaActual.cliente.id,
+                        clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
+                        fecha: new Date(),
+                        total: totalVenta,
+                        productos: itemsVenta
                     });
+
+                    await batch.commit();
 
                     // Si la transacción fue exitosa, genera y muestra el ticket
                     const ventaParaTicket = { ...ventaActual };
