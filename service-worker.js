@@ -1,6 +1,6 @@
 // --- Service Worker Mejorado para Funcionalidad Offline Robusta ---
 
-const CACHE_NAME = 'ventas-app-cache-v3'; // Versión actualizada para forzar la recarga de la caché
+const CACHE_NAME = 'ventas-app-cache-v4'; // Versión actualizada para forzar la recarga de la caché
 
 // Lista de archivos esenciales para el funcionamiento de la aplicación (App Shell)
 const urlsToCache = [
@@ -26,16 +26,14 @@ const urlsToCache = [
 ];
 
 // Evento 'install': Se dispara cuando el Service Worker se instala por primera vez.
-// Aquí es donde pre-cacheamos nuestro App Shell.
 self.addEventListener('install', event => {
     console.log('[Service Worker] Instalando...');
-    self.skipWaiting(); // Forzar la activación inmediata del nuevo Service Worker
+    self.skipWaiting(); // Forzar la activación inmediata
     
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('[Service Worker] Abriendo caché y guardando el App Shell.');
-                // cache.addAll manejará las solicitudes a los CDNs correctamente sin 'no-cors'
+                console.log('[Service Worker] Guardando App Shell en caché.');
                 return cache.addAll(urlsToCache);
             })
             .catch(error => {
@@ -45,7 +43,6 @@ self.addEventListener('install', event => {
 });
 
 // Evento 'activate': Se dispara cuando el nuevo Service Worker se activa.
-// Aquí limpiamos las cachés antiguas que ya no se necesitan.
 self.addEventListener('activate', event => {
     console.log('[Service Worker] Activando...');
     const cacheWhitelist = [CACHE_NAME];
@@ -64,19 +61,27 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Evento 'fetch': Se dispara cada vez que la aplicación realiza una solicitud de red (ej. un script, una imagen, una API).
-// Implementamos la estrategia "Network Falling Back to Cache".
+// Evento 'fetch': Se dispara para cada solicitud de red.
 self.addEventListener('fetch', event => {
-    // Solo interceptamos las solicitudes GET, no las de POST a Firebase, etc.
+    // No interceptamos solicitudes que no sean GET
     if (event.request.method !== 'GET') {
         return;
     }
+    
+    // Estrategia para las solicitudes de navegación (abrir la página)
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request)
+                .catch(() => caches.match('./index.html')) // Si falla la red, sirve el index.html principal
+        );
+        return;
+    }
 
+    // Estrategia para otros recursos (CSS, JS, imágenes, etc.)
     event.respondWith(
         fetch(event.request)
             .then(networkResponse => {
-                // Si la solicitud a la red fue exitosa, la usamos y la guardamos en caché para futuras peticiones offline.
-                // Es importante clonar la respuesta, ya que solo se puede consumir una vez.
+                // Si la respuesta de red es válida, la usamos y actualizamos la caché
                 const responseToCache = networkResponse.clone();
                 caches.open(CACHE_NAME)
                     .then(cache => {
@@ -85,9 +90,23 @@ self.addEventListener('fetch', event => {
                 return networkResponse;
             })
             .catch(() => {
-                // Si la solicitud a la red falla (estamos offline), intentamos obtener la respuesta desde la caché.
-                console.log(`[Service Worker] Sin conexión. Sirviendo desde caché: ${event.request.url}`);
-                return caches.match(event.request);
+                // Si la red falla, intentamos servir desde la caché
+                return caches.match(event.request)
+                    .then(cachedResponse => {
+                        // Si encontramos una respuesta en caché, la retornamos
+                        if (cachedResponse) {
+                            return cachedResponse;
+                        }
+                        // Si no está en caché y no hay red, la solicitud fallará naturalmente.
+                        // Esto es correcto para las peticiones de Firebase que no cacheamos.
+                        return new Response('Contenido no disponible sin conexión.', {
+                            status: 404,
+                            statusText: 'Not Found'
+                        });
+                    });
             })
     );
 });
+
+
+
