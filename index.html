@@ -78,7 +78,7 @@
             </div>
         </header>
 
-        <!-- Contenido principal para el menú y otras vistas -->
+        <!-- Contenido principal -->
         <main id="mainContent" class="flex-grow hidden"></main>
 
         <!-- Vista de login -->
@@ -86,30 +86,19 @@
             <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
                 <form id="loginForm" class="space-y-4">
-                    <input type="email" id="emailInput" placeholder="Email" required
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <input type="password" id="passwordInput" placeholder="Contraseña" required
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition">
-                        Ingresar
-                    </button>
+                    <input type="email" id="emailInput" placeholder="Email" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="password" id="passwordInput" placeholder="Contraseña" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition">Ingresar</button>
                     <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p>
                 </form>
             </div>
         </main>
 
-        <!-- Modal para mensajes y formularios -->
+        <!-- Modal -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
             <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4"></div>
         </div>
-        
-        <!-- Botones flotantes -->
-        <div id="floatingControls" class="fixed bottom-4 right-4 space-y-2 hidden"></div>
     </div>
-
-    <!-- Carga de los módulos JS -->
-    <script src="inventario.js"></script>
-    <script src="catalogo.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -128,9 +117,8 @@
         const appId = firebaseConfig.appId;
 
         let db, auth, userId;
-        window.activeListeners = []; // Para gestionar los listeners de onSnapshot
+        window.activeListeners = [];
 
-        // Referencias al DOM
         const appHeader = document.getElementById('appHeader');
         const mainContent = document.getElementById('mainContent');
         const userIdDisplay = document.getElementById('userIdDisplay');
@@ -139,13 +127,13 @@
         const modalContent = document.getElementById('modalContent');
         const loginForm = document.getElementById('loginForm');
         const authMessage = document.getElementById('authMessage');
-        const floatingControls = document.getElementById('floatingControls');
 
-        // Variables globales para la app
         let clientes = [];
         let inventario = [];
         let ventaActual = { cliente: null, productos: {} };
-
+        let catalogoTasaCOP = 0;
+        let catalogoMonedaActual = 'USD';
+        
         // --- Lógica de Utilidades y Autenticación ---
 
         function cleanupListeners() {
@@ -173,16 +161,16 @@
             }
             modalContainer.classList.remove('hidden');
         }
-        
-        window.showAddItemModal = function(collectionName, itemName) {
+
+        function showAddItemModal(collectionName, itemName) {
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
                     <form id="addItemForm" class="space-y-4">
-                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
                         <div class="flex justify-center space-x-4">
-                            <button type="button" id="cancelItemBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Guardar</button>
+                            <button type="button" id="cancelItemBtn" class="px-4 py-2 bg-gray-300 rounded-lg">Cancelar</button>
+                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg">Guardar</button>
                         </div>
                     </form>
                 </div>
@@ -193,37 +181,15 @@
                 e.preventDefault();
                 const newItem = document.getElementById('newItemInput').value;
                 if (!newItem.trim()) return;
-                try {
-                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
-                    modalContainer.classList.add('hidden');
-                } catch (e) {
-                    showModal('Error', `Hubo un error al agregar el ${itemName}.`);
-                }
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
+                modalContainer.classList.add('hidden');
             });
         }
         
-        window.populateDropdown = function(collectionName, elementId, defaultOptionText = '') {
-            const selectElement = document.getElementById(elementId);
-            if (!selectElement) return;
-
-            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
-            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const currentValue = selectElement.value;
-                const items = snapshot.docs.map(doc => doc.data().name).sort();
-                selectElement.innerHTML = `<option value="">Seleccione un ${defaultOptionText || collectionName.slice(0, -1)}</option>`;
-                items.forEach(item => {
-                    const selected = item === currentValue ? 'selected' : '';
-                    selectElement.innerHTML += `<option value="${item}" ${selected}>${item}</option>`;
-                });
-            });
-            window.activeListeners.push(unsubscribe);
-        }
-
         async function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
             const password = document.getElementById('passwordInput').value;
-            authMessage.textContent = 'Verificando...';
             try {
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (error) {
@@ -239,11 +205,8 @@
             cleanupListeners();
             appHeader.classList.add('hidden');
             mainContent.classList.add('hidden');
-            floatingControls.classList.add('hidden');
             document.body.classList.remove('catalogo-active');
             document.getElementById('loginContent').classList.remove('hidden');
-            loginForm.reset();
-            authMessage.textContent = '';
         }
 
         function showMainView(currentUserId) {
@@ -252,23 +215,18 @@
             appHeader.classList.remove('hidden');
             mainContent.classList.remove('hidden');
             document.getElementById('loginContent').classList.add('hidden');
-            
-            initInventario({ db, userId, appId, mainContent, showMainMenu, floatingControls, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, writeBatch, showModal, populateDropdown });
-            initCatalogo(db, userId, appId, mainContent, showMainMenu, collection, getDocs);
-            
             showMainMenu();
         }
-
+        
         // --- Lógica del Menú Principal ---
         
         function showMainMenu() {
             cleanupListeners();
-            floatingControls.classList.add('hidden');
             document.body.classList.remove('catalogo-active');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
                             <div class="space-y-4">
                                 <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition transform hover:scale-105">Inventario</button>
@@ -280,24 +238,200 @@
                     </div>
                 </div>
             `;
-            document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
+            document.getElementById('inventarioBtn').addEventListener('click', showInventarioSubMenu);
             document.getElementById('clientesBtn').addEventListener('click', showClientesSubMenu);
             document.getElementById('ventasBtn').addEventListener('click', showVentasView);
-            document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
+            document.getElementById('catalogoBtn').addEventListener('click', showCatalogoSubMenu);
         }
+        
+        // --- Lógica del módulo de Inventario ---
+        function showInventarioSubMenu() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
+                            <div class="space-y-4">
+                                <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Inventario</button>
+                                <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
+                                <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Modificar / Eliminar Producto</button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
+            document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
+            document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        function showAgregarProductoView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
+                            <form id="productoForm" class="space-y-4 text-left">
+                                <div><label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label><div class="flex items-center space-x-2"><select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select><button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button></div></div>
+                                <div><label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label><div class="flex items-center space-x-2"><select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select><button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button></div></div>
+                                <div><label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label><div class="flex items-center space-x-2"><select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select><button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button></div></div>
+                                <div><label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label><input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="precio" class="block text-gray-700 font-medium mb-2">Precio:</label><input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label><input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Producto</button>
+                            </form>
+                            <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('rubros', 'rubro');
+            populateDropdown('segmentos', 'segmento');
+            populateDropdown('marcas', 'marca');
+            document.getElementById('productoForm').addEventListener('submit', agregarProducto);
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('addRubroBtn').addEventListener('click', () => showAddItemModal('rubros', 'Rubro'));
+            document.getElementById('addSegmentoBtn').addEventListener('click', () => showAddItemModal('segmentos', 'Segmento'));
+            document.getElementById('addMarcaBtn').addEventListener('click', () => showAddItemModal('marcas', 'Marca'));
+        }
+
+        function populateDropdown(collectionName, elementId) {
+            const selectElement = document.getElementById(elementId);
+            if (!selectElement) return;
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), (snapshot) => {
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                selectElement.innerHTML = `<option value="">Seleccione un ${elementId}</option>`;
+                items.forEach(item => selectElement.innerHTML += `<option value="${item}">${item}</option>`);
+            });
+            window.activeListeners.push(unsubscribe);
+        }
+
+        function showModifyDeleteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Producto</h2>
+                            <div id="productosList" class="space-y-4 text-left"><p class="text-gray-500">Cargando...</p></div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList();
+        }
+
+        function showVerInventarioView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Inventario</h2>
+                            <div id="productosListVer" class="space-y-4 text-left"><p>Cargando...</p></div>
+                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+            renderProductosList('productosListVer', true);
+        }
+
+        function renderProductosList(elementId = 'productosList', readOnly = false) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/inventario`), (snapshot) => {
+                const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                inventario = productos;
+                if (productos.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500">No hay productos.</p>`;
+                    return;
+                }
+                container.innerHTML = productos.map(p => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center">
+                        <div>
+                            <p class="font-semibold">${p.presentacion} (${p.rubro} - ${p.segmento})</p>
+                            <p class="text-sm text-gray-600">Marca: ${p.marca} | Precio: $${p.precio.toFixed(2)} | Cantidad: ${p.cantidad}</p>
+                        </div>
+                        ${!readOnly ? `<div class="space-x-2"><button onclick="editProducto('${p.id}', '${p.presentacion}', ${p.precio}, ${p.cantidad}, '${p.rubro}', '${p.segmento}', '${p.marca}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg">Editar</button><button onclick="deleteProducto('${p.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg">Eliminar</button></div>` : ''}
+                    </div>`).join('');
+            });
+            window.activeListeners.push(unsubscribe);
+        }
+
+        async function agregarProducto(e) {
+            e.preventDefault();
+            const rubro = document.getElementById('rubro').value;
+            const segmento = document.getElementById('segmento').value;
+            const marca = document.getElementById('marca').value;
+            const presentacion = document.getElementById('presentacion').value;
+            const precio = parseFloat(document.getElementById('precio').value);
+            const cantidad = parseInt(document.getElementById('cantidad').value, 10);
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/inventario`), { rubro, segmento, marca, presentacion, precio, cantidad });
+            showModal('Éxito', 'Producto agregado.');
+            document.getElementById('productoForm').reset();
+        }
+
+        window.deleteProducto = function(productId) {
+            showModal('Confirmar', '¿Eliminar este producto?', async () => {
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId));
+                showModal('Éxito', 'Producto eliminado.');
+            });
+        };
+
+        window.editProducto = function(productId, presentacion, precio, cantidad, rubro, segmento, marca) {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
+                            <form id="editProductoForm" class="space-y-4 text-left">
+                                <div><label for="editRubro">Rubro:</label><select id="editRubro" class="w-full px-4 py-2 border rounded-lg" required><option value="${rubro}">${rubro}</option></select></div>
+                                <div><label for="editSegmento">Segmento:</label><select id="editSegmento" class="w-full px-4 py-2 border rounded-lg" required><option value="${segmento}">${segmento}</option></select></div>
+                                <div><label for="editMarca">Marca:</label><select id="editMarca" class="w-full px-4 py-2 border rounded-lg" required><option value="${marca}">${marca}</option></select></div>
+                                <div><label for="editPresentacion">Presentación:</label><input type="text" id="editPresentacion" value="${presentacion}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="editPrecio">Precio:</label><input type="number" step="0.01" id="editPrecio" value="${precio}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="editCantidad">Cantidad:</label><input type="number" id="editCantidad" value="${cantidad}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg">Guardar Cambios</button>
+                            </form>
+                            <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
+                        </div>
+                    </div>
+                </div>`;
+            populateDropdown('rubros', 'editRubro');
+            populateDropdown('segmentos', 'editSegmento');
+            populateDropdown('marcas', 'editMarca');
+            document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId), {
+                    rubro: document.getElementById('editRubro').value,
+                    segmento: document.getElementById('editSegmento').value,
+                    marca: document.getElementById('editMarca').value,
+                    presentacion: document.getElementById('editPresentacion').value,
+                    precio: parseFloat(document.getElementById('editPrecio').value),
+                    cantidad: parseInt(document.getElementById('editCantidad').value, 10)
+                }, { merge: true });
+                showModal('Éxito', 'Producto modificado.');
+                showModifyDeleteView();
+            });
+            document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+        };
 
         // --- Lógica del módulo de Clientes ---
         function showClientesSubMenu() {
-            cleanupListeners();
             mainContent.innerHTML = `
-                <div class="p-4 pt-8">
+                <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                             <div class="space-y-4">
-                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver / Modificar Clientes</button>
-                                <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
-                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg">Ver Clientes</button>
+                                <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg">Agregar Cliente</button>
+                                <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg">Modificar / Eliminar Cliente</button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver al Menú</button>
                             </div>
                         </div>
                     </div>
@@ -305,29 +439,24 @@
             `;
             document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
             document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
+            document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
             document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
         }
 
         function showAgregarClienteView() {
-             mainContent.innerHTML = `
-                <div class="p-4 pt-8">
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
                         <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
                             <form id="clienteForm" class="space-y-4 text-left">
-                                <div>
-                                    <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
-                                    <div class="flex items-center space-x-2">
-                                        <select id="sector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
-                                        <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
-                                    </div>
-                                </div>
-                                <div><label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label><input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg" required></div>
-                                <div><label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label><input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg" required></div>
-                                <div><label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label><input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg" required></div>
-                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cliente</button>
+                                <div><label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label><div class="flex items-center space-x-2"><select id="sector" class="w-full px-4 py-2 border rounded-lg" required></select><button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg">Agregar</button></div></div>
+                                <div><label for="nombreComercial">Nombre Comercial:</label><input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="nombrePersonal">Nombre Personal:</label><input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="telefono">Teléfono:</label><input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg">Guardar Cliente</button>
                             </form>
-                            <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
                         </div>
                     </div>
                 </div>
@@ -344,206 +473,208 @@
             const nombreComercial = document.getElementById('nombreComercial').value;
             const nombrePersonal = document.getElementById('nombrePersonal').value;
             const telefono = document.getElementById('telefono').value;
-
-            try {
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/clientes`), { sector, nombreComercial, nombrePersonal, telefono });
-                showModal('Éxito', 'Cliente agregado correctamente.');
-                document.getElementById('clienteForm').reset();
-            } catch (e) {
-                showModal('Error', 'Hubo un error al guardar el cliente.');
-            }
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/clientes`), { sector, nombreComercial, nombrePersonal, telefono });
+            showModal('Éxito', 'Cliente agregado.');
+            document.getElementById('clienteForm').reset();
         }
 
         function showVerClientesView() {
             mainContent.innerHTML = `
-                <div class="p-4 pt-8">
+                <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
-                        <div class="bg-white p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
-                            <div id="clientesListContainer" class="space-y-4 text-left">
-                                <p class="text-gray-500 text-center">Cargando clientes...</p>
-                            </div>
-                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ver Clientes</h2>
+                            <div id="clientesListVer" class="space-y-4 text-left"><p>Cargando...</p></div>
+                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
                         </div>
                     </div>
                 </div>
             `;
             document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            renderClientesList('clientesListContainer');
+            renderClientesList('clientesListVer', true);
         }
 
-        function renderClientesList(elementId) {
-            const container = document.getElementById(elementId);
-            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            const unsubscribe = onSnapshot(clientesRef, (snapshot) => {
-                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                if (clientes.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes registrados.</p>`;
-                    return;
-                }
-                container.innerHTML = clientes.map(cliente => `
-                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center flex-wrap">
-                        <div class="w-full sm:w-auto sm:flex-grow mb-2 sm:mb-0">
-                            <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
-                            <p class="text-sm text-gray-600">Sector: ${cliente.sector} | Tel: ${cliente.telefono}</p>
-                        </div>
-                        <div class="space-x-2">
-                            <button onclick="editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600">Editar</button>
-                            <button onclick="deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600">Eliminar</button>
+        function showModifyDeleteClienteView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Modificar / Eliminar Cliente</h2>
+                            <div id="clientesList" class="space-y-4 text-left"><p>Cargando...</p></div>
+                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
                         </div>
                     </div>
-                `).join('');
+                </div>
+            `;
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            renderClientesList();
+        }
+
+        function renderClientesList(elementId = 'clientesList', readOnly = false) {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/clientes`), (snapshot) => {
+                const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                clientes = fetchedClientes;
+                if (fetchedClientes.length === 0) {
+                    container.innerHTML = `<p>No hay clientes.</p>`;
+                    return;
+                }
+                container.innerHTML = fetchedClientes.map(c => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow">
+                        <p class="font-semibold">${c.nombreComercial || c.nombrePersonal}</p>
+                        <p class="text-sm text-gray-600">${c.nombreComercial && c.nombrePersonal ? `(${c.nombrePersonal}) ` : ''} | Sector: ${c.sector} | Tel: ${c.telefono}</p>
+                        ${!readOnly ? `<div class="space-x-2 mt-2"><button onclick="editCliente('${c.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg">Editar</button><button onclick="deleteCliente('${c.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg">Eliminar</button></div>` : ''}
+                    </div>`).join('');
             });
             window.activeListeners.push(unsubscribe);
         }
+        
+        window.editCliente = async function(clienteId) {
+            const clienteDoc = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
+            const cliente = clienteDoc.data();
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
+                            <form id="editClienteForm" class="space-y-4 text-left">
+                                <div><label for="editSector">Sector:</label><select id="editSector" class="w-full px-4 py-2 border rounded-lg" required><option value="${cliente.sector}">${cliente.sector}</option></select></div>
+                                <div><label for="editNombreComercial">Nombre Comercial:</label><input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="editNombrePersonal">Nombre Personal:</label><input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="editTelefono">Teléfono:</label><input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg">Guardar Cambios</button>
+                            </form>
+                            <button id="backToModifyDeleteClienteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
+                        </div>
+                    </div>
+                </div>`;
+            populateDropdown('sectores', 'editSector');
+            document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId), {
+                    sector: document.getElementById('editSector').value,
+                    nombreComercial: document.getElementById('editNombreComercial').value,
+                    nombrePersonal: document.getElementById('editNombrePersonal').value,
+                    telefono: document.getElementById('editTelefono').value
+                }, { merge: true });
+                showModal('Éxito', 'Cliente modificado.');
+                showModifyDeleteClienteView();
+            });
+            document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
+        }
 
         window.deleteCliente = function(clienteId) {
-            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
-                try {
-                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
-                } catch (e) {
-                    showModal('Error', 'Hubo un error al eliminar el cliente.');
-                }
+            showModal('Confirmar', '¿Eliminar este cliente?', async () => {
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
+                showModal('Éxito', 'Cliente eliminado.');
             });
         };
 
-        window.editCliente = async function(clienteId) {
-            const cliente = clientes.find(c => c.id === clienteId);
-            mainContent.innerHTML = `
-                 <div class="p-4 pt-8"><div class="container mx-auto"><div class="bg-white p-8 rounded-lg shadow-xl text-center">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
-                    <form id="editClienteForm" class="space-y-4 text-left">
-                        <div><label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label><select id="editSector" class="w-full px-4 py-2 border rounded-lg"></select></div>
-                        <div><label for="editNombreComercial">Nombre Comercial:</label><input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg"></div>
-                        <div><label for="editNombrePersonal">Nombre Personal:</label><input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg"></div>
-                        <div><label for="editTelefono">Teléfono:</label><input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg"></div>
-                        <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
-                    </form>
-                    <button id="backToVerClientes" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                 </div></div></div>
-            `;
-            populateDropdown('sectores', 'editSector');
-            setTimeout(() => { document.getElementById('editSector').value = cliente.sector; }, 200);
-
-            document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                try {
-                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId), {
-                        sector: document.getElementById('editSector').value,
-                        nombreComercial: document.getElementById('editNombreComercial').value,
-                        nombrePersonal: document.getElementById('editNombrePersonal').value,
-                        telefono: document.getElementById('editTelefono').value
-                    }, { merge: true });
-                    showVerClientesView();
-                } catch (e) {
-                    showModal('Error', 'Hubo un error al modificar el cliente.');
-                }
-            });
-            document.getElementById('backToVerClientes').addEventListener('click', showVerClientesView);
-        }
-
         // --- Lógica del módulo de Ventas ---
         function showVentasView() {
-            cleanupListeners();
             mainContent.innerHTML = `
-                <div class="p-4 pt-8">
+                <div class="p-6 bg-gray-100 min-h-screen">
                     <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
                             <div class="space-y-4">
-                                <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Nueva Venta</button>
-                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas Totales</button>
-                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                                <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg">Nueva Venta</button>
+                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg">Ventas Totales</button>
+                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver al Menú</button>
                             </div>
                         </div>
                     </div>
                 </div>
             `;
             document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
-            document.getElementById('ventasTotalesBtn').addEventListener('click', () => showModal('En Construcción', 'Esta sección estará disponible próximamente.'));
+            document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
             document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
         }
-
+        
         function showNuevaVentaView() {
-            cleanupListeners();
-            ventaActual = { cliente: null, productos: {} }; // Reset venta
             mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto"><div class="bg-white p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
-                        <div class="mb-6"><label for="clienteSearch" class="block text-gray-700 font-medium mb-2">1. Seleccionar Cliente:</label><div class="relative"><input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"><div id="clienteDropdown" class="autocomplete-list hidden"></div></div></div>
-                        <div id="inventarioSection" class="hidden animate-fade-in">
-                            <h3 class="text-xl font-bold text-gray-800 mb-4">2. Agregar Productos</h3>
-                            <div class="overflow-x-auto rounded-lg shadow"><table class="min-w-full bg-white">
-                                <thead class="bg-gray-200 text-gray-700 uppercase text-sm"><tr class="text-left">
-                                    <th class="py-3 px-4">Producto</th><th class="py-3 px-4">Stock</th><th class="py-3 px-4 w-32">Cantidad</th>
-                                </tr></thead>
-                                <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light"></tbody>
-                            </table></div>
-                            <div class="mt-6 flex justify-between items-center">
-                                <button id="backToVentasBtn" class="px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                                <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Ticket</button>
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
+                            <div class="mb-6"><label for="clienteSearch">Seleccionar Cliente:</label><div class="relative"><input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg"><div id="clienteDropdown" class="autocomplete-list hidden"></div></div></div>
+                            <div id="inventarioTableContainer" class="hidden animate-fade-in">
+                                <h3 class="text-xl font-bold mb-4">Inventario</h3>
+                                <div class="overflow-x-auto rounded-lg shadow">
+                                    <table class="min-w-full bg-white">
+                                        <thead><tr class="bg-gray-200 text-gray-700 uppercase text-sm">
+                                            <th class="py-3 px-6 text-left">Producto</th><th class="py-3 px-6 text-left">Marca</th><th class="py-3 px-6 text-left">Precio</th>
+                                            <th class="py-3 px-6 text-center">Stock</th><th class="py-3 px-6 text-center">Cantidad</th>
+                                        </tr></thead>
+                                        <tbody id="inventarioTableBody" class="text-gray-600 text-sm"></tbody>
+                                    </table>
+                                </div>
+                                <div class="mt-6 flex justify-end"><button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg">Generar Ticket</button></div>
                             </div>
+                            <button id="backToVentasBtn" class="mt-6 px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             `;
             const clienteSearchInput = document.getElementById('clienteSearch');
             clienteSearchInput.addEventListener('input', () => {
                 const searchTerm = clienteSearchInput.value.toLowerCase();
-                const filtered = clientes.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
-                renderClienteDropdown(filtered);
+                const filteredClients = clientes.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
+                renderClienteDropdown(filteredClients);
+                document.getElementById('clienteDropdown').classList.remove('hidden');
             });
             document.addEventListener('click', (e) => { if (!clienteSearchInput.contains(e.target)) document.getElementById('clienteDropdown').classList.add('hidden'); });
             document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
             document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-
             loadClientesAndInventario();
         }
 
         function loadClientesAndInventario() {
-            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            const invRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-            const unsubClientes = onSnapshot(clientesRef, snap => { clientes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); });
-            const unsubInv = onSnapshot(invRef, snap => { inventario = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); renderVentasInventario(); });
+            const unsubClientes = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/clientes`), (snapshot) => { clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); });
+            const unsubInv = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/inventario`), (snapshot) => { inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); renderVentasInventario(); });
             window.activeListeners.push(unsubClientes, unsubInv);
         }
-
+        
         function renderClienteDropdown(filteredClients) {
-            const dropdown = document.getElementById('clienteDropdown');
-            dropdown.innerHTML = '';
+            const clienteDropdown = document.getElementById('clienteDropdown');
+            clienteDropdown.innerHTML = '';
             filteredClients.forEach(cliente => {
                 const item = document.createElement('div');
                 item.className = 'autocomplete-item';
                 item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
                 item.addEventListener('click', () => selectCliente(cliente));
-                dropdown.appendChild(item);
+                clienteDropdown.appendChild(item);
             });
-            dropdown.classList.remove('hidden');
         }
 
         function selectCliente(cliente) {
             ventaActual.cliente = cliente;
             document.getElementById('clienteSearch').value = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
             document.getElementById('clienteDropdown').classList.add('hidden');
-            document.getElementById('inventarioSection').classList.remove('hidden');
+            document.getElementById('inventarioTableContainer').classList.remove('hidden');
         }
 
         function renderVentasInventario() {
             const body = document.getElementById('inventarioTableBody');
             if (!body) return;
-            body.innerHTML = inventario.map(p => `
-                <tr class="border-b border-gray-200 hover:bg-gray-100">
-                    <td class="py-3 px-4">${p.presentacion} (${p.marca}) <span class="text-xs text-gray-500">${p.rubro}</span></td>
-                    <td class="py-3 px-4 text-center">${p.cantidad}</td>
-                    <td class="py-3 px-4"><input type="number" min="0" max="${p.cantidad}" value="${ventaActual.productos[p.id]?.cantidadVendida || 0}" class="w-full p-1 text-center border rounded-lg" data-product-id="${p.id}" oninput="updateVentaCantidad(event)"></td>
-                </tr>
-            `).join('');
+            body.innerHTML = '';
+            if (inventario.length === 0) {
+                body.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos.</td></tr>`;
+                return;
+            }
+            inventario.forEach(p => {
+                const row = document.createElement('tr');
+                row.className = 'border-b hover:bg-gray-100';
+                row.innerHTML = `<td class="py-3 px-6 text-left whitespace-nowrap">${p.presentacion} (${p.rubro})</td><td class="py-3 px-6 text-left">${p.marca}</td><td class="py-3 px-6 text-left">$${p.precio.toFixed(2)}</td><td class="py-3 px-6 text-center">${p.cantidad}</td><td class="py-3 px-6 text-center"><input type="number" min="0" max="${p.cantidad}" value="${ventaActual.productos[p.id]?.cantidad || 0}" class="w-20 p-1 text-center border rounded-lg" data-product-id="${p.id}" oninput="updateVentaCantidad(event)"></td>`;
+                body.appendChild(row);
+            });
         }
 
         window.updateVentaCantidad = function(event) {
-            const { productId } = event.target.dataset;
-            const cantidad = parseInt(event.target.value, 10);
+            const input = event.target;
+            const productId = input.dataset.productId;
+            const cantidad = parseInt(input.value, 10);
             if (cantidad > 0) {
                 const producto = inventario.find(p => p.id === productId);
                 if (producto) ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
@@ -553,45 +684,217 @@
         };
 
         async function generarTicket() {
-            if (!ventaActual.cliente) { showModal('Error', 'Debe seleccionar un cliente.'); return; }
+            if (!ventaActual.cliente) {
+                showModal('Error', 'Debe seleccionar un cliente.');
+                return;
+            }
             const productosVendidos = Object.values(ventaActual.productos);
-            if (productosVendidos.length === 0) { showModal('Error', 'Debe agregar al menos un producto.'); return; }
-
-            showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+            if (productosVendidos.length === 0) {
+                showModal('Error', 'Debe seleccionar al menos un producto.');
+                return;
+            }
+            showModal('Confirmar Venta', '¿Guardar venta y generar ticket?', async () => {
                 try {
-                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
                     let totalVenta = 0;
                     const itemsVenta = productosVendidos.map(p => {
                         totalVenta += p.precio * p.cantidadVendida;
                         return { id: p.id, presentacion: p.presentacion, marca: p.marca, precio: p.precio, cantidad: p.cantidadVendida };
                     });
-
-                    // Usar transacción para asegurar atomicidad
+                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
                     await runTransaction(db, async (transaction) => {
                         for (const p of productosVendidos) {
                             const prodRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
                             const prodDoc = await transaction.get(prodRef);
-                            const newStock = prodDoc.data().cantidad - p.cantidadVendida;
-                            if (newStock < 0) throw new Error(`Stock insuficiente para: ${p.presentacion}`);
-                            transaction.update(prodRef, { cantidad: newStock });
+                            const newCantidad = prodDoc.data().cantidad - p.cantidadVendida;
+                            if (newCantidad < 0) throw new Error(`Stock insuficiente para ${p.presentacion}`);
+                            transaction.update(prodRef, { cantidad: newCantidad });
                         }
-                        transaction.set(ventaRef, {
-                            clienteId: ventaActual.cliente.id,
-                            clienteNombre: ventaActual.cliente.nombreComercial,
-                            fecha: new Date(),
-                            total: totalVenta,
-                            productos: itemsVenta
-                        });
+                        transaction.set(ventaRef, { clienteId: ventaActual.cliente.id, clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
                     });
-
-                    const ticketHTML = `...`; // Aquí iría el HTML del ticket para mostrarlo
-                    showModal('Venta Exitosa', `Se ha generado la venta #${ventaRef.id.substring(0, 6)}.`);
-                    showVentasView(); // Volver al menú de ventas
-
+                    const fecha = new Date().toLocaleDateString('es-ES');
+                    const ticketHTML = `<div class="text-left p-4"><h3 class="text-xl font-bold text-center mb-4">Dist. Catillo Y.</h3><p class="text-sm">Fecha: ${fecha}</p><p class="text-sm mb-4">Cliente: ${ventaActual.cliente.nombreComercial}</p><table class="min-w-full text-sm mt-4"><thead><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th></tr></thead><tbody>${productosVendidos.map(p => `<tr><td class="py-1">${p.presentacion}</td><td class="py-1 text-center">${p.cantidadVendida}</td><td class="py-1 text-right">$${p.precio.toFixed(2)}</td><td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td></tr>`).join('')}</tbody></table><div class="mt-4 text-right font-bold text-lg">Total: $${totalVenta.toFixed(2)}</div></div>`;
+                    showModal('Ticket de Venta', ticketHTML);
+                    ventaActual = { cliente: null, productos: {} };
+                    document.getElementById('clienteSearch').value = '';
+                    document.getElementById('inventarioTableContainer').classList.add('hidden');
                 } catch (e) {
-                    showModal('Error en Venta', `No se pudo completar la transacción. ${e.message}`);
+                    showModal('Error', `Error al procesar la venta: ${e.message}`);
                 }
             });
+        }
+
+        function showVentasTotalesView() {
+            mainContent.innerHTML = `
+                <div class="p-6 bg-gray-100 min-h-screen">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
+                            <p class="text-gray-600">En construcción.</p>
+                            <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg">Volver</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
+        }
+
+        // --- LÓGICA DEL MÓDULO DE CATÁLOGO ---
+
+        function showCatalogoSubMenu() {
+            cleanupListeners();
+            document.body.classList.remove('catalogo-active');
+            mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button data-rubros='["Cerveceria", "Vinos"]' data-bg="cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
+                                <button data-rubros='["Maltin", "Pepsicola"]' data-bg="maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
+                                <button data-rubros='["Alimentos"]' data-bg="alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600">Alimentos Polar</button>
+                                <button data-rubros='["P&G"]' data-bg="p&g.png" class="catalogo-btn w-full px-6 py-3 bg-sky-500 text-white font-semibold rounded-lg shadow-md hover:bg-sky-600">Procter & Gamble</button>
+                                <button data-rubros='[]' data-bg="" class="catalogo-btn md:col-span-2 w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Unificado (Todos)</button>
+                            </div>
+                            <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.querySelectorAll('.catalogo-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const rubros = JSON.parse(e.target.dataset.rubros);
+                    const title = e.target.textContent.trim();
+                    const bgImage = e.target.dataset.bg;
+                    showCatalogoView(title, rubros, bgImage);
+                });
+            });
+            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
+        }
+
+        function showCatalogoView(title, rubros, bgImage) {
+            if (bgImage) {
+                document.body.style.setProperty('--catalogo-bg-image', `url('images/${bgImage}')`);
+                document.body.classList.add('catalogo-active');
+            }
+            catalogoMonedaActual = 'USD';
+            mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                            <div id="catalogo-para-imagen">
+                                <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">${title}</h2>
+                                <p class="text-center text-gray-600 mb-4 text-xs">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
+                                <div class="mb-4" id="tasa-input-container">
+                                    <label for="catalogoTasaCopInput" class="block text-sm font-medium mb-1">Tasa (USD a COP):</label>
+                                    <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg">
+                                </div>
+                                <div id="catalogo-container" class="space-y-6"><p class="text-center text-gray-500">Cargando...</p></div>
+                            </div>
+                            <div class="mt-6 text-center space-y-4">
+                                <button id="generateCatalogoImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Generar Imagen</button>
+                                <button id="backToCatalogoMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            const savedTasa = localStorage.getItem('tasaCOP');
+            if (savedTasa) {
+                catalogoTasaCOP = parseFloat(savedTasa);
+                document.getElementById('catalogoTasaCopInput').value = catalogoTasaCOP;
+            }
+            document.getElementById('catalogoTasaCopInput').addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                catalogoTasaCOP = isNaN(value) ? 0 : value;
+                localStorage.setItem('tasaCOP', catalogoTasaCOP);
+                if (catalogoMonedaActual === 'COP') renderCatalogo(document.getElementById('catalogo-container'), rubros);
+            });
+            document.getElementById('backToCatalogoMenuBtn').addEventListener('click', showCatalogoSubMenu);
+            document.getElementById('generateCatalogoImageBtn').addEventListener('click', handleGenerateCatalogoImage);
+            renderCatalogo(document.getElementById('catalogo-container'), rubros);
+        }
+
+        window.toggleCatalogoMoneda = function() {
+            if (catalogoTasaCOP <= 0) {
+                alert('Por favor, ingresa una tasa de cambio válida para convertir a COP.');
+                return;
+            }
+            catalogoMonedaActual = catalogoMonedaActual === 'USD' ? 'COP' : 'USD';
+            const title = mainContent.querySelector('h2').textContent.trim();
+            const allButtons = Array.from(document.querySelectorAll('.catalogo-btn'));
+            const clickedButton = allButtons.find(b => b.textContent.trim() === title);
+            const rubros = clickedButton ? JSON.parse(clickedButton.dataset.rubros) : [];
+            renderCatalogo(document.getElementById('catalogo-container'), rubros);
+        };
+
+        async function renderCatalogo(container, rubrosFiltro) {
+            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            const snapshot = await getDocs(inventarioRef);
+            let productos = snapshot.docs.map(doc => doc.data());
+
+            if (rubrosFiltro && rubrosFiltro.length > 0) {
+                productos = productos.filter(p => rubrosFiltro.includes(p.rubro));
+            }
+            if (productos.length === 0) {
+                container.innerHTML = `<p class="text-center">No hay productos en esta categoría.</p>`;
+                return;
+            }
+            const productosAgrupados = productos.reduce((acc, p) => {
+                const segmento = p.segmento || 'General';
+                if (!acc[segmento]) acc[segmento] = [];
+                acc[segmento].push(p);
+                return acc;
+            }, {});
+
+            let html = '';
+            for (const segmento in productosAgrupados) {
+                html += `<h3 class="text-xl font-bold mt-6 pb-2 border-b-2">${segmento}</h3>`;
+                html += `<table class="min-w-full text-sm mt-2"><thead><tr>
+                    <th class="py-2 px-2 text-left font-semibold">MARCA</th>
+                    <th class="py-2 px-2 text-left font-semibold">PRESENTACIÓN</th>
+                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO S/IVA</th>
+                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO C/IVA</th>
+                </tr></thead><tbody>`;
+                productosAgrupados[segmento].forEach(p => {
+                    const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
+                    let precioSinIvaMostrado, precioConIvaMostrado;
+                    if (catalogoMonedaActual === 'COP' && catalogoTasaCOP > 0) {
+                        precioSinIvaMostrado = `COP ${(Math.ceil((precioSinIva * catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`;
+                        precioConIvaMostrado = `COP ${(Math.ceil((p.precio * catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`;
+                    } else {
+                        precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
+                        precioConIvaMostrado = `$${p.precio.toFixed(2)}`;
+                    }
+                    html += `<tr class="border-b"><td class="py-2 px-2 font-bold">${p.marca}</td><td class="py-2 px-2">${p.presentacion}</td><td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td><td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+            }
+            container.innerHTML = html;
+        }
+
+        async function handleGenerateCatalogoImage() {
+            const reportElement = document.getElementById('catalogo-para-imagen');
+            const shareButton = document.getElementById('generateCatalogoImageBtn');
+            const tasaInputContainer = document.getElementById('tasa-input-container');
+
+            shareButton.textContent = 'Generando...';
+            shareButton.disabled = true;
+            tasaInputContainer.classList.add('hidden');
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
+            canvas.toBlob(async (blob) => {
+                if (navigator.share && blob) {
+                    try {
+                        await navigator.share({ files: [new File([blob], "catalogo.png", { type: "image/png" })], title: "Catálogo" });
+                    } catch (err) { if (err.name !== 'AbortError') console.error(err); }
+                } else {
+                    alert('La función para compartir no está disponible en este navegador.');
+                }
+            }, 'image/png');
+
+            shareButton.textContent = 'Generar Imagen';
+            shareButton.disabled = false;
+            tasaInputContainer.classList.remove('hidden');
         }
 
         // --- Inicialización de la App ---
@@ -600,7 +903,9 @@
             db = getFirestore(app);
             auth = getAuth(app);
             // setLogLevel('debug');
-            onAuthStateChanged(auth, (user) => { user ? showMainView(user.uid) : showLoginView(); });
+            onAuthStateChanged(auth, (user) => {
+                user ? showMainView(user.uid) : showLoginView();
+            });
         }
 
         window.addEventListener('load', () => {
@@ -611,4 +916,3 @@
     </script>
 </body>
 </html>
-
