@@ -1,6 +1,7 @@
 // --- Lógica del módulo de Catálogo ---
 
 (function() {
+    // Variables privadas del módulo que se inicializarán desde index.html
     let _db;
     let _userId;
     let _appId;
@@ -9,13 +10,13 @@
     let _collection;
     let _getDocs;
 
-    // Variables para el catálogo
+    // Estado interno del catálogo
     let catalogoTasaCOP = 0;
     let catalogoMonedaActual = 'USD';
-    let catalogoProductos = [];
 
     /**
      * Inicializa el módulo de catálogo con las dependencias necesarias.
+     * Esta función es llamada desde index.html cuando el usuario inicia sesión.
      */
     window.initCatalogo = function(db, userId, appId, mainContentElement, showMainMenuCallback, firestoreCollection, firestoreGetDocs) {
         _db = db;
@@ -31,8 +32,12 @@
      * Muestra el submenú de opciones del catálogo.
      */
     window.showCatalogoSubMenu = function() {
+        // Limpia listeners anteriores para evitar duplicados
+        if (window.cleanupListeners) window.cleanupListeners();
+        document.body.classList.remove('catalogo-active');
+
         _mainContent.innerHTML = `
-            <div class="p-4">
+            <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
@@ -74,17 +79,17 @@
 
     /**
      * Muestra la vista del catálogo filtrado por rubros.
-     * @param {string} title Título del catálogo.
-     * @param {Array<string>} rubros Array de rubros a filtrar.
-     * @param {string} bgImage Nombre del archivo de imagen de fondo.
      */
     function showCatalogoView(title, rubros, bgImage) {
-        document.body.style.setProperty('--catalogo-bg-image', `url('images/${bgImage}')`);
-        document.body.classList.add('catalogo-active');
+        // Aplica el fondo dinámico si se especifica una imagen
+        if (bgImage) {
+            document.body.style.setProperty('--catalogo-bg-image', `url('images/${bgImage}')`);
+            document.body.classList.add('catalogo-active');
+        }
 
-        catalogoMonedaActual = 'USD'; // Reset currency on new view
+        catalogoMonedaActual = 'USD'; // Reinicia la moneda a USD cada vez que se abre un catálogo
         _mainContent.innerHTML = `
-            <div class="p-4">
+            <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <div id="catalogo-para-imagen">
@@ -109,12 +114,14 @@
             </div>
         `;
         
+        // Recupera y establece la tasa de cambio guardada
         const savedTasa = localStorage.getItem('tasaCOP');
         if (savedTasa) {
             catalogoTasaCOP = parseFloat(savedTasa);
             document.getElementById('catalogoTasaCopInput').value = catalogoTasaCOP;
         }
 
+        // Guarda la tasa en localStorage y actualiza la vista si la moneda es COP
         document.getElementById('catalogoTasaCopInput').addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
             catalogoTasaCOP = isNaN(value) ? 0 : value;
@@ -124,41 +131,39 @@
             }
         });
 
-        renderCatalogo(document.getElementById('catalogo-container'), rubros);
-        document.getElementById('backToCatalogoMenuBtn').addEventListener('click', () => {
-            document.body.classList.remove('catalogo-active');
-            document.body.style.removeProperty('--catalogo-bg-image');
-            window.showCatalogoSubMenu();
-        });
+        // Eventos de los botones
+        document.getElementById('backToCatalogoMenuBtn').addEventListener('click', window.showCatalogoSubMenu);
         document.getElementById('generateCatalogoImageBtn').addEventListener('click', handleGenerateCatalogoImage);
+        
+        // Renderiza el catálogo inicial
+        renderCatalogo(document.getElementById('catalogo-container'), rubros);
     }
 
     /**
-     * Cambia la moneda en la vista del catálogo.
+     * Cambia la moneda en la vista del catálogo (USD <-> COP).
      */
     window.toggleCatalogoMoneda = function() {
         if (catalogoTasaCOP <= 0) {
-            alert('Por favor, ingresa una tasa de cambio válida para COP.');
+            alert('Por favor, ingresa una tasa de cambio válida para convertir a COP.');
             return;
         }
         catalogoMonedaActual = catalogoMonedaActual === 'USD' ? 'COP' : 'USD';
         
         const titleElement = _mainContent.querySelector('h2');
         const title = titleElement ? titleElement.textContent.trim() : '';
+        
+        // Determina los rubros actuales para poder re-renderizar
         let rubros = [];
-        // Encontrar los rubros del catálogo actual (esto es un poco frágil, depende de la implementación)
-        if (title.includes('Cerveza y Vinos')) rubros = ["Cerveceria", "Vinos"];
-        else if (title.includes('Maltin y Pepsicola')) rubros = ["Maltin", "Pepsicola"];
-        else if (title.includes('Alimentos Polar')) rubros = ["Alimentos"];
-        else if (title.includes('Procter & Gamble')) rubros = ["P&G"];
+        const btn = Array.from(document.querySelectorAll('.catalogo-btn')).find(b => b.textContent.trim() === title);
+        if (btn) {
+            rubros = JSON.parse(btn.dataset.rubros);
+        }
         
         renderCatalogo(document.getElementById('catalogo-container'), rubros);
     };
 
     /**
-     * Renderiza el catálogo de productos agrupados por rubro y marca.
-     * @param {HTMLElement} container El elemento donde se renderizará el catálogo.
-     * @param {Array<string>} rubrosFiltro Array de rubros para el filtro.
+     * Obtiene los productos y los renderiza en una tabla.
      */
     async function renderCatalogo(container, rubrosFiltro) {
         try {
@@ -166,19 +171,17 @@
             const snapshot = await _getDocs(inventarioRef);
             let productos = snapshot.docs.map(doc => doc.data());
 
-            // Filtrar por rubros si es necesario
+            // Filtra por rubros si se ha seleccionado una categoría
             if (rubrosFiltro && rubrosFiltro.length > 0) {
-                productos = productos.filter(p => rubrosFiltro.some(filtro => p.rubro.toLowerCase().includes(filtro.toLowerCase())));
+                productos = productos.filter(p => rubrosFiltro.includes(p.rubro));
             }
-            
-            catalogoProductos = productos; // Guardar productos filtrados para la imagen
 
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-600">No hay productos en esta categoría.</p>`;
                 return;
             }
 
-            // Agrupar productos por segmento y luego por marca
+            // Agrupa productos por segmento para una mejor visualización
             const productosAgrupados = productos.reduce((acc, p) => {
                 const segmento = p.segmento || 'General';
                 if (!acc[segmento]) acc[segmento] = [];
@@ -189,7 +192,6 @@
             let catalogoHTML = '';
             for (const segmento in productosAgrupados) {
                 catalogoHTML += `<h3 class="text-xl font-bold text-gray-800 mt-6 pb-2 border-b-2 border-gray-300">${segmento}</h3>`;
-                
                 catalogoHTML += `
                     <table class="min-w-full bg-transparent text-sm mt-2">
                         <thead class="text-gray-700">
@@ -208,7 +210,7 @@
                     const precioConIva = p.precio;
                     let precioSinIvaMostrado, precioConIvaMostrado;
 
-                    if (catalogoMonedaActual === 'COP') {
+                    if (catalogoMonedaActual === 'COP' && catalogoTasaCOP > 0) {
                         precioSinIvaMostrado = `COP ${ (Math.ceil((precioSinIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                         precioConIvaMostrado = `COP ${ (Math.ceil((precioConIva * catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                     } else {
@@ -236,25 +238,22 @@
     }
 
     /**
-     * Maneja la generación de la imagen del catálogo.
+     * Utiliza html2canvas para generar una imagen del catálogo y la comparte usando la Web Share API.
      */
     async function handleGenerateCatalogoImage() {
         const reportElement = document.getElementById('catalogo-para-imagen');
-        if (!reportElement) {
-            alert('No se encontró el contenido del catálogo para generar la imagen.');
-            return;
-        }
+        if (!reportElement) return;
 
         const shareButton = document.getElementById('generateCatalogoImageBtn');
         const tasaInputContainer = document.getElementById('tasa-input-container');
 
         shareButton.textContent = 'Generando...';
         shareButton.disabled = true;
-        tasaInputContainer.classList.add('hidden'); // Ocultar el input
+        tasaInputContainer.classList.add('hidden'); // Ocultar el input para una imagen más limpia
 
         try {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const canvas = await html2canvas(reportElement, { scale: 3, useCORS: true });
+            await new Promise(resolve => setTimeout(resolve, 100)); // Pequeña pausa para que el DOM se actualice
+            const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
                     try {
@@ -263,7 +262,7 @@
                             title: "Catálogo de Productos",
                         });
                     } catch (err) {
-                        if (err.name !== 'AbortError') alert('No se pudo compartir la imagen del catálogo.');
+                        if (err.name !== 'AbortError') console.error('Error al compartir:', err);
                     }
                 } else {
                     alert('La función para compartir no está disponible en este navegador.');
@@ -271,14 +270,12 @@
             }, 'image/png');
         } catch (error) {
             console.error("Error al generar la imagen del catálogo: ", error);
-            alert(`Ocurrió un error al generar la imagen: ${error.message}`);
         } finally {
+            // Restaura el estado original del botón y el input
             shareButton.textContent = 'Generar Imagen y Compartir';
             shareButton.disabled = false;
-            tasaInputContainer.classList.remove('hidden'); // Volver a mostrar el input
+            tasaInputContainer.classList.remove('hidden');
         }
     }
 
 })();
-
-
