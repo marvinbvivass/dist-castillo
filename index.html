@@ -281,7 +281,6 @@
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
-            // <<<< CORRECCIÓN AQUÍ >>>>
             activeListeners.push(unsubscribe);
         }
         
@@ -1077,10 +1076,14 @@
             monedaIndicator.textContent = `(${monedaActual})`;
             
             const selectedRubro = rubroFilter.value;
-            const filteredInventario = selectedRubro ? inventario.filter(p => p.rubro === selectedRubro) : inventario;
+            
+            // MODIFICACIÓN AQUÍ: Filtrar productos con stock > 0
+            const inventarioConStock = inventario.filter(p => p.cantidad > 0);
+            
+            const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
 
             if (filteredInventario.length === 0) {
-                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
+                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan con el filtro.</td></tr>`;
                 return;
             }
 
