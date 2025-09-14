@@ -281,7 +281,6 @@
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
-            // <<<< CORRECCIÓN AQUÍ >>>>
             activeListeners.push(unsubscribe);
         }
         
@@ -1160,6 +1159,71 @@
         }
 
         /**
+         * Maneja la generación y compartición de la imagen del ticket.
+         * @param {Object} ventaParaTicket - Los datos de la venta.
+         * @param {Array} productosParaTicket - Los productos de la venta.
+         */
+        async function handleShareTicket(ventaParaTicket, productosParaTicket) {
+            showModal('Progreso', 'Generando imagen del ticket...');
+
+            const ticketHTML = `
+                <div id="temp-ticket-for-image" class="bg-white p-4 uppercase-ticket" style="width: 302px; font-family: 'Inter', sans-serif;">
+                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
+                    <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
+                    <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
+                    <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
+                    <table class="w-full text-sm mt-4">
+                        <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
+                        <tbody>
+                            ${productosParaTicket.map(p => `
+                                <tr>
+                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
+                                    <td class="py-1 text-center">${p.cantidadVendida}</td>
+                                    <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-4 text-right font-bold text-lg">TOTAL: $${productosParaTicket.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0).toFixed(2)}</div>
+                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${ventaParaTicket.cliente.nombrePersonal}</p></div>
+                </div>
+            `;
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.innerHTML = ticketHTML;
+            document.body.appendChild(tempDiv);
+            
+            try {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const canvas = await html2canvas(document.getElementById('temp-ticket-for-image'), { scale: 3 });
+                
+                canvas.toBlob(async (blob) => {
+                    if (navigator.share && blob) {
+                        try {
+                            await navigator.share({
+                                files: [new File([blob], "ticket.png", { type: "image/png" })],
+                                title: "Ticket de Venta",
+                            });
+                        } catch (err) {
+                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
+                        }
+                    } else {
+                         showModal('Error', 'La función de compartir no está disponible en este navegador.');
+                    }
+                }, 'image/png');
+            } catch(e) {
+                showModal('Error', 'No se pudo generar la imagen del ticket.');
+            } finally {
+                document.body.removeChild(tempDiv);
+                modalContainer.classList.add('hidden');
+                ventaActual.cliente = null;
+                ventaActual.productos = {};
+                showNuevaVentaView();
+            }
+        }
+
+        /**
          * Genera un ticket de venta y lo guarda en Firestore.
          */
         async function generarTicket() {
@@ -1188,47 +1252,23 @@
                             const itemsVenta = [];
                             const stockUpdates = [];
 
-                            // FASE 1: LECTURAS Y VALIDACIONES
                             for (const p of productosVendidos) {
                                 const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
                                 const productoDoc = await transaction.get(productoRef);
 
-                                if (!productoDoc.exists()) {
-                                    throw new Error(`El producto "${p.presentacion}" ya no existe en el inventario.`);
-                                }
+                                if (!productoDoc.exists()) throw new Error(`El producto "${p.presentacion}" ya no existe.`);
                                 
                                 const stockActual = productoDoc.data().cantidad;
-                                if (stockActual < p.cantidadVendida) {
-                                    throw new Error(`Stock insuficiente para el producto: ${p.presentacion}. Disponible: ${stockActual}, Solicitado: ${p.cantidadVendida}`);
-                                }
+                                if (stockActual < p.cantidadVendida) throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                                 
-                                const nuevaCantidad = stockActual - p.cantidadVendida;
-                                stockUpdates.push({ ref: productoRef, nuevaCantidad });
+                                stockUpdates.push({ ref: productoRef, nuevaCantidad: stockActual - p.cantidadVendida });
 
-                                const subtotal = p.precio * p.cantidadVendida;
-                                totalVenta += subtotal;
-                                itemsVenta.push({
-                                    id: p.id,
-                                    presentacion: p.presentacion,
-                                    marca: p.marca,
-                                    segmento: p.segmento,
-                                    precio: p.precio,
-                                    cantidad: p.cantidadVendida,
-                                    iva: p.iva
-                                });
+                                totalVenta += p.precio * p.cantidadVendida;
+                                itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva });
                             }
 
-                            // FASE 2: ESCRITURAS
-                            transaction.set(ventaRef, {
-                                clienteId: ventaActual.cliente.id,
-                                clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
-                                fecha: new Date(),
-                                total: totalVenta,
-                                productos: itemsVenta
-                            });
-                            stockUpdates.forEach(update => {
-                                transaction.update(update.ref, { cantidad: update.nuevaCantidad });
-                            });
+                            transaction.set(ventaRef, { clienteId: ventaActual.cliente.id, clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
+                            stockUpdates.forEach(update => transaction.update(update.ref, { cantidad: update.nuevaCantidad }));
                         });
                     } else {
                         // Lógica sin conexión
@@ -1239,78 +1279,20 @@
 
                         for (const p of productosVendidos) {
                              const productoInventario = inventario.find(item => item.id === p.id);
-                             if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) {
-                                throw new Error(`Stock insuficiente para: ${p.presentacion}. Disponible localmente: ${productoInventario?.cantidad || 0}`);
-                            }
-                            const nuevaCantidad = productoInventario.cantidad - p.cantidadVendida;
-                            const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
-                            batch.update(productoRef, { cantidad: nuevaCantidad });
+                             if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) throw new Error(`Stock insuficiente para: ${p.presentacion}.`);
+                             
+                             batch.update(doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id), { cantidad: productoInventario.cantidad - p.cantidadVendida });
                             
-                            const subtotal = p.precio * p.cantidadVendida;
-                            totalVenta += subtotal;
-                            itemsVenta.push({
-                                id: p.id,
-                                presentacion: p.presentacion,
-                                marca: p.marca,
-                                segmento: p.segmento,
-                                precio: p.precio,
-                                cantidad: p.cantidadVendida,
-                                iva: p.iva
-                            });
+                            totalVenta += p.precio * p.cantidadVendida;
+                            itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva });
                         }
 
-                        batch.set(ventaRef, {
-                            clienteId: ventaActual.cliente.id,
-                            clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal,
-                            fecha: new Date(),
-                            total: totalVenta,
-                            productos: itemsVenta
-                        });
-
+                        batch.set(ventaRef, { clienteId: ventaActual.cliente.id, clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
                         await batch.commit();
                     }
 
-                    // Genera y muestra el ticket
-                    const ticketHTML = `
-                        <div class="uppercase-ticket">
-                            <!-- Contenido del ticket para la imagen -->
-                            <div id="ticket-content-for-image" class="bg-white p-4">
-                                <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
-                                <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
-                                <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
-                                <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
-                                <table class="min-w-full text-sm mt-4">
-                                    <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
-                                    <tbody>
-                                        ${productosParaTicket.map(p => `
-                                            <tr>
-                                                <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                                <td class="py-1 text-center">${p.cantidadVendida}</td>
-                                                <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
-                                            </tr>`).join('')}
-                                    </tbody>
-                                </table>
-                                <div class="mt-4 text-right font-bold text-lg">TOTAL: $${productosParaTicket.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0).toFixed(2)}</div>
-                                <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${ventaParaTicket.cliente.nombrePersonal}</p></div>
-                            </div>
-                        </div>
-                        <div class="mt-4 flex justify-center space-x-2">
-                             <button id="closeTicketBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
-                             <button id="shareTicketBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-300">Compartir Imagen</button>
-                        </div>
-                    `;
-
-                    modalContent.innerHTML = ticketHTML;
-                    
-                    document.getElementById('closeTicketBtn').addEventListener('click', () => {
-                        modalContainer.classList.add('hidden');
-                        ventaActual.cliente = null;
-                        ventaActual.productos = {};
-                        showNuevaVentaView();
-                    });
-                                        
-                    document.getElementById('shareTicketBtn').addEventListener('click', () => handleShareTicket()); 
-                    modalContainer.classList.remove('hidden');
+                    // Después de guardar la venta, generar y compartir la imagen.
+                    await handleShareTicket(ventaParaTicket, productosParaTicket);
 
                 } catch (e) {
                     console.error("Error al generar el ticket: ", e);
@@ -1923,4 +1905,3 @@
     </script>
 </body>
 </html>
-
