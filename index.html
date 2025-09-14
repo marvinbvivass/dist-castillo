@@ -280,6 +280,7 @@
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
+            // FIX: Registrar el listener para que pueda ser limpiado al cerrar sesión.
             activeListeners.push(unsubscribe);
         }
         
