@@ -27,6 +27,7 @@
             background-attachment: fixed;
             filter: blur(8px) brightness(0.7);
             z-index: -1;
+            transition: background-image 0.5s ease-in-out;
         }
         .hidden {
             display: none;
@@ -99,7 +100,7 @@
 
         <!-- Modal para mensajes y formularios -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
-            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full mx-4"></div>
+            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4"></div>
         </div>
         
         <!-- Botones flotantes -->
@@ -140,24 +141,18 @@
         const authMessage = document.getElementById('authMessage');
         const floatingControls = document.getElementById('floatingControls');
 
-        // Variables para la vista de ventas
+        // Variables globales para la app
         let clientes = [];
         let inventario = [];
         let ventaActual = { cliente: null, productos: {} };
 
         // --- Lógica de Utilidades y Autenticación ---
 
-        /**
-         * Limpia todos los listeners activos de Firestore.
-         */
         function cleanupListeners() {
             window.activeListeners.forEach(unsubscribe => unsubscribe());
             window.activeListeners = [];
         }
 
-        /**
-         * Muestra un modal con un título y mensaje.
-         */
         function showModal(title, message, onConfirm = null) {
             modalContent.innerHTML = `
                 <div class="text-center">
@@ -178,10 +173,7 @@
             }
             modalContainer.classList.remove('hidden');
         }
-
-        /**
-         * Muestra un modal para agregar nuevos items a colecciones (rubros, marcas, etc.).
-         */
+        
         window.showAddItemModal = function(collectionName, itemName) {
             modalContent.innerHTML = `
                 <div class="text-center">
@@ -210,9 +202,6 @@
             });
         }
         
-        /**
-         * Llena un dropdown con datos de una colección de Firestore.
-         */
         window.populateDropdown = function(collectionName, elementId, defaultOptionText = '') {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
@@ -251,6 +240,7 @@
             appHeader.classList.add('hidden');
             mainContent.classList.add('hidden');
             floatingControls.classList.add('hidden');
+            document.body.classList.remove('catalogo-active');
             document.getElementById('loginContent').classList.remove('hidden');
             loginForm.reset();
             authMessage.textContent = '';
@@ -263,28 +253,28 @@
             mainContent.classList.remove('hidden');
             document.getElementById('loginContent').classList.add('hidden');
             
-            // Inicializar los módulos
             initInventario({ db, userId, appId, mainContent, showMainMenu, floatingControls, collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, writeBatch, showModal, populateDropdown });
             initCatalogo(db, userId, appId, mainContent, showMainMenu, collection, getDocs);
             
             showMainMenu();
         }
 
-        // --- Lógica del Menú Principal y Navegación ---
+        // --- Lógica del Menú Principal ---
         
         function showMainMenu() {
             cleanupListeners();
             floatingControls.classList.add('hidden');
+            document.body.classList.remove('catalogo-active');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition">Inventario</button>
-                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition">Clientes</button>
-                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition">Ventas</button>
-                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition">Catálogo</button>
+                            <div class="space-y-4">
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition transform hover:scale-105">Inventario</button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition transform hover:scale-105">Clientes</button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition transform hover:scale-105">Ventas</button>
+                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition transform hover:scale-105">Catálogo</button>
                             </div>
                         </div>
                     </div>
@@ -296,8 +286,7 @@
             document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
         }
 
-        // --- Lógica del módulo de Clientes --- (Se mantiene aquí por no tener clientes.js)
-
+        // --- Lógica del módulo de Clientes ---
         function showClientesSubMenu() {
             cleanupListeners();
             mainContent.innerHTML = `
@@ -306,7 +295,7 @@
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                             <div class="space-y-4">
-                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
+                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver / Modificar Clientes</button>
                                 <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
                                 <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
                             </div>
@@ -318,11 +307,143 @@
             document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
             document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
         }
-        
-        // ... (El resto de las funciones de Clientes y Ventas se mantendrían aquí)
-        
-        // --- Lógica del módulo de Ventas --- (Se mantiene aquí)
-         function showVentasView() {
+
+        function showAgregarClienteView() {
+             mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
+                            <form id="clienteForm" class="space-y-4 text-left">
+                                <div>
+                                    <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="sector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                        <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                    </div>
+                                </div>
+                                <div><label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label><input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label><input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <div><label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label><input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cliente</button>
+                            </form>
+                            <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            populateDropdown('sectores', 'sector');
+            document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            document.getElementById('addSectorBtn').addEventListener('click', () => showAddItemModal('sectores', 'Sector'));
+        }
+
+        async function agregarCliente(e) {
+            e.preventDefault();
+            const sector = document.getElementById('sector').value;
+            const nombreComercial = document.getElementById('nombreComercial').value;
+            const nombrePersonal = document.getElementById('nombrePersonal').value;
+            const telefono = document.getElementById('telefono').value;
+
+            try {
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/clientes`), { sector, nombreComercial, nombrePersonal, telefono });
+                showModal('Éxito', 'Cliente agregado correctamente.');
+                document.getElementById('clienteForm').reset();
+            } catch (e) {
+                showModal('Error', 'Hubo un error al guardar el cliente.');
+            }
+        }
+
+        function showVerClientesView() {
+            mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto">
+                        <div class="bg-white p-8 rounded-lg shadow-xl">
+                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
+                            <div id="clientesListContainer" class="space-y-4 text-left">
+                                <p class="text-gray-500 text-center">Cargando clientes...</p>
+                            </div>
+                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+            renderClientesList('clientesListContainer');
+        }
+
+        function renderClientesList(elementId) {
+            const container = document.getElementById(elementId);
+            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+            const unsubscribe = onSnapshot(clientesRef, (snapshot) => {
+                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (clientes.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes registrados.</p>`;
+                    return;
+                }
+                container.innerHTML = clientes.map(cliente => `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow flex justify-between items-center flex-wrap">
+                        <div class="w-full sm:w-auto sm:flex-grow mb-2 sm:mb-0">
+                            <p class="font-semibold text-gray-800">${cliente.nombreComercial || cliente.nombrePersonal}</p>
+                            <p class="text-sm text-gray-600">Sector: ${cliente.sector} | Tel: ${cliente.telefono}</p>
+                        </div>
+                        <div class="space-x-2">
+                            <button onclick="editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-sm rounded-lg hover:bg-yellow-600">Editar</button>
+                            <button onclick="deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600">Eliminar</button>
+                        </div>
+                    </div>
+                `).join('');
+            });
+            window.activeListeners.push(unsubscribe);
+        }
+
+        window.deleteCliente = function(clienteId) {
+            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
+                } catch (e) {
+                    showModal('Error', 'Hubo un error al eliminar el cliente.');
+                }
+            });
+        };
+
+        window.editCliente = async function(clienteId) {
+            const cliente = clientes.find(c => c.id === clienteId);
+            mainContent.innerHTML = `
+                 <div class="p-4 pt-8"><div class="container mx-auto"><div class="bg-white p-8 rounded-lg shadow-xl text-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
+                    <form id="editClienteForm" class="space-y-4 text-left">
+                        <div><label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label><select id="editSector" class="w-full px-4 py-2 border rounded-lg"></select></div>
+                        <div><label for="editNombreComercial">Nombre Comercial:</label><input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg"></div>
+                        <div><label for="editNombrePersonal">Nombre Personal:</label><input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg"></div>
+                        <div><label for="editTelefono">Teléfono:</label><input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg"></div>
+                        <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                    </form>
+                    <button id="backToVerClientes" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                 </div></div></div>
+            `;
+            populateDropdown('sectores', 'editSector');
+            setTimeout(() => { document.getElementById('editSector').value = cliente.sector; }, 200);
+
+            document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                try {
+                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId), {
+                        sector: document.getElementById('editSector').value,
+                        nombreComercial: document.getElementById('editNombreComercial').value,
+                        nombrePersonal: document.getElementById('editNombrePersonal').value,
+                        telefono: document.getElementById('editTelefono').value
+                    }, { merge: true });
+                    showVerClientesView();
+                } catch (e) {
+                    showModal('Error', 'Hubo un error al modificar el cliente.');
+                }
+            });
+            document.getElementById('backToVerClientes').addEventListener('click', showVerClientesView);
+        }
+
+        // --- Lógica del módulo de Ventas ---
+        function showVentasView() {
             cleanupListeners();
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
@@ -339,30 +460,147 @@
                 </div>
             `;
             document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
-            // document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
+            document.getElementById('ventasTotalesBtn').addEventListener('click', () => showModal('En Construcción', 'Esta sección estará disponible próximamente.'));
             document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
         }
 
         function showNuevaVentaView() {
-            // Lógica para una nueva venta
+            cleanupListeners();
+            ventaActual = { cliente: null, productos: {} }; // Reset venta
+            mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto"><div class="bg-white p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Nueva Venta</h2>
+                        <div class="mb-6"><label for="clienteSearch" class="block text-gray-700 font-medium mb-2">1. Seleccionar Cliente:</label><div class="relative"><input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"><div id="clienteDropdown" class="autocomplete-list hidden"></div></div></div>
+                        <div id="inventarioSection" class="hidden animate-fade-in">
+                            <h3 class="text-xl font-bold text-gray-800 mb-4">2. Agregar Productos</h3>
+                            <div class="overflow-x-auto rounded-lg shadow"><table class="min-w-full bg-white">
+                                <thead class="bg-gray-200 text-gray-700 uppercase text-sm"><tr class="text-left">
+                                    <th class="py-3 px-4">Producto</th><th class="py-3 px-4">Stock</th><th class="py-3 px-4 w-32">Cantidad</th>
+                                </tr></thead>
+                                <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light"></tbody>
+                            </table></div>
+                            <div class="mt-6 flex justify-between items-center">
+                                <button id="backToVentasBtn" class="px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                                <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Ticket</button>
+                            </div>
+                        </div>
+                    </div></div>
+                </div>
+            `;
+            const clienteSearchInput = document.getElementById('clienteSearch');
+            clienteSearchInput.addEventListener('input', () => {
+                const searchTerm = clienteSearchInput.value.toLowerCase();
+                const filtered = clientes.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
+                renderClienteDropdown(filtered);
+            });
+            document.addEventListener('click', (e) => { if (!clienteSearchInput.contains(e.target)) document.getElementById('clienteDropdown').classList.add('hidden'); });
+            document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
+            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
+
+            loadClientesAndInventario();
         }
 
+        function loadClientesAndInventario() {
+            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
+            const invRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
+            const unsubClientes = onSnapshot(clientesRef, snap => { clientes = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); });
+            const unsubInv = onSnapshot(invRef, snap => { inventario = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); renderVentasInventario(); });
+            window.activeListeners.push(unsubClientes, unsubInv);
+        }
+
+        function renderClienteDropdown(filteredClients) {
+            const dropdown = document.getElementById('clienteDropdown');
+            dropdown.innerHTML = '';
+            filteredClients.forEach(cliente => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-item';
+                item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+                item.addEventListener('click', () => selectCliente(cliente));
+                dropdown.appendChild(item);
+            });
+            dropdown.classList.remove('hidden');
+        }
+
+        function selectCliente(cliente) {
+            ventaActual.cliente = cliente;
+            document.getElementById('clienteSearch').value = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
+            document.getElementById('clienteDropdown').classList.add('hidden');
+            document.getElementById('inventarioSection').classList.remove('hidden');
+        }
+
+        function renderVentasInventario() {
+            const body = document.getElementById('inventarioTableBody');
+            if (!body) return;
+            body.innerHTML = inventario.map(p => `
+                <tr class="border-b border-gray-200 hover:bg-gray-100">
+                    <td class="py-3 px-4">${p.presentacion} (${p.marca}) <span class="text-xs text-gray-500">${p.rubro}</span></td>
+                    <td class="py-3 px-4 text-center">${p.cantidad}</td>
+                    <td class="py-3 px-4"><input type="number" min="0" max="${p.cantidad}" value="${ventaActual.productos[p.id]?.cantidadVendida || 0}" class="w-full p-1 text-center border rounded-lg" data-product-id="${p.id}" oninput="updateVentaCantidad(event)"></td>
+                </tr>
+            `).join('');
+        }
+
+        window.updateVentaCantidad = function(event) {
+            const { productId } = event.target.dataset;
+            const cantidad = parseInt(event.target.value, 10);
+            if (cantidad > 0) {
+                const producto = inventario.find(p => p.id === productId);
+                if (producto) ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
+            } else {
+                delete ventaActual.productos[productId];
+            }
+        };
+
+        async function generarTicket() {
+            if (!ventaActual.cliente) { showModal('Error', 'Debe seleccionar un cliente.'); return; }
+            const productosVendidos = Object.values(ventaActual.productos);
+            if (productosVendidos.length === 0) { showModal('Error', 'Debe agregar al menos un producto.'); return; }
+
+            showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+                try {
+                    const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
+                    let totalVenta = 0;
+                    const itemsVenta = productosVendidos.map(p => {
+                        totalVenta += p.precio * p.cantidadVendida;
+                        return { id: p.id, presentacion: p.presentacion, marca: p.marca, precio: p.precio, cantidad: p.cantidadVendida };
+                    });
+
+                    // Usar transacción para asegurar atomicidad
+                    await runTransaction(db, async (transaction) => {
+                        for (const p of productosVendidos) {
+                            const prodRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
+                            const prodDoc = await transaction.get(prodRef);
+                            const newStock = prodDoc.data().cantidad - p.cantidadVendida;
+                            if (newStock < 0) throw new Error(`Stock insuficiente para: ${p.presentacion}`);
+                            transaction.update(prodRef, { cantidad: newStock });
+                        }
+                        transaction.set(ventaRef, {
+                            clienteId: ventaActual.cliente.id,
+                            clienteNombre: ventaActual.cliente.nombreComercial,
+                            fecha: new Date(),
+                            total: totalVenta,
+                            productos: itemsVenta
+                        });
+                    });
+
+                    const ticketHTML = `...`; // Aquí iría el HTML del ticket para mostrarlo
+                    showModal('Venta Exitosa', `Se ha generado la venta #${ventaRef.id.substring(0, 6)}.`);
+                    showVentasView(); // Volver al menú de ventas
+
+                } catch (e) {
+                    showModal('Error en Venta', `No se pudo completar la transacción. ${e.message}`);
+                }
+            });
+        }
 
         // --- Inicialización de la App ---
-        
         function initializeAppAndListeners() {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            setLogLevel('debug');
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    showMainView(user.uid);
-                } else {
-                    showLoginView();
-                }
-            });
+            // setLogLevel('debug');
+            onAuthStateChanged(auth, (user) => { user ? showMainView(user.uid) : showLoginView(); });
         }
 
         window.addEventListener('load', () => {
@@ -373,5 +611,4 @@
     </script>
 </body>
 </html>
-
 
