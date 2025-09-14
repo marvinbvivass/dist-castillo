@@ -146,7 +146,8 @@
         </div>
     </div>
 
-    <!-- Cargar el script del catálogo -->
+    <!-- Cargar los scripts de los módulos -->
+    <script src="inventario.js"></script>
     <script src="catalogo.js"></script>
 
     <script type="module">
@@ -260,6 +261,26 @@
                     modalContainer.classList.add('hidden');
                 }
             });
+        }
+
+        /**
+         * Llena un dropdown con datos de una colección de Firestore.
+         * @param {string} collectionName Nombre de la colección.
+         * @param {string} elementId ID del elemento <select>.
+         */
+        function populateDropdown(collectionName, elementId, itemName) {
+            const selectElement = document.getElementById(elementId);
+            if (!selectElement) return;
+
+            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
+                items.forEach(item => {
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                });
+            });
+            activeListeners.push(unsubscribe);
         }
         
         /**
@@ -446,8 +467,15 @@
             });
             activeListeners.push(unsubscribe);
 
-            // Inicializar el módulo de catálogo con las dependencias necesarias
-            window.initCatalogo(db, userId, appId, mainContent, showMainMenu, collection, getDocs);
+            // Inicializar los módulos externos, pasándoles las dependencias que necesitan
+            const dependencies = {
+                db, userId, appId, mainContent, floatingControls, activeListeners,
+                showMainMenu, showModal, showAddItemModal, populateDropdown,
+                collection, onSnapshot, doc, addDoc, setDoc, deleteDoc, getDocs,
+                inventario // Pasar referencia a la variable global de inventario
+            };
+            window.initInventario(dependencies);
+            window.initCatalogo(dependencies);
 
             showMainMenu();
         }
@@ -480,522 +508,10 @@
                     </div>
                 </div>
             `;
-            document.getElementById('inventarioBtn').addEventListener('click', showInventarioSubMenu);
+            document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
             document.getElementById('clientesBtn').addEventListener('click', showClientesSubMenu);
             document.getElementById('ventasBtn').addEventListener('click', showVentasView);
             document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
-        }
-
-        /**
-         * Renderiza el menú de subopciones de inventario.
-         */
-        function showInventarioSubMenu() {
-            floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
-                            <div class="space-y-4">
-                                <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                    Ver Inventario
-                                </button>
-                                <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                    Agregar Producto
-                                </button>
-                                <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                    Modificar / Eliminar Producto
-                                </button>
-                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
-                                    Volver al Menú Principal
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
-            document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
-            document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
-            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
-        }
-
-        function showAgregarProductoView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
-                            <form id="productoForm" class="space-y-4 text-left">
-                                <div>
-                                    <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
-                                    <div class="flex items-center space-x-2">
-                                        <select id="rubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                            <option value="">Seleccione un rubro</option>
-                                        </select>
-                                        <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
-                                    <div class="flex items-center space-x-2">
-                                        <select id="segmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                            <option value="">Seleccione un segmento</option>
-                                        </select>
-                                        <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
-                                    <div class="flex items-center space-x-2">
-                                        <select id="marca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                            <option value="">Seleccione una marca</option>
-                                        </select>
-                                        <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <div>
-                                    <label for="precio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
-                                    <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <div>
-                                    <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
-                                    <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <div>
-                                    <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
-                                    <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="16">IVA 16%</option>
-                                        <option value="0">Excento</option>
-                                    </select>
-                                </div>
-                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                                    Guardar Producto
-                                </button>
-                            </form>
-                            <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            populateDropdown('rubros', 'rubro');
-            populateDropdown('segmentos', 'segmento');
-            populateDropdown('marcas', 'marca');
-            
-            document.getElementById('productoForm').addEventListener('submit', agregarProducto);
-            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            document.getElementById('addRubroBtn').addEventListener('click', () => showAddItemModal('rubros', 'Rubro'));
-            document.getElementById('addSegmentoBtn').addEventListener('click', () => showAddItemModal('segmentos', 'Segmento'));
-            document.getElementById('addMarcaBtn').addEventListener('click', () => showAddItemModal('marcas', 'Marca'));
-        }
-
-        /**
-         * Llena un dropdown con datos de una colección de Firestore.
-         * @param {string} collectionName Nombre de la colección.
-         * @param {string} elementId ID del elemento <select>.
-         */
-        function populateDropdown(collectionName, elementId) {
-            const selectElement = document.getElementById(elementId);
-            if (!selectElement) return;
-
-            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
-            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const items = snapshot.docs.map(doc => doc.data().name).sort();
-                selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
-                items.forEach(item => {
-                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
-                });
-            });
-            activeListeners.push(unsubscribe);
-        }
-
-
-        /**
-         * Muestra la vista de modificar/eliminar producto.
-         */
-        function showModifyDeleteView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
-                            <p class="text-gray-600 mb-4 text-center">Selecciona un producto de la lista para modificarlo o eliminarlo.</p>
-                            <div id="productosListContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Cargando productos...</p>
-                            </div>
-                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            renderProductosList('productosListContainer');
-        }
-
-        /**
-         * Muestra la vista de Ver Inventario.
-         */
-        function showVerInventarioView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
-                            <div class="mb-4">
-                               <label for="verInventarioRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
-                               <select id="verInventarioRubroFilter" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                   <option value="">Todos los Rubros</option>
-                               </select>
-                            </div>
-                            <div id="productosListContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Cargando productos...</p>
-                            </div>
-                            <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-            
-            const rubroFilter = document.getElementById('verInventarioRubroFilter');
-            populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
-
-            rubroFilter.addEventListener('change', () => {
-                 renderProductosList('productosListContainer', true, rubroFilter.value);
-            });
-
-            renderProductosList('productosListContainer', true, rubroFilter.value); // Renderiza en vista de solo lectura
-        }
-
-
-        /**
-         * Renderiza la lista de productos en el DOM.
-         * @param {string} elementId ID del elemento donde se renderizará la lista.
-         * @param {boolean} readOnly Indica si la lista es de solo lectura.
-         */
-        function renderProductosList(elementId = 'productosListContainer', readOnly = false, rubroFilter = '') {
-            const container = document.getElementById(elementId);
-            if (!container) return;
-
-            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-            const unsubscribe = onSnapshot(inventarioRef, (snapshot) => {
-                let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                inventario = productos; // Guarda el inventario globalmente
-                
-                // Filtrar por rubro si se proporciona uno
-                if (rubroFilter) {
-                    productos = productos.filter(p => p.rubro === rubroFilter);
-                }
-
-                if (productos.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
-                    return;
-                }
-
-                let tableHTML = `
-                    <table class="min-w-full bg-white border border-gray-200">
-                        <thead class="bg-gray-200">
-                            <tr>
-                                <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">Rubro</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">Marca</th>
-                                <th class="py-2 px-4 border-b text-right text-sm">Precio (USD)</th>
-                                <th class="py-2 px-4 border-b text-center text-sm">IVA</th>
-                                <th class="py-2 px-4 border-b text-center text-sm">Cantidad</th>
-                                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-
-                productos.forEach(producto => {
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b text-sm">${producto.presentacion} (${producto.segmento})</td>
-                            <td class="py-2 px-4 border-b text-sm">${producto.rubro}</td>
-                            <td class="py-2 px-4 border-b text-sm">${producto.marca}</td>
-                            <td class="py-2 px-4 border-b text-right text-sm">$${producto.precio.toFixed(2)}</td>
-                            <td class="py-2 px-4 border-b text-center text-sm">${producto.iva === 0 ? 'Excento' : producto.iva + '%'}</td>
-                            <td class="py-2 px-4 border-b text-center text-sm">${producto.cantidad}</td>
-                            ${!readOnly ? `
-                            <td class="py-2 px-4 border-b text-center space-x-2">
-                                <button onclick="window.editProducto('${producto.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                                <button onclick="window.deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
-                            </td>` : ''}
-                        </tr>
-                    `;
-                });
-
-                tableHTML += `</tbody></table>`;
-                container.innerHTML = tableHTML;
-            });
-             activeListeners.push(unsubscribe);
-        }
-
-
-        /**
-         * Agrega un nuevo producto al inventario en Firestore.
-         */
-        async function agregarProducto(e) {
-            e.preventDefault();
-            const rubro = document.getElementById('rubro').value;
-            const segmento = document.getElementById('segmento').value;
-            const marca = document.getElementById('marca').value;
-            const presentacion = document.getElementById('presentacion').value;
-            const precio = parseFloat(document.getElementById('precio').value);
-            const cantidad = parseInt(document.getElementById('cantidad').value, 10);
-            const iva = parseInt(document.getElementById('ivaTipo').value, 10);
-
-            try {
-                const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-                await addDoc(inventarioRef, {
-                    rubro,
-                    segmento,
-                    marca,
-                    presentacion,
-                    precio,
-                    cantidad,
-                    iva
-                });
-                showModal('Éxito', 'Producto agregado correctamente.');
-                document.getElementById('productoForm').reset();
-            } catch (e) {
-                console.error("Error al agregar el producto: ", e);
-                showModal('Error', 'Hubo un error al guardar el producto.');
-            }
-        }
-
-        /**
-         * Elimina un producto del inventario.
-         * @param {string} productId ID del producto a eliminar.
-         */
-        window.deleteProducto = function(productId) {
-            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
-                try {
-                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId));
-                    showModal('Éxito', 'Producto eliminado correctamente.');
-                } catch (e) {
-                    console.error("Error al eliminar el producto: ", e);
-                    showModal('Error', 'Hubo un error al eliminar el producto.');
-                }
-            });
-        };
-
-        /**
-         * Edita un producto en el inventario.
-         */
-        window.editProducto = function(productId) {
-             floatingControls.classList.add('hidden');
-            const producto = inventario.find(p => p.id === productId);
-            if (!producto) return;
-
-            mainContent.innerHTML = `
-                <div class="p-4">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
-                            <form id="editProductoForm" class="space-y-4 text-left">
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Rubro:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.rubro}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Segmento:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.segmento}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Marca:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.marca}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                    <p class="w-full px-4 py-2 border rounded-lg bg-gray-100">${producto.presentacion}</p>
-                                </div>
-                                <div>
-                                    <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
-                                    <input type="number" step="0.01" id="editPrecio" value="${producto.precio}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <div>
-                                    <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
-                                    <input type="number" id="editCantidad" value="${producto.cantidad}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                 <div>
-                                    <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
-                                    <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
-                                        <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
-                                    </select>
-                                </div>
-                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                                    Guardar Cambios
-                                </button>
-                            </form>
-                            <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                try {
-                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/inventario`, productId), {
-                        precio: parseFloat(document.getElementById('editPrecio').value),
-                        cantidad: parseInt(document.getElementById('editCantidad').value, 10),
-                        iva: parseInt(document.getElementById('editIvaTipo').value, 10)
-                    }, { merge: true });
-                    showModal('Éxito', 'Producto modificado exitosamente.');
-                    showModifyDeleteView();
-                } catch (e) {
-                    console.error("Error al modificar el producto: ", e);
-                    showModal('Error', 'Hubo un error al modificar el producto.');
-                }
-            });
-            document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
-        };
-
-        /**
-         * Maneja la impresión del ticket usando la API de "Compartir" para enviarlo a una app nativa.
-         * @param {Object} venta - Los datos de la venta para imprimir.
-         */
-        async function handlePrintTicket(venta) {
-            try {
-                const clienteInfo = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, venta.clienteId));
-                if (!clienteInfo.exists()) {
-                    throw new Error("No se encontró la información del cliente para esta venta.");
-                }
-                const cliente = { id: venta.clienteId, ...clienteInfo.data() };
-                
-                const plainTextTicket = generatePlainTextTicket({ cliente }, venta.productos, venta.total);
-
-                if (navigator.share) {
-                    await navigator.share({
-                        title: 'Ticket de Venta',
-                        text: plainTextTicket,
-                    });
-                } else {
-                    showModal('Imprimir Ticket', `
-                        <p class="text-left mb-4">La impresión directa no está disponible. Copia el siguiente texto y pégalo en tu aplicación de impresión:</p>
-                        <textarea id="ticket-textarea" class="w-full h-48 p-2 border rounded-lg bg-gray-100 font-mono text-sm" readonly>${plainTextTicket}</textarea>
-                        <button onclick="document.getElementById('ticket-textarea').select(); document.execCommand('copy'); alert('¡Texto copiado!');" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg">Copiar Texto</button>
-                    `);
-                }
-            } catch (error) {
-                console.error("Error al compartir el ticket para imprimir:", error);
-                if (error.name !== 'AbortError') {
-                    showModal('Error', `No se pudo iniciar la acción para compartir el ticket. ${error.message}`);
-                }
-            }
-        }
-        
-        /**
-         * Genera el ticket en formato de texto plano para compartir e imprimir.
-         */
-        function generatePlainTextTicket(venta, productos, total) {
-            const width = 32;
-            let ticket = '';
-
-            const center = (text) => text.padStart(Math.floor((width + text.length) / 2), ' ').padEnd(width, ' ');
-            const line = '-'.repeat(width);
-            
-            const init = '\x1B\x40'; // Reset printer
-            const doubleHeightWidth = '\x1D\x21\x11'; // Double height and width
-            const doubleHeight = '\x1D\x21\x10'; // Double height
-            const normal = '\x1D\x21\x00';
-            
-            let allCaps = (text) => text.toUpperCase();
-
-            ticket += init;
-            ticket += doubleHeightWidth + center(allCaps('TICKET DE VENTA')) + '\n';
-            ticket += normal + center(allCaps('Distribuidora Castillo Yanez')) + '\n';
-            ticket += line + '\n';
-            ticket += allCaps(`Fecha: ${new Date().toLocaleDateString('es-ES')}`) + '\n';
-            ticket += allCaps(`Cliente: ${venta.cliente.nombreComercial}`) + '\n';
-            ticket += line + '\n';
-
-            productos.forEach(p => {
-                const desc = `${p.cantidad}x ${p.segmento} ${p.marca} ${p.presentacion}`;
-                const subtotal = `$${(p.cantidad * p.precio).toFixed(2)}`;
-                
-                let tempDesc = allCaps(desc);
-                while (tempDesc.length > (width - subtotal.length - 1)) {
-                    let wrapIndex = tempDesc.lastIndexOf(' ', width - subtotal.length - 1);
-                    if (wrapIndex === -1) wrapIndex = width - subtotal.length - 1;
-                    ticket += tempDesc.substring(0, wrapIndex) + '\n';
-                    tempDesc = '  ' + tempDesc.substring(wrapIndex + 1);
-                }
-                const padding = ' '.repeat(Math.max(0, width - tempDesc.length - subtotal.length));
-                ticket += tempDesc + padding + subtotal + '\n';
-            });
-
-            ticket += line + '\n';
-            const totalStr = `$${total.toFixed(2)}`;
-            const totalLabel = allCaps('Total:');
-            const paddingTotal = ' '.repeat(width - totalLabel.length - totalStr.length);
-            ticket += doubleHeight + totalLabel + paddingTotal + totalStr + '\n\n';
-
-            ticket += normal + center('________________') + '\n';
-            ticket += normal + center(allCaps(venta.cliente.nombrePersonal)) + '\n\n\n\n';
-
-            return ticket;
-        }
-
-        /**
-         * Maneja el compartir el ticket como imagen.
-         */
-        async function handleShareTicket() {
-            const ticketElement = document.getElementById('ticket-content-for-image');
-            if(!ticketElement) {
-                showModal('Error', 'No se encontró el contenido del ticket para generar la imagen.');
-                return;
-            }
-
-            const shareButton = document.getElementById('shareTicketBtn');
-            shareButton.textContent = 'Generando...';
-            shareButton.disabled = true;
-            
-            try {
-                await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
-                const canvas = await html2canvas(ticketElement, { scale: 3 }); // Calidad de imagen mejorada
-                canvas.toBlob(async (blob) => {
-                    if (navigator.share && blob) {
-                        try {
-                            await navigator.share({
-                                files: [new File([blob], "ticket.png", { type: "image/png" })],
-                                title: "Ticket de Venta",
-                            });
-                        } catch (err) {
-                            if (err.name !== 'AbortError') {
-                                showModal('Error', 'No se pudo compartir el ticket.');
-                            }
-                        }
-                    } else {
-                        showModal('Error', 'La función de compartir no está disponible en este navegador.');
-                    }
-                }, 'image/png');
-            } catch (err) {
-                console.error('Error al generar la imagen del ticket:', err);
-                showModal('Error', 'No se pudo generar la imagen del ticket.');
-            } finally {
-                 // No cerramos el modal, solo reactivamos el botón
-                shareButton.textContent = 'Compartir Imagen';
-                shareButton.disabled = false;
-            }
         }
 
         // --- Lógica del módulo de Clientes ---
@@ -1086,7 +602,7 @@
                     </div>
                 </div>
             `;
-            populateDropdown('sectores', 'sector');
+            populateDropdown('sectores', 'sector', 'sector');
 
             document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
             document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
@@ -1281,7 +797,7 @@
                     </div>
                 </div>
             `;
-            populateDropdown('sectores', 'editSector');
+            populateDropdown('sectores', 'editSector', 'sector');
 
             document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
