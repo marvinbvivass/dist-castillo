@@ -149,7 +149,7 @@
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
                             <td class="py-2 px-4 border-b text-sm">
-                                <p class="font-semibold">${p.presentacion} (${p.segmento})</p>
+                                <p class="font-semibold">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span></p>
                                 <p class="text-xs text-gray-600">Actual: ${p.cantidad}</p>
                             </td>
                             <td class="py-2 px-4 border-b text-center">
@@ -344,7 +344,13 @@
                             </div>
                             <div>
                                 <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <select id="unidadTipo" class="px-2 py-2 border rounded-lg bg-gray-50">
+                                        <option value="und.">und.</option>
+                                        <option value="cj.">cj.</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label for="precio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
@@ -389,6 +395,7 @@
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
+            unidadTipo: document.getElementById('unidadTipo').value,
             precio: parseFloat(document.getElementById('precio').value),
             cantidad: parseInt(document.getElementById('cantidad').value, 10),
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
@@ -405,13 +412,14 @@
                 _where("rubro", "==", producto.rubro),
                 _where("segmento", "==", producto.segmento),
                 _where("marca", "==", producto.marca),
-                _where("presentacion", "==", producto.presentacion)
+                _where("presentacion", "==", producto.presentacion),
+                _where("unidadTipo", "==", producto.unidadTipo)
             );
 
             const querySnapshot = await _getDocs(q);
 
             if (!querySnapshot.empty) {
-                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca, Presentación y Tipo de Unidad.');
                 return;
             }
 
@@ -565,7 +573,7 @@
                 productosAgrupados[marca].forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b text-sm">${p.presentacion} (${p.segmento})</td>
+                            <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
                             <td class="py-2 px-4 border-b text-sm">${p.marca}</td>
                             <td class="py-2 px-4 border-b text-right text-sm">$${p.precio.toFixed(2)}</td>
                             <td class="py-2 px-4 border-b text-center text-sm">${p.cantidad}</td>
@@ -599,10 +607,10 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                         <form id="editProductoForm" class="space-y-4 text-left">
-                            <p class="text-sm">Nota: Rubro, Segmento y Marca no se pueden editar.</p>
+                            <p class="text-sm">Nota: Rubro, Segmento, Marca y Presentación no se pueden editar.</p>
                             <div>
                                 <label class="block text-gray-700 font-medium">Presentación:</label>
-                                <p class="w-full px-4 py-2 bg-gray-100 rounded-lg">${producto.presentacion}</p>
+                                <p class="w-full px-4 py-2 bg-gray-100 rounded-lg">${producto.presentacion} (${producto.unidadTipo || 'und.'})</p>
                             </div>
                             <div>
                                 <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
