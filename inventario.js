@@ -4,7 +4,7 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch;
     
     let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
 
@@ -31,6 +31,7 @@
         _query = dependencies.query;
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
+        _writeBatch = dependencies.writeBatch;
     };
 
     /**
@@ -53,6 +54,9 @@
                             <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                                 Modificar / Eliminar Producto
                             </button>
+                            <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300 transform hover:scale-105">
+                                Ajuste Masivo de Cantidades
+                            </button>
                              <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-300 transform hover:scale-105">
                                 Modificar Datos Maestros
                             </button>
@@ -67,9 +71,138 @@
         document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
         document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
         document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+        document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
         document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
+
+    /**
+     * Muestra la vista para el ajuste masivo de cantidades.
+     */
+    function showAjusteMasivoView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ajuste Masivo de Cantidades</h2>
+                        <div class="mb-4">
+                           <label for="ajusteRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                           <select id="ajusteRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                               <option value="">Todos los Rubros</option>
+                           </select>
+                        </div>
+                        <div id="ajusteListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="saveAjusteBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
+        const rubroFilter = document.getElementById('ajusteRubroFilter');
+        _populateDropdown('rubros', 'ajusteRubroFilter', 'Rubro');
+        rubroFilter.addEventListener('change', () => renderAjusteMasivoList(rubroFilter.value));
+        renderAjusteMasivoList('');
+    }
+
+    /**
+     * Renderiza la lista de productos para el ajuste masivo.
+     */
+    function renderAjusteMasivoList(rubro = '') {
+        const container = document.getElementById('ajusteListContainer');
+        if (!container) return;
+
+        let q = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
+        if (rubro) {
+            q = _query(q, _where("rubro", "==", rubro));
+        }
+
+        const unsubscribe = _onSnapshot(q, (snapshot) => {
+            const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            if (productos.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
+                return;
+            }
+
+            let tableHTML = `
+                <table class="min-w-full bg-white border">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="py-2 px-4 border-b text-left text-sm">Producto</th>
+                            <th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            productos.forEach(p => {
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-4 border-b text-sm">
+                            <p class="font-semibold">${p.presentacion} (${p.segmento})</p>
+                            <p class="text-xs text-gray-600">Actual: ${p.cantidad}</p>
+                        </td>
+                        <td class="py-2 px-4 border-b text-center">
+                            <input type="number" value="${p.cantidad}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
+                        </td>
+                    </tr>
+                `;
+            });
+            tableHTML += `</tbody></table>`;
+            container.innerHTML = tableHTML;
+        });
+        _activeListeners.push(unsubscribe);
+    }
+    
+    /**
+     * Guarda los cambios de cantidad realizados masivamente.
+     */
+    async function handleGuardarAjusteMasivo() {
+        const inputs = document.querySelectorAll('#ajusteListContainer input[data-doc-id]');
+        if (inputs.length === 0) {
+            _showModal('Aviso', 'No hay cambios que guardar.');
+            return;
+        }
+
+        const batch = _writeBatch(_db);
+        let changesCount = 0;
+
+        inputs.forEach(input => {
+            const docId = input.dataset.docId;
+            const nuevaCantidad = parseInt(input.value, 10);
+            const productoOriginal = _inventarioCache.find(p => p.id === docId);
+
+            // Solo actualizar si la cantidad es un número válido y ha cambiado
+            if (!isNaN(nuevaCantidad) && productoOriginal && productoOriginal.cantidad !== nuevaCantidad) {
+                const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
+                batch.update(docRef, { cantidad: nuevaCantidad });
+                changesCount++;
+            }
+        });
+
+        if (changesCount === 0) {
+            _showModal('Aviso', 'No se detectaron cambios en las cantidades.');
+            return;
+        }
+
+        _showModal('Confirmar Cambios', `Estás a punto de actualizar ${changesCount} producto(s). ¿Deseas continuar?`, async () => {
+            try {
+                await batch.commit();
+                _showModal('Éxito', 'Las cantidades del inventario se han actualizado correctamente.');
+                showInventarioSubMenu();
+            } catch (error) {
+                console.error("Error al guardar ajuste masivo:", error);
+                _showModal('Error', 'Hubo un error al guardar los cambios.');
+            }
+        });
+    }
+
 
     /**
      * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
@@ -460,5 +593,3 @@
     };
 
 })();
-
-
