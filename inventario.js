@@ -539,23 +539,28 @@
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        // Obtener valores de los filtros
-        const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
-        const rubroFilter = document.getElementById('filter-rubro')?.value || '';
-        const segmentoFilter = document.getElementById('filter-segmento')?.value || '';
-        const marcaFilter = document.getElementById('filter-marca')?.value || '';
-
         const unsubscribe = _onSnapshot(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // Aplicar filtros
-            let productos = _inventarioCache.filter(p => {
-                const searchMatch = !searchTerm || p.presentacion.toLowerCase().includes(searchTerm);
-                const rubroMatch = !rubroFilter || p.rubro === rubroFilter;
-                const segmentoMatch = !segmentoFilter || p.segmento === segmentoFilter;
-                const marcaMatch = !marcaFilter || p.marca === marcaFilter;
-                return searchMatch && rubroMatch && segmentoMatch && marcaMatch;
-            });
+            // Determinar qué filtros usar según la vista
+            let productos;
+            if (readOnly) { // Lógica para "Ver Inventario"
+                const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
+                productos = _inventarioCache.filter(p => !rubroFilter || p.rubro === rubroFilter);
+            } else { // Lógica para "Modificar / Eliminar"
+                const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+                const rubroFilter = document.getElementById('filter-rubro')?.value || '';
+                const segmentoFilter = document.getElementById('filter-segmento')?.value || '';
+                const marcaFilter = document.getElementById('filter-marca')?.value || '';
+                
+                productos = _inventarioCache.filter(p => {
+                    const searchMatch = !searchTerm || p.presentacion.toLowerCase().includes(searchTerm);
+                    const rubroMatch = !rubroFilter || p.rubro === rubroFilter;
+                    const segmentoMatch = !segmentoFilter || p.segmento === segmentoFilter;
+                    const marcaMatch = !marcaFilter || p.marca === marcaFilter;
+                    return searchMatch && rubroMatch && segmentoMatch && marcaMatch;
+                });
+            }
 
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
@@ -677,3 +682,4 @@
     };
 
 })();
+
