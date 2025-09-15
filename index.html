@@ -150,6 +150,7 @@
     <script src="inventario.js"></script>
     <script src="catalogo.js"></script>
     <script src="sincronizacion.js"></script>
+    <script src="clientes.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -483,11 +484,12 @@
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch,
                 query, where,
-                inventario 
+                inventario, clientes
             };
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
             window.initSincronizacion(dependencies);
+            window.initClientes(dependencies);
 
             showMainMenu();
         }
@@ -524,332 +526,11 @@
                 </div>
             `;
             document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
-            document.getElementById('clientesBtn').addEventListener('click', showClientesSubMenu);
+            document.getElementById('clientesBtn').addEventListener('click', window.showClientesSubMenu);
             document.getElementById('ventasBtn').addEventListener('click', showVentasView);
             document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
             document.getElementById('sincronizacionBtn').addEventListener('click', window.showSincronizacionView);
         }
-
-        // --- Lógica del módulo de Clientes ---
-
-        /**
-         * Renderiza el menú de subopciones de clientes.
-         */
-        function showClientesSubMenu() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
-                            <div class="space-y-4">
-                                <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                    Ver Clientes
-                                </button>
-                                <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                    Agregar Cliente
-                                </button>
-                                <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                    Modificar / Eliminar Cliente
-                                </button>
-                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
-                                    Volver al Menú Principal
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
-            document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
-            document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
-            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
-        }
-
-        /**
-         * Muestra la vista de agregar cliente.
-         */
-        function showAgregarClienteView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
-                            <form id="clienteForm" class="space-y-4 text-left">
-                                <!-- Campo Sector -->
-                                <div>
-                                    <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
-                                    <div class="flex items-center space-x-2">
-                                        <select id="sector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                            <option value="">Seleccione un sector</option>
-                                        </select>
-                                        <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Agregar</button>
-                                    </div>
-                                </div>
-                                <!-- Campo Nombre Comercial -->
-                                <div>
-                                    <label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
-                                    <input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Nombre Personal -->
-                                <div>
-                                    <label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
-                                    <input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Teléfono -->
-                                <div>
-                                    <label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
-                                    <input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Código CEP -->
-                                <div>
-                                    <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                    <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                                    Guardar Cliente
-                                </button>
-                            </form>
-                            <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            populateDropdown('sectores', 'sector', 'sector');
-
-            document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
-            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            document.getElementById('addSectorBtn').addEventListener('click', () => showAddItemModal('sectores', 'Sector'));
-        }
-
-        /**
-         * Agrega un nuevo cliente a la base de datos.
-         * @param {Event} e
-         */
-        async function agregarCliente(e) {
-            e.preventDefault();
-            const sector = document.getElementById('sector').value;
-            const nombreComercial = document.getElementById('nombreComercial').value;
-            const nombrePersonal = document.getElementById('nombrePersonal').value;
-            const telefono = document.getElementById('telefono').value;
-            const codigoCEP = document.getElementById('codigoCEP').value;
-
-            try {
-                const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-                await addDoc(clientesRef, {
-                    sector,
-                    nombreComercial,
-                    nombrePersonal,
-                    telefono,
-                    codigoCEP
-                });
-                showModal('Éxito', 'Cliente agregado correctamente.');
-                document.getElementById('clienteForm').reset();
-            } catch (e) {
-                console.error("Error al agregar el cliente: ", e);
-                showModal('Error', 'Hubo un error al guardar el cliente.');
-            }
-        }
-
-        /**
-         * Muestra la vista de Ver Clientes.
-         */
-        function showVerClientesView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
-                            <div id="clientesListContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Cargando clientes...</p>
-                            </div>
-                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            renderClientesList('clientesListContainer', true);
-        }
-
-        /**
-         * Muestra la vista de modificar/eliminar cliente.
-         */
-        function showModifyDeleteClienteView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Cliente</h2>
-                            <p class="text-gray-600 mb-4 text-center">Selecciona un cliente de la lista para modificarlo o eliminarlo.</p>
-                            <div id="clientesListContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Cargando clientes...</p>
-                            </div>
-                            <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-            renderClientesList('clientesListContainer');
-        }
-
-        /**
-         * Renderiza la lista de clientes en el DOM.
-         * @param {string} elementId ID del elemento donde se renderizará la lista.
-         * @param {boolean} readOnly Indica si la lista es de solo lectura.
-         */
-        function renderClientesList(elementId = 'clientesListContainer', readOnly = false) {
-            const container = document.getElementById(elementId);
-            if (!container) return;
-
-            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            const unsubscribe = onSnapshot(clientesRef, (snapshot) => {
-                const fetchedClientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                clientes = fetchedClientes; // Guarda los clientes globalmente
-                if (fetchedClientes.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes registrados.</p>`;
-                    return;
-                }
-
-                 let tableHTML = `
-                    <table class="min-w-full bg-white border border-gray-200">
-                        <thead class="bg-gray-200">
-                            <tr>
-                                <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">Sector</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
-                                <th class="py-2 px-4 border-b text-left text-sm">Código CEP</th>
-                                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-
-                fetchedClientes.forEach(cliente => {
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
-                            <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
-                            <td class="py-2 px-4 border-b text-sm">${cliente.sector}</td>
-                            <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
-                            <td class="py-2 px-4 border-b text-sm">${cliente.codigoCEP || 'N/A'}</td>
-                            ${!readOnly ? `
-                            <td class="py-2 px-4 border-b text-center space-x-2">
-                                <button onclick="window.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                                <button onclick="window.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
-                            </td>
-                            ` : ''}
-                        </tr>
-                    `;
-                });
-
-                tableHTML += `</tbody></table>`;
-                container.innerHTML = tableHTML;
-            });
-            activeListeners.push(unsubscribe);
-        }
-        
-        /**
-         * Edita un cliente en la base de datos.
-         * @param {string} clienteId ID del cliente a editar.
-         */
-        window.editCliente = async function(clienteId) {
-             floatingControls.classList.add('hidden');
-            const cliente = clientes.find(c => c.id === clienteId);
-            if (!cliente) return;
-
-            mainContent.innerHTML = `
-                <div class="p-4">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
-                            <form id="editClienteForm" class="space-y-4 text-left">
-                                <!-- Campo Sector -->
-                                <div>
-                                    <label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label>
-                                    <select id="editSector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                        <option value="${cliente.sector}">${cliente.sector}</option>
-                                    </select>
-                                </div>
-                                <!-- Campo Nombre Comercial -->
-                                <div>
-                                    <label for="editNombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
-                                    <input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Nombre Personal -->
-                                <div>
-                                    <label for="editNombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
-                                    <input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Teléfono -->
-                                <div>
-                                    <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
-                                    <input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <!-- Campo Código CEP -->
-                                <div>
-                                    <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                                </div>
-                                <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                                    Guardar Cambios
-                                </button>
-                            </form>
-                            <button id="backToModifyDeleteClienteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            populateDropdown('sectores', 'editSector', 'sector');
-
-            document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                try {
-                    await setDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId), {
-                        sector: document.getElementById('editSector').value,
-                        nombreComercial: document.getElementById('editNombreComercial').value,
-                        nombrePersonal: document.getElementById('editNombrePersonal').value,
-                        telefono: document.getElementById('editTelefono').value,
-                        codigoCEP: document.getElementById('editCodigoCEP').value
-                    }, { merge: true });
-                    showModal('Éxito', 'Cliente modificado exitosamente.');
-                    showModifyDeleteClienteView();
-                } catch (e) {
-                    console.error("Error al modificar el cliente: ", e);
-                    showModal('Error', 'Hubo un error al modificar el cliente.');
-                }
-            });
-            document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
-        }
-
-        /**
-         * Elimina un cliente de la base de datos.
-         * @param {string} clienteId ID del cliente a eliminar.
-         */
-        window.deleteCliente = function(clienteId) {
-            showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
-                try {
-                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, clienteId));
-                    showModal('Éxito', 'Cliente eliminado correctamente.');
-                } catch (e) {
-                    console.error("Error al eliminar el cliente: ", e);
-                    showModal('Error', 'Hubo un error al eliminar el cliente.');
-                }
-            });
-        };
 
         // --- Lógica del módulo de Ventas ---
 
@@ -1089,7 +770,6 @@
             const inventarioConStock = inventario.filter(p => p.cantidad > 0);
             const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
 
-            // <<<< CORRECCIÓN AQUÍ >>>>
             // Agrupar productos por marca
             const productosAgrupados = filteredInventario.reduce((acc, p) => {
                 if (!acc[p.marca]) {
