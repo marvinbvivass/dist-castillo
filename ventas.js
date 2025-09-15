@@ -372,11 +372,11 @@
             total += subtotal;
             return `
                 <tr class="align-top">
-                    <td class="py-1 pr-1 text-left" style="width: 60%;">
+                    <td class="py-2 pr-2 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
                     </td>
-                    <td class="py-1 text-center" style="width: 15%;">${p.cantidadVendida}</td>
-                    <td class="py-1 pl-1 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
+                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida}</td>
+                    <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
         }).join('');
@@ -384,33 +384,33 @@
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
-            <div id="temp-ticket-for-image" class="bg-white text-black p-2 uppercase font-bold" style="width: 384px; font-family: 'Courier New', Courier, monospace;">
+            <div id="temp-ticket-for-image" class="bg-white text-black p-4 uppercase font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-lg">${titulo}</h2>
-                    <p class="text-base">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-5xl">${titulo}</h2>
+                    <p class="text-4xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
-                <div class="text-xs mt-3">
+                <div class="text-3xl mt-8">
                     <p>FECHA: ${fecha}</p>
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
-                <table class="w-full text-xs mt-2">
+                <table class="w-full text-3xl mt-6">
                     <thead>
                         <tr>
-                            <th class="pb-1 text-left">PRODUCTO</th>
-                            <th class="pb-1 text-center">CANT.</th>
-                            <th class="pb-1 text-right">SUBTOTAL</th>
+                            <th class="pb-2 text-left">PRODUCTO</th>
+                            <th class="pb-2 text-center">CANT.</th>
+                            <th class="pb-2 text-right">SUBTOTAL</th>
                         </tr>
                     </thead>
                     <tbody>${productosHTML}</tbody>
                 </table>
-                <div class="text-right text-base mt-2 border-t border-black border-dashed pt-1">
+                <div class="text-right text-4xl mt-6 border-t border-black border-dashed pt-4">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
-                <div class="text-center mt-8">
-                    <p class="border-t border-black w-48 mx-auto"></p>
-                    <p class="mt-2 text-xs">${clienteNombrePersonal}</p>
+                <div class="text-center mt-16">
+                    <p class="border-t border-black w-96 mx-auto"></p>
+                    <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
                 </div>
-                <hr class="border-dashed border-black mt-3">
+                <hr class="border-dashed border-black mt-6">
             </div>
         `;
     }
@@ -436,7 +436,7 @@
 
         try {
             await new Promise(resolve => setTimeout(resolve, 100));
-            const canvas = await html2canvas(ticketElement, { scale: 2 });
+            const canvas = await html2canvas(ticketElement, { scale: 3 });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
                      _showModal('Progreso', 'Abriendo diálogo para compartir...');
