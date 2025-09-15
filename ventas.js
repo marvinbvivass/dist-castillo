@@ -371,10 +371,12 @@
             const subtotal = p.precio * p.cantidadVendida;
             total += subtotal;
             return `
-                <tr>
-                    <td class="py-1 text-left">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</td>
-                    <td class="py-1 text-center">${p.cantidadVendida}</td>
-                    <td class="py-1 text-right">$${subtotal.toFixed(2)}</td>
+                <tr class="align-top">
+                    <td class="py-2 pr-2 text-left" style="width: 60%;">
+                        <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
+                    </td>
+                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida}</td>
+                    <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
         }).join('');
@@ -384,29 +386,29 @@
         return `
             <div id="temp-ticket-for-image" class="bg-white text-black p-3 uppercase font-bold" style="width: 420px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-xl">${titulo}</h2>
-                    <p class="text-lg">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-2xl">${titulo}</h2>
+                    <p class="text-xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
-                <div class="text-sm mt-4">
+                <div class="text-base mt-4">
                     <p>FECHA: ${fecha}</p>
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
-                <table class="w-full text-sm mt-3">
+                <table class="w-full text-base mt-3">
                     <thead>
                         <tr>
-                            <th class="py-1 text-left">PRODUCTO</th>
-                            <th class="py-1 text-center">CANT.</th>
-                            <th class="py-1 text-right">SUBTOTAL</th>
+                            <th class="pb-1 text-left">PRODUCTO</th>
+                            <th class="pb-1 text-center">CANT.</th>
+                            <th class="pb-1 text-right">SUBTOTAL</th>
                         </tr>
                     </thead>
                     <tbody>${productosHTML}</tbody>
                 </table>
-                <div class="text-right text-lg mt-3 border-t border-black border-dashed pt-2">
+                <div class="text-right text-xl mt-3 border-t border-black border-dashed pt-2">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
                 <div class="text-center mt-10">
                     <p class="border-t border-black w-56 mx-auto"></p>
-                    <p class="mt-2 text-sm">${clienteNombrePersonal}</p>
+                    <p class="mt-2 text-base">${clienteNombrePersonal}</p>
                 </div>
                 <hr class="border-dashed border-black mt-4">
             </div>
@@ -473,7 +475,6 @@
         _showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
             _showModal('Progreso', 'Procesando venta...');
             try {
-                // --- INICIO DE LA CORRECCIÓN PARA MODO OFFLINE ---
                 // Usamos un batch en lugar de una transacción para compatibilidad sin conexión.
                 const batch = _writeBatch(_db);
                 const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
@@ -499,7 +500,6 @@
                 batch.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
 
                 await batch.commit();
-                // --- FIN DE LA CORRECCIÓN ---
 
                 const ticketHTML = createTicketHTML(_ventaActual, productosVendidos, 'ticket');
                 await handleShareTicket(ticketHTML, showNuevaVentaView);
