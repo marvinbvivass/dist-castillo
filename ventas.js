@@ -372,7 +372,7 @@
             total += subtotal;
             return `
                 <tr>
-                    <td class="py-1 text-left">${p.presentacion}</td>
+                    <td class="py-1 text-left">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</td>
                     <td class="py-1 text-center">${p.cantidadVendida}</td>
                     <td class="py-1 text-right">$${subtotal.toFixed(2)}</td>
                 </tr>
@@ -399,7 +399,7 @@
                             <th class="py-1 text-right font-bold">SUBTOTAL</th>
                         </tr>
                     </thead>
-                    <tbody class="border-t border-b border-black">${productosHTML}</tbody>
+                    <tbody class="">${productosHTML}</tbody>
                 </table>
                 <div class="text-right font-bold text-lg mt-4">
                     <p>TOTAL: $${total.toFixed(2)}</p>
@@ -424,19 +424,15 @@
         tempDiv.innerHTML = htmlContent;
         document.body.appendChild(tempDiv);
         
-        // --- INICIO DE LA CORRECCIÓN ---
-        // Buscamos el elemento por su ID después de que ha sido añadido al DOM
         const ticketElement = document.getElementById('temp-ticket-for-image');
         if (!ticketElement) {
             _showModal('Error', 'No se pudo encontrar el elemento del ticket para generar la imagen.');
             document.body.removeChild(tempDiv);
             return;
         }
-        // --- FIN DE LA CORRECCIÓN ---
 
         try {
             await new Promise(resolve => setTimeout(resolve, 100));
-            // Pasamos el elemento encontrado explícitamente a html2canvas
             const canvas = await html2canvas(ticketElement, { scale: 3 });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
@@ -635,46 +631,80 @@
             return;
         }
 
-        let totalGeneral = 0;
-        const productosVendidos = {};
+        const allProducts = new Set();
+        const clientData = {};
+        let grandTotalValue = 0;
 
         ventas.forEach(venta => {
-            totalGeneral += venta.total;
+            const clientName = venta.clienteNombre;
+            if (!clientData[clientName]) {
+                clientData[clientName] = {
+                    products: {},
+                    totalValue: 0
+                };
+            }
+            
+            clientData[clientName].totalValue += venta.total;
+            grandTotalValue += venta.total;
+
             venta.productos.forEach(p => {
-                if (!productosVendidos[p.presentacion]) {
-                    productosVendidos[p.presentacion] = { cantidad: 0, total: 0 };
+                const productName = p.presentacion;
+                allProducts.add(productName);
+                
+                if (!clientData[clientName].products[productName]) {
+                    clientData[clientName].products[productName] = 0;
                 }
-                productosVendidos[p.presentacion].cantidad += p.cantidadVendida;
-                productosVendidos[p.presentacion].total += p.precio * p.cantidadVendida;
+                clientData[clientName].products[productName] += p.cantidadVendida;
             });
         });
-        
-        let productosHTML = Object.keys(productosVendidos).sort().map(nombre => `
-            <tr>
-                <td class="py-1 px-2 border-b">${nombre}</td>
-                <td class="py-1 px-2 border-b text-center">${productosVendidos[nombre].cantidad}</td>
-                <td class="py-1 px-2 border-b text-right">$${productosVendidos[nombre].total.toFixed(2)}</td>
-            </tr>
-        `).join('');
 
+        const sortedProducts = Array.from(allProducts).sort();
+        const sortedClients = Object.keys(clientData).sort();
+
+        // Build Table Header
+        let headerHTML = '<tr><th class="py-2 px-2 border-b text-left sticky top-0 bg-gray-200">Cliente</th>';
+        sortedProducts.forEach(productName => {
+            headerHTML += `<th class="py-2 px-2 border-b text-center sticky top-0 bg-gray-200">${productName}</th>`;
+        });
+        headerHTML += '<th class="py-2 px-2 border-b text-right sticky top-0 bg-gray-200">Total Cliente</th></tr>';
+
+        // Build Table Body
+        let bodyHTML = '';
+        sortedClients.forEach(clientName => {
+            bodyHTML += `<tr class="hover:bg-gray-50"><td class="py-2 px-2 border-b text-left font-medium">${clientName}</td>`;
+            const currentClient = clientData[clientName];
+            sortedProducts.forEach(productName => {
+                const quantity = currentClient.products[productName] || 0;
+                bodyHTML += `<td class="py-2 px-2 border-b text-center">${quantity > 0 ? quantity : ''}</td>`;
+            });
+            bodyHTML += `<td class="py-2 px-2 border-b text-right font-semibold">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
+        });
+        
+        // Build Table Footer (Totals)
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="py-2 px-2 border-b text-left">TOTALES</td>';
+        sortedProducts.forEach(productName => {
+            let totalQty = 0;
+            sortedClients.forEach(clientName => {
+                totalQty += clientData[clientName].products[productName] || 0;
+            });
+            footerHTML += `<td class="py-2 px-2 border-b text-center">${totalQty}</td>`;
+        });
+        footerHTML += `<td class="py-2 px-2 border-b text-right">$${grandTotalValue.toFixed(2)}</td></tr>`;
+        
         const reporteHTML = `
-            <div class="text-left max-h-[70vh] overflow-y-auto">
+            <div class="text-left max-h-[80vh] overflow-auto">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
-                <p><strong>Fecha del Reporte:</strong> ${new Date().toLocaleDateString('es-ES')}</p>
-                <p class="font-bold text-lg"><strong>Total General Vendido:</strong> $${totalGeneral.toFixed(2)}</p>
-                <p><strong>Número de Ventas:</strong> ${ventas.length}</p>
-                <h4 class="font-bold mt-4 mb-2">Resumen de Productos Vendidos:</h4>
-                <table class="min-w-full bg-white text-sm">
-                    <thead class="bg-gray-100"><tr>
-                        <th class="py-1 px-2 border-b text-left">Producto</th>
-                        <th class="py-1 px-2 border-b text-center">Cantidad</th>
-                        <th class="py-1 px-2 border-b text-right">Total</th>
-                    </tr></thead>
-                    <tbody>${productosHTML}</tbody>
-                </table>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white text-xs">
+                        <thead class="bg-gray-200">${headerHTML}</thead>
+                        <tbody>${bodyHTML}</tbody>
+                        <tfoot>${footerHTML}</tfoot>
+                    </table>
+                </div>
             </div>`;
         _showModal('Reporte de Cierre', reporteHTML);
     }
+
 
     /**
      * Ejecuta el cierre de ventas: archiva y elimina.
