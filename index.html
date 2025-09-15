@@ -237,29 +237,38 @@
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
                     <form id="addItemForm" class="space-y-4">
                         <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                        <div class="flex justify-center space-x-4">
-                            <button type="button" id="cancelItemBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cancelar</button>
-                            <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Guardar</button>
-                        </div>
+                        <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Agregar</button>
                     </form>
+                    <p id="addItemMessage" class="text-sm text-green-600 mt-2 h-4"></p>
+                    <div class="mt-4">
+                         <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Cerrar</button>
+                    </div>
                 </div>
             `;
             modalContainer.classList.remove('hidden');
 
-            document.getElementById('cancelItemBtn').addEventListener('click', () => {
+            const newItemInput = document.getElementById('newItemInput');
+            const addItemMessage = document.getElementById('addItemMessage');
+
+            document.getElementById('closeItemBtn').addEventListener('click', () => {
                 modalContainer.classList.add('hidden');
             });
 
             document.getElementById('addItemForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
-                const newItem = document.getElementById('newItemInput').value;
+                const newItemName = newItemInput.value.trim();
+                if (!newItemName) return;
+
                 try {
-                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItem });
-                } catch (e) {
-                    console.error(`Error al agregar ${itemName}: `, e);
-                    showModal('Error', `Hubo un error al agregar el ${itemName}.`);
-                } finally {
-                    modalContainer.classList.add('hidden');
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItemName });
+                    addItemMessage.textContent = `¡"${newItemName}" agregado!`;
+                    newItemInput.value = ''; // Limpiar el campo de texto
+                    newItemInput.focus();   // Poner el foco de nuevo en el campo
+                    setTimeout(() => { addItemMessage.textContent = ''; }, 2000); // Borrar mensaje después de 2 seg
+                } catch (err) {
+                    console.error(`Error al agregar ${itemName}: `, err);
+                    addItemMessage.classList.add('text-red-600');
+                    addItemMessage.textContent = `Error al guardar.`;
                 }
             });
         }
