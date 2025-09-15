@@ -382,32 +382,33 @@
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
-            <div id="temp-ticket-for-image" class="p-4 bg-white text-black font-sans" style="width: 384px; font-family: 'Arial', sans-serif;">
+            <div id="temp-ticket-for-image" class="bg-white text-black p-2" style="width: 400px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-xl font-bold uppercase">${titulo}</h2>
-                    <p class="text-lg font-bold uppercase">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-lg font-bold uppercase">${titulo}</h2>
+                    <p class="text-base font-bold uppercase">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
-                <div class="text-sm mt-4">
+                <div class="text-xs mt-3">
                     <p><strong>FECHA:</strong> ${fecha}</p>
                     <p><strong>CLIENTE:</strong> ${clienteNombre.toUpperCase()}</p>
                 </div>
-                <table class="w-full text-sm mt-4">
+                <table class="w-full text-xs mt-3">
                     <thead>
-                        <tr>
+                        <tr class="border-t border-b border-black border-dashed">
                             <th class="py-1 text-left font-bold">PRODUCTO</th>
                             <th class="py-1 text-center font-bold">CANT.</th>
                             <th class="py-1 text-right font-bold">SUBTOTAL</th>
                         </tr>
                     </thead>
-                    <tbody class="">${productosHTML}</tbody>
+                    <tbody>${productosHTML}</tbody>
                 </table>
-                <div class="text-right font-bold text-lg mt-4">
+                <div class="text-right font-bold text-base mt-3 border-t border-black border-dashed pt-1">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
-                <div class="text-center mt-12">
+                <div class="text-center mt-10">
                     <p class="border-t border-black w-48 mx-auto"></p>
-                    <p class="mt-2">${clienteNombrePersonal.toUpperCase()}</p>
+                    <p class="mt-1 text-xs">${clienteNombrePersonal.toUpperCase()}</p>
                 </div>
+                <hr class="border-dashed border-black mt-4">
             </div>
         `;
     }
