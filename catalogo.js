@@ -34,8 +34,8 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button data-rubros='["Cerveceria", "Vinos"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
-                            <button data-rubros='["Maltin", "Pepsicola"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
+                            <button data-rubros='["Cerveceria y Vinos"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
+                            <button data-rubros='["Maltin y Pepsicola"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
                             <button data-rubros='["Alimentos"]' data-bg="images/alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600">Alimentos Polar</button>
                             <button data-rubros='["P&G"]' data-bg="images/p&g.png" class="catalogo-btn w-full px-6 py-3 bg-sky-500 text-white font-semibold rounded-lg shadow-md hover:bg-sky-600">Procter & Gamble</button>
                             <button data-rubros='[]' data-bg="" class="catalogo-btn md:col-span-2 w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Unificado (Todos)</button>
