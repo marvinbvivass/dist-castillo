@@ -4,7 +4,7 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs;
     
     let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
 
@@ -28,6 +28,9 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _deleteDoc = dependencies.deleteDoc;
+        _query = dependencies.query;
+        _where = dependencies.where;
+        _getDocs = dependencies.getDocs;
     };
 
     /**
@@ -50,6 +53,9 @@
                             <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                                 Modificar / Eliminar Producto
                             </button>
+                             <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-300 transform hover:scale-105">
+                                Modificar Datos Maestros
+                            </button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
                                 Volver al Menú Principal
                             </button>
@@ -61,7 +67,117 @@
         document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
         document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
         document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+        document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+    }
+
+    /**
+     * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
+     */
+    function showModificarDatosView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar Datos Maestros</h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <!-- Columna de Rubros -->
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Rubros</h3>
+                                <div id="rubros-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                            <!-- Columna de Segmentos -->
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Segmentos</h3>
+                                <div id="segmentos-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                            <!-- Columna de Marcas -->
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Marcas</h3>
+                                <div id="marcas-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                        </div>
+
+                        <button id="backToInventarioBtn" class="mt-8 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+
+        // Renderizar las listas para cada categoría
+        renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
+        renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
+        renderDataListForEditing('marcas', 'marcas-list', 'Marca');
+    }
+
+    /**
+     * Renderiza una lista de datos (rubros, etc.) con botones para eliminar.
+     */
+    function renderDataListForEditing(collectionName, containerId, itemName) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
+            if (items.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-sm">No hay ${itemName.toLowerCase()}s.</p>`;
+                return;
+            }
+            container.innerHTML = items.map(item => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                    <span class="text-gray-800">${item.name}</span>
+                    <button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
+                </div>
+            `).join('');
+        });
+        _activeListeners.push(unsubscribe);
+    }
+
+    /**
+     * Maneja la eliminación de un item de datos maestros, con validación de uso.
+     */
+    async function handleDeleteDataItem(collectionName, itemName, itemType) {
+        // Mapear el nombre de la colección al campo correspondiente en 'inventario'
+        const fieldMap = {
+            rubros: 'rubro',
+            segmentos: 'segmento',
+            marcas: 'marca'
+        };
+        const fieldName = fieldMap[collectionName];
+
+        // 1. Validar si el item está en uso
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const q = _query(inventarioRef, _where(fieldName, "==", itemName));
+        
+        try {
+            const usageSnapshot = await _getDocs(q);
+            if (!usageSnapshot.empty) {
+                _showModal('Error al Eliminar', `No se puede eliminar el ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s).`);
+                return;
+            }
+
+            // 2. Si no está en uso, pedir confirmación y eliminar
+            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el ${itemType.toLowerCase()} "${itemName}"? Esta acción no se puede deshacer.`, async () => {
+                const itemQuery = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`), _where("name", "==", itemName));
+                const itemSnapshot = await _getDocs(itemQuery);
+
+                if (!itemSnapshot.empty) {
+                    const docId = itemSnapshot.docs[0].id;
+                    await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, docId));
+                    _showModal('Éxito', `${itemType} "${itemName}" ha sido eliminado.`);
+                } else {
+                    _showModal('Error', `No se pudo encontrar el ${itemType.toLowerCase()} para eliminar.`);
+                }
+            });
+
+        } catch (error) {
+            console.error(`Error al validar el uso de ${itemName}:`, error);
+            _showModal('Error', 'Ocurrió un error al intentar eliminar el item.');
+        }
     }
 
     /**
@@ -339,8 +455,10 @@
     // Exponer funciones públicas al objeto window para ser llamadas desde el HTML
     window.inventarioModule = {
         editProducto,
-        deleteProducto
+        deleteProducto,
+        handleDeleteDataItem
     };
 
 })();
+
 
