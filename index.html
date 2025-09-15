@@ -187,10 +187,6 @@
         const registerMessage = document.getElementById('registerMessage');
         const floatingControls = document.getElementById('floating-controls');
         
-        // Variables globales que los módulos necesitarán
-        let clientes = [];
-        let inventario = [];
-       
         // --- FUNCIONES DE UTILIDAD (Compartidas con los módulos) ---
         
         function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
@@ -265,6 +261,7 @@
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
+            // <<<< CORRECCIÓN AQUÍ >>>>
             activeListeners.push(unsubscribe);
         }
         
@@ -355,20 +352,11 @@
             });
             activeListeners.push(unsubscribe);
 
-            // Cargar datos globales una vez
-            onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/clientes`), (snapshot) => {
-                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            });
-            onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/inventario`), (snapshot) => {
-                inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            });
-
             // Inicializar los módulos externos
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where,
-                inventario, clientes
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where
             };
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
