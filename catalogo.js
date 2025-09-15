@@ -8,6 +8,7 @@
     let _catalogoTasaCOP = 0;
     let _catalogoMonedaActual = 'USD';
     let _currentRubros = []; // Almacena los rubros del catálogo que se está viendo
+    let _currentBgImage = ''; // Almacena la URL de la imagen de fondo actual
 
     /**
      * Inicializa el módulo de catálogo. 
@@ -28,6 +29,7 @@
      */
     window.showCatalogoSubMenu = function() {
         document.body.classList.remove('catalogo-active');
+        document.body.style.removeProperty('--catalogo-bg-image');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -60,6 +62,7 @@
      * Muestra la vista detallada de un catálogo filtrado.
      */
     function showCatalogoView(title, bgImage) {
+        _currentBgImage = bgImage; // Guardar la imagen de fondo para usarla al generar la imagen
         if (bgImage) {
             document.body.style.setProperty('--catalogo-bg-image', `url('${bgImage}')`);
         }
@@ -69,15 +72,16 @@
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                    <div id="catalogo-container-wrapper" class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <div id="catalogo-para-imagen">
                             <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">${title}</h2>
-                            <p class="text-center text-gray-600 mb-4 text-xs">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
+                            <p class="text-center text-gray-600 mb-1 text-xs">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
+                            <p class="text-center text-gray-500 mb-4 text-xs italic">(Todos los precios incluyen IVA)</p>
                             <div id="tasa-input-container" class="mb-4">
                                 <label for="catalogoTasaCopInput" class="block text-sm font-medium mb-1">Tasa (USD a COP):</label>
                                 <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg">
                             </div>
-                            <div id="catalogo-container" class="space-y-6"><p class="text-center text-gray-500">Cargando...</p></div>
+                            <div id="catalogo-content" class="space-y-6"><p class="text-center text-gray-500">Cargando...</p></div>
                         </div>
                         <div class="mt-6 text-center space-y-4">
                             <button id="generateCatalogoImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Generar Imagen</button>
@@ -116,14 +120,14 @@
             return;
         }
         _catalogoMonedaActual = _catalogoMonedaActual === 'USD' ? 'COP' : 'USD';
-        renderCatalogo(); // Re-renderiza con los rubros guardados en _currentRubros
+        renderCatalogo();
     };
     
     /**
      * Renderiza la tabla de productos del catálogo.
      */
     async function renderCatalogo() {
-        const container = document.getElementById('catalogo-container');
+        const container = document.getElementById('catalogo-content');
         if (!container) return;
 
         try {
@@ -140,7 +144,6 @@
                 return;
             }
             
-            // Agrupar productos por marca
             const productosAgrupados = productos.reduce((acc, p) => {
                 const marca = p.marca || 'Sin Marca';
                 if (!acc[marca]) acc[marca] = [];
@@ -148,41 +151,34 @@
                 return acc;
             }, {});
 
-            // Ordenar las marcas alfabéticamente
             const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
 
             let html = '<div class="space-y-4">';
             marcasOrdenadas.forEach(marca => {
                 html += `<table class="min-w-full bg-transparent text-sm">
                             <thead class="text-gray-700">
-                                <tr><th colspan="3" class="py-2 px-4 bg-gray-100 font-bold text-gray-600 text-left">${marca}</th></tr>
+                                <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-gray-600 text-left">${marca}</th></tr>
                                 <tr>
                                     <th class="py-2 px-2 text-left font-semibold">PRESENTACIÓN</th>
-                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO S/IVA</th>
-                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO C/IVA</th>
+                                    <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO</th>
                                 </tr>
                             </thead>
                             <tbody>`;
                 
-                // Ordenar productos dentro de cada marca por presentación
                 const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
 
                 productosOrdenados.forEach(p => {
-                    const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
-                    let precioSinIvaMostrado, precioConIvaMostrado;
+                    let precioConIvaMostrado;
 
                     if (_catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0) {
-                        precioSinIvaMostrado = `COP ${(Math.ceil((precioSinIva * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                         precioConIvaMostrado = `COP ${(Math.ceil((p.precio * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                     } else {
-                        precioSinIvaMostrado = `$${precioSinIva.toFixed(2)}`;
                         precioConIvaMostrado = `$${p.precio.toFixed(2)}`;
                     }
 
                     html += `
                         <tr class="border-b border-gray-200">
                             <td class="py-2 px-2">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
-                            <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
                             <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
                         </tr>
                     `;
@@ -201,19 +197,31 @@
      * Genera una imagen del catálogo y la comparte.
      */
     async function handleGenerateCatalogoImage() {
-        const reportElement = document.getElementById('catalogo-para-imagen');
+        const wrapperElement = document.getElementById('catalogo-container-wrapper');
         const shareButton = document.getElementById('generateCatalogoImageBtn');
         const tasaInputContainer = document.getElementById('tasa-input-container');
 
-        if (!reportElement) return;
+        if (!wrapperElement) return;
 
         shareButton.textContent = 'Generando...';
         shareButton.disabled = true;
         tasaInputContainer.classList.add('hidden');
 
+        // Guardar estilos originales para restaurarlos después
+        const originalBgImage = wrapperElement.style.backgroundImage;
+        const originalBgSize = wrapperElement.style.backgroundSize;
+        const originalBgPos = wrapperElement.style.backgroundPosition;
+
         try {
+            // Aplicar imagen de fondo para la captura
+            if (_currentBgImage) {
+                wrapperElement.style.backgroundImage = `url('${_currentBgImage}')`;
+                wrapperElement.style.backgroundSize = 'cover';
+                wrapperElement.style.backgroundPosition = 'center';
+            }
+            
             await new Promise(resolve => setTimeout(resolve, 100));
-            const canvas = await html2canvas(reportElement, { scale: 2, useCORS: true });
+            const canvas = await html2canvas(wrapperElement, { scale: 2, useCORS: true });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
                     try {
@@ -233,9 +241,13 @@
         } catch (error) {
             console.error("Error al generar imagen del catálogo: ", error);
         } finally {
+            // Restaurar la vista
             shareButton.textContent = 'Generar Imagen';
             shareButton.disabled = false;
             tasaInputContainer.classList.remove('hidden');
+            wrapperElement.style.backgroundImage = originalBgImage;
+            wrapperElement.style.backgroundSize = originalBgSize;
+            wrapperElement.style.backgroundPosition = originalBgPos;
         }
     }
 
