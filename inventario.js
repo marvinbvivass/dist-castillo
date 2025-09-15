@@ -383,7 +383,7 @@
     }
 
     /**
-     * Agrega un nuevo producto al inventario.
+     * Agrega un nuevo producto al inventario con validación de duplicados.
      */
     async function agregarProducto(e) {
         e.preventDefault();
@@ -391,16 +391,42 @@
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
-            presentacion: document.getElementById('presentacion').value,
+            presentacion: document.getElementById('presentacion').value.trim(),
             precio: parseFloat(document.getElementById('precio').value),
             cantidad: parseInt(document.getElementById('cantidad').value, 10),
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
+
+        // Validar que todos los campos requeridos estén llenos
+        if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
+            _showModal('Error', 'Todos los campos (Rubro, Segmento, Marca y Presentación) son obligatorios.');
+            return;
+        }
+
         try {
-            await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), producto);
+            // Verificar si el producto ya existe
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const q = _query(inventarioRef, 
+                _where("rubro", "==", producto.rubro),
+                _where("segmento", "==", producto.segmento),
+                _where("marca", "==", producto.marca),
+                _where("presentacion", "==", producto.presentacion)
+            );
+
+            const querySnapshot = await _getDocs(q);
+
+            if (!querySnapshot.empty) {
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
+                return;
+            }
+
+            // Si no existe, agregarlo
+            await _addDoc(inventarioRef, producto);
             _showModal('Éxito', 'Producto agregado correctamente.');
             e.target.reset();
+
         } catch (err) {
+            console.error("Error al agregar producto:", err);
             _showModal('Error', 'Hubo un error al guardar el producto.');
         }
     }
@@ -432,8 +458,8 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         const rubroFilter = document.getElementById('verInventarioRubroFilter');
         _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
-        rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true, rubroFilter.value));
-        renderProductosList('productosListContainer', true, '');
+        rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true));
+        renderProductosList('productosListContainer', true);
     }
 
     /**
@@ -446,7 +472,26 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
-                        <div id="productosListContainer" class="overflow-x-auto">
+                        
+                        <!-- Sección de Filtros y Búsqueda -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
+                            <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
+                            <div>
+                                <label for="filter-rubro" class="text-sm font-medium">Rubro</label>
+                                <select id="filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-segmento" class="text-sm font-medium">Segmento</label>
+                                <select id="filter-segmento" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-marca" class="text-sm font-medium">Marca</label>
+                                <select id="filter-marca" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                            <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
+                        </div>
+                        
+                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
                         <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -455,23 +500,62 @@
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        
+        // Poblar y configurar filtros
+        _populateDropdown('rubros', 'filter-rubro', 'Rubro');
+        _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
+        _populateDropdown('marcas', 'filter-marca', 'Marca');
+
+        const searchInput = document.getElementById('search-input');
+        const filterRubro = document.getElementById('filter-rubro');
+        const filterSegmento = document.getElementById('filter-segmento');
+        const filterMarca = document.getElementById('filter-marca');
+        const clearBtn = document.getElementById('clear-filters-btn');
+
+        const applyFilters = () => {
+            renderProductosList('productosListContainer', false);
+        };
+
+        searchInput.addEventListener('input', applyFilters);
+        filterRubro.addEventListener('change', applyFilters);
+        filterSegmento.addEventListener('change', applyFilters);
+        filterMarca.addEventListener('change', applyFilters);
+        
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            filterRubro.value = '';
+            filterSegmento.value = '';
+            filterMarca.value = '';
+            applyFilters();
+        });
+
         renderProductosList('productosListContainer', false);
     }
 
     /**
      * Renderiza la lista de productos en una tabla.
      */
-    function renderProductosList(elementId, readOnly = false, rubroFilter = '') {
+    function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
 
+        // Obtener valores de los filtros
+        const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+        const rubroFilter = document.getElementById('filter-rubro')?.value || '';
+        const segmentoFilter = document.getElementById('filter-segmento')?.value || '';
+        const marcaFilter = document.getElementById('filter-marca')?.value || '';
+
         const unsubscribe = _onSnapshot(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), (snapshot) => {
-            let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            _inventarioCache = productos;
+            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            if (rubroFilter) {
-                productos = productos.filter(p => p.rubro === rubroFilter);
-            }
+            // Aplicar filtros
+            let productos = _inventarioCache.filter(p => {
+                const searchMatch = !searchTerm || p.presentacion.toLowerCase().includes(searchTerm);
+                const rubroMatch = !rubroFilter || p.rubro === rubroFilter;
+                const segmentoMatch = !segmentoFilter || p.segmento === segmentoFilter;
+                const marcaMatch = !marcaFilter || p.marca === marcaFilter;
+                return searchMatch && rubroMatch && segmentoMatch && marcaMatch;
+            });
 
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
@@ -480,7 +564,7 @@
 
             let tableHTML = `
                 <table class="min-w-full bg-white border border-gray-200">
-                    <thead class="bg-gray-200">
+                    <thead class="bg-gray-200 sticky top-0">
                         <tr>
                             <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
                             <th class="py-2 px-4 border-b text-left text-sm">Marca</th>
