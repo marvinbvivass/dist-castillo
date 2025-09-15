@@ -443,7 +443,7 @@
                         if (stockActual < p.cantidadVendida) throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                         transaction.update(productoRef, { cantidad: stockActual - p.cantidadVendida });
                         totalVenta += p.precio * p.cantidadVendida;
-                        itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva, unidadTipo: p.unidadTipo });
+                        itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null, precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.' });
                     }
                     transaction.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
                 });
