@@ -211,13 +211,18 @@
         const originalBgImage = wrapperElement.style.backgroundImage;
         const originalBgSize = wrapperElement.style.backgroundSize;
         const originalBgPos = wrapperElement.style.backgroundPosition;
+        const originalBgColor = wrapperElement.style.backgroundColor;
 
         try {
-            // Aplicar imagen de fondo para la captura
+            // Aplicar imagen de fondo con transparencia para la captura
             if (_currentBgImage) {
-                wrapperElement.style.backgroundImage = `url('${_currentBgImage}')`;
+                // Se aplica un gradiente blanco semitransparente sobre la imagen de fondo
+                wrapperElement.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('${_currentBgImage}')`;
                 wrapperElement.style.backgroundSize = 'cover';
                 wrapperElement.style.backgroundPosition = 'center';
+            } else {
+                // Si no hay imagen, nos aseguramos que el fondo sea blanco para la captura
+                wrapperElement.style.backgroundColor = 'white';
             }
             
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -248,6 +253,7 @@
             wrapperElement.style.backgroundImage = originalBgImage;
             wrapperElement.style.backgroundSize = originalBgSize;
             wrapperElement.style.backgroundPosition = originalBgPos;
+            wrapperElement.style.backgroundColor = originalBgColor;
         }
     }
 
