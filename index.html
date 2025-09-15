@@ -482,7 +482,7 @@
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch,
-                query, where, // <<< CORRECCIÓN AQUÍ
+                query, where,
                 inventario 
             };
             window.initInventario(dependencies);
@@ -1086,43 +1086,61 @@
             monedaIndicator.textContent = `(${monedaActual})`;
             
             const selectedRubro = rubroFilter.value;
-            
-            // MODIFICACIÓN AQUÍ: Filtrar productos con stock > 0
             const inventarioConStock = inventario.filter(p => p.cantidad > 0);
-            
             const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
 
-            if (filteredInventario.length === 0) {
-                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan con el filtro.</td></tr>`;
+            // <<<< CORRECCIÓN AQUÍ >>>>
+            // Agrupar productos por marca
+            const productosAgrupados = filteredInventario.reduce((acc, p) => {
+                if (!acc[p.marca]) {
+                    acc[p.marca] = [];
+                }
+                acc[p.marca].push(p);
+                return acc;
+            }, {});
+
+            // Ordenar las marcas alfabéticamente
+            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
+
+            if (marcasOrdenadas.length === 0) {
+                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
                 return;
             }
 
-            filteredInventario.forEach(producto => {
-                const row = document.createElement('tr');
-                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
+            // Renderizar la tabla con cabeceras de marca
+            marcasOrdenadas.forEach(marca => {
+                // Fila de cabecera para la marca
+                const marcaRow = document.createElement('tr');
+                marcaRow.innerHTML = `<td colspan="5" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td>`;
+                inventarioTableBody.appendChild(marcaRow);
 
-                let precioMostrado;
-                if (monedaActual === 'COP') {
-                    const precioConvertido = producto.precio * tasaCOP;
-                    // Redondear al siguiente múltiplo de 100
-                    const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
-                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
-                } else {
-                    precioMostrado = `$${producto.precio.toFixed(2)}`;
-                }
+                // Filas de productos para esa marca
+                productosAgrupados[marca].forEach(producto => {
+                    const row = document.createElement('tr');
+                    row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
-                row.innerHTML = `
-                    <td class="py-2 px-1 text-center">
-                        <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidadVendida || 0}"
-                               class="w-16 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
-                               oninput="updateVentaCantidad(event)">
-                    </td>
-                    <td class="py-2 px-4 text-left whitespace-nowrap">${producto.presentacion} (${producto.segmento})</td>
-                    <td class="py-2 px-4 text-left">${producto.marca}</td>
-                    <td class="py-2 px-4 text-left price-toggle" onclick="window.toggleMoneda()">${precioMostrado}</td>
-                    <td class="py-2 px-2 text-center">${producto.cantidad}</td>
-                `;
-                inventarioTableBody.appendChild(row);
+                    let precioMostrado;
+                    if (monedaActual === 'COP') {
+                        const precioConvertido = producto.precio * tasaCOP;
+                        const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
+                        precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                    } else {
+                        precioMostrado = `$${producto.precio.toFixed(2)}`;
+                    }
+
+                    row.innerHTML = `
+                        <td class="py-2 px-1 text-center">
+                            <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidadVendida || 0}"
+                                   class="w-16 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
+                                   oninput="updateVentaCantidad(event)">
+                        </td>
+                        <td class="py-2 px-4 text-left whitespace-nowrap">${producto.presentacion} (${producto.segmento})</td>
+                        <td class="py-2 px-4 text-left">${producto.marca}</td>
+                        <td class="py-2 px-4 text-left price-toggle" onclick="window.toggleMoneda()">${precioMostrado}</td>
+                        <td class="py-2 px-2 text-center">${producto.cantidad}</td>
+                    `;
+                    inventarioTableBody.appendChild(row);
+                });
             });
         }
 
