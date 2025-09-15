@@ -34,8 +34,8 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button data-rubros='["Cerveceria y Vinos"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
-                            <button data-rubros='["Maltin y Pepsicola"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
+                            <button data-rubros='["Cerveceria", "Vinos"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
+                            <button data-rubros='["Maltin", "Pepsicola"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
                             <button data-rubros='["Alimentos"]' data-bg="images/alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600">Alimentos Polar</button>
                             <button data-rubros='["P&G"]' data-bg="images/p&g.png" class="catalogo-btn w-full px-6 py-3 bg-sky-500 text-white font-semibold rounded-lg shadow-md hover:bg-sky-600">Procter & Gamble</button>
                             <button data-rubros='[]' data-bg="" class="catalogo-btn md:col-span-2 w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Unificado (Todos)</button>
@@ -139,25 +139,25 @@
                 container.innerHTML = `<p class="text-center text-gray-500">No hay productos en esta categoría.</p>`;
                 return;
             }
-
+            
+            // Agrupar productos por marca
             const productosAgrupados = productos.reduce((acc, p) => {
-                const segmento = p.segmento || 'General';
-                if (!acc[segmento]) acc[segmento] = [];
-                acc[segmento].push(p);
+                const marca = p.marca || 'Sin Marca';
+                if (!acc[marca]) acc[marca] = [];
+                acc[marca].push(p);
                 return acc;
             }, {});
 
-            let html = '';
-            // Ordenar los segmentos alfabéticamente
-            const segmentosOrdenados = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
+            // Ordenar las marcas alfabéticamente
+            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
 
-            for (const segmento of segmentosOrdenados) {
-                html += `<h3 class="text-xl font-bold text-gray-800 mt-6 pb-2 border-b-2 border-gray-300">${segmento}</h3>`;
+            let html = '';
+            marcasOrdenadas.forEach(marca => {
+                html += `<h3 class="text-xl font-bold text-gray-800 mt-6 pb-2 border-b-2 border-gray-300">${marca}</h3>`;
                 html += `
                     <table class="min-w-full bg-transparent text-sm mt-2">
                         <thead class="text-gray-700">
                             <tr>
-                                <th class="py-2 px-2 text-left font-semibold">MARCA</th>
                                 <th class="py-2 px-2 text-left font-semibold">PRESENTACIÓN</th>
                                 <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO S/IVA</th>
                                 <th class="py-2 px-2 text-right font-semibold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO C/IVA</th>
@@ -166,12 +166,8 @@
                         <tbody>
                 `;
                 
-                // Ordenar productos dentro de cada segmento por marca y luego por presentación
-                const productosOrdenados = productosAgrupados[segmento].sort((a, b) => {
-                    const marcaComp = a.marca.localeCompare(b.marca);
-                    if (marcaComp !== 0) return marcaComp;
-                    return a.presentacion.localeCompare(b.presentacion);
-                });
+                // Ordenar productos dentro de cada marca por presentación
+                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
 
                 productosOrdenados.forEach(p => {
                     const precioSinIva = p.iva === 16 ? p.precio / 1.16 : p.precio;
@@ -187,15 +183,14 @@
 
                     html += `
                         <tr class="border-b border-gray-200">
-                            <td class="py-2 px-2 font-bold">${p.marca}</td>
-                            <td class="py-2 px-2">${p.presentacion}</td>
+                            <td class="py-2 px-2">${p.presentacion} (${p.segmento})</td>
                             <td class="py-2 px-2 text-right">${precioSinIvaMostrado}</td>
                             <td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td>
                         </tr>
                     `;
                 });
                 html += `</tbody></table>`;
-            }
+            });
             container.innerHTML = html;
         } catch (error) {
             console.error("Error al renderizar el catálogo:", error);
@@ -246,3 +241,4 @@
     }
 
 })();
+
