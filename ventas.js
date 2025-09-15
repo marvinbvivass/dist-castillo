@@ -153,7 +153,7 @@
         const unsubInventario = _onSnapshot(inventarioRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             populateRubroFilter();
-            if (_ventaActual.cliente) { // Si ya hay un cliente seleccionado, re-renderizar
+            if (_ventaActual.cliente) {
                 renderVentasInventario();
             }
         });
@@ -179,6 +179,7 @@
      */
     function renderClienteDropdown(filteredClients) {
         const clienteDropdown = document.getElementById('clienteDropdown');
+        if(!clienteDropdown) return;
         clienteDropdown.innerHTML = '';
         filteredClients.forEach(cliente => {
             const item = document.createElement('div');
@@ -219,116 +220,183 @@
      * Renderiza la tabla de inventario para la venta.
      */
     function renderVentasInventario() {
-        // ... (código existente, no necesita cambios)
+        const inventarioTableBody = document.getElementById('inventarioTableBody');
+        const monedaIndicator = document.getElementById('monedaIndicator');
+        const rubroFilter = document.getElementById('rubroFilter');
+
+        if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
+        inventarioTableBody.innerHTML = '';
+
+        monedaIndicator.textContent = `(${_monedaActual})`;
+        
+        const selectedRubro = rubroFilter.value;
+        const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0);
+        const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
+
+        const productosAgrupados = filteredInventario.reduce((acc, p) => {
+            const marca = p.marca || 'Sin Marca';
+            if (!acc[marca]) acc[marca] = [];
+            acc[marca].push(p);
+            return acc;
+        }, {});
+
+        const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
+
+        if (marcasOrdenadas.length === 0) {
+            inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
+            return;
+        }
+
+        marcasOrdenadas.forEach(marca => {
+            const marcaRow = document.createElement('tr');
+            marcaRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-200 font-bold text-gray-700 text-sm">${marca}</td>`;
+            inventarioTableBody.appendChild(marcaRow);
+
+            productosAgrupados[marca].forEach(producto => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
+
+                let precioMostrado;
+                if (_monedaActual === 'COP') {
+                    const precioConvertido = producto.precio * _tasaCOP;
+                    const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
+                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                } else {
+                    precioMostrado = `$${producto.precio.toFixed(2)}`;
+                }
+
+                row.innerHTML = `
+                    <td class="py-1 px-1 text-center">
+                        <input type="number" min="0" max="${producto.cantidad}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
+                               class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
+                               oninput="window.ventasModule.updateVentaCantidad(event)">
+                    </td>
+                    <td class="py-1 px-2 text-left whitespace-nowrap">${producto.presentacion} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                    <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
+                    <td class="py-1 px-1 text-center">${producto.cantidad}</td>
+                `;
+                inventarioTableBody.appendChild(row);
+            });
+        });
     }
 
     /**
      * Actualiza la cantidad de un producto y el total.
      */
     function updateVentaCantidad(event) {
-        // ... (código existente, no necesita cambios)
+        const { productId } = event.target.dataset;
+        const cantidad = parseInt(event.target.value, 10);
+        if (cantidad > 0) {
+            const producto = _inventarioCache.find(p => p.id === productId);
+            _ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
+        } else {
+            delete _ventaActual.productos[productId];
+        }
+        updateVentaTotal();
     };
 
     /**
      * Calcula y muestra el total de la venta.
      */
     function updateVentaTotal() {
-        // ... (código existente, no necesita cambios)
+        const totalEl = document.getElementById('ventaTotal');
+        let total = Object.values(_ventaActual.productos).reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
+        totalEl.textContent = _monedaActual === 'COP' ? `Total: COP ${(Math.ceil((total * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}` : `Total: $${total.toFixed(2)}`;
     }
 
     /**
      * Maneja la generación y compartición de la imagen del ticket.
      */
     async function handleShareTicket(venta, productos) {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Genera un ticket y guarda la venta.
      */
     async function generarTicket() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Muestra la vista de ventas totales.
      */
     function showVentasTotalesView() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
     
     /**
      * Muestra el submenú de opciones para el cierre de ventas.
      */
     function showCierreSubMenuView() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
     
     /**
      * Muestra una vista previa del reporte de cierre de ventas.
      */
     async function showVerCierreView() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
     
     /**
      * Muestra la vista con la lista de todas las ventas actuales.
      */
     function showVentasActualesView() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Renderiza la lista de ventas en el DOM.
      */
     function renderVentasList() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
     
     /**
      * Genera y comparte una imagen del ticket de una venta histórica.
      */
     async function shareSaleTicket(ventaId) {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     };
 
     /**
      * Muestra la factura fiscal de una venta.
      */
     function mostrarFactura(ventaId) {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     };
     
     async function showFacturaFiscal(venta) {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Obtiene y procesa los datos para el cierre de ventas.
      */
     async function getClosingData() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
     
     /**
      * Genera el HTML para el reporte de cierre.
      */
     function generateClosingReportHTML(closingData) {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Maneja la generación de la imagen del cierre de ventas.
      */
     async function handleGenerateCierreImage() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     /**
      * Maneja el proceso de cierre de ventas definitivo.
      */
     async function handleCierreDeVentas() {
-        // ... (código existente, no necesita cambios)
+        // ... (código existente)
     }
 
     // Exponer funciones públicas al objeto window
