@@ -4,7 +4,7 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDocs;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc;
     
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
 
@@ -144,7 +144,8 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
-                        <div id="clientesListContainer" class="overflow-x-auto">
+                        ${getFiltrosHTML()}
+                        <div id="clientesListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando clientes...</p>
                         </div>
                         <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -153,6 +154,7 @@
             </div>
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        setupFiltros(true);
         renderClientesList('clientesListContainer', true);
     }
 
@@ -166,8 +168,8 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Cliente</h2>
-                        <p class="text-gray-600 mb-4 text-center">Selecciona un cliente de la lista para modificarlo o eliminarlo.</p>
-                        <div id="clientesListContainer" class="overflow-x-auto">
+                        ${getFiltrosHTML()}
+                        <div id="clientesListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando clientes...</p>
                         </div>
                         <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -176,28 +178,80 @@
             </div>
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        renderClientesList('clientesListContainer');
+        setupFiltros(false);
+        renderClientesList('clientesListContainer', false);
+    }
+
+    /**
+     * Genera el HTML para los controles de filtro y búsqueda.
+     */
+    function getFiltrosHTML() {
+        return `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
+                <input type="text" id="search-input" placeholder="Buscar por Nombre o Código..." class="md:col-span-3 w-full px-4 py-2 border rounded-lg">
+                <div>
+                    <label for="filter-sector" class="text-sm font-medium">Sector</label>
+                    <select id="filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                </div>
+                <div class="md:col-start-3">
+                    <button id="clear-filters-btn" class="w-full bg-gray-300 text-sm font-semibold rounded-lg self-end py-2 px-4 mt-5">Limpiar Filtros</button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Configura los event listeners para los filtros.
+     */
+    function setupFiltros(isReadOnly) {
+        _populateDropdown('sectores', 'filter-sector', 'Sector');
+
+        const searchInput = document.getElementById('search-input');
+        const sectorFilter = document.getElementById('filter-sector');
+        const clearBtn = document.getElementById('clear-filters-btn');
+
+        const applyFilters = () => renderClientesList('clientesListContainer', isReadOnly);
+
+        searchInput.addEventListener('input', applyFilters);
+        sectorFilter.addEventListener('change', applyFilters);
+        
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            sectorFilter.value = '';
+            applyFilters();
+        });
     }
 
     /**
      * Renderiza la lista de clientes en una tabla.
      */
-    function renderClientesList(elementId = 'clientesListContainer', readOnly = false) {
+    function renderClientesList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
-        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
+        const unsubscribe = _onSnapshot(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            if (_clientesCache.length === 0) {
-                container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes registrados.</p>`;
+            const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+            const sectorFilter = document.getElementById('filter-sector')?.value || '';
+
+            const filteredClients = _clientesCache.filter(cliente => {
+                const searchMatch = !searchTerm || 
+                                    cliente.nombreComercial.toLowerCase().includes(searchTerm) ||
+                                    cliente.nombrePersonal.toLowerCase().includes(searchTerm) ||
+                                    (cliente.codigoCEP && cliente.codigoCEP.toLowerCase().includes(searchTerm));
+                const sectorMatch = !sectorFilter || cliente.sector === sectorFilter;
+                return searchMatch && sectorMatch;
+            });
+            
+            if (filteredClients.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con los filtros.</p>`;
                 return;
             }
 
             let tableHTML = `
                 <table class="min-w-full bg-white border border-gray-200">
-                    <thead class="bg-gray-200">
+                    <thead class="bg-gray-200 sticky top-0">
                         <tr>
                             <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
                             <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
@@ -209,7 +263,7 @@
                     </thead>
                     <tbody>
             `;
-            _clientesCache.forEach(cliente => {
+            filteredClients.forEach(cliente => {
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
                         <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
@@ -221,8 +275,7 @@
                         <td class="py-2 px-4 border-b text-center space-x-2">
                             <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
                             <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
-                        </td>
-                        ` : ''}
+                        </td>` : ''}
                     </tr>
                 `;
             });
