@@ -14,6 +14,7 @@
     // Estado local de una venta en progreso
     let _ventaActual = { cliente: null, productos: {} };
     let _tasaCOP = 0;
+    let _tasaBs = 0;
     let _monedaActual = 'USD';
 
     /**
@@ -87,9 +88,15 @@
                         </div>
                         <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-4">
                             <p class="text-gray-700 flex-grow"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
-                            <div id="tasaCopContainer" class="flex items-center space-x-2">
-                                 <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">Tasa (USD/COP):</label>
-                                <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-28 px-2 py-1 border rounded-lg">
+                            <div id="tasasContainer" class="flex flex-col sm:flex-row items-center gap-4">
+                                <div class="flex items-center space-x-2">
+                                    <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">Tasa (COP):</label>
+                                    <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-24 px-2 py-1 border rounded-lg">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <label for="tasaBsInput" class="block text-gray-700 text-sm font-medium">Tasa (Bs.):</label>
+                                    <input type="number" id="tasaBsInput" placeholder="Ej: 36.5" class="w-24 px-2 py-1 border rounded-lg">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -125,11 +132,25 @@
             _tasaCOP = parseFloat(savedTasa);
             document.getElementById('tasaCopInput').value = _tasaCOP;
         }
+        
+        const savedTasaBs = localStorage.getItem('tasaBs');
+        if (savedTasaBs) {
+            _tasaBs = parseFloat(savedTasaBs);
+            document.getElementById('tasaBsInput').value = _tasaBs;
+        }
 
         document.getElementById('tasaCopInput').addEventListener('input', (e) => {
             _tasaCOP = parseFloat(e.target.value) || 0;
             localStorage.setItem('tasaCOP', _tasaCOP);
             renderVentasInventario();
+            updateVentaTotal();
+        });
+        
+        document.getElementById('tasaBsInput').addEventListener('input', (e) => {
+            _tasaBs = parseFloat(e.target.value) || 0;
+            localStorage.setItem('tasaBs', _tasaBs);
+            renderVentasInventario();
+            updateVentaTotal();
         });
         
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
@@ -207,13 +228,25 @@
      * Cambia la moneda de visualización.
      */
     function toggleMoneda() {
-        if (_tasaCOP <= 0 && _monedaActual === 'USD') {
-            _showModal('Aviso', 'Ingresa una tasa de cambio válida para ver precios en COP.');
-            return;
+        const cycle = ['USD', 'COP', 'Bs'];
+        const rates = { 'USD': 1, 'COP': _tasaCOP, 'Bs': _tasaBs };
+        
+        let currentIndex = cycle.indexOf(_monedaActual);
+        let nextIndex = (currentIndex + 1) % cycle.length;
+
+        // Loop to find the next available currency with a valid rate
+        while (nextIndex !== currentIndex) {
+            if (rates[cycle[nextIndex]] > 0) {
+                _monedaActual = cycle[nextIndex];
+                renderVentasInventario();
+                updateVentaTotal();
+                return;
+            }
+            nextIndex = (nextIndex + 1) % cycle.length;
         }
-        _monedaActual = _monedaActual === 'USD' ? 'COP' : 'USD';
-        renderVentasInventario();
-        updateVentaTotal();
+
+        // If no other currency is available
+        _showModal('Aviso', 'Ingresa al menos una tasa de cambio para poder alternar monedas.');
     }
 
     /**
@@ -261,6 +294,9 @@
                     const precioConvertido = producto.precio * _tasaCOP;
                     const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
                     precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                } else if (_monedaActual === 'Bs') {
+                    const precioConvertido = producto.precio * _tasaBs;
+                    precioMostrado = `Bs.S ${precioConvertido.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 } else {
                     precioMostrado = `$${producto.precio.toFixed(2)}`;
                 }
@@ -314,6 +350,9 @@
             const totalCOP = total * _tasaCOP;
             const totalRedondeado = Math.ceil(totalCOP / 100) * 100;
             totalEl.textContent = `Total: COP ${totalRedondeado.toLocaleString('es-CO')}`;
+        } else if (_monedaActual === 'Bs') {
+            const totalBs = total * _tasaBs;
+            totalEl.textContent = `Total: Bs.S ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         } else {
             totalEl.textContent = `Total: $${total.toFixed(2)}`;
         }
@@ -323,8 +362,9 @@
      * Crea el HTML para un ticket/factura.
      */
     function createTicketHTML(venta, productos, tipo = 'ticket') {
-        const fecha = venta.fecha ? venta.fecha.toDate().toLocaleString('es-VE') : new Date().toLocaleString('es-VE');
+        const fecha = venta.fecha ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES');
         const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
+        const clienteNombrePersonal = (venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '';
         let total = 0;
         
         let productosHTML = productos.map(p => {
@@ -332,46 +372,41 @@
             total += subtotal;
             return `
                 <tr>
-                    <td class="px-1 py-1 text-left">${p.presentacion}</td>
-                    <td class="px-1 py-1 text-center">${p.cantidadVendida}</td>
-                    <td class="px-1 py-1 text-right">$${p.precio.toFixed(2)}</td>
-                    <td class="px-1 py-1 text-right">$${subtotal.toFixed(2)}</td>
+                    <td class="py-1 text-left">${p.presentacion}</td>
+                    <td class="py-1 text-center">${p.cantidadVendida}</td>
+                    <td class="py-1 text-right">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
         }).join('');
 
+        const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
+
         return `
-            <div id="temp-ticket-for-image" class="p-4 bg-white text-black font-mono" style="width: 384px;">
+            <div id="temp-ticket-for-image" class="p-4 bg-white text-black font-sans" style="width: 384px; font-family: 'Arial', sans-serif;">
                 <div class="text-center">
-                    <h2 class="text-xl font-bold uppercase">Nombre Empresa</h2>
-                    <p class="text-xs">Dirección de la Empresa, Ciudad</p>
-                    <p class="text-xs">RIF: J-12345678-9</p>
-                    <p class="text-xs">Teléfono: (0412) 123-4567</p>
+                    <h2 class="text-xl font-bold uppercase">${titulo}</h2>
+                    <p class="text-lg font-bold uppercase">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
-                <hr class="my-2 border-black border-dashed">
-                <div class="text-xs">
-                    <p><strong>Fecha:</strong> ${fecha}</p>
-                    <p><strong>Cliente:</strong> ${clienteNombre}</p>
+                <div class="text-sm mt-4">
+                    <p><strong>FECHA:</strong> ${fecha}</p>
+                    <p><strong>CLIENTE:</strong> ${clienteNombre.toUpperCase()}</p>
                 </div>
-                <hr class="my-2 border-black border-dashed">
-                <table class="w-full text-xs">
+                <table class="w-full text-sm mt-4">
                     <thead>
                         <tr>
-                            <th class="px-1 py-1 text-left">Producto</th>
-                            <th class="px-1 py-1 text-center">Cant</th>
-                            <th class="px-1 py-1 text-right">Precio</th>
-                            <th class="px-1 py-1 text-right">Subtotal</th>
+                            <th class="py-1 text-left font-bold">PRODUCTO</th>
+                            <th class="py-1 text-center font-bold">CANT.</th>
+                            <th class="py-1 text-right font-bold">SUBTOTAL</th>
                         </tr>
                     </thead>
-                    <tbody>${productosHTML}</tbody>
+                    <tbody class="border-t border-b border-black">${productosHTML}</tbody>
                 </table>
-                <hr class="my-2 border-black border-dashed">
-                <div class="text-right font-bold text-sm">
+                <div class="text-right font-bold text-lg mt-4">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
-                <div class="text-center mt-4 text-xs">
-                    <p>¡Gracias por su compra!</p>
-                    ${tipo === 'factura' ? '<p class="font-bold">FACTURA FISCAL</p>' : ''}
+                <div class="text-center mt-12">
+                    <p class="border-t border-black w-48 mx-auto"></p>
+                    <p class="mt-2">${clienteNombrePersonal.toUpperCase()}</p>
                 </div>
             </div>
         `;
@@ -456,7 +491,7 @@
                         totalVenta += p.precio * p.cantidadVendida;
                         itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null, precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.' });
                     }
-                    transaction.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
+                    transaction.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
                 });
 
                 const ticketHTML = createTicketHTML(_ventaActual, productosVendidos, 'ticket');
