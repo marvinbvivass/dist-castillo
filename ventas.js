@@ -382,18 +382,18 @@
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
-            <div id="temp-ticket-for-image" class="bg-white text-black p-2" style="width: 400px; font-family: 'Courier New', Courier, monospace;">
+            <div id="temp-ticket-for-image" class="bg-white text-black p-2 uppercase" style="width: 400px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-lg font-bold uppercase">${titulo}</h2>
-                    <p class="text-base font-bold uppercase">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-lg font-bold">${titulo}</h2>
+                    <p class="text-base font-bold">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
                 <div class="text-xs mt-3">
                     <p><strong>FECHA:</strong> ${fecha}</p>
-                    <p><strong>CLIENTE:</strong> ${clienteNombre.toUpperCase()}</p>
+                    <p><strong>CLIENTE:</strong> ${clienteNombre}</p>
                 </div>
                 <table class="w-full text-xs mt-3">
                     <thead>
-                        <tr class="border-t border-b border-black border-dashed">
+                        <tr>
                             <th class="py-1 text-left font-bold">PRODUCTO</th>
                             <th class="py-1 text-center font-bold">CANT.</th>
                             <th class="py-1 text-right font-bold">SUBTOTAL</th>
@@ -406,7 +406,7 @@
                 </div>
                 <div class="text-center mt-10">
                     <p class="border-t border-black w-48 mx-auto"></p>
-                    <p class="mt-1 text-xs">${clienteNombrePersonal.toUpperCase()}</p>
+                    <p class="mt-1 text-xs">${clienteNombrePersonal}</p>
                 </div>
                 <hr class="border-dashed border-black mt-4">
             </div>
