@@ -617,6 +617,72 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
+
+    /**
+     * Procesa los datos de ventas para generar la estructura del reporte.
+     */
+    function processSalesDataForReport(ventas) {
+        const clientData = {};
+        let grandTotalValue = 0;
+        
+        // Usamos un mapa para no duplicar productos y tener toda su info
+        const allProductsMap = new Map();
+
+        ventas.forEach(venta => {
+            const clientName = venta.clienteNombre;
+            if (!clientData[clientName]) {
+                clientData[clientName] = { products: {}, totalValue: 0 };
+            }
+            
+            clientData[clientName].totalValue += venta.total;
+            grandTotalValue += venta.total;
+
+            venta.productos.forEach(p => {
+                const productName = p.presentacion;
+                if (!allProductsMap.has(productName)) {
+                    allProductsMap.set(productName, {
+                        segmento: p.segmento || 'Sin Segmento',
+                        marca: p.marca || 'Sin Marca',
+                        presentacion: p.presentacion
+                    });
+                }
+                
+                if (!clientData[clientName].products[productName]) {
+                    clientData[clientName].products[productName] = 0;
+                }
+                clientData[clientName].products[productName] += p.cantidadVendida;
+            });
+        });
+
+        const sortedClients = Object.keys(clientData).sort();
+
+        // Agrupar productos por segmento y marca
+        const groupedProducts = {};
+        for (const product of allProductsMap.values()) {
+            if (!groupedProducts[product.segmento]) {
+                groupedProducts[product.segmento] = {};
+            }
+            if (!groupedProducts[product.segmento][product.marca]) {
+                groupedProducts[product.segmento][product.marca] = [];
+            }
+            groupedProducts[product.segmento][product.marca].push(product.presentacion);
+        }
+
+        // Ordenar el objeto agrupado
+        const finalProductOrder = [];
+        const sortedSegmentos = Object.keys(groupedProducts).sort();
+        sortedSegmentos.forEach(segmento => {
+            const sortedMarcas = Object.keys(groupedProducts[segmento]).sort();
+            groupedProducts[segmento].sortedMarcas = sortedMarcas; // Adjuntamos para la construcción del header
+            sortedMarcas.forEach(marca => {
+                const sortedPresentaciones = groupedProducts[segmento][marca].sort();
+                groupedProducts[segmento][marca] = sortedPresentaciones; // Reemplazamos con el array ordenado
+                finalProductOrder.push(...sortedPresentaciones);
+            });
+        });
+
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedSegmentos };
+    }
     
     /**
      * Muestra una vista previa del reporte de cierre de ventas.
@@ -631,72 +697,62 @@
             return;
         }
 
-        const allProducts = new Set();
-        const clientData = {};
-        let grandTotalValue = 0;
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedSegmentos } = processSalesDataForReport(ventas);
 
-        ventas.forEach(venta => {
-            const clientName = venta.clienteNombre;
-            if (!clientData[clientName]) {
-                clientData[clientName] = {
-                    products: {},
-                    totalValue: 0
-                };
-            }
+        // --- Build Table Header (3 levels) ---
+        let headerRow1 = `<tr class="sticky top-0"><th rowspan="3" class="p-2 border-b border-gray-300 bg-gray-200 sticky left-0 z-10">Cliente</th>`;
+        let headerRow2 = `<tr class="sticky" style="top: 36px;">`; // Adjust top position based on first row height
+        let headerRow3 = `<tr class="sticky" style="top: 72px;">`; // Adjust top for two rows
+
+        sortedSegmentos.forEach(segmento => {
+            let segmentoColspan = 0;
+            groupedProducts[segmento].sortedMarcas.forEach(marca => {
+                segmentoColspan += groupedProducts[segmento][marca].length;
+            });
+            headerRow1 += `<th colspan="${segmentoColspan}" class="p-2 border-b border-l border-gray-300 bg-gray-200">${segmento}</th>`;
             
-            clientData[clientName].totalValue += venta.total;
-            grandTotalValue += venta.total;
-
-            venta.productos.forEach(p => {
-                const productName = p.presentacion;
-                allProducts.add(productName);
+            groupedProducts[segmento].sortedMarcas.forEach(marca => {
+                const marcaColspan = groupedProducts[segmento][marca].length;
+                headerRow2 += `<th colspan="${marcaColspan}" class="p-2 border-b border-l border-gray-300 bg-gray-100">${marca}</th>`;
                 
-                if (!clientData[clientName].products[productName]) {
-                    clientData[clientName].products[productName] = 0;
-                }
-                clientData[clientName].products[productName] += p.cantidadVendida;
+                groupedProducts[segmento][marca].forEach(presentacion => {
+                    headerRow3 += `<th class="p-2 border-b border-l border-gray-300 bg-gray-50 whitespace-nowrap">${presentacion}</th>`;
+                });
             });
         });
+        headerRow1 += `<th rowspan="3" class="p-2 border-b border-gray-300 bg-gray-200 sticky right-0 z-10">Total Cliente</th></tr>`;
+        headerRow2 += `</tr>`;
+        headerRow3 += `</tr>`;
 
-        const sortedProducts = Array.from(allProducts).sort();
-        const sortedClients = Object.keys(clientData).sort();
-
-        // Build Table Header
-        let headerHTML = '<tr><th class="py-2 px-2 border-b text-left sticky top-0 bg-gray-200">Cliente</th>';
-        sortedProducts.forEach(productName => {
-            headerHTML += `<th class="py-2 px-2 border-b text-center sticky top-0 bg-gray-200">${productName}</th>`;
-        });
-        headerHTML += '<th class="py-2 px-2 border-b text-right sticky top-0 bg-gray-200">Total Cliente</th></tr>';
-
-        // Build Table Body
+        // --- Build Table Body ---
         let bodyHTML = '';
         sortedClients.forEach(clientName => {
-            bodyHTML += `<tr class="hover:bg-gray-50"><td class="py-2 px-2 border-b text-left font-medium">${clientName}</td>`;
+            bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-2 border-b border-gray-300 font-medium bg-white sticky left-0">${clientName}</td>`;
             const currentClient = clientData[clientName];
-            sortedProducts.forEach(productName => {
+            finalProductOrder.forEach(productName => {
                 const quantity = currentClient.products[productName] || 0;
-                bodyHTML += `<td class="py-2 px-2 border-b text-center">${quantity > 0 ? quantity : ''}</td>`;
+                bodyHTML += `<td class="p-2 border-b border-l border-gray-300 text-center">${quantity > 0 ? quantity : ''}</td>`;
             });
-            bodyHTML += `<td class="py-2 px-2 border-b text-right font-semibold">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
+            bodyHTML += `<td class="p-2 border-b border-gray-300 text-right font-semibold bg-white sticky right-0">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
-        // Build Table Footer (Totals)
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="py-2 px-2 border-b text-left">TOTALES</td>';
-        sortedProducts.forEach(productName => {
+        // --- Build Table Footer (Totals) ---
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-2 border-b border-gray-300 sticky left-0">TOTALES</td>';
+        finalProductOrder.forEach(productName => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
                 totalQty += clientData[clientName].products[productName] || 0;
             });
-            footerHTML += `<td class="py-2 px-2 border-b text-center">${totalQty}</td>`;
+            footerHTML += `<td class="p-2 border-b border-l border-gray-300 text-center">${totalQty}</td>`;
         });
-        footerHTML += `<td class="py-2 px-2 border-b text-right">$${grandTotalValue.toFixed(2)}</td></tr>`;
+        footerHTML += `<td class="p-2 border-b border-gray-300 text-right sticky right-0">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
         const reporteHTML = `
             <div class="text-left max-h-[80vh] overflow-auto">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
-                <div class="overflow-x-auto">
+                <div class="overflow-auto border border-gray-300">
                     <table class="min-w-full bg-white text-xs">
-                        <thead class="bg-gray-200">${headerHTML}</thead>
+                        <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}</thead>
                         <tbody>${bodyHTML}</tbody>
                         <tfoot>${footerHTML}</tfoot>
                     </table>
@@ -705,15 +761,102 @@
         _showModal('Reporte de Cierre', reporteHTML);
     }
 
+    /**
+     * Genera y descarga un archivo de Excel con el reporte de cierre.
+     */
+    async function exportCierreToExcel(ventas) {
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada. Asegúrate de tener conexión a internet o de que el script esté en tu HTML.');
+            return;
+        }
+
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedSegmentos } = processSalesDataForReport(ventas);
+
+        const dataForSheet = [];
+        const merges = [];
+        
+        // --- Build Header Rows for Excel ---
+        const headerRow1 = [""]; // Empty for "Cliente"
+        const headerRow2 = [""];
+        const headerRow3 = ["Cliente"];
+        
+        let currentColumn = 1;
+        sortedSegmentos.forEach(segmento => {
+            const segmentoStartCol = currentColumn;
+            let segmentoColspan = 0;
+            groupedProducts[segmento].sortedMarcas.forEach(marca => {
+                const marcaStartCol = currentColumn;
+                const presentaciones = groupedProducts[segmento][marca];
+                segmentoColspan += presentaciones.length;
+                
+                headerRow2.push(marca);
+                for (let i = 1; i < presentaciones.length; i++) headerRow2.push("");
+                if (presentaciones.length > 1) {
+                    merges.push({ s: { r: 1, c: marcaStartCol }, e: { r: 1, c: marcaStartCol + presentaciones.length - 1 } });
+                }
+                
+                presentaciones.forEach(p => {
+                    headerRow3.push(p);
+                });
+                currentColumn += presentaciones.length;
+            });
+            headerRow1.push(segmento);
+            for (let i = 1; i < segmentoColspan; i++) headerRow1.push("");
+            if (segmentoColspan > 1) {
+                merges.push({ s: { r: 0, c: segmentoStartCol }, e: { r: 0, c: segmentoStartCol + segmentoColspan - 1 } });
+            }
+        });
+        
+        headerRow1.push(""); // Placeholder for Total
+        headerRow2.push("");
+        headerRow3.push("Total Cliente");
+        dataForSheet.push(headerRow1, headerRow2, headerRow3);
+
+        // Merge headers for "Cliente" and "Total Cliente"
+        merges.push({ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } });
+        merges.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 2, c: finalProductOrder.length + 1 } });
+
+        // --- Build Body Rows for Excel ---
+        sortedClients.forEach(clientName => {
+            const row = [clientName];
+            const currentClient = clientData[clientName];
+            finalProductOrder.forEach(productName => {
+                row.push(currentClient.products[productName] || 0);
+            });
+            row.push(currentClient.totalValue);
+            dataForSheet.push(row);
+        });
+
+        // --- Build Footer Row for Excel ---
+        const footerRow = ["TOTALES"];
+        finalProductOrder.forEach(productName => {
+            let totalQty = 0;
+            sortedClients.forEach(clientName => {
+                totalQty += clientData[clientName].products[productName] || 0;
+            });
+            footerRow.push(totalQty);
+        });
+        footerRow.push(grandTotalValue);
+        dataForSheet.push(footerRow);
+
+        // --- Create and Download Excel File ---
+        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
+        ws['!merges'] = merges;
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Reporte de Cierre');
+        
+        const today = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
+    }
 
     /**
      * Ejecuta el cierre de ventas: archiva y elimina.
      */
     function ejecutarCierre() {
         _showModal('Confirmar Cierre Definitivo', 
-            'Esta acción archivará las ventas actuales y las eliminará. No se puede deshacer. ¿Continuar?', 
+            'Esta acción generará un reporte en Excel, luego archivará y eliminará las ventas actuales. No se puede deshacer. ¿Continuar?', 
             async () => {
-                _showModal('Progreso', 'Ejecutando cierre...');
+                
                 const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
                 const ventasSnapshot = await _getDocs(ventasRef);
                 const ventas = ventasSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
@@ -724,6 +867,11 @@
                 }
 
                 try {
+                    // 1. Generate and Download Excel report
+                    await exportCierreToExcel(ventas);
+                    _showModal('Progreso', 'Reporte Excel generado. Ahora procesando el cierre en la base de datos...');
+
+                    // 2. Archive the sales data
                     const cierreRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
                     await _setDoc(cierreRef, {
                         fecha: new Date(),
@@ -731,6 +879,7 @@
                         total: ventas.reduce((sum, v) => sum + v.total, 0)
                     });
 
+                    // 3. Delete current sales
                     const batch = _writeBatch(_db);
                     ventas.forEach(venta => {
                         batch.delete(_doc(ventasRef, venta.id));
