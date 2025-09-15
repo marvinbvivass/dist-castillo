@@ -1,14 +1,17 @@
 // --- Service Worker Mejorado para Funcionalidad Offline Robusta ---
 
-const CACHE_NAME = 'ventas-app-cache-v4'; // Versión actualizada para forzar la recarga de la caché
+const CACHE_NAME = 'ventas-app-cache-v5'; // Versión actualizada para forzar la recarga
 
-// Lista de archivos esenciales para el funcionamiento de la aplicación (App Shell)
+// Lista de archivos locales esenciales para el funcionamiento de la aplicación (App Shell)
+// Se han removido las URLs externas para evitar errores de CORS durante la instalación.
 const urlsToCache = [
     './', // Alias para index.html
     './index.html',
     './inventario.js',
     './catalogo.js',
     './sincronizacion.js',
+    './clientes.js',
+    './ventas.js',
     './manifest.json',
     './images/icons/icon-192x192.png',
     './images/icons/icon-512x512.png',
@@ -16,13 +19,8 @@ const urlsToCache = [
     './images/cervezayvinos.png',
     './images/maltinypepsi.png',
     './images/alimentospolar.png',
-    './images/p&g.png',
-    'https://cdn.tailwindcss.com',
-    'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-    'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
-    'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
-    'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js'
+    './images/p&g.png'
+    // Las URLs de terceros (Tailwind, Firebase, etc.) se cachearán dinámicamente con la estrategia de fetch.
 ];
 
 // Evento 'install': Se dispara cuando el Service Worker se instala por primera vez.
@@ -33,7 +31,7 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('[Service Worker] Guardando App Shell en caché.');
+                console.log('[Service Worker] Guardando App Shell local en caché.');
                 return cache.addAll(urlsToCache);
             })
             .catch(error => {
@@ -68,45 +66,28 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Estrategia para las solicitudes de navegación (abrir la página)
-    if (event.request.mode === 'navigate') {
-        event.respondWith(
-            fetch(event.request)
-                .catch(() => caches.match('./index.html')) // Si falla la red, sirve el index.html principal
-        );
+    // Para las solicitudes de Firebase, siempre vamos a la red primero,
+    // ya que necesitan estar actualizadas. No las servimos desde la caché si la red falla.
+    if (event.request.url.includes('firestore.googleapis.com')) {
         return;
     }
 
-    // Estrategia para otros recursos (CSS, JS, imágenes, etc.)
+    // Estrategia: Network falling back to cache.
+    // Intenta obtener el recurso de la red. Si tiene éxito, lo actualiza en la caché.
+    // Si falla, intenta servirlo desde la caché.
     event.respondWith(
-        fetch(event.request)
-            .then(networkResponse => {
-                // Si la respuesta de red es válida, la usamos y actualizamos la caché
-                const responseToCache = networkResponse.clone();
-                caches.open(CACHE_NAME)
-                    .then(cache => {
-                        cache.put(event.request, responseToCache);
-                    });
-                return networkResponse;
-            })
-            .catch(() => {
-                // Si la red falla, intentamos servir desde la caché
-                return caches.match(event.request)
-                    .then(cachedResponse => {
-                        // Si encontramos una respuesta en caché, la retornamos
-                        if (cachedResponse) {
-                            return cachedResponse;
-                        }
-                        // Si no está en caché y no hay red, la solicitud fallará naturalmente.
-                        // Esto es correcto para las peticiones de Firebase que no cacheamos.
-                        return new Response('Contenido no disponible sin conexión.', {
-                            status: 404,
-                            statusText: 'Not Found'
-                        });
-                    });
-            })
+        caches.open(CACHE_NAME).then(cache => {
+            return fetch(event.request)
+                .then(networkResponse => {
+                    // Si la respuesta de red es válida, la usamos y actualizamos la caché
+                    console.log(`[Service Worker] Guardando en caché: ${event.request.url}`);
+                    cache.put(event.request, networkResponse.clone());
+                    return networkResponse;
+                })
+                .catch(() => {
+                    // Si la red falla, intentamos servir desde la caché
+                    return cache.match(event.request);
+                });
+        })
     );
 });
-
-
-
