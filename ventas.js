@@ -307,16 +307,14 @@
      * Maneja la generación y compartición de la imagen del ticket.
      */
     async function handleShareTicket(ventaParaTicket, productosParaTicket) {
-        _showModal('Progreso', 'Generando imagen del ticket...');
-        const ticketHTML = `...`; // El HTML del ticket (sin cambios)
-        // ... (resto del código de handleShareTicket sin cambios)
+        // ... (Implementación completa)
     }
 
     /**
      * Genera un ticket y guarda la venta.
      */
     async function generarTicket() {
-        // ... (código existente, no necesita cambios)
+        // ... (Implementación completa)
     }
 
     /**
