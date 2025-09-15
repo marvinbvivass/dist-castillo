@@ -125,6 +125,7 @@
 
         const unsubscribe = _onSnapshot(q, (snapshot) => {
             const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+             _inventarioCache = productos; // Actualizar caché para referencia
 
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
@@ -313,28 +314,205 @@
      * Muestra la vista para agregar un nuevo producto.
      */
     function showAgregarProductoView() {
-        //... (Código sin cambios)
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
+                        <form id="productoForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="rubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="segmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="marca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="precio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
+                                <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
+                                <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <option value="16">IVA 16%</option>
+                                    <option value="0">Excento</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Producto</button>
+                        </form>
+                        <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        _populateDropdown('rubros', 'rubro', 'rubro');
+        _populateDropdown('segmentos', 'segmento', 'segmento');
+        _populateDropdown('marcas', 'marca', 'marca');
+        
+        document.getElementById('productoForm').addEventListener('submit', agregarProducto);
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
+        document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
+        document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
     }
 
     /**
      * Agrega un nuevo producto al inventario con validación de duplicados.
      */
     async function agregarProducto(e) {
-        //... (Código sin cambios)
+        e.preventDefault();
+        const producto = {
+            rubro: document.getElementById('rubro').value,
+            segmento: document.getElementById('segmento').value,
+            marca: document.getElementById('marca').value,
+            presentacion: document.getElementById('presentacion').value.trim(),
+            precio: parseFloat(document.getElementById('precio').value),
+            cantidad: parseInt(document.getElementById('cantidad').value, 10),
+            iva: parseInt(document.getElementById('ivaTipo').value, 10)
+        };
+
+        if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
+            _showModal('Error', 'Todos los campos (Rubro, Segmento, Marca y Presentación) son obligatorios.');
+            return;
+        }
+
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const q = _query(inventarioRef, 
+                _where("rubro", "==", producto.rubro),
+                _where("segmento", "==", producto.segmento),
+                _where("marca", "==", producto.marca),
+                _where("presentacion", "==", producto.presentacion)
+            );
+
+            const querySnapshot = await _getDocs(q);
+
+            if (!querySnapshot.empty) {
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
+                return;
+            }
+
+            await _addDoc(inventarioRef, producto);
+            _showModal('Éxito', 'Producto agregado correctamente.');
+            e.target.reset();
+
+        } catch (err) {
+            console.error("Error al agregar producto:", err);
+            _showModal('Error', 'Hubo un error al guardar el producto.');
+        }
     }
 
     /**
      * Muestra la vista de "Ver Inventario".
      */
     function showVerInventarioView() {
-        //... (Código sin cambios)
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
+                        <div class="mb-4">
+                           <label for="verInventarioRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                           <select id="verInventarioRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                               <option value="">Todos los Rubros</option>
+                           </select>
+                        </div>
+                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        const rubroFilter = document.getElementById('verInventarioRubroFilter');
+        _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
+        rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true));
+        renderProductosList('productosListContainer', true);
     }
 
     /**
      * Muestra la vista para modificar o eliminar un producto.
      */
     function showModifyDeleteView() {
-        //... (Código sin cambios)
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
+                            <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
+                            <div>
+                                <label for="filter-rubro" class="text-sm font-medium">Rubro</label>
+                                <select id="filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-segmento" class="text-sm font-medium">Segmento</label>
+                                <select id="filter-segmento" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-marca" class="text-sm font-medium">Marca</label>
+                                <select id="filter-marca" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                            <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
+                        </div>
+                        
+                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        
+        _populateDropdown('rubros', 'filter-rubro', 'Rubro');
+        _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
+        _populateDropdown('marcas', 'filter-marca', 'Marca');
+
+        const applyFilters = () => renderProductosList('productosListContainer', false);
+        document.getElementById('search-input').addEventListener('input', applyFilters);
+        document.getElementById('filter-rubro').addEventListener('change', applyFilters);
+        document.getElementById('filter-segmento').addEventListener('change', applyFilters);
+        document.getElementById('filter-marca').addEventListener('change', applyFilters);
+        
+        document.getElementById('clear-filters-btn').addEventListener('click', () => {
+            document.getElementById('search-input').value = '';
+            document.getElementById('filter-rubro').value = '';
+            document.getElementById('filter-segmento').value = '';
+            document.getElementById('filter-marca').value = '';
+            applyFilters();
+        });
+
+        renderProductosList('productosListContainer', false);
     }
 
     /**
@@ -411,14 +589,73 @@
      * Muestra el formulario para editar un producto.
      */
     function editProducto(productId) {
-        //... (Código sin cambios)
+        _floatingControls.classList.add('hidden');
+        const producto = _inventarioCache.find(p => p.id === productId);
+        if (!producto) return;
+
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
+                        <form id="editProductoForm" class="space-y-4 text-left">
+                            <p class="text-sm">Nota: Rubro, Segmento y Marca no se pueden editar.</p>
+                            <div>
+                                <label class="block text-gray-700 font-medium">Presentación:</label>
+                                <p class="w-full px-4 py-2 bg-gray-100 rounded-lg">${producto.presentacion}</p>
+                            </div>
+                            <div>
+                                <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
+                                <input type="number" step="0.01" id="editPrecio" value="${producto.precio}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
+                                <input type="number" id="editCantidad" value="${producto.cantidad}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                             <div>
+                                <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
+                                    <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                        </form>
+                        <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
+                    precio: parseFloat(document.getElementById('editPrecio').value),
+                    cantidad: parseInt(document.getElementById('editCantidad').value, 10),
+                    iva: parseInt(document.getElementById('editIvaTipo').value, 10)
+                }, { merge: true });
+                _showModal('Éxito', 'Producto modificado exitosamente.');
+                showModifyDeleteView();
+            } catch (err) {
+                _showModal('Error', 'Hubo un error al modificar el producto.');
+            }
+        });
+        document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     };
 
     /**
      * Elimina un producto.
      */
     function deleteProducto(productId) {
-        //... (Código sin cambios)
+        _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
+            try {
+                await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId));
+                _showModal('Éxito', 'Producto eliminado correctamente.');
+            } catch (e) {
+                _showModal('Error', 'Hubo un error al eliminar el producto.');
+            }
+        });
     };
 
     // Exponer funciones públicas al objeto window para ser llamadas desde el HTML
