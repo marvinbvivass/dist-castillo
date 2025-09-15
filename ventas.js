@@ -372,11 +372,11 @@
             total += subtotal;
             return `
                 <tr class="align-top">
-                    <td class="py-2 pr-2 text-left" style="width: 60%;">
+                    <td class="py-4 pr-4 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
                     </td>
-                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida}</td>
-                    <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
+                    <td class="py-4 text-center" style="width: 15%;">${p.cantidadVendida}</td>
+                    <td class="py-4 pl-4 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
         }).join('');
@@ -384,33 +384,33 @@
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
-            <div id="temp-ticket-for-image" class="bg-white text-black p-3 uppercase font-bold" style="width: 420px; font-family: 'Courier New', Courier, monospace;">
+            <div id="temp-ticket-for-image" class="bg-white text-black p-6 uppercase font-bold" style="width: 800px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-2xl">${titulo}</h2>
-                    <p class="text-xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-5xl">${titulo}</h2>
+                    <p class="text-4xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
-                <div class="text-base mt-4">
+                <div class="text-3xl mt-8">
                     <p>FECHA: ${fecha}</p>
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
-                <table class="w-full text-base mt-3">
+                <table class="w-full text-3xl mt-6">
                     <thead>
                         <tr>
-                            <th class="pb-1 text-left">PRODUCTO</th>
-                            <th class="pb-1 text-center">CANT.</th>
-                            <th class="pb-1 text-right">SUBTOTAL</th>
+                            <th class="pb-2 text-left">PRODUCTO</th>
+                            <th class="pb-2 text-center">CANT.</th>
+                            <th class="pb-2 text-right">SUBTOTAL</th>
                         </tr>
                     </thead>
                     <tbody>${productosHTML}</tbody>
                 </table>
-                <div class="text-right text-xl mt-3 border-t border-black border-dashed pt-2">
+                <div class="text-right text-4xl mt-6 border-t border-black border-dashed pt-4">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
-                <div class="text-center mt-10">
-                    <p class="border-t border-black w-56 mx-auto"></p>
-                    <p class="mt-2 text-base">${clienteNombrePersonal}</p>
+                <div class="text-center mt-20">
+                    <p class="border-t border-black w-96 mx-auto"></p>
+                    <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
                 </div>
-                <hr class="border-dashed border-black mt-4">
+                <hr class="border-dashed border-black mt-8">
             </div>
         `;
     }
