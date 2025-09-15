@@ -192,7 +192,7 @@
         function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
             modalContent.innerHTML = `
                 <div class="text-center">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
+                    <hh3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
                     <div class="text-gray-600 mb-6">${message}</div>
                     <div class="space-x-4">
                         <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cerrar</button>
@@ -261,7 +261,6 @@
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
             });
-            // <<<< CORRECCIÓN AQUÍ >>>>
             activeListeners.push(unsubscribe);
         }
         
@@ -387,7 +386,7 @@
             `;
             document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
             document.getElementById('clientesBtn').addEventListener('click', window.showClientesSubMenu);
-            document.getElementById('ventasBtn').addEventListener('click', window.showVentasView);
+            document.getElementById('ventasBtn').addEventListener('click', window.showVentasSubMenu);
             document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
             document.getElementById('sincronizacionBtn').addEventListener('click', window.showSincronizacionView);
         }
@@ -425,3 +424,4 @@
     </script>
 </body>
 </html>
+
