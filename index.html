@@ -1594,7 +1594,14 @@
             await initializeAppAndListeners();
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
-            document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                showModal(
+                    'Confirmar Cierre de Sesión', 
+                    '¿Estás seguro de que deseas cerrar la sesión?',
+                    handleLogout,
+                    'Confirmar'
+                );
+            });
              // Listeners para cambiar entre login y registro
             document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
             document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
