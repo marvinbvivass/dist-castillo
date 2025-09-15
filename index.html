@@ -154,7 +154,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase proporcionada por el usuario
         const firebaseConfig = {
@@ -482,7 +482,8 @@
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch,
-                inventario // Pasar referencia a la variable global de inventario
+                query, where, // <<< CORRECCIÓN AQUÍ
+                inventario 
             };
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
