@@ -4,15 +4,18 @@
     // Variables locales para almacenar las dependencias de la app principal
     let _db, _userId, _appId, _mainContent, _showMainMenu, _collection, _getDocs, _floatingControls;
     
-    // Estado específico del catálogo gestionado dentro de este módulo
+    // Estado específico del catálogo
     let _catalogoTasaCOP = 0;
     let _catalogoMonedaActual = 'USD';
-    let _currentRubros = []; // Almacena los rubros del catálogo que se está viendo
-    let _currentBgImage = ''; // Almacena la URL de la imagen de fondo actual
+    let _currentRubros = [];
+    let _currentBgImage = '';
+
+    // Caché de datos para la generación de imágenes paginadas
+    let _marcasCache = [];
+    let _productosAgrupadosCache = {};
 
     /**
      * Inicializa el módulo de catálogo. 
-     * Esta función es llamada desde index.html para pasar las dependencias necesarias.
      */
     window.initCatalogo = function(dependencies) {
         _db = dependencies.db;
@@ -29,7 +32,7 @@
      * Muestra el submenú de opciones del catálogo.
      */
     window.showCatalogoSubMenu = function() {
-        _floatingControls.classList.add('hidden'); // Ocultar controles flotantes
+        _floatingControls.classList.add('hidden');
         document.body.classList.remove('catalogo-active');
         document.body.style.removeProperty('--catalogo-bg-image');
         _mainContent.innerHTML = `
@@ -154,6 +157,10 @@
             }, {});
 
             const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
+            
+            // Guardar datos en caché para la generación de imágenes
+            _marcasCache = marcasOrdenadas;
+            _productosAgrupadosCache = productosAgrupados;
 
             let html = '<div class="space-y-4">';
             marcasOrdenadas.forEach(marca => {
@@ -196,67 +203,92 @@
     }
 
     /**
-     * Genera una imagen del catálogo y la comparte.
+     * Genera una o varias imágenes del catálogo y las comparte.
      */
     async function handleGenerateCatalogoImage() {
-        const wrapperElement = document.getElementById('catalogo-container-wrapper');
+        const MAX_BRANDS_PER_PAGE = 5; // Máximo de marcas por imagen
+
         const shareButton = document.getElementById('generateCatalogoImageBtn');
         const tasaInputContainer = document.getElementById('tasa-input-container');
         const buttonsContainer = document.getElementById('catalogo-buttons-container');
 
-        if (!wrapperElement) return;
+        if (_marcasCache.length === 0) return;
 
-        shareButton.textContent = 'Generando...';
+        const pagesOfBrands = [];
+        for (let i = 0; i < _marcasCache.length; i += MAX_BRANDS_PER_PAGE) {
+            pagesOfBrands.push(_marcasCache.slice(i, i + MAX_BRANDS_PER_PAGE));
+        }
+        const totalPages = pagesOfBrands.length;
+
+        // --- Actualizar UI ---
+        shareButton.textContent = `Generando ${totalPages} imagen(es)...`;
         shareButton.disabled = true;
         tasaInputContainer.classList.add('hidden');
-        buttonsContainer.classList.add('hidden'); // Ocultar botones
-
-        // Guardar estilos originales para restaurarlos después
-        const originalBgImage = wrapperElement.style.backgroundImage;
-        const originalBgSize = wrapperElement.style.backgroundSize;
-        const originalBgPos = wrapperElement.style.backgroundPosition;
-        const originalBgColor = wrapperElement.style.backgroundColor;
+        buttonsContainer.classList.add('hidden');
 
         try {
-            // Aplicar imagen de fondo con transparencia para la captura
-            if (_currentBgImage) {
-                wrapperElement.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('${_currentBgImage}')`;
-                wrapperElement.style.backgroundSize = 'cover';
-                wrapperElement.style.backgroundPosition = 'center';
-            } else {
-                wrapperElement.style.backgroundColor = 'white';
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            const canvas = await html2canvas(wrapperElement, { scale: 2, useCORS: true });
-            canvas.toBlob(async (blob) => {
-                if (navigator.share && blob) {
-                    try {
-                        await navigator.share({
-                            files: [new File([blob], "catalogo.png", { type: "image/png" })],
-                            title: "Catálogo de Productos"
-                        });
-                    } catch (err) {
-                        if (err.name !== 'AbortError') {
-                            alert('No se pudo compartir la imagen.');
-                        }
-                    }
-                } else {
-                    alert('La función para compartir no está disponible en este navegador.');
+            const imageFiles = await Promise.all(pagesOfBrands.map(async (brands, index) => {
+                const pageNum = index + 1;
+
+                let contentHtml = '<div class="space-y-4">';
+                brands.forEach(marca => {
+                    contentHtml += `<table class="min-w-full bg-transparent text-lg">
+                        <thead class="text-black">
+                            <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
+                            <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
+                        </thead><tbody>`;
+                    _productosAgrupadosCache[marca].forEach(p => {
+                        let precioConIvaMostrado = _catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0
+                            ? `COP ${(Math.ceil((p.precio * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`
+                            : `$${p.precio.toFixed(2)}`;
+                        contentHtml += `<tr class="border-b border-gray-200"><td class="py-2 px-2 text-gray-900">${p.presentacion} <span class="text-base text-gray-600">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td><td class="py-2 px-2 text-right font-bold">${precioConIvaMostrado}</td></tr>`;
+                    });
+                    contentHtml += `</tbody></table>`;
+                });
+                contentHtml += '</div>';
+                
+                const title = document.querySelector('#catalogo-para-imagen h2').textContent;
+                const fullPageHtml = `
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl" style="width: 800px;">
+                        <h2 class="text-4xl font-bold text-black mb-2 text-center">${title}</h2>
+                        <p class="text-center text-gray-800 mb-1 text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
+                        <p class="text-center text-gray-700 mb-4 text-base italic">(Todos los precios incluyen IVA)</p>
+                        ${contentHtml}
+                        <p class="text-center text-gray-600 mt-4 text-sm">Página ${pageNum} de ${totalPages}</p>
+                    </div>`;
+
+                const tempDiv = document.createElement('div');
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.left = '-9999px';
+                tempDiv.innerHTML = fullPageHtml;
+                document.body.appendChild(tempDiv);
+
+                const pageWrapper = tempDiv.firstElementChild;
+                if (_currentBgImage) {
+                    pageWrapper.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('${_currentBgImage}')`;
+                    pageWrapper.style.backgroundSize = 'cover';
+                    pageWrapper.style.backgroundPosition = 'center';
                 }
-            }, 'image/png');
+
+                const canvas = await html2canvas(pageWrapper, { scale: 2, useCORS: true });
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                
+                document.body.removeChild(tempDiv);
+                return new File([blob], `catalogo-pagina-${pageNum}.png`, { type: "image/png" });
+            }));
+
+            if (navigator.share && imageFiles.length > 0) {
+                await navigator.share({ files: imageFiles, title: "Catálogo de Productos" });
+            } else {
+                alert('La función para compartir no está disponible o no se generaron imágenes.');
+            }
         } catch (error) {
             console.error("Error al generar imagen del catálogo: ", error);
         } finally {
-            // Restaurar la vista
             shareButton.textContent = 'Generar Imagen';
             shareButton.disabled = false;
             tasaInputContainer.classList.remove('hidden');
-            buttonsContainer.classList.remove('hidden'); // Mostrar botones de nuevo
-            wrapperElement.style.backgroundImage = originalBgImage;
-            wrapperElement.style.backgroundSize = originalBgSize;
-            wrapperElement.style.backgroundPosition = originalBgPos;
-            wrapperElement.style.backgroundColor = originalBgColor;
+            buttonsContainer.classList.remove('hidden');
         }
     }
 
