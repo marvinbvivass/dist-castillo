@@ -88,14 +88,14 @@
                         </div>
                         <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-4">
                             <p class="text-gray-700 flex-grow"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
-                            <div id="tasasContainer" class="flex flex-col sm:flex-row items-center gap-4">
-                                <div class="flex items-center space-x-2">
-                                    <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">Tasa (COP):</label>
-                                    <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-24 px-2 py-1 border rounded-lg">
+                            <div id="tasasContainer" class="flex flex-row items-center gap-2 sm:gap-4">
+                                <div class="flex items-center space-x-1">
+                                    <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">COP:</label>
+                                    <input type="number" id="tasaCopInput" placeholder="4000" class="w-20 px-2 py-1 border rounded-lg">
                                 </div>
-                                <div class="flex items-center space-x-2">
-                                    <label for="tasaBsInput" class="block text-gray-700 text-sm font-medium">Tasa (Bs.):</label>
-                                    <input type="number" id="tasaBsInput" placeholder="Ej: 36.5" class="w-24 px-2 py-1 border rounded-lg">
+                                <div class="flex items-center space-x-1">
+                                    <label for="tasaBsInput" class="block text-gray-700 text-sm font-medium">Bs.:</label>
+                                    <input type="number" id="tasaBsInput" placeholder="36.5" class="w-20 px-2 py-1 border rounded-lg">
                                 </div>
                             </div>
                         </div>
