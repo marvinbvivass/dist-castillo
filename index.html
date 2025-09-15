@@ -151,13 +151,14 @@
     <script src="catalogo.js"></script>
     <script src="sincronizacion.js"></script>
     <script src="clientes.js"></script>
+    <script src="ventas.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Configuración de Firebase proporcionada por el usuario
+        // Configuración de Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
             authDomain: "ventas-9a210.firebaseapp.com",
@@ -172,7 +173,7 @@
         let db;
         let auth;
         let userId;
-        let activeListeners = []; // Array para almacenar los listeners activos
+        let activeListeners = [];
 
         // Referencias a los elementos del DOM
         const mainContent = document.getElementById('mainContent');
@@ -186,38 +187,24 @@
         const registerMessage = document.getElementById('registerMessage');
         const floatingControls = document.getElementById('floating-controls');
         
-        // Variables para la vista de ventas
+        // Variables globales que los módulos necesitarán
         let clientes = [];
         let inventario = [];
-        let ventasGlobal = []; // Almacenar ventas para re-impresión
-        let ventaActual = {
-            cliente: null,
-            productos: {}
-        };
-        let tasaCOP = 0;
-        let monedaActual = 'USD';
-
-        /**
-         * Muestra un modal con un título y mensaje.
-         * @param {string} title Título del modal.
-         * @param {string} message Mensaje o contenido HTML del modal.
-         * @param {function} onConfirm Callback opcional para el botón de confirmar.
-         * @param {string} confirmText Texto para el botón de confirmación.
-         */
+       
+        // --- FUNCIONES DE UTILIDAD (Compartidas con los módulos) ---
+        
         function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
                     <div class="text-gray-600 mb-6">${message}</div>
                     <div class="space-x-4">
-                        <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-300">Cerrar</button>
-                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">${confirmText}</button>` : ''}
+                        <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cerrar</button>
+                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">${confirmText}</button>` : ''}
                     </div>
                 </div>
             `;
-            document.getElementById('closeModalBtn').addEventListener('click', () => {
-                modalContainer.classList.add('hidden');
-            });
+            document.getElementById('closeModalBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
             if (onConfirm) {
                 document.getElementById('confirmBtn').addEventListener('click', () => {
                     modalContainer.classList.add('hidden');
@@ -227,22 +214,17 @@
             modalContainer.classList.remove('hidden');
         }
 
-        /**
-         * Muestra un modal con un formulario para agregar un nuevo elemento.
-         * @param {string} collectionName Nombre de la colección en Firestore.
-         * @param {string} itemName Nombre del item (ej: 'Rubro').
-         */
         function showAddItemModal(collectionName, itemName) {
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
                     <form id="addItemForm" class="space-y-4">
-                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-                        <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-300">Agregar</button>
+                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
+                        <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg">Agregar</button>
                     </form>
                     <p id="addItemMessage" class="text-sm text-green-600 mt-2 h-4"></p>
                     <div class="mt-4">
-                         <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 transition duration-300">Cerrar</button>
+                         <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg">Cerrar</button>
                     </div>
                 </div>
             `;
@@ -251,9 +233,7 @@
             const newItemInput = document.getElementById('newItemInput');
             const addItemMessage = document.getElementById('addItemMessage');
 
-            document.getElementById('closeItemBtn').addEventListener('click', () => {
-                modalContainer.classList.add('hidden');
-            });
+            document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
 
             document.getElementById('addItemForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -263,22 +243,16 @@
                 try {
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItemName });
                     addItemMessage.textContent = `¡"${newItemName}" agregado!`;
-                    newItemInput.value = ''; // Limpiar el campo de texto
-                    newItemInput.focus();   // Poner el foco de nuevo en el campo
-                    setTimeout(() => { addItemMessage.textContent = ''; }, 2000); // Borrar mensaje después de 2 seg
+                    newItemInput.value = '';
+                    newItemInput.focus();
+                    setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
                 } catch (err) {
-                    console.error(`Error al agregar ${itemName}: `, err);
                     addItemMessage.classList.add('text-red-600');
                     addItemMessage.textContent = `Error al guardar.`;
                 }
             });
         }
-
-        /**
-         * Llena un dropdown con datos de una colección de Firestore.
-         * @param {string} collectionName Nombre de la colección.
-         * @param {string} elementId ID del elemento <select>.
-         */
+        
         function populateDropdown(collectionName, elementId, itemName) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
@@ -294,102 +268,47 @@
             activeListeners.push(unsubscribe);
         }
         
-        /**
-         * Maneja el registro de un nuevo usuario.
-         * @param {Event} e
-         */
+        // --- LÓGICA DE AUTENTICACIÓN Y VISTAS PRINCIPALES ---
+
         async function handleRegister(e) {
             e.preventDefault();
             const email = document.getElementById('registerEmailInput').value;
             const password = document.getElementById('registerPasswordInput').value;
             const confirmPassword = document.getElementById('confirmPasswordInput').value;
             registerMessage.textContent = '';
-
             if (password !== confirmPassword) {
                 registerMessage.textContent = 'Las contraseñas no coinciden.';
                 return;
             }
-
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
-                // El onAuthStateChanged se encargará de redirigir a la vista principal
             } catch (error) {
-                console.error("Error al registrar:", error);
-                switch (error.code) {
-                    case 'auth/email-already-in-use':
-                        registerMessage.textContent = 'Este email ya está en uso.';
-                        break;
-                    case 'auth/invalid-email':
-                        registerMessage.textContent = 'El email no es válido.';
-                        break;
-                    case 'auth/weak-password':
-                        registerMessage.textContent = 'La contraseña es demasiado débil. Debe tener al menos 6 caracteres.';
-                        break;
-                    default:
-                        registerMessage.textContent = 'Error al registrar. Por favor, inténtelo de nuevo.';
-                        break;
-                }
+                registerMessage.textContent = 'Error al registrar. Inténtelo de nuevo.';
             }
         }
 
-
-        /**
-         * Maneja el inicio de sesión del usuario.
-         * @param {Event} e
-         */
         async function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
             const password = document.getElementById('passwordInput').value;
             authMessage.textContent = '';
-
             try {
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (error) {
-                console.error("Error al iniciar sesión:", error);
-                switch (error.code) {
-                    case 'auth/invalid-email':
-                        authMessage.textContent = 'Email inválido.';
-                        break;
-                    case 'auth/user-disabled':
-                        authMessage.textContent = 'El usuario ha sido deshabilitado.';
-                        break;
-                    case 'auth/user-not-found':
-                        authMessage.textContent = 'No existe un usuario con este email.';
-                        break;
-                    case 'auth/wrong-password':
-                        authMessage.textContent = 'Contraseña incorrecta.';
-                        break;
-                    default:
-                        authMessage.textContent = 'Error al iniciar sesión. Por favor, inténtelo de nuevo.';
-                        break;
-                }
+                authMessage.textContent = 'Error al iniciar sesión. Verifique sus credenciales.';
             }
         }
 
-        /**
-         * Cierra la sesión del usuario y limpia los listeners de Firestore.
-         */
         async function handleLogout() {
             cleanupListeners();
-            try {
-                await signOut(auth);
-            } catch (error) {
-                console.error("Error al cerrar sesión:", error);
-            }
+            await signOut(auth);
         }
         
-        /**
-         * Desconecta todos los listeners activos de onSnapshot.
-         */
         function cleanupListeners() {
             activeListeners.forEach(unsubscribe => unsubscribe());
             activeListeners = [];
         }
 
-        /**
-         * Muestra la vista de inicio de sesión.
-         */
         function showLoginView() {
             cleanupListeners();
             floatingControls.classList.add('hidden');
@@ -400,9 +319,6 @@
             authMessage.textContent = '';
         }
 
-        /**
-         * Muestra la vista de registro.
-         */
         function showRegisterView() {
             floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
@@ -412,114 +328,70 @@
             registerMessage.textContent = '';
         }
 
-        /**
-         * Carga todos los datos necesarios para el uso sin conexión.
-         */
         async function preloadAllData() {
-            const collectionsToPreload = [
-                'inventario',
-                'clientes',
-                'ventas',
-                'rubros',
-                'segmentos',
-                'marcas',
-                'sectores'
-            ];
-
-            const preloadPromises = collectionsToPreload.map(colName => {
-                const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${colName}`);
-                return getDocs(collectionRef);
-            });
-
+            const collectionsToPreload = ['inventario', 'clientes', 'ventas', 'rubros', 'segmentos', 'marcas', 'sectores'];
+            const preloadPromises = collectionsToPreload.map(colName => getDocs(collection(db, `artifacts/${appId}/users/${userId}/${colName}`)));
             await Promise.all(preloadPromises);
         }
 
-        /**
-         * Muestra la vista principal de la aplicación.
-         * @param {string} currentUserId
-         */
         async function showMainView(currentUserId) {
             userId = currentUserId;
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
-            
-            // Mostrar pantalla de carga mientras se sincronizan los datos
-            mainContent.innerHTML = `
-                <div class="p-4 flex flex-col items-center justify-center min-h-full">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Sincronizando datos...</h2>
-                        <p class="text-gray-600">Por favor, espera un momento. Estamos preparando la aplicación para su uso sin conexión.</p>
-                    </div>
-                </div>
-            `;
+            mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold">Sincronizando datos...</h2></div></div>`;
             mainContent.classList.remove('hidden');
 
             try {
                 await preloadAllData();
-                console.log("Sincronización inicial completada.");
             } catch (error) {
-                console.error("Error durante la sincronización inicial:", error);
-                showModal('Error de Sincronización', 'No se pudieron cargar todos los datos para el modo sin conexión. La aplicación puede no funcionar correctamente si pierde la conexión.');
+                showModal('Error de Sincronización', 'No se pudieron cargar todos los datos.');
             }
             
-            // Iniciar el listener de estado de conexión
-            const rubrosRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
-            const unsubscribe = onSnapshot(rubrosRef, { includeMetadataChanges: true }, (snapshot) => {
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
                 const statusEl = document.getElementById('connectionStatus');
                 if (!statusEl) return;
-                
-                if (snapshot.metadata.fromCache) {
-                    statusEl.textContent = "SIN CONEXIÓN";
-                    statusEl.className = "text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-yellow-400 text-yellow-900";
-                } else {
-                    statusEl.textContent = "EN LÍNEA";
-                    statusEl.className = "text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-green-400 text-green-900";
-                }
+                statusEl.textContent = snapshot.metadata.fromCache ? "SIN CONEXIÓN" : "EN LÍNEA";
+                statusEl.className = `text-xs font-bold px-3 py-2 rounded-full shadow-lg ${snapshot.metadata.fromCache ? 'bg-yellow-400 text-yellow-900' : 'bg-green-400 text-green-900'}`;
             });
             activeListeners.push(unsubscribe);
 
-            // Inicializar los módulos externos, pasándoles las dependencias que necesitan
+            // Cargar datos globales una vez
+            onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/clientes`), (snapshot) => {
+                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            });
+            onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/inventario`), (snapshot) => {
+                inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            });
+
+            // Inicializar los módulos externos
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch,
-                query, where,
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where,
                 inventario, clientes
             };
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
             window.initSincronizacion(dependencies);
             window.initClientes(dependencies);
+            window.initVentas(dependencies);
 
             showMainMenu();
         }
 
-        /**
-         * Renderiza el menú principal de la aplicación.
-         */
         window.showMainMenu = function() {
-            floatingControls.classList.remove('hidden'); // Mostrar controles flotantes en el menú principal
+            floatingControls.classList.remove('hidden');
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
                             <div class="space-y-4">
-                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                    Inventario
-                                </button>
-                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                    Clientes
-                                </button>
-                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
-                                    Ventas
-                                </button>
-                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition duration-300 transform hover:scale-105">
-                                    Catálogo
-                                </button>
-                                <button id="sincronizacionBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 transition duration-300 transform hover:scale-105">
-                                    Sincronización
-                                </button>
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Inventario</button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
+                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Catálogo</button>
+                                <button id="sincronizacionBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronización</button>
                             </div>
                         </div>
                     </div>
@@ -527,1067 +399,23 @@
             `;
             document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
             document.getElementById('clientesBtn').addEventListener('click', window.showClientesSubMenu);
-            document.getElementById('ventasBtn').addEventListener('click', showVentasView);
+            document.getElementById('ventasBtn').addEventListener('click', window.showVentasView);
             document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
             document.getElementById('sincronizacionBtn').addEventListener('click', window.showSincronizacionView);
         }
 
-        // --- Lógica del módulo de Ventas ---
-
-        /**
-         * Renderiza la vista principal de ventas.
-         */
-        function showVentasView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
-                            <div class="space-y-4">
-                                <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
-                                    Nueva Venta
-                                </button>
-                                <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
-                                    Ventas Totales
-                                </button>
-                                <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
-                                    Volver al Menú Principal
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
-            document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
-            document.getElementById('backToMenuBtn').addEventListener('click', showMainMenu);
-        }
-        
-        /**
-         * Renderiza la vista para iniciar una nueva venta.
-         */
-        function showNuevaVentaView() {
-             floatingControls.classList.add('hidden');
-             monedaActual = 'USD'; // Reset currency view on new sale
-            mainContent.innerHTML = `
-                <div class="p-2 sm:p-4 w-full">
-                    <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
-                        <div id="venta-header-section" class="mb-4">
-                            <div class="flex justify-between items-center mb-4">
-                                <h2 class="text-xl font-bold text-gray-800">Nueva Venta</h2>
-                                <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                    Volver
-                                </button>
-                            </div>
-                            <div id="client-search-container">
-                                <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
-                                <div class="relative">
-                                    <input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
-                                    <div id="clienteDropdown" class="autocomplete-list hidden"></div>
-                                </div>
-                            </div>
-                            <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-4">
-                                <p class="text-gray-700 flex-grow"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
-                                <div id="tasaCopContainer" class="flex items-center space-x-2">
-                                     <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">Tasa (USD/COP):</label>
-                                    <input type="number" id="tasaCopInput" placeholder="Ej: 4000" class="w-28 px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
-                             <div class="flex justify-between items-center mb-2">
-                                <h3 class="text-lg font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD/COP)</span></h3>
-                                 <div id="rubro-filter-container" class="w-1/2">
-                                    <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm">
-                                        <option value="">Todos los Rubros</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="overflow-auto flex-grow rounded-lg shadow">
-                                <table class="min-w-full bg-white">
-                                    <thead class="bg-gray-200 sticky top-0">
-                                        <tr class="text-gray-700 uppercase text-xs leading-normal">
-                                            <th class="py-2 px-1 text-center">Cant.</th>
-                                            <th class="py-2 px-2 text-left">Producto</th>
-                                            <th class="py-2 px-2 text-left">Marca</th>
-                                            <th class="py-2 px-2 text-left price-toggle" onclick="window.toggleMoneda()">Precio</th>
-                                            <th class="py-2 px-1 text-center">Stock</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="inventarioTableBody" class="text-gray-600 text-sm font-light">
-                                        <!-- Filas de productos se insertarán aquí -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <div id="venta-footer-section" class="mt-4 flex items-center justify-between hidden">
-                            <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
-                             <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300">
-                                Generar Ticket
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            const clienteSearchInput = document.getElementById('clienteSearch');
-            const clienteDropdown = document.getElementById('clienteDropdown');
-
-            // Cargar la tasa guardada al mostrar la vista
-            const savedTasa = localStorage.getItem('tasaCOP');
-            if (savedTasa) {
-                tasaCOP = parseFloat(savedTasa);
-                document.getElementById('tasaCopInput').value = tasaCOP;
-            }
-
-            // Listener para el input de búsqueda de clientes
-            clienteSearchInput.addEventListener('input', () => {
-                const searchTerm = clienteSearchInput.value.toLowerCase();
-                const filteredClients = clientes.filter(c =>
-                    c.nombreComercial.toLowerCase().includes(searchTerm) ||
-                    c.nombrePersonal.toLowerCase().includes(searchTerm)
-                );
-                renderClienteDropdown(filteredClients);
-                clienteDropdown.classList.remove('hidden');
-            });
-
-            document.getElementById('tasaCopInput').addEventListener('input', (e) => {
-                const value = parseFloat(e.target.value);
-                tasaCOP = isNaN(value) ? 0 : value;
-                localStorage.setItem('tasaCOP', tasaCOP); // Guardar la nueva tasa
-                renderVentasInventario(); // Re-renderizar para actualizar precios si la vista es COP
-            });
-
-            // Listener para ocultar el dropdown cuando se hace clic fuera
-            document.addEventListener('click', (event) => {
-                if (!clienteSearchInput.contains(event.target) && !clienteDropdown.contains(event.target)) {
-                    clienteDropdown.classList.add('hidden');
-                }
-            });
-            
-            document.getElementById('rubroFilter').addEventListener('change', () => {
-                 renderVentasInventario();
-            });
-
-            // Listener para el botón "Generar Ticket"
-            document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
-            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-
-            // Cargar datos al entrar en la vista
-            loadClientesAndInventario();
-        }
-
-        /**
-         * Carga los datos de clientes e inventario desde Firestore.
-         */
-        function loadClientesAndInventario() {
-            const clientesRef = collection(db, `artifacts/${appId}/users/${userId}/clientes`);
-            const unsubscribeClientes = onSnapshot(clientesRef, (snapshot) => {
-                clientes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            });
-            activeListeners.push(unsubscribeClientes);
-
-            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-            const unsubscribeInventario = onSnapshot(inventarioRef, (snapshot) => {
-                inventario = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                 populateRubroFilter();
-                renderVentasInventario();
-            });
-            activeListeners.push(unsubscribeInventario);
-        }
-
-        function populateRubroFilter() {
-            const rubroFilter = document.getElementById('rubroFilter');
-            if(!rubroFilter) return;
-
-            const rubros = [...new Set(inventario.map(p => p.rubro))].sort();
-            rubroFilter.innerHTML = '<option value="">Todos los Rubros</option>';
-            rubros.forEach(rubro => {
-                 rubroFilter.innerHTML += `<option value="${rubro}">${rubro}</option>`;
-            });
-        }
-        
-        /**
-         * Renderiza el dropdown de clientes.
-         * @param {Array<Object>} filteredClients Clientes a mostrar.
-         */
-        function renderClienteDropdown(filteredClients) {
-            const clienteDropdown = document.getElementById('clienteDropdown');
-            clienteDropdown.innerHTML = '';
-            filteredClients.forEach(cliente => {
-                const item = document.createElement('div');
-                item.classList.add('autocomplete-item');
-                item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
-                item.dataset.clienteId = cliente.id;
-                item.addEventListener('click', () => selectCliente(cliente));
-                clienteDropdown.appendChild(item);
-            });
-        }
-
-        /**
-         * Selecciona un cliente y muestra la tabla de inventario.
-         * @param {Object} cliente El cliente seleccionado.
-         */
-        function selectCliente(cliente) {
-            ventaActual.cliente = cliente;
-            document.getElementById('client-search-container').classList.add('hidden');
-            const clientDisplay = document.getElementById('client-display-container');
-            document.getElementById('selected-client-name').textContent = cliente.nombreComercial;
-            clientDisplay.classList.remove('hidden');
-            document.getElementById('inventarioTableContainer').classList.remove('hidden');
-            document.getElementById('venta-footer-section').classList.remove('hidden');
-        }
-        
-        /**
-         * Cambia la moneda de visualización entre USD y COP.
-         */
-        window.toggleMoneda = function() {
-            if (tasaCOP <= 0) {
-                showModal('Aviso', 'Por favor, ingresa una tasa de cambio válida para COP antes de cambiar la moneda.');
-                return;
-            }
-            monedaActual = monedaActual === 'USD' ? 'COP' : 'USD';
-            renderVentasInventario();
-            updateVentaTotal();
-        }
-
-        /**
-         * Renderiza la tabla de inventario para la vista de ventas.
-         */
-        function renderVentasInventario() {
-            const inventarioTableBody = document.getElementById('inventarioTableBody');
-            const monedaIndicator = document.getElementById('monedaIndicator');
-            const rubroFilter = document.getElementById('rubroFilter');
-
-            if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
-            inventarioTableBody.innerHTML = '';
-
-            monedaIndicator.textContent = `(${monedaActual})`;
-            
-            const selectedRubro = rubroFilter.value;
-            const inventarioConStock = inventario.filter(p => p.cantidad > 0);
-            const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
-
-            // Agrupar productos por marca
-            const productosAgrupados = filteredInventario.reduce((acc, p) => {
-                if (!acc[p.marca]) {
-                    acc[p.marca] = [];
-                }
-                acc[p.marca].push(p);
-                return acc;
-            }, {});
-
-            // Ordenar las marcas alfabéticamente
-            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
-
-            if (marcasOrdenadas.length === 0) {
-                inventarioTableBody.innerHTML = `<tr><td colspan="5" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
-                return;
-            }
-
-            // Renderizar la tabla con cabeceras de marca
-            marcasOrdenadas.forEach(marca => {
-                // Fila de cabecera para la marca
-                const marcaRow = document.createElement('tr');
-                marcaRow.innerHTML = `<td colspan="5" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td>`;
-                inventarioTableBody.appendChild(marcaRow);
-
-                // Filas de productos para esa marca
-                productosAgrupados[marca].forEach(producto => {
-                    const row = document.createElement('tr');
-                    row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
-
-                    let precioMostrado;
-                    if (monedaActual === 'COP') {
-                        const precioConvertido = producto.precio * tasaCOP;
-                        const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
-                        precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
-                    } else {
-                        precioMostrado = `$${producto.precio.toFixed(2)}`;
-                    }
-
-                    row.innerHTML = `
-                        <td class="py-2 px-1 text-center">
-                            <input type="number" min="0" max="${producto.cantidad}" value="${ventaActual.productos[producto.id]?.cantidadVendida || 0}"
-                                   class="w-16 p-1 text-center border rounded-lg" data-product-id="${producto.id}"
-                                   oninput="updateVentaCantidad(event)">
-                        </td>
-                        <td class="py-2 px-4 text-left whitespace-nowrap">${producto.presentacion} (${producto.segmento})</td>
-                        <td class="py-2 px-4 text-left">${producto.marca}</td>
-                        <td class="py-2 px-4 text-left price-toggle" onclick="window.toggleMoneda()">${precioMostrado}</td>
-                        <td class="py-2 px-2 text-center">${producto.cantidad}</td>
-                    `;
-                    inventarioTableBody.appendChild(row);
-                });
-            });
-        }
-
-        /**
-         * Actualiza la cantidad de un producto en la venta actual y recalcula el total.
-         * @param {Event} event
-         */
-        window.updateVentaCantidad = function(event) {
-            const input = event.target;
-            const productId = input.dataset.productId;
-            const cantidad = parseInt(input.value, 10);
-            
-            if (cantidad > 0) {
-                const producto = inventario.find(p => p.id === productId);
-                if (producto) {
-                    ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidad };
-                }
-            } else {
-                delete ventaActual.productos[productId];
-            }
-            updateVentaTotal();
-        };
-
-        /**
-         * Calcula y muestra el total de la venta actual.
-         */
-        function updateVentaTotal() {
-            const totalElement = document.getElementById('ventaTotal');
-            if (!totalElement) return;
-
-            let total = 0;
-            for (const id in ventaActual.productos) {
-                const p = ventaActual.productos[id];
-                total += p.precio * p.cantidadVendida;
-            }
-            
-            if (monedaActual === 'COP') {
-                const totalConvertido = total * tasaCOP;
-                const totalRedondeado = Math.ceil(totalConvertido / 100) * 100;
-                totalElement.textContent = `Total: COP ${totalRedondeado.toLocaleString('es-CO')}`;
-            } else {
-                totalElement.textContent = `Total: $${total.toFixed(2)}`;
-            }
-        }
-
-        /**
-         * Maneja la generación y compartición de la imagen del ticket.
-         * @param {Object} ventaParaTicket - Los datos de la venta.
-         * @param {Array} productosParaTicket - Los productos de la venta.
-         */
-        async function handleShareTicket(ventaParaTicket, productosParaTicket) {
-            showModal('Progreso', 'Generando imagen del ticket...');
-
-            const ticketHTML = `
-                <div id="temp-ticket-for-image" class="bg-white p-4 uppercase-ticket" style="width: 302px; font-family: 'Inter', sans-serif;">
-                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
-                    <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
-                    <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
-                    <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
-                    <table class="w-full text-sm mt-4">
-                        <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
-                        <tbody>
-                            ${productosParaTicket.map(p => `
-                                <tr>
-                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td class="py-1 text-center">${p.cantidadVendida}</td>
-                                    <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
-                                </tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <div class="mt-4 text-right font-bold text-lg">TOTAL: $${productosParaTicket.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0).toFixed(2)}</div>
-                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${ventaParaTicket.cliente.nombrePersonal}</p></div>
-                </div>
-            `;
-            
-            const tempDiv = document.createElement('div');
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px';
-            tempDiv.innerHTML = ticketHTML;
-            document.body.appendChild(tempDiv);
-            
-            try {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                const canvas = await html2canvas(document.getElementById('temp-ticket-for-image'), { scale: 3 });
-                
-                canvas.toBlob(async (blob) => {
-                    if (navigator.share && blob) {
-                        try {
-                            await navigator.share({
-                                files: [new File([blob], "ticket.png", { type: "image/png" })],
-                                title: "Ticket de Venta",
-                            });
-                        } catch (err) {
-                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
-                        }
-                    } else {
-                         showModal('Error', 'La función de compartir no está disponible en este navegador.');
-                    }
-                }, 'image/png');
-            } catch(e) {
-                showModal('Error', 'No se pudo generar la imagen del ticket.');
-            } finally {
-                document.body.removeChild(tempDiv);
-                modalContainer.classList.add('hidden');
-                ventaActual.cliente = null;
-                ventaActual.productos = {};
-                showNuevaVentaView();
-            }
-        }
-
-        /**
-         * Genera un ticket de venta y lo guarda en Firestore.
-         */
-        async function generarTicket() {
-            if (!ventaActual.cliente) {
-                showModal('Error', 'Debe seleccionar un cliente para generar el ticket.');
-                return;
-            }
-            const productosVendidos = Object.values(ventaActual.productos);
-            if (productosVendidos.length === 0) {
-                showModal('Error', 'Debe seleccionar al menos un producto para vender.');
-                return;
-            }
-
-            // Muestra un modal de confirmación antes de guardar
-            showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
-                try {
-                    const isOnline = document.getElementById('connectionStatus')?.textContent === 'EN LÍNEA';
-                    
-                    const ventaParaTicket = { ...ventaActual };
-                    const productosParaTicket = [...productosVendidos];
-
-                    if (isOnline) {
-                        await runTransaction(db, async (transaction) => {
-                            const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
-                            let totalVenta = 0;
-                            const itemsVenta = [];
-                            const stockUpdates = [];
-
-                            for (const p of productosVendidos) {
-                                const productoRef = doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id);
-                                const productoDoc = await transaction.get(productoRef);
-
-                                if (!productoDoc.exists()) throw new Error(`El producto "${p.presentacion}" ya no existe.`);
-                                
-                                const stockActual = productoDoc.data().cantidad;
-                                if (stockActual < p.cantidadVendida) throw new Error(`Stock insuficiente para ${p.presentacion}.`);
-                                
-                                stockUpdates.push({ ref: productoRef, nuevaCantidad: stockActual - p.cantidadVendida });
-
-                                totalVenta += p.precio * p.cantidadVendida;
-                                itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva });
-                            }
-
-                            transaction.set(ventaRef, { clienteId: ventaActual.cliente.id, clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
-                            stockUpdates.forEach(update => transaction.update(update.ref, { cantidad: update.nuevaCantidad }));
-                        });
-                    } else {
-                        // Lógica sin conexión
-                        const batch = writeBatch(db);
-                        const ventaRef = doc(collection(db, `artifacts/${appId}/users/${userId}/ventas`));
-                        let totalVenta = 0;
-                        const itemsVenta = [];
-
-                        for (const p of productosVendidos) {
-                             const productoInventario = inventario.find(item => item.id === p.id);
-                             if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) throw new Error(`Stock insuficiente para: ${p.presentacion}.`);
-                             
-                             batch.update(doc(db, `artifacts/${appId}/users/${userId}/inventario`, p.id), { cantidad: productoInventario.cantidad - p.cantidadVendida });
-                            
-                            totalVenta += p.precio * p.cantidadVendida;
-                            itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva });
-                        }
-
-                        batch.set(ventaRef, { clienteId: ventaActual.cliente.id, clienteNombre: ventaActual.cliente.nombreComercial || ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
-                        await batch.commit();
-                    }
-
-                    // Después de guardar la venta, generar y compartir la imagen.
-                    await handleShareTicket(ventaParaTicket, productosParaTicket);
-
-                } catch (e) {
-                    console.error("Error al generar el ticket: ", e);
-                    showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
-                }
-            });
-        }
-
-        /**
-         * Renderiza la vista de ventas totales.
-         */
-        function showVentasTotalesView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
-                            <div class="space-y-4">
-                                <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300">
-                                    Ventas Actuales
-                                </button>
-                                <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
-                                    Cierre de Ventas
-                                </button>
-                            </div>
-                            <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('ventasActualesBtn').addEventListener('click', showVentasActualesView);
-            document.getElementById('cierreVentasBtn').addEventListener('click', showCierreSubMenuView);
-            document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-        }
-
-        /**
-         * Muestra el submenú de opciones para el cierre de ventas.
-         */
-        function showCierreSubMenuView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6">Opciones de Cierre</h2>
-                            <div class="space-y-4">
-                                <button id="verCierreBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300">
-                                    Ver Cierre (Vista Previa)
-                                </button>
-                                <button id="realizarCierreBtn" class="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-300">
-                                    Realizar Cierre Definitivo
-                                </button>
-                            </div>
-                            <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('verCierreBtn').addEventListener('click', showVerCierreView);
-            document.getElementById('realizarCierreBtn').addEventListener('click', handleCierreDeVentas);
-            document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
-        }
-
-        /**
-         * Muestra una vista previa del reporte de cierre de ventas.
-         */
-        async function showVerCierreView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Vista Previa de Cierre de Ventas</h2>
-                            <div id="cierreContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Generando vista previa...</p>
-                            </div>
-                            <div id="cierreActions" class="mt-6 text-center"></div>
-                            <button id="backToCierreSubMenuBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToCierreSubMenuBtn').addEventListener('click', showCierreSubMenuView);
-
-            const container = document.getElementById('cierreContainer');
-            const actionsContainer = document.getElementById('cierreActions');
-            try {
-                const closingData = await getClosingData();
-
-                if (!closingData) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay ventas para mostrar en el cierre.</p>`;
-                    return;
-                }
-
-                const reportHTML = generateClosingReportHTML(closingData);
-                container.innerHTML = reportHTML;
-
-                actionsContainer.innerHTML = `<button id="generateCierreImageBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Imagen y Compartir</button>`;
-                document.getElementById('generateCierreImageBtn').addEventListener('click', handleGenerateCierreImage);
-
-            } catch (error) {
-                console.error("Error al generar la vista previa del cierre: ", error);
-                container.innerHTML = `<p class="text-red-500 text-center">Ocurrió un error al generar la vista previa.</p>`;
-            }
-        }
-
-        /**
-         * Muestra la vista con la lista de todas las ventas actuales.
-         */
-        function showVentasActualesView() {
-             floatingControls.classList.add('hidden');
-            mainContent.innerHTML = `
-                <div class="p-4 pt-8">
-                    <div class="container mx-auto">
-                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ventas Actuales</h2>
-                            <div id="ventasListContainer" class="overflow-x-auto">
-                                <p class="text-gray-500 text-center">Cargando ventas...</p>
-                            </div>
-                            <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
-            renderVentasList();
-        }
-
-        /**
-         * Renderiza la lista de ventas en el DOM en formato de tabla.
-         */
-        function renderVentasList() {
-            const container = document.getElementById('ventasListContainer');
-            if (!container) return;
-
-            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
-            const unsubscribe = onSnapshot(ventasRef, (snapshot) => {
-                ventasGlobal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                ventasGlobal.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
-
-                if (ventasGlobal.length === 0) {
-                    container.innerHTML = `<p class="text-gray-500 text-center">No hay ventas registradas.</p>`;
-                    return;
-                }
-
-                let tableHTML = `
-                    <table class="min-w-full bg-white border border-gray-200">
-                        <thead class="bg-gray-200">
-                            <tr>
-                                <th class="py-2 px-4 border-b text-left">Cliente</th>
-                                <th class="py-2 px-4 border-b text-left">Fecha</th>
-                                <th class="py-2 px-4 border-b text-left">Total</th>
-                                <th class="py-2 px-4 border-b text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-
-                ventasGlobal.forEach(venta => {
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b">${venta.clienteNombre}</td>
-                            <td class="py-2 px-4 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
-                            <td class="py-2 px-4 border-b font-semibold">$${venta.total.toFixed(2)}</td>
-                            <td class="py-2 px-4 border-b text-center space-x-1">
-                                <button onclick="window.shareSaleTicket('${venta.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
-                                <button onclick="window.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">F.F.</button>
-                            </td>
-                        </tr>
-                    `;
-                });
-
-                tableHTML += `</tbody></table>`;
-                container.innerHTML = tableHTML;
-            });
-            activeListeners.push(unsubscribe);
-        }
-        
-        /**
-         * Genera y comparte una imagen del ticket de una venta histórica.
-         * @param {string} ventaId El ID de la venta a compartir.
-         */
-        window.shareSaleTicket = async function(ventaId) {
-            const venta = ventasGlobal.find(v => v.id === ventaId);
-            if (!venta) {
-                showModal('Error', 'No se encontraron los datos de la venta seleccionada.');
-                return;
-            }
-
-            const clienteInfo = await getDoc(doc(db, `artifacts/${appId}/users/${userId}/clientes`, venta.clienteId));
-            if (!clienteInfo.exists()) {
-                showModal('Error', 'No se pudo encontrar el cliente asociado a esta venta.');
-                return;
-            }
-            const cliente = clienteInfo.data();
-            
-            const ticketHTML = `
-                <div id="temp-ticket-for-image" class="bg-white p-4 uppercase-ticket" style="width: 302px; font-family: 'Inter', sans-serif;">
-                    <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
-                    <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
-                    <p class="text-sm">FECHA: ${venta.fecha.toDate().toLocaleDateString('es-ES')}</p>
-                    <p class="text-sm mb-4">CLIENTE: ${venta.clienteNombre}</p>
-                    <table class="w-full text-sm mt-4">
-                        <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
-                        <tbody>
-                            ${venta.productos.map(p => `
-                                <tr>
-                                    <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td class="py-1 text-center">${p.cantidad}</td>
-                                    <td class="py-1 text-right">$${(p.cantidad * p.precio).toFixed(2)}</td>
-                                </tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <div class="mt-4 text-right font-bold text-lg">TOTAL: $${venta.total.toFixed(2)}</div>
-                    <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${cliente.nombrePersonal}</p></div>
-                </div>
-            `;
-            
-            const tempDiv = document.createElement('div');
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px';
-            tempDiv.innerHTML = ticketHTML;
-            document.body.appendChild(tempDiv);
-            
-            showModal('Progreso', 'Generando imagen del ticket...');
-
-            try {
-                await new Promise(resolve => setTimeout(resolve, 100));
-                const canvas = await html2canvas(document.getElementById('temp-ticket-for-image'), { scale: 3 }); // Calidad mejorada
-                document.body.removeChild(tempDiv);
-                canvas.toBlob(async (blob) => {
-                    if (navigator.share && blob) {
-                        try {
-                            await navigator.share({
-                                files: [new File([blob], "ticket_venta.png", { type: "image/png" })],
-                                title: "Ticket de Venta",
-                            });
-                            modalContainer.classList.add('hidden');
-                        } catch (err) {
-                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir el ticket.');
-                        }
-                    } else {
-                         showModal('Error', 'La función de compartir no está disponible.');
-                    }
-                }, 'image/png');
-            } catch(e) {
-                document.body.removeChild(tempDiv);
-                showModal('Error', 'No se pudo generar la imagen del ticket.');
-            }
-        };
-
-        window.mostrarFactura = (ventaId) => {
-            const venta = ventasGlobal.find(v => v.id === ventaId);
-            if (venta) {
-                showFacturaFiscal(venta);
-            }
-        };
-
-        async function showFacturaFiscal(venta) {
-            let subTotal = 0;
-            let ivaTotal = 0;
-
-            venta.productos.forEach(p => {
-                const valorTotalProducto = p.cantidad * p.precio;
-                if (p.iva === 16) {
-                    const base = valorTotalProducto / 1.16;
-                    subTotal += base;
-                    ivaTotal += valorTotalProducto - base;
-                } else { // Excento
-                    subTotal += valorTotalProducto;
-                }
-            });
-
-            const facturaHTML = `
-                <div id="factura-content" class="bg-white p-4 text-black text-sm font-mono uppercase">
-                    <h4 class="text-lg font-bold text-center mb-4">FACTURA FISCAL</h4>
-                    <p><strong>CLIENTE:</strong> ${venta.clienteNombre}</p>
-                    <p><strong>FECHA:</strong> ${venta.fecha.toDate().toLocaleDateString('es-ES')}</p>
-                    <hr class="my-2 border-black border-dashed">
-                    <table class="w-full">
-                        <thead>
-                            <tr>
-                                <th class="text-left">CANT</th>
-                                <th class="text-left">DESCRIPCION</th>
-                                <th class="text-right">P. UNIT.</th>
-                                <th class="text-right">VALOR</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${venta.productos.map(p => {
-                                const precioUnitario = p.iva === 16 ? p.precio / 1.16 : p.precio;
-                                const valor = p.cantidad * precioUnitario;
-                                return `
-                                <tr>
-                                    <td>${p.cantidad}</td>
-                                    <td>${p.segmento} ${p.marca} ${p.presentacion}</td>
-                                    <td class="text-right">$${precioUnitario.toFixed(2)}</td>
-                                    <td class="text-right">$${valor.toFixed(2)}</td>
-                                </tr>
-                            `}).join('')}
-                        </tbody>
-                    </table>
-                    <hr class="my-2 border-black border-dashed">
-                    <div class="text-right">
-                        <p><strong>SUB-TOTAL:</strong> $${subTotal.toFixed(2)}</p>
-                        <p><strong>IVA 16%:</strong> $${ivaTotal.toFixed(2)}</p>
-                        <p class="font-bold text-lg"><strong>TOTAL:</strong> $${venta.total.toFixed(2)}</p>
-                    </div>
-                </div>
-                <div class="mt-4 flex justify-center">
-                    <button id="shareFacturaBtn" class="px-4 py-2 bg-green-500 text-white rounded-lg">Compartir Factura</button>
-                </div>
-            `;
-            showModal('Factura Fiscal', facturaHTML);
-            
-            document.getElementById('shareFacturaBtn').addEventListener('click', async () => {
-                const facturaElement = document.getElementById('factura-content');
-                const shareButton = document.getElementById('shareFacturaBtn');
-                shareButton.textContent = 'Generando...';
-                shareButton.disabled = true;
-
-                try {
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Pausa para renderizar
-                    const canvas = await html2canvas(facturaElement, { scale: 3 }); // Calidad de imagen mejorada
-                    canvas.toBlob(async (blob) => {
-                         if (navigator.share && blob) {
-                            try {
-                                await navigator.share({
-                                    files: [new File([blob], "factura.png", { type: "image/png" })],
-                                    title: "Factura Fiscal",
-                                });
-                            } catch (err) {
-                                if (err.name !== 'AbortError') {
-                                    showModal('Error', 'No se pudo compartir la factura.');
-                                }
-                            }
-                        } else {
-                            showModal('Error', 'La función de compartir no está disponible.');
-                        }
-                    }, 'image/png');
-                } catch(e) {
-                    showModal('Error', 'No se pudo generar la imagen de la factura.');
-                } finally {
-                    shareButton.textContent = 'Compartir Factura';
-                    shareButton.disabled = false;
-                }
-            });
-        }
-
-
-        /**
-         * Obtiene y procesa los datos necesarios para el cierre de ventas.
-         * @returns {Object|null} Un objeto con los datos del cierre o null si no hay ventas.
-         */
-        async function getClosingData() {
-            // Obtener todas las ventas y todos los productos del inventario
-            const ventasRef = collection(db, `artifacts/${appId}/users/${userId}/ventas`);
-            const inventarioRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
-
-            const [ventasSnapshot, inventarioSnapshot] = await Promise.all([
-                getDocs(ventasRef),
-                getDocs(inventarioRef)
-            ]);
-            
-            const ventas = ventasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            if (ventas.length === 0) {
-                return null;
-            }
-            
-            // Crear una lista maestra de productos para las columnas
-            const productosMaestros = inventarioSnapshot.docs.map(doc => {
-                const data = doc.data();
-                return `${data.segmento} ${data.marca} ${data.presentacion}`;
-            }).sort();
-
-            // Mapear productos a índices para un acceso rápido
-            const productoIndexMap = new Map(productosMaestros.map((p, i) => [p, i]));
-
-            const columnTotals = new Array(productosMaestros.length).fill(0);
-            let grandTotal = 0;
-
-            const header = ['Fecha', 'Cliente', ...productosMaestros, 'Total'];
-            
-            const rows = ventas.map(venta => {
-                const rowData = new Array(productosMaestros.length).fill(0);
-                venta.productos.forEach(p => {
-                    const productoNombreCompleto = `${p.segmento} ${p.marca} ${p.presentacion}`;
-                    const index = productoIndexMap.get(productoNombreCompleto);
-                    if (index !== undefined) {
-                        rowData[index] = p.cantidad;
-                        columnTotals[index] += p.cantidad;
-                    }
-                });
-                grandTotal += venta.total;
-                
-                return {
-                    fecha: venta.fecha.toDate().toLocaleDateString('es-ES'),
-                    cliente: venta.clienteNombre,
-                    cantidades: rowData,
-                    total: venta.total.toFixed(2)
-                };
-            });
-            
-            const totalRow = {
-                label: 'Total',
-                cantidades: columnTotals,
-                total: grandTotal.toFixed(2)
-            };
-            
-            return { header, rows, totalRow, ventasSnapshot };
-        }
-        
-        /**
-         * Genera el HTML para el reporte de cierre (para imagen y vista previa).
-         */
-        function generateClosingReportHTML(closingData) {
-            const { header, rows, totalRow } = closingData;
-            
-            const productHeaders = header.slice(2, -1).map(name => `<th style="padding: 4px; border: 1px solid #ddd; font-size: 10px; word-break: break-word; vertical-align: bottom; text-align: left;">${name}</th>`).join('');
-
-            let tableHTML = `
-                <div id="cierre-report-for-image" style="width: 1280px; background: white; padding: 20px; font-family: 'Inter', sans-serif;">
-                    <h2 style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 16px;">CIERRE DE VENTAS</h2>
-                    <p style="text-align: center; font-size: 16px; margin-bottom: 24px;">FECHA DEL CIERRE: ${new Date().toLocaleDateString('es-ES')}</p>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                        <thead style="background-color: #f2f2f2;">
-                            <tr>
-                                <th style="padding: 4px; border: 1px solid #ddd; text-align: left;">Fecha</th>
-                                <th style="padding: 4px; border: 1px solid #ddd; text-align: left;">Cliente</th>
-                                ${productHeaders}
-                                <th style="padding: 4px; border: 1px solid #ddd; text-align: right;">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-            
-            rows.forEach(row => {
-                const cantidadesHTML = row.cantidades.map(cant => `<td style="padding: 4px; border: 1px solid #ddd; text-align: center;">${cant}</td>`).join('');
-                tableHTML += `
-                    <tr>
-                        <td style="padding: 4px; border: 1px solid #ddd; white-space: nowrap;">${row.fecha}</td>
-                        <td style="padding: 4px; border: 1px solid #ddd; max-width: 120px; word-break: break-word; font-size: 10px;">${row.cliente}</td>
-                        ${cantidadesHTML}
-                        <td style="padding: 4px; border: 1px solid #ddd; text-align: right; font-weight: bold;">$${row.total}</td>
-                    </tr>
-                `;
-            });
-            
-            const totalesCantHTML = totalRow.cantidades.map(cant => `<td style="padding: 4px; border: 1px solid #ddd; text-align: center; font-weight: bold;">${cant}</td>`).join('');
-            tableHTML += `
-                <tr style="background-color: #f2f2f2; font-weight: bold;">
-                    <td style="padding: 4px; border: 1px solid #ddd;" colspan="2">${totalRow.label}</td>
-                    ${totalesCantHTML}
-                    <td style="padding: 4px; border: 1px solid #ddd; text-align: right; font-size: 14px;">$${totalRow.total}</td>
-                </tr>
-            `;
-
-            tableHTML += `</tbody></table></div>`;
-            return tableHTML;
-        }
-
-        /**
-         * Maneja la generación de la imagen del cierre de ventas desde la vista previa.
-         */
-        async function handleGenerateCierreImage() {
-            const reportElement = document.getElementById('cierre-report-for-image');
-            if (!reportElement) {
-                showModal('Error', 'No se encontró el reporte para generar la imagen.');
-                return;
-            }
-
-            const shareButton = document.getElementById('generateCierreImageBtn');
-            shareButton.textContent = 'Generando...';
-            shareButton.disabled = true;
-
-            try {
-                await new Promise(resolve => setTimeout(resolve, 300));
-                const canvas = await html2canvas(reportElement, { scale: 3, useCORS: true }); // Calidad de imagen mejorada
-                canvas.toBlob(async (blob) => {
-                    if (navigator.share && blob) {
-                        try {
-                            await navigator.share({
-                                files: [new File([blob], "cierre_de_ventas.png", { type: "image/png" })],
-                                title: "Reporte de Cierre de Ventas",
-                            });
-                        } catch (err) {
-                            if (err.name !== 'AbortError') showModal('Error', 'No se pudo compartir la imagen del reporte.');
-                        }
-                    } else {
-                        showModal('No Soportado', 'La función para compartir no está disponible en este navegador.');
-                    }
-                }, 'image/png');
-            } catch (error) {
-                console.error("Error al generar la imagen del cierre: ", error);
-                showModal('Error', `Ocurrió un error al generar la imagen: ${error.message}`);
-            } finally {
-                shareButton.textContent = 'Generar Imagen y Compartir';
-                shareButton.disabled = false;
-            }
-        }
-
-
-        /**
-         * Maneja el proceso de cierre de ventas: genera un CSV y borra los datos.
-         */
-        async function handleCierreDeVentas() {
-            showModal('Confirmar Cierre Definitivo', '<p>Esta acción generará un archivo CSV de respaldo y luego <strong>eliminará permanentemente</strong> todas las ventas.</p><p class="mt-2 font-bold text-red-600">Esta acción no se puede deshacer. ¿Estás seguro?</p>', async () => {
-                
-                try {
-                    const closingData = await getClosingData();
-
-                    if (!closingData) {
-                        showModal('Aviso', 'No hay ventas para cerrar.');
-                        showCierreSubMenuView();
-                        return;
-                    }
-                    
-                    showModal('Progreso', 'Generando archivo CSV y finalizando...');
-
-                    const { header, rows, totalRow, ventasSnapshot } = closingData;
-                    
-                    const csvRows = rows.map(row => [`"${row.fecha}"`, `"${row.cliente.replace(/"/g, '""')}"`, ...row.cantidades, row.total]);
-                    const csvTotalRow = ['Total', '', ...totalRow.cantidades, totalRow.total];
-                    const csvContent = [header, ...csvRows, csvTotalRow].map(e => e.join(",")).join("\n");
-                    
-                    const csvBlob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(csvBlob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `cierre_ventas_${new Date().toISOString().slice(0, 10)}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    
-                    const batch = writeBatch(db);
-                    ventasSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-                    await batch.commit();
-                    
-                    showModal('Éxito', 'El cierre de ventas se completó. Se ha descargado el CSV y eliminado los registros de ventas.');
-                    showCierreSubMenuView();
-
-                } catch (error) {
-                    console.error("Error durante el cierre de ventas: ", error);
-                    showModal('Error', `Ocurrió un error durante el proceso de cierre. No se eliminó ninguna venta. Detalle: ${error.message}`);
-                    showCierreSubMenuView();
-                }
-            });
-        }
-
-
-        /**
-         * Inicia Firebase y establece los oyentes de estado de autenticación.
-         */
+        // --- INICIALIZACIÓN DE LA APP ---
         async function initializeAppAndListeners() {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
             setLogLevel('debug');
-
             try {
                 await enableIndexedDbPersistence(db);
-                console.log("Persistencia sin conexión habilitada.");
             } catch (err) {
-                if (err.code == 'failed-precondition') {
-                    console.warn("Múltiples pestañas abiertas, la persistencia sin conexión solo se puede habilitar en una.");
-                } else if (err.code == 'unimplemented') {
-                    console.warn("El navegador actual no soporta la persistencia sin conexión.");
-                }
+                console.warn("Error al habilitar la persistencia:", err.code);
             }
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    showMainView(user.uid);
-                } else {
-                    showLoginView();
-                }
-            });
+            onAuthStateChanged(auth, (user) => user ? showMainView(user.uid) : showLoginView());
         }
 
         window.addEventListener('load', async () => {
@@ -1595,26 +423,15 @@
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
             document.getElementById('logoutBtn').addEventListener('click', () => {
-                showModal(
-                    'Confirmar Cierre de Sesión', 
-                    '¿Estás seguro de que deseas cerrar la sesión?',
-                    handleLogout,
-                    'Confirmar'
-                );
+                showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Confirmar');
             });
-             // Listeners para cambiar entre login y registro
             document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
             document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
 
-            // Registrar el Service Worker
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('service-worker.js')
-                    .then(registration => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    })
-                    .catch(err => {
-                        console.log('ServiceWorker registration failed: ', err);
-                    });
+                    .then(reg => console.log('ServiceWorker registrado'))
+                    .catch(err => console.log('ServiceWorker falló', err));
             }
         });
     </script>
