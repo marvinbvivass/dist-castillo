@@ -299,6 +299,7 @@
      */
     function updateVentaTotal() {
         const totalEl = document.getElementById('ventaTotal');
+        if(!totalEl) return;
         let total = Object.values(_ventaActual.productos).reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
         totalEl.textContent = _monedaActual === 'COP' ? `Total: COP ${(Math.ceil((total * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}` : `Total: $${total.toFixed(2)}`;
     }
@@ -307,14 +308,121 @@
      * Maneja la generación y compartición de la imagen del ticket.
      */
     async function handleShareTicket(ventaParaTicket, productosParaTicket) {
-        // ... (Implementación completa)
+        _showModal('Progreso', 'Generando imagen del ticket...');
+        const ticketHTML = `
+            <div id="temp-ticket-for-image" class="bg-white p-4 uppercase-ticket" style="width: 302px; font-family: 'Inter', sans-serif;">
+                <h4 class="text-xl font-bold text-center mb-2">TICKET DE VENTA</h4>
+                <h3 class="text-lg font-bold text-center mb-2">DISTRIBUIDORA CASTILLO YAÑEZ</h3>
+                <p class="text-sm">FECHA: ${new Date().toLocaleDateString('es-ES')}</p>
+                <p class="text-sm mb-4">CLIENTE: ${ventaParaTicket.cliente.nombreComercial}</p>
+                <table class="w-full text-sm mt-4">
+                    <thead><tr><th class="py-1 text-left">PRODUCTO</th><th class="py-1 text-center">CANT.</th><th class="py-1 text-right">SUBTOTAL</th></tr></thead>
+                    <tbody>
+                        ${productosParaTicket.map(p => `
+                            <tr>
+                                <td class="py-1">${p.segmento} ${p.marca} ${p.presentacion} (${p.unidadTipo || 'und.'})</td>
+                                <td class="py-1 text-center">${p.cantidadVendida}</td>
+                                <td class="py-1 text-right">$${(p.cantidadVendida * p.precio).toFixed(2)}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+                <div class="mt-4 text-right font-bold text-lg">TOTAL: $${productosParaTicket.reduce((total, p) => total + (p.cantidadVendida * p.precio), 0).toFixed(2)}</div>
+                <div class="mt-12 text-center text-sm"><p class="py-4">_________________________</p><p>${ventaParaTicket.cliente.nombrePersonal}</p></div>
+            </div>
+        `;
+        const tempDiv = document.createElement('div');
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px';
+        tempDiv.innerHTML = ticketHTML;
+        document.body.appendChild(tempDiv);
+        
+        try {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const canvas = await html2canvas(document.getElementById('temp-ticket-for-image'), { scale: 3 });
+            
+            canvas.toBlob(async (blob) => {
+                if (navigator.share && blob) {
+                    try {
+                        await navigator.share({ files: [new File([blob], "ticket.png", { type: "image/png" })], title: "Ticket de Venta" });
+                    } catch (err) {
+                        if (err.name !== 'AbortError') _showModal('Error', 'No se pudo compartir el ticket.');
+                    }
+                } else {
+                     _showModal('Error', 'La función de compartir no está disponible en este navegador.');
+                }
+            }, 'image/png');
+        } catch(e) {
+            _showModal('Error', 'No se pudo generar la imagen del ticket.');
+        } finally {
+            document.body.removeChild(tempDiv);
+            _showModal('Éxito', 'Venta registrada y ticket generado.', () => showNuevaVentaView());
+        }
     }
 
     /**
      * Genera un ticket y guarda la venta.
      */
     async function generarTicket() {
-        // ... (Implementación completa)
+        if (!_ventaActual.cliente) {
+            _showModal('Error', 'Debe seleccionar un cliente para generar el ticket.');
+            return;
+        }
+        const productosVendidos = Object.values(_ventaActual.productos);
+        if (productosVendidos.length === 0) {
+            _showModal('Error', 'Debe seleccionar al menos un producto para vender.');
+            return;
+        }
+
+        _showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+            try {
+                const isOnline = document.getElementById('connectionStatus')?.textContent === 'EN LÍNEA';
+                const ventaParaTicket = { ..._ventaActual };
+                const productosParaTicket = [...productosVendidos];
+
+                if (isOnline) {
+                    await _runTransaction(_db, async (transaction) => {
+                        const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
+                        let totalVenta = 0;
+                        const itemsVenta = [];
+                        const stockUpdates = [];
+
+                        for (const p of productosVendidos) {
+                            const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
+                            const productoDoc = await transaction.get(productoRef);
+                            if (!productoDoc.exists()) throw new Error(`El producto "${p.presentacion}" ya no existe.`);
+                            const stockActual = productoDoc.data().cantidad;
+                            if (stockActual < p.cantidadVendida) throw new Error(`Stock insuficiente para ${p.presentacion}.`);
+                            stockUpdates.push({ ref: productoRef, nuevaCantidad: stockActual - p.cantidadVendida });
+                            totalVenta += p.precio * p.cantidadVendida;
+                            itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva, unidadTipo: p.unidadTipo });
+                        }
+
+                        transaction.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
+                        stockUpdates.forEach(update => transaction.update(update.ref, { cantidad: update.nuevaCantidad }));
+                    });
+                } else {
+                    const batch = _writeBatch(_db);
+                    const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
+                    let totalVenta = 0;
+                    const itemsVenta = [];
+
+                    for (const p of productosVendidos) {
+                         const productoInventario = _inventarioCache.find(item => item.id === p.id);
+                         if (!productoInventario || productoInventario.cantidad < p.cantidadVendida) throw new Error(`Stock insuficiente para: ${p.presentacion}.`);
+                         batch.update(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id), { cantidad: productoInventario.cantidad - p.cantidadVendida });
+                        totalVenta += p.precio * p.cantidadVendida;
+                        itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca, segmento: p.segmento, precio: p.precio, cantidad: p.cantidadVendida, iva: p.iva, unidadTipo: p.unidadTipo });
+                    }
+
+                    batch.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
+                    await batch.commit();
+                }
+
+                await handleShareTicket(ventaParaTicket, productosParaTicket);
+            } catch (e) {
+                _showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
+            }
+        });
     }
 
     /**
@@ -359,14 +467,68 @@
      * Muestra la vista con la lista de todas las ventas actuales.
      */
     function showVentasActualesView() {
-        // ... (Implementación completa)
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ventas Actuales</h2>
+                        <div id="ventasListContainer" class="overflow-x-auto"><p class="text-gray-500 text-center">Cargando ventas...</p></div>
+                        <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
+        renderVentasList();
     }
 
     /**
      * Renderiza la lista de ventas en el DOM.
      */
     function renderVentasList() {
-        // ... (Implementación completa)
+        const container = document.getElementById('ventasListContainer');
+        if (!container) return;
+
+        const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+        const unsubscribe = _onSnapshot(ventasRef, (snapshot) => {
+            _ventasGlobal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            _ventasGlobal.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
+
+            if (_ventasGlobal.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">No hay ventas registradas.</p>`;
+                return;
+            }
+
+            let tableHTML = `
+                <table class="min-w-full bg-white border">
+                    <thead class="bg-gray-200">
+                        <tr>
+                            <th class="py-2 px-4 border-b text-left">Cliente</th>
+                            <th class="py-2 px-4 border-b text-left">Fecha</th>
+                            <th class="py-2 px-4 border-b text-left">Total</th>
+                            <th class="py-2 px-4 border-b text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            _ventasGlobal.forEach(venta => {
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-4 border-b">${venta.clienteNombre}</td>
+                        <td class="py-2 px-4 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
+                        <td class="py-2 px-4 border-b font-semibold">$${venta.total.toFixed(2)}</td>
+                        <td class="py-2 px-4 border-b text-center space-x-1">
+                            <button onclick="window.ventasModule.shareSaleTicket('${venta.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
+                            <button onclick="window.ventasModule.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">F.F.</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            tableHTML += `</tbody></table>`;
+            container.innerHTML = tableHTML;
+        });
+        _activeListeners.push(unsubscribe);
     }
     
     /**
