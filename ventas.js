@@ -389,9 +389,20 @@
         tempDiv.innerHTML = htmlContent;
         document.body.appendChild(tempDiv);
         
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Buscamos el elemento por su ID después de que ha sido añadido al DOM
+        const ticketElement = document.getElementById('temp-ticket-for-image');
+        if (!ticketElement) {
+            _showModal('Error', 'No se pudo encontrar el elemento del ticket para generar la imagen.');
+            document.body.removeChild(tempDiv);
+            return;
+        }
+        // --- FIN DE LA CORRECCIÓN ---
+
         try {
             await new Promise(resolve => setTimeout(resolve, 100));
-            const canvas = await html2canvas(tempDiv.firstChild, { scale: 3 });
+            // Pasamos el elemento encontrado explícitamente a html2canvas
+            const canvas = await html2canvas(ticketElement, { scale: 3 });
             canvas.toBlob(async (blob) => {
                 if (navigator.share && blob) {
                      _showModal('Progreso', 'Abriendo diálogo para compartir...');
