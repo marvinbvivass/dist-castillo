@@ -1,7 +1,7 @@
 // --- Lógica del módulo de Catálogo ---
 
 (function() {
-    // Variables locales para almacenar las dependencias de la app principal
+    // Variables locales del módulo
     let _db, _userId, _appId, _mainContent, _showMainMenu, _collection, _getDocs, _floatingControls;
     
     // Estado específico del catálogo
@@ -9,6 +9,7 @@
     let _catalogoMonedaActual = 'USD';
     let _currentRubros = [];
     let _currentBgImage = '';
+    let _segmentoOrderCacheCatalogo = null;
 
     // Caché de datos para la generación de imágenes paginadas
     let _marcasCache = [];
@@ -27,6 +28,33 @@
         _getDocs = dependencies.getDocs;
         _floatingControls = dependencies.floatingControls;
     };
+    
+    /**
+     * Obtiene y cachea el mapa de orden de los segmentos.
+     */
+    async function getSegmentoOrderMapCatalogo() {
+        if (_segmentoOrderCacheCatalogo) return _segmentoOrderCacheCatalogo;
+        
+        if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
+            _segmentoOrderCacheCatalogo = await window.inventarioModule.getSegmentoOrderMap();
+            return _segmentoOrderCacheCatalogo;
+        }
+
+        const map = {};
+        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+        try {
+            const snapshot = await _getDocs(segmentosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _segmentoOrderCacheCatalogo = map;
+            return map;
+        } catch (e) {
+            console.warn("No se pudo obtener el orden de los segmentos en catalogo.js", e);
+            return null;
+        }
+    }
 
     /**
      * Muestra el submenú de opciones del catálogo.
@@ -134,6 +162,7 @@
     async function renderCatalogo() {
         const container = document.getElementById('catalogo-content');
         if (!container) return;
+        container.innerHTML = `<p class="text-center text-gray-500">Cargando y ordenando productos...</p>`;
 
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
@@ -142,6 +171,17 @@
 
             if (_currentRubros && _currentRubros.length > 0) {
                 productos = productos.filter(p => _currentRubros.includes(p.rubro));
+            }
+
+            const segmentoOrderMap = await getSegmentoOrderMapCatalogo();
+            if (segmentoOrderMap) {
+                productos.sort((a, b) => {
+                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                    if (orderA !== orderB) return orderA - orderB;
+                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                    return a.presentacion.localeCompare(b.presentacion);
+                });
             }
 
             if (productos.length === 0) {
@@ -158,7 +198,6 @@
 
             const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
             
-            // Guardar datos en caché para la generación de imágenes
             _marcasCache = marcasOrdenadas;
             _productosAgrupadosCache = productosAgrupados;
 
@@ -174,7 +213,7 @@
                             </thead>
                             <tbody>`;
                 
-                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
+                const productosOrdenados = productosAgrupados[marca]; // Ya están ordenados por la clasificación principal
 
                 productosOrdenados.forEach(p => {
                     let precioConIvaMostrado;
@@ -220,7 +259,6 @@
         }
         const totalPages = pagesOfBrands.length;
 
-        // --- Actualizar UI ---
         shareButton.textContent = `Generando ${totalPages} imagen(es)...`;
         shareButton.disabled = true;
         tasaInputContainer.classList.add('hidden');
@@ -237,7 +275,8 @@
                             <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
                             <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
                         </thead><tbody>`;
-                    _productosAgrupadosCache[marca].forEach(p => {
+                    const productosDeMarca = _productosAgrupadosCache[marca]; // Ya están ordenados
+                    productosDeMarca.forEach(p => {
                         let precioConIvaMostrado = _catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0
                             ? `COP ${(Math.ceil((p.precio * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`
                             : `$${p.precio.toFixed(2)}`;
@@ -291,5 +330,10 @@
             buttonsContainer.classList.remove('hidden');
         }
     }
+    
+    // Exponer función para invalidar la caché
+    window.catalogoModule = {
+        invalidateCache: () => { _segmentoOrderCacheCatalogo = null; }
+    };
 
 })();
