@@ -12,7 +12,7 @@
     let _ventasGlobal = [];
     let _segmentoOrderCacheVentas = null; // Caché para el orden de segmentos en este módulo
     
-    // Estado local de una venta en progreso
+    // Estado local de una venta en progreso o edición
     let _ventaActual = { cliente: null, productos: {} };
     let _tasaCOP = 0;
     let _tasaBs = 0;
@@ -23,12 +23,10 @@
      */
     async function getSegmentoOrderMapVentas() {
         if (_segmentoOrderCacheVentas) return _segmentoOrderCacheVentas;
-        // Intenta llamar a la función de inventario si existe
         if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
             _segmentoOrderCacheVentas = await window.inventarioModule.getSegmentoOrderMap();
             return _segmentoOrderCacheVentas;
         }
-        // Fallback si el módulo de inventario no está cargado (copia de la lógica)
         const map = {};
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
         try {
@@ -734,8 +732,8 @@
                         <td class="py-2 px-3 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
                         <td class="py-2 px-3 border-b text-right font-semibold">$${venta.total.toFixed(2)}</td>
                         <td class="py-2 px-3 border-b text-center space-x-1">
-                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ticket</button>
-                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'factura')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Factura</button>
+                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
+                            <button onclick="window.ventasModule.editVenta('${venta.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
                         </td>
                     </tr>
                 `;
@@ -1047,11 +1045,156 @@
         }
     }
 
+    /**
+     * Inicia la edición de una venta existente.
+     */
+    function editVenta(ventaId) {
+        const venta = _ventasGlobal.find(v => v.id === ventaId);
+        if (!venta) {
+            _showModal('Error', 'No se pudo encontrar la venta para editar.');
+            return;
+        }
+        showEditVentaView(venta);
+    }
+    
+    /**
+     * Muestra la vista para editar una venta.
+     */
+    function showEditVentaView(venta) {
+        _floatingControls.classList.add('hidden');
+        _monedaActual = 'USD';
+
+        // Pre-cargar el estado _ventaActual con los datos de la venta a editar
+        _ventaActual = {
+            cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
+            productos: venta.productos.reduce((acc, p) => {
+                // Se necesita la info completa del producto, la buscamos en el inventario cacheado
+                const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
+                acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
+                return acc;
+            }, {})
+        };
+        
+        _mainContent.innerHTML = `
+            <div class="p-2 sm:p-4 w-full">
+                <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
+                    <div id="venta-header-section" class="mb-4">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Editando Venta</h2>
+                            <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                        <div class="flex-wrap items-center justify-between gap-4 p-4 bg-gray-100 rounded-lg">
+                            <p class="text-gray-700"><span class="font-medium">Cliente:</span> <span class="font-bold">${venta.clienteNombre}</span></p>
+                        </div>
+                    </div>
+                    <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
+                         <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-lg font-semibold text-gray-800">Inventario</h3>
+                             <div id="rubro-filter-container" class="w-1/2">
+                                <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
+                            </div>
+                        </div>
+                        <div class="overflow-auto flex-grow rounded-lg shadow">
+                            <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                        </div>
+                    </div>
+                    <div id="venta-footer-section" class="mt-4 flex items-center justify-between">
+                        <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
+                         <button id="saveChangesBtn" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
+        document.getElementById('saveChangesBtn').addEventListener('click', () => handleGuardarVentaEditada(venta.id));
+        document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
+        
+        loadDataForNewSale(); // Carga el inventario, que es necesario
+        populateRubroFilter(); // Popula el filtro de rubros
+        renderVentasInventario(); // Renderiza la tabla de productos
+        updateVentaTotal(); // Calcula el total inicial
+    }
+    
+    /**
+     * Guarda los cambios de una venta editada y ajusta el stock.
+     */
+    async function handleGuardarVentaEditada(ventaId) {
+        const originalVenta = _ventasGlobal.find(v => v.id === ventaId);
+        if (!originalVenta) {
+            _showModal('Error', 'No se pudo encontrar la venta original para guardar los cambios.');
+            return;
+        }
+
+        _showModal('Confirmar Cambios', '¿Estás seguro de que deseas guardar los cambios en esta venta? El stock del inventario se ajustará automáticamente.', async () => {
+            _showModal('Progreso', 'Guardando cambios y ajustando stock...');
+
+            const nuevosProductosVendidos = Object.values(_ventaActual.productos);
+            const stockChanges = {}; // Mapa para calcular los cambios netos de stock
+
+            // Paso 1: Calcular lo que se devuelve al inventario de la venta original
+            originalVenta.productos.forEach(p => {
+                stockChanges[p.id] = (stockChanges[p.id] || 0) + p.cantidadVendida;
+            });
+            
+            // Paso 2: Calcular lo que se resta del inventario con la nueva venta
+            nuevosProductosVendidos.forEach(p => {
+                stockChanges[p.id] = (stockChanges[p.id] || 0) - p.cantidadVendida;
+            });
+
+            const batch = _writeBatch(_db);
+
+            // Paso 3: Validar stock y preparar el batch de actualización
+            for (const productId in stockChanges) {
+                const change = stockChanges[productId];
+                if (change === 0) continue; // No hubo cambios para este producto
+
+                const productoEnCache = _inventarioCache.find(p => p.id === productId);
+                if (!productoEnCache) {
+                    _showModal('Error', `No se encontró el producto con ID ${productId} en el inventario.`);
+                    return;
+                }
+
+                const nuevoStock = productoEnCache.cantidad + change;
+                if (nuevoStock < 0) {
+                    _showModal('Error de Stock', `Stock insuficiente para "${productoEnCache.presentacion}". Solo quedan ${productoEnCache.cantidad - (stockChanges[productId] - change)} unidades.`);
+                    return;
+                }
+                
+                const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
+                batch.update(productoRef, { cantidad: nuevoStock });
+            }
+            
+            // Paso 4: Preparar la actualización de la venta
+            const nuevoTotal = nuevosProductosVendidos.reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
+            const nuevosItemsVenta = nuevosProductosVendidos.map(p => ({
+                id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
+                precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.'
+            }));
+            
+            const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
+            batch.update(ventaRef, {
+                productos: nuevosItemsVenta,
+                total: nuevoTotal
+            });
+
+            // Paso 5: Ejecutar todos los cambios
+            try {
+                await batch.commit();
+                _showModal('Éxito', 'La venta ha sido actualizada correctamente.', showVentasActualesView);
+            } catch (error) {
+                _showModal('Error', `Hubo un error al guardar los cambios: ${error.message}`);
+            }
+        });
+    }
+
+
     // Exponer funciones públicas al objeto window
     window.ventasModule = {
         toggleMoneda,
         updateVentaCantidad,
         showPastSaleOptions,
+        editVenta,
         invalidateCache: () => { _segmentoOrderCacheVentas = null; }
     };
 })();
