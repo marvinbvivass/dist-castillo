@@ -374,7 +374,7 @@
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
                 <td class="py-2 px-2 text-left align-middle">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
-                <td class="py-2 px-2 text-left price-toggle align-middle">${precioMostrado}</td>
+                <td class="py-2 px-2 text-left price-toggle align-middle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
                 <td class="py-2 px-2 text-center align-middle">${effectiveStock}</td>
             `;
             inventarioTableBody.appendChild(row);
@@ -765,13 +765,15 @@
             _ventasGlobal.forEach(venta => {
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
-                        <td class="py-2 px-3 border-b">${venta.clienteNombre}</td>
-                        <td class="py-2 px-3 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
-                        <td class="py-2 px-3 border-b text-right font-semibold">$${venta.total.toFixed(2)}</td>
-                        <td class="py-2 px-3 border-b text-center space-x-1">
-                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
-                            <button onclick="window.ventasModule.editVenta('${venta.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                            <button onclick="window.ventasModule.deleteVenta('${venta.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                        <td class="py-2 px-3 border-b align-middle">${venta.clienteNombre}</td>
+                        <td class="py-2 px-3 border-b align-middle">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
+                        <td class="py-2 px-3 border-b text-right font-semibold align-middle">$${venta.total.toFixed(2)}</td>
+                        <td class="py-2 px-3 border-b">
+                            <div class="flex flex-col items-center space-y-1">
+                                <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs font-semibold rounded-lg hover:bg-blue-600">Compartir</button>
+                                <button onclick="window.ventasModule.editVenta('${venta.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs font-semibold rounded-lg hover:bg-yellow-600">Editar</button>
+                                <button onclick="window.ventasModule.deleteVenta('${venta.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600">Eliminar</button>
+                            </div>
                         </td>
                     </tr>
                 `;
