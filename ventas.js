@@ -1055,45 +1055,22 @@
     /**
      * Inicia la edición de una venta existente.
      */
-    async function editVenta(ventaId) {
+    function editVenta(ventaId) {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) {
             _showModal('Error', 'No se pudo encontrar la venta para editar.');
             return;
         }
-
-        _showModal('Progreso', 'Cargando datos para edición...');
-        try {
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const snapshot = await _getDocs(inventarioRef);
-            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            const modalContainer = document.getElementById('modalContainer');
-            if (modalContainer) modalContainer.classList.add('hidden');
-
-            _originalVentaForEdit = venta; // Guardar la venta original
-            showEditVentaView(venta);
-
-        } catch (error) {
-            _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
-        }
+        _originalVentaForEdit = venta;
+        showEditVentaView(venta);
     }
     
     /**
      * Muestra la vista para editar una venta.
      */
-    function showEditVentaView(venta) {
+    async function showEditVentaView(venta) {
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
-
-        _ventaActual = {
-            cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
-            productos: venta.productos.reduce((acc, p) => {
-                const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
-                acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
-                return acc;
-            }, {})
-        };
         
         _mainContent.innerHTML = `
             <div class="p-2 sm:p-4 w-full">
@@ -1129,10 +1106,32 @@
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
         document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
-        
-        populateRubroFilter();
-        renderVentasInventario();
-        updateVentaTotal();
+
+        _showModal('Progreso', 'Cargando datos para edición...');
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const snapshot = await _getDocs(inventarioRef);
+            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            _ventaActual = {
+                cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
+                productos: venta.productos.reduce((acc, p) => {
+                    const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
+                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
+                    return acc;
+                }, {})
+            };
+            
+            populateRubroFilter();
+            renderVentasInventario();
+            updateVentaTotal();
+
+            const modalContainer = document.getElementById('modalContainer');
+            if (modalContainer) modalContainer.classList.add('hidden');
+
+        } catch (error) {
+            _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
+        }
     }
     
     /**
