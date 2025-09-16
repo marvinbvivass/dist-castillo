@@ -8,6 +8,7 @@
     
     let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' }; // Objeto para persistir los filtros
+    let _segmentoOrderCache = null; // Caché para el orden de los segmentos
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -21,7 +22,7 @@
         _activeListeners = dependencies.activeListeners;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
-        _showAddItemModal = dependencies.showAddItemModal; // Aunque no se use aquí, se mantiene por si otros módulos la necesitan
+        _showAddItemModal = dependencies.showAddItemModal; 
         _populateDropdown = dependencies.populateDropdown;
         _collection = dependencies.collection;
         _onSnapshot = dependencies.onSnapshot;
@@ -36,9 +37,17 @@
     };
 
     /**
+     * Invalida la caché de orden de segmentos para forzar una recarga.
+     */
+    function invalidateSegmentOrderCache() {
+        _segmentoOrderCache = null;
+    }
+
+    /**
      * Renderiza el menú de subopciones de inventario.
      */
     window.showInventarioSubMenu = function() {
+        invalidateSegmentOrderCache(); // Invalida la caché al volver al menú
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -58,6 +67,9 @@
                             <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300 transform hover:scale-105">
                                 Ajuste Masivo de Cantidades
                             </button>
+                             <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition duration-300 transform hover:scale-105">
+                                Ordenar Segmentos
+                            </button>
                              <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-300 transform hover:scale-105">
                                 Modificar Datos Maestros
                             </button>
@@ -72,13 +84,181 @@
         document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
         document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
         document.getElementById('modifyDeleteBtn').addEventListener('click', () => {
-            // Reinicia los filtros al entrar desde el menú principal
             _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
             showModifyDeleteView();
         });
         document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
+        document.getElementById('ordenarSegmentosBtn').addEventListener('click', showOrdenarSegmentosView);
         document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+    }
+    
+    /**
+     * Obtiene y cachea el mapa de orden de los segmentos.
+     */
+    async function getSegmentoOrderMap() {
+        if (_segmentoOrderCache) return _segmentoOrderCache;
+
+        const map = {};
+        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+        try {
+            const snapshot = await _getDocs(segmentosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _segmentoOrderCache = map;
+            return map;
+        } catch (e) {
+            console.warn("No se pudo obtener el orden de los segmentos, se usará orden alfabético.", e);
+            return null;
+        }
+    }
+
+    /**
+     * Muestra la vista para ordenar los segmentos.
+     */
+    function showOrdenarSegmentosView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Segmentos</h2>
+                        <p class="text-center text-gray-600 mb-6">Arrastra y suelta los segmentos para cambiar el orden en que aparecerán en las listas de productos.</p>
+                        <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center">Cargando segmentos...</p>
+                        </ul>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="saveOrderBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Orden</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenSegmentos);
+        
+        renderSortableSegmentList();
+    }
+
+    /**
+     * Renderiza la lista de segmentos para que se puedan ordenar.
+     */
+    async function renderSortableSegmentList() {
+        const container = document.getElementById('segmentos-sortable-list');
+        if (!container) return;
+
+        try {
+            const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+            let snapshot = await _getDocs(segmentosRef);
+            let segmentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            if (segmentos.length > 0 && segmentos.some(s => s.orden === undefined)) {
+                const sortedAlphabetically = segmentos.sort((a,b) => a.name.localeCompare(b.name));
+                const batch = _writeBatch(_db);
+                sortedAlphabetically.forEach((seg, index) => {
+                    const docRef = _doc(segmentosRef, seg.id);
+                    batch.update(docRef, { orden: index });
+                });
+                await batch.commit();
+                snapshot = await _getDocs(segmentosRef);
+                segmentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            }
+
+            segmentos.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
+
+            container.innerHTML = ''; 
+
+            segmentos.forEach(seg => {
+                const li = document.createElement('li');
+                li.dataset.id = seg.id;
+                li.className = 'p-3 bg-gray-100 rounded shadow-sm cursor-grab active:cursor-grabbing';
+                li.textContent = seg.name;
+                li.draggable = true;
+                container.appendChild(li);
+            });
+
+            addDragAndDropHandlers(container);
+
+        } catch (error) {
+            console.error("Error al renderizar la lista de segmentos:", error);
+            container.innerHTML = `<p class="text-red-500 text-center">Error al cargar los segmentos.</p>`;
+        }
+    }
+    
+    /**
+     * Añade los manejadores de eventos para la funcionalidad de arrastrar y soltar.
+     */
+    function addDragAndDropHandlers(container) {
+        let draggedItem = null;
+
+        container.addEventListener('dragstart', e => {
+            draggedItem = e.target;
+            setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
+        });
+
+        container.addEventListener('dragend', e => {
+            if(draggedItem) {
+                draggedItem.style.opacity = '1';
+            }
+            draggedItem = null;
+        });
+
+        container.addEventListener('dragover', e => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(container, e.clientY);
+            if (draggedItem) {
+                if (afterElement == null) {
+                    container.appendChild(draggedItem);
+                } else {
+                    container.insertBefore(draggedItem, afterElement);
+                }
+            }
+        });
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('li:not([style*="opacity: 0.5"])')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+    }
+
+    /**
+     * Guarda el nuevo orden de los segmentos.
+     */
+    async function handleGuardarOrdenSegmentos() {
+        const listItems = document.querySelectorAll('#segmentos-sortable-list li');
+        if (listItems.length === 0) {
+            _showModal('Aviso', 'No hay segmentos para ordenar.');
+            return;
+        }
+
+        const batch = _writeBatch(_db);
+        listItems.forEach((item, index) => {
+            const docId = item.dataset.id;
+            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, docId);
+            batch.update(docRef, { orden: index });
+        });
+
+        try {
+            await batch.commit();
+            invalidateSegmentOrderCache(); // Forzar recarga en la próxima vista
+            _showModal('Éxito', 'El orden de los segmentos ha sido guardado.');
+            showInventarioSubMenu();
+        } catch (error) {
+            console.error("Error guardando el orden de los segmentos:", error);
+            _showModal('Error', 'Hubo un error al guardar el nuevo orden.');
+        }
     }
 
     /**
@@ -119,18 +299,29 @@
     /**
      * Renderiza la lista de productos para el ajuste masivo, agrupada por marca.
      */
-    function renderAjusteMasivoList(rubro = '') {
+    async function renderAjusteMasivoList(rubro = '') {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
 
-        let q = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
-        if (rubro) {
-            q = _query(q, _where("rubro", "==", rubro));
-        }
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
+            let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            _inventarioCache = productos; 
+            
+            const segmentoOrderMap = await getSegmentoOrderMap();
+            if (segmentoOrderMap) {
+                productos.sort((a, b) => {
+                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                    if (orderA !== orderB) return orderA - orderB;
+                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                    return a.presentacion.localeCompare(b.presentacion);
+                });
+            }
 
-        const unsubscribe = _onSnapshot(q, (snapshot) => {
-            const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-             _inventarioCache = productos; // Actualizar caché para referencia
+            if (rubro) {
+                productos = productos.filter(p => p.rubro === rubro);
+            }
 
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
@@ -150,7 +341,7 @@
             
             marcasOrdenadas.forEach(marca => {
                 tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td></tr>`;
-                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
+                const productosOrdenados = productosAgrupados[marca]; // Ya están ordenados por la clasificación principal
                 productosOrdenados.forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
@@ -213,7 +404,6 @@
             }
         });
     }
-
 
     /**
      * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
@@ -318,10 +508,8 @@
 
     /**
      * Muestra un modal para agregar un nuevo item (Rubro, Segmento, Marca) con validación de duplicados.
-     * Esta función es una versión mejorada y específica para este módulo.
      */
     function showValidatedAddItemModal(collectionName, itemName) {
-        // Accedemos a los elementos del modal global directamente.
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
         
@@ -354,7 +542,6 @@
             addItemMessage.classList.remove('text-green-600', 'text-red-600');
 
             try {
-                // Lógica de validación (case-insensitive)
                 const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
                 const snapshot = await _getDocs(collectionRef);
                 const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
@@ -365,7 +552,6 @@
                     return;
                 }
                 
-                // Si la validación pasa, se agrega el documento
                 await _addDoc(collectionRef, { name: newItemName });
                 addItemMessage.classList.add('text-green-600');
                 addItemMessage.textContent = `¡"${newItemName}" agregado!`;
@@ -450,7 +636,6 @@
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         
-        // Llamar a la nueva función con validación
         document.getElementById('addRubroBtn').addEventListener('click', () => showValidatedAddItemModal('rubros', 'Rubro'));
         document.getElementById('addSegmentoBtn').addEventListener('click', () => showValidatedAddItemModal('segmentos', 'Segmento'));
         document.getElementById('addMarcaBtn').addEventListener('click', () => showValidatedAddItemModal('marcas', 'Marca'));
@@ -577,7 +762,6 @@
         _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
         _populateDropdown('marcas', 'filter-marca', 'Marca');
         
-        // Restaurar valores de los filtros y configurar los listeners
         document.getElementById('search-input').value = _lastFilters.searchTerm;
         document.getElementById('filter-rubro').value = _lastFilters.rubro;
         document.getElementById('filter-segmento').value = _lastFilters.segmento;
@@ -608,21 +792,33 @@
     }
 
     /**
-     * Renderiza la lista de productos en una tabla, agrupada por marca.
+     * Renderiza la lista de productos en una tabla, agrupada por marca y ordenada por segmento.
      */
-    function renderProductosList(elementId, readOnly = false) {
+    async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        const unsubscribe = _onSnapshot(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), (snapshot) => {
-            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
+            let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            _inventarioCache = productos;
             
-            let productos;
+            const segmentoOrderMap = await getSegmentoOrderMap();
+            if (segmentoOrderMap) {
+                productos.sort((a, b) => {
+                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                    if (orderA !== orderB) return orderA - orderB;
+                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                    return a.presentacion.localeCompare(b.presentacion);
+                });
+            }
+
             if (readOnly) {
                 const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
-                productos = _inventarioCache.filter(p => !rubroFilter || p.rubro === rubroFilter);
+                if (rubroFilter) productos = productos.filter(p => p.rubro === rubroFilter);
             } else {
-                productos = _inventarioCache.filter(p => {
+                productos = productos.filter(p => {
                     const searchMatch = !_lastFilters.searchTerm || p.presentacion.toLowerCase().includes(_lastFilters.searchTerm);
                     const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
                     const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
@@ -649,8 +845,8 @@
             
             marcasOrdenadas.forEach(marca => {
                 tableHTML += `<tr><td colspan="${readOnly ? 4 : 5}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${marca}</td></tr>`;
-                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
-                productosOrdenados.forEach(p => {
+                const productosDeMarca = productosAgrupados[marca]; // Ya están ordenados
+                productosDeMarca.forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
                             <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
