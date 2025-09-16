@@ -14,6 +14,7 @@
     
     // Estado local de una venta en progreso o edición
     let _ventaActual = { cliente: null, productos: {} };
+    let _originalVentaForEdit = null; // Almacena la venta original al editar
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
@@ -97,6 +98,7 @@
      * Renderiza la vista para iniciar una nueva venta.
      */
     function showNuevaVentaView() {
+        _originalVentaForEdit = null; // Limpiar estado de edición
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         _ventaActual = { cliente: null, productos: {} };
@@ -288,7 +290,7 @@
         monedaIndicator.textContent = `(${_monedaActual})`;
         
         const selectedRubro = rubroFilter.value;
-        const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0);
+        const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0 || _ventaActual.productos[p.id]);
         let filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
         
         const segmentoOrderMap = await getSegmentoOrderMapVentas();
@@ -334,16 +336,18 @@
             }
             
             const productName = `${producto.marca || ''} ${producto.presentacion}`;
+            const originalQty = _originalVentaForEdit?.productos.find(p => p.id === producto.id)?.cantidadVendida || 0;
+            const effectiveStock = producto.cantidad + originalQty;
 
             row.innerHTML = `
                 <td class="py-1 px-1 text-center">
-                    <input type="number" min="0" max="${producto.cantidad}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
+                    <input type="number" min="0" max="${effectiveStock}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
                            class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
                 <td class="py-1 px-2 text-left whitespace-nowrap">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
                 <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-1 px-1 text-center">${producto.cantidad}</td>
+                <td class="py-1 px-1 text-center">${effectiveStock}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
@@ -354,16 +358,19 @@
      */
     function updateVentaCantidad(event) {
         const { productId } = event.target.dataset;
-        const cantidad = parseInt(event.target.value, 10);
-        const producto = _inventarioCache.find(p => p.id === productId);
-        if (cantidad > producto.cantidad) {
-            event.target.value = producto.cantidad;
-             _showModal('Stock Insuficiente', `Solo quedan ${producto.cantidad} unidades de ${producto.presentacion}.`);
+        const input = event.target;
+        const cantidad = parseInt(input.value, 10);
+        const maxStock = parseInt(input.max, 10);
+        
+        if (cantidad > maxStock) {
+            input.value = maxStock;
+             _showModal('Stock Insuficiente', `La cantidad máxima para este producto es ${maxStock}.`);
         }
         
-        const cantidadFinal = parseInt(event.target.value, 10);
+        const cantidadFinal = parseInt(input.value, 10);
         
         if (cantidadFinal > 0) {
+            const producto = _inventarioCache.find(p => p.id === productId);
             _ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidadFinal };
         } else {
             delete _ventaActual.productos[productId];
@@ -1048,13 +1055,28 @@
     /**
      * Inicia la edición de una venta existente.
      */
-    function editVenta(ventaId) {
+    async function editVenta(ventaId) {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) {
             _showModal('Error', 'No se pudo encontrar la venta para editar.');
             return;
         }
-        showEditVentaView(venta);
+
+        _showModal('Progreso', 'Cargando datos para edición...');
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const snapshot = await _getDocs(inventarioRef);
+            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            const modalContainer = document.getElementById('modalContainer');
+            if (modalContainer) modalContainer.classList.add('hidden');
+
+            _originalVentaForEdit = venta; // Guardar la venta original
+            showEditVentaView(venta);
+
+        } catch (error) {
+            _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
+        }
     }
     
     /**
@@ -1064,11 +1086,9 @@
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
 
-        // Pre-cargar el estado _ventaActual con los datos de la venta a editar
         _ventaActual = {
             cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
             productos: venta.productos.reduce((acc, p) => {
-                // Se necesita la info completa del producto, la buscamos en el inventario cacheado
                 const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
                 acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
                 return acc;
@@ -1107,21 +1127,19 @@
         `;
         
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
-        document.getElementById('saveChangesBtn').addEventListener('click', () => handleGuardarVentaEditada(venta.id));
+        document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
         
-        loadDataForNewSale(); // Carga el inventario, que es necesario
-        populateRubroFilter(); // Popula el filtro de rubros
-        renderVentasInventario(); // Renderiza la tabla de productos
-        updateVentaTotal(); // Calcula el total inicial
+        populateRubroFilter();
+        renderVentasInventario();
+        updateVentaTotal();
     }
     
     /**
      * Guarda los cambios de una venta editada y ajusta el stock.
      */
-    async function handleGuardarVentaEditada(ventaId) {
-        const originalVenta = _ventasGlobal.find(v => v.id === ventaId);
-        if (!originalVenta) {
+    async function handleGuardarVentaEditada() {
+        if (!_originalVentaForEdit) {
             _showModal('Error', 'No se pudo encontrar la venta original para guardar los cambios.');
             return;
         }
@@ -1130,24 +1148,21 @@
             _showModal('Progreso', 'Guardando cambios y ajustando stock...');
 
             const nuevosProductosVendidos = Object.values(_ventaActual.productos);
-            const stockChanges = {}; // Mapa para calcular los cambios netos de stock
+            const stockChanges = {};
 
-            // Paso 1: Calcular lo que se devuelve al inventario de la venta original
-            originalVenta.productos.forEach(p => {
+            _originalVentaForEdit.productos.forEach(p => {
                 stockChanges[p.id] = (stockChanges[p.id] || 0) + p.cantidadVendida;
             });
             
-            // Paso 2: Calcular lo que se resta del inventario con la nueva venta
             nuevosProductosVendidos.forEach(p => {
                 stockChanges[p.id] = (stockChanges[p.id] || 0) - p.cantidadVendida;
             });
 
             const batch = _writeBatch(_db);
 
-            // Paso 3: Validar stock y preparar el batch de actualización
             for (const productId in stockChanges) {
                 const change = stockChanges[productId];
-                if (change === 0) continue; // No hubo cambios para este producto
+                if (change === 0) continue;
 
                 const productoEnCache = _inventarioCache.find(p => p.id === productId);
                 if (!productoEnCache) {
@@ -1157,7 +1172,7 @@
 
                 const nuevoStock = productoEnCache.cantidad + change;
                 if (nuevoStock < 0) {
-                    _showModal('Error de Stock', `Stock insuficiente para "${productoEnCache.presentacion}". Solo quedan ${productoEnCache.cantidad - (stockChanges[productId] - change)} unidades.`);
+                    _showModal('Error de Stock', `Stock insuficiente para "${productoEnCache.presentacion}".`);
                     return;
                 }
                 
@@ -1165,22 +1180,21 @@
                 batch.update(productoRef, { cantidad: nuevoStock });
             }
             
-            // Paso 4: Preparar la actualización de la venta
             const nuevoTotal = nuevosProductosVendidos.reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
             const nuevosItemsVenta = nuevosProductosVendidos.map(p => ({
                 id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
                 precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.'
             }));
             
-            const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
+            const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, _originalVentaForEdit.id);
             batch.update(ventaRef, {
                 productos: nuevosItemsVenta,
                 total: nuevoTotal
             });
 
-            // Paso 5: Ejecutar todos los cambios
             try {
                 await batch.commit();
+                _originalVentaForEdit = null; // Limpiar estado de edición
                 _showModal('Éxito', 'La venta ha sido actualizada correctamente.', showVentasActualesView);
             } catch (error) {
                 _showModal('Error', `Hubo un error al guardar los cambios: ${error.message}`);
