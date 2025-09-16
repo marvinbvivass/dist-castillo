@@ -758,6 +758,7 @@
                         <td class="py-2 px-3 border-b text-center space-x-1">
                             <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button>
                             <button onclick="window.ventasModule.editVenta('${venta.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                            <button onclick="window.ventasModule.deleteVenta('${venta.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
                         </td>
                     </tr>
                 `;
@@ -1083,6 +1084,57 @@
         _originalVentaForEdit = venta;
         showEditVentaView(venta);
     }
+
+    /**
+     * Inicia la eliminación de una venta existente.
+     */
+    function deleteVenta(ventaId) {
+        const venta = _ventasGlobal.find(v => v.id === ventaId);
+        if (!venta) {
+            _showModal('Error', 'No se pudo encontrar la venta para eliminar.');
+            return;
+        }
+
+        _showModal(
+            'Confirmar Eliminación',
+            `¿Estás seguro de que deseas eliminar la venta a "${venta.clienteNombre}"? Esta acción no se puede deshacer y el stock de los productos será devuelto al inventario.`,
+            async () => {
+                _showModal('Progreso', 'Eliminando venta y restaurando stock...');
+                try {
+                    const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                    const snapshot = await _getDocs(inventarioRef);
+                    _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    const batch = _writeBatch(_db);
+
+                    // Devolver el stock al inventario
+                    for (const productoVendido of venta.productos) {
+                        const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
+                        if (productoEnCache) {
+                            const nuevoStock = productoEnCache.cantidad + productoVendido.cantidadVendida;
+                            const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
+                            batch.update(productoRef, { cantidad: nuevoStock });
+                        } else {
+                            console.warn(`El producto "${productoVendido.presentacion}" (ID: ${productoVendido.id}) no fue encontrado en el inventario. No se pudo restaurar su stock.`);
+                        }
+                    }
+
+                    // Eliminar el documento de la venta
+                    const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
+                    batch.delete(ventaRef);
+
+                    // Ejecutar la transacción
+                    await batch.commit();
+
+                    _showModal('Éxito', 'La venta ha sido eliminada y el stock restaurado.');
+
+                } catch (error) {
+                    _showModal('Error', `Hubo un error al eliminar la venta: ${error.message}`);
+                }
+            },
+            'Sí, Eliminar'
+        );
+    }
     
     /**
      * Muestra la vista para editar una venta.
@@ -1248,7 +1300,7 @@
         updateVentaCantidad,
         showPastSaleOptions,
         editVenta,
+        deleteVenta,
         invalidateCache: () => { _segmentoOrderCacheVentas = null; }
     };
 })();
-
