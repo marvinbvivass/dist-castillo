@@ -609,10 +609,16 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                         <form id="editProductoForm" class="space-y-4 text-left">
-                            <p class="text-sm">Nota: Rubro, Segmento, Marca y Presentación no se pueden editar.</p>
+                            <p class="text-sm">Nota: Rubro, Segmento y Marca no se pueden editar para mantener la consistencia de los datos.</p>
                             <div>
-                                <label class="block text-gray-700 font-medium">Presentación:</label>
-                                <p class="w-full px-4 py-2 bg-gray-100 rounded-lg">${producto.presentacion} (${producto.unidadTipo || 'und.'})</p>
+                                <label for="editPresentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <select id="editUnidadTipo" class="px-2 py-2 border rounded-lg bg-gray-50">
+                                        <option value="und." ${producto.unidadTipo === 'und.' ? 'selected' : ''}>und.</option>
+                                        <option value="cj." ${producto.unidadTipo === 'cj.' ? 'selected' : ''}>cj.</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
@@ -641,6 +647,8 @@
             e.preventDefault();
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
+                    presentacion: document.getElementById('editPresentacion').value.trim(),
+                    unidadTipo: document.getElementById('editUnidadTipo').value,
                     precio: parseFloat(document.getElementById('editPrecio').value),
                     cantidad: parseInt(document.getElementById('editCantidad').value, 10),
                     iva: parseInt(document.getElementById('editIvaTipo').value, 10)
