@@ -1146,7 +1146,6 @@
             if (modalContainer) modalContainer.classList.add('hidden');
 
         } catch (error) {
-            console.error("[Ventas.js] CRITICAL ERROR in showEditVentaView:", error);
             _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
         }
     }
