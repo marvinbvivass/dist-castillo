@@ -35,11 +35,13 @@
     async function getSegmentoOrderMapCatalogo() {
         if (_segmentoOrderCacheCatalogo) return _segmentoOrderCacheCatalogo;
         
+        // Intenta llamar a la función de inventario si existe para mantener una única fuente de verdad
         if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
             _segmentoOrderCacheCatalogo = await window.inventarioModule.getSegmentoOrderMap();
             return _segmentoOrderCacheCatalogo;
         }
 
+        // Fallback si el módulo de inventario no está cargado
         const map = {};
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
         try {
@@ -179,7 +181,7 @@
                     const orderA = segmentoOrderMap[a.segmento] ?? 9999;
                     const orderB = segmentoOrderMap[b.segmento] ?? 9999;
                     if (orderA !== orderB) return orderA - orderB;
-                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                    if ((a.marca || '').localeCompare(b.marca || '') !== 0) return (a.marca || '').localeCompare(b.marca || '');
                     return a.presentacion.localeCompare(b.presentacion);
                 });
             }
@@ -195,8 +197,9 @@
                 acc[marca].push(p);
                 return acc;
             }, {});
-
-            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
+            
+            // Usar el orden de los productos ya sorteados para determinar el orden de las marcas
+            const marcasOrdenadas = [...new Set(productos.map(p => p.marca || 'Sin Marca'))];
             
             _marcasCache = marcasOrdenadas;
             _productosAgrupadosCache = productosAgrupados;
