@@ -229,7 +229,10 @@
         rubros.forEach(rubro => {
              if(rubro) rubroFilter.innerHTML += `<option value="${rubro}">${rubro}</option>`;
         });
-        rubroFilter.value = currentVal;
+        // CORRECCIÓN: No restaurar el valor si no es una edición, para evitar el bug del filtro.
+        if (!_originalVentaForEdit) {
+            rubroFilter.value = currentVal;
+        }
     }
 
     /**
