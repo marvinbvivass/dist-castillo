@@ -325,16 +325,29 @@
             return;
         }
 
+        const isCerveceriaRubro = (selectedRubro === 'Cerveceria y Vinos');
         let currentSegmento = null;
+        let currentMarca = null;
+
         filteredInventario.forEach(producto => {
             const segmento = producto.segmento || 'Sin Segmento';
+            const marca = producto.marca || 'Sin Marca';
+
             if (segmento !== currentSegmento) {
                 currentSegmento = segmento;
+                currentMarca = null; 
                 const segmentoRow = document.createElement('tr');
                 segmentoRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${currentSegmento}</td>`;
                 inventarioTableBody.appendChild(segmentoRow);
             }
 
+            if (isCerveceriaRubro && marca !== currentMarca) {
+                currentMarca = marca;
+                const marcaRow = document.createElement('tr');
+                marcaRow.innerHTML = `<td colspan="4" class="py-1 px-4 bg-gray-50 font-semibold text-gray-600 text-xs">${currentMarca}</td>`;
+                inventarioTableBody.appendChild(marcaRow);
+            }
+            
             const row = document.createElement('tr');
             row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
