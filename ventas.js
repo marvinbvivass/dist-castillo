@@ -140,9 +140,9 @@
                          <div class="flex justify-between items-center mb-2">
                             <h3 class="text-lg font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD)</span></h3>
                              <div id="rubro-filter-container" class="w-1/2">
-                                <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
-                            </div>
-                        </div>
+                                 <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
+                             </div>
+                         </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
                             <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
@@ -298,9 +298,11 @@
         const monedaIndicator = document.getElementById('monedaIndicator');
         const rubroFilter = document.getElementById('rubroFilter');
 
-        if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
+        if (!inventarioTableBody || !rubroFilter) return;
+        if (monedaIndicator) {
+             monedaIndicator.textContent = `(${_monedaActual})`;
+        }
         inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center text-gray-500">Cargando y ordenando...</td></tr>`;
-        monedaIndicator.textContent = `(${_monedaActual})`;
         
         const selectedRubro = rubroFilter.value;
         const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0 || _ventaActual.productos[p.id]);
@@ -1057,8 +1059,8 @@
     }
     
      /**
-     * Muestra las opciones para una venta pasada (imprimir o compartir).
-     */
+      * Muestra las opciones para una venta pasada (imprimir o compartir).
+      */
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (venta) {
@@ -1105,9 +1107,9 @@
                          <div class="flex justify-between items-center mb-2">
                             <h3 class="text-lg font-semibold text-gray-800">Inventario</h3>
                              <div id="rubro-filter-container" class="w-1/2">
-                                <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
-                            </div>
-                        </div>
+                                 <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
+                             </div>
+                         </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
                             <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
@@ -1153,8 +1155,12 @@
         }
     }
     
+    // ============================================================================================
+    // == FUNCIÓN CORREGIDA Y MEJORADA ==
+    // ============================================================================================
     /**
-     * Guarda los cambios de una venta editada y ajusta el stock.
+     * Guarda los cambios de una venta editada y ajusta el stock de forma atómica.
+     * Esta función ha sido reescrita para ser más clara, robusta y segura.
      */
     async function handleGuardarVentaEditada() {
         if (!_originalVentaForEdit) {
@@ -1165,55 +1171,70 @@
         _showModal('Confirmar Cambios', '¿Estás seguro de que deseas guardar los cambios en esta venta? El stock del inventario se ajustará automáticamente.', async () => {
             _showModal('Progreso', 'Guardando cambios y ajustando stock...');
 
-            const nuevosProductosVendidos = Object.values(_ventaActual.productos);
-            const stockChanges = {};
-
-            _originalVentaForEdit.productos.forEach(p => {
-                stockChanges[p.id] = (stockChanges[p.id] || 0) + p.cantidadVendida;
-            });
-            
-            nuevosProductosVendidos.forEach(p => {
-                stockChanges[p.id] = (stockChanges[p.id] || 0) - p.cantidadVendida;
-            });
-
-            const batch = _writeBatch(_db);
-
-            for (const productId in stockChanges) {
-                const change = stockChanges[productId];
-                if (change === 0) continue;
-
-                const productoEnCache = _inventarioCache.find(p => p.id === productId);
-                if (!productoEnCache) {
-                    _showModal('Error', `No se encontró el producto con ID ${productId} en el inventario.`);
-                    return;
-                }
-
-                const nuevoStock = productoEnCache.cantidad + change;
-                if (nuevoStock < 0) {
-                    _showModal('Error de Stock', `Stock insuficiente para "${productoEnCache.presentacion}".`);
-                    return;
-                }
-                
-                const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
-                batch.update(productoRef, { cantidad: nuevoStock });
-            }
-            
-            const nuevoTotal = nuevosProductosVendidos.reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
-            const nuevosItemsVenta = nuevosProductosVendidos.map(p => ({
-                id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
-                precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.'
-            }));
-            
-            const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, _originalVentaForEdit.id);
-            batch.update(ventaRef, {
-                productos: nuevosItemsVenta,
-                total: nuevoTotal
-            });
-
             try {
+                // Mapa de cantidades originales: { productId: quantity }
+                const originalQuantities = new Map(
+                    _originalVentaForEdit.productos.map(p => [p.id, p.cantidadVendida])
+                );
+
+                // Mapa de nuevas cantidades: { productId: quantity }
+                const newQuantities = new Map(
+                    Object.values(_ventaActual.productos).map(p => [p.id, p.cantidadVendida])
+                );
+                
+                // Obtener todos los IDs de productos únicos de la venta original y la nueva
+                const allProductIds = new Set([
+                    ...originalQuantities.keys(),
+                    ...newQuantities.keys()
+                ]);
+
+                const batch = _writeBatch(_db);
+
+                // 1. Calcular cambios de stock y validar que sean posibles
+                for (const productId of allProductIds) {
+                    const originalQty = originalQuantities.get(productId) || 0;
+                    const newQty = newQuantities.get(productId) || 0;
+                    const stockDelta = originalQty - newQty; // Positivo: devolver al stock, Negativo: tomar del stock
+
+                    if (stockDelta === 0) continue; // No hay cambios para este producto
+
+                    const productoEnCache = _inventarioCache.find(p => p.id === productId);
+                    if (!productoEnCache) {
+                        console.warn(`Producto con ID ${productId} no encontrado en inventario. No se ajustará el stock.`);
+                        continue;
+                    }
+                    
+                    const finalStock = productoEnCache.cantidad + stockDelta;
+
+                    if (finalStock < 0) {
+                        throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
+                    }
+
+                    const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
+                    batch.update(productoRef, { cantidad: finalStock });
+                }
+
+                // 2. Actualizar el documento de la venta con los nuevos datos
+                const nuevosProductosVendidos = Object.values(_ventaActual.productos);
+                const nuevoTotal = nuevosProductosVendidos.reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
+                const nuevosItemsVenta = nuevosProductosVendidos.map(p => ({
+                    id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
+                    precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.'
+                }));
+
+                const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, _originalVentaForEdit.id);
+                batch.update(ventaRef, {
+                    productos: nuevosItemsVenta,
+                    total: nuevoTotal,
+                    fechaModificacion: new Date() // Es buena práctica guardar la fecha de modificación
+                });
+
+                // 3. Ejecutar todos los cambios en la base de datos
                 await batch.commit();
-                _originalVentaForEdit = null;
-                showVentasActualesView(); // Volver a la lista de ventas
+                
+                _originalVentaForEdit = null; // Limpiar el estado de edición
+                _showModal('Éxito', 'La venta se ha actualizado correctamente.', showVentasActualesView);
+
             } catch (error) {
                 _showModal('Error', `Hubo un error al guardar los cambios: ${error.message}`);
             }
@@ -1230,3 +1251,4 @@
         invalidateCache: () => { _segmentoOrderCacheVentas = null; }
     };
 })();
+
