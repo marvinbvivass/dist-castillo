@@ -127,22 +127,45 @@
         
         const nombreComercial = form.nombreComercial.value.trim();
         const nombrePersonal = form.nombrePersonal.value.trim();
+        const telefono = form.telefono.value.trim();
+        const codigoCEP = form.codigoCEP.value.trim();
 
         const normComercial = nombreComercial.toLowerCase();
         const normPersonal = nombrePersonal.toLowerCase();
 
-        const duplicado = _clientesCache.find(c => 
-            c.nombreComercial.toLowerCase() === normComercial || 
-            c.nombrePersonal.toLowerCase() === normPersonal
-        );
+        let duplicado = null;
+        let motivo = "";
+
+        for (const c of _clientesCache) {
+            if (c.nombreComercial.toLowerCase() === normComercial) {
+                duplicado = c;
+                motivo = "nombre comercial";
+                break;
+            }
+            if (c.nombrePersonal.toLowerCase() === normPersonal) {
+                duplicado = c;
+                motivo = "nombre personal";
+                break;
+            }
+            if (c.telefono === telefono) {
+                duplicado = c;
+                motivo = "teléfono";
+                break;
+            }
+            if (codigoCEP && c.codigoCEP === codigoCEP) {
+                duplicado = c;
+                motivo = "código CEP";
+                break;
+            }
+        }
 
         const guardar = async () => {
             const clienteData = {
                 sector: form.sector.value,
                 nombreComercial: nombreComercial,
                 nombrePersonal: nombrePersonal,
-                telefono: form.telefono.value,
-                codigoCEP: form.codigoCEP.value
+                telefono: telefono,
+                codigoCEP: codigoCEP
             };
             try {
                 await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
@@ -157,8 +180,8 @@
         if (duplicado) {
             _showModal(
                 'Posible Duplicado',
-                `Ya existe un cliente llamado "${duplicado.nombreComercial}" (${duplicado.nombrePersonal}). ¿Deseas agregarlo de todas formas?`,
-                guardar, // Callback si el usuario confirma
+                `Ya existe un cliente con el mismo ${motivo}: "${duplicado.nombreComercial}". ¿Deseas agregarlo de todas formas?`,
+                guardar,
                 'Sí, agregar'
             );
         } else {
