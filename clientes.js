@@ -103,7 +103,11 @@
                             </div>
                             <div>
                                 <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg">
+                                <div class="flex items-center">
+                                    <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg">
+                                    <input type="checkbox" id="cepNA" class="ml-4 h-5 w-5">
+                                    <label for="cepNA" class="ml-2 text-gray-700">No Aplica</label>
+                                </div>
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cliente</button>
                         </form>
@@ -113,6 +117,20 @@
             </div>
         `;
         _populateDropdown('sectores', 'sector', 'sector');
+
+        const cepInput = document.getElementById('codigoCEP');
+        const cepNACheckbox = document.getElementById('cepNA');
+        cepNACheckbox.addEventListener('change', () => {
+            if (cepNACheckbox.checked) {
+                cepInput.value = 'N/A';
+                cepInput.disabled = true;
+            } else {
+                cepInput.value = '';
+                cepInput.disabled = false;
+                cepInput.focus();
+            }
+        });
+
         document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         document.getElementById('addSectorBtn').addEventListener('click', () => _showAddItemModal('sectores', 'Sector'));
@@ -152,7 +170,8 @@
                 motivo = "teléfono";
                 break;
             }
-            if (codigoCEP && c.codigoCEP === codigoCEP) {
+            // Solo buscar duplicado de CEP si no está vacío y no es 'N/A'
+            if (codigoCEP && codigoCEP.toLowerCase() !== 'n/a' && c.codigoCEP === codigoCEP) {
                 duplicado = c;
                 motivo = "código CEP";
                 break;
@@ -171,6 +190,11 @@
                 await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
                 _showModal('Éxito', 'Cliente agregado correctamente.');
                 form.reset();
+                const cepNACheckbox = document.getElementById('cepNA');
+                if (cepNACheckbox) {
+                    cepNACheckbox.checked = false;
+                    document.getElementById('codigoCEP').disabled = false;
+                }
             } catch (error) {
                 console.error("Error al agregar cliente:", error);
                 _showModal('Error', 'Hubo un error al guardar el cliente.');
@@ -385,7 +409,11 @@
                             </div>
                             <div>
                                 <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg">
+                                <div class="flex items-center">
+                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg">
+                                    <input type="checkbox" id="editCepNA" class="ml-4 h-5 w-5">
+                                    <label for="editCepNA" class="ml-2 text-gray-700">No Aplica</label>
+                                </div>
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
                         </form>
@@ -395,6 +423,31 @@
             </div>
         `;
         _populateDropdown('sectores', 'editSector', 'sector', cliente.sector);
+
+        const editCepInput = document.getElementById('editCodigoCEP');
+        const editCepNACheckbox = document.getElementById('editCepNA');
+        
+        const syncEditCepState = () => {
+            if (editCepInput.value.toLowerCase() === 'n/a') {
+                editCepNACheckbox.checked = true;
+                editCepInput.disabled = true;
+            } else {
+                editCepNACheckbox.checked = false;
+                editCepInput.disabled = false;
+            }
+        };
+
+        editCepNACheckbox.addEventListener('change', () => {
+            if (editCepNACheckbox.checked) {
+                editCepInput.value = 'N/A';
+                editCepInput.disabled = true;
+            } else {
+                editCepInput.value = '';
+                editCepInput.disabled = false;
+                editCepInput.focus();
+            }
+        });
+        syncEditCepState(); // Sincronizar estado al cargar
 
         document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
             e.preventDefault();
