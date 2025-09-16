@@ -359,7 +359,7 @@
     }
     
     /**
-     * Crea el HTML para un ticket/factura.
+     * Crea el HTML para un ticket/factura (para compartir como imagen).
      */
     function createTicketHTML(venta, productos, tipo = 'ticket') {
         const fecha = venta.fecha ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES');
@@ -416,10 +416,57 @@
     }
 
     /**
-     * Maneja la generación y compartición de la imagen del ticket.
+     * Crea un string de texto plano optimizado para impresoras térmicas.
+     */
+    function createRawTextTicket(venta, productos, tipo = 'ticket') {
+        const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
+        const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre).toUpperCase();
+        const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '').toUpperCase();
+        const LINE_WIDTH = 32; // Ancho estándar para papel de 58mm
+
+        let total = 0;
+        let ticket = '';
+
+        const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
+
+        ticket += center(tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA') + '\n';
+        ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n\n';
+        
+        ticket += `FECHA: ${fecha}\n`;
+        ticket += `CLIENTE: ${clienteNombre}\n`;
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        ticket += 'CANT  PRODUCTO             SUBTOTAL\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        
+        productos.forEach(p => {
+            const subtotal = p.precio * p.cantidadVendida;
+            total += subtotal;
+            const productName = `${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`.toUpperCase();
+            const quantity = p.cantidadVendida.toString();
+            const subtotalStr = `$${subtotal.toFixed(2)}`;
+
+            ticket += quantity.padEnd(4, ' ') + productName + '\n';
+            ticket += subtotalStr.padStart(LINE_WIDTH, ' ') + '\n';
+        });
+
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        const totalString = `TOTAL: $${total.toFixed(2)}`;
+        ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
+        
+        ticket += '\n\n\n\n';
+        
+        ticket += center('________________________') + '\n';
+        ticket += center(clienteNombrePersonal) + '\n\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+
+        return ticket;
+    }
+
+    /**
+     * Maneja la compartición de la imagen del ticket.
      */
     async function handleShareTicket(htmlContent, successCallback) {
-        _showModal('Progreso', 'Generando imagen del ticket...');
+        _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div');
         tempDiv.style.position = 'absolute';
         tempDiv.style.left = '-9999px';
@@ -437,25 +484,72 @@
         try {
             await new Promise(resolve => setTimeout(resolve, 100));
             const canvas = await html2canvas(ticketElement, { scale: 3 });
-            canvas.toBlob(async (blob) => {
-                if (navigator.share && blob) {
-                     _showModal('Progreso', 'Abriendo diálogo para compartir...');
-                    try {
-                        await navigator.share({ files: [new File([blob], "ticket.png", { type: "image/png" })], title: "Ticket de Venta" });
-                        _showModal('Éxito', 'Venta registrada y ticket compartido.', successCallback);
-                    } catch(shareError) {
-                        _showModal('Aviso', 'No se compartió el ticket, pero la venta fue registrada.', successCallback);
-                    }
-                } else {
-                     _showModal('Error', 'La función de compartir no está disponible en este navegador.', successCallback);
-                }
-            }, 'image/png');
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+
+            if (navigator.share && blob) {
+                await navigator.share({ files: [new File([blob], "ticket.png", { type: "image/png" })], title: "Ticket de Venta" });
+                _showModal('Éxito', 'Venta registrada. Imagen compartida.', successCallback);
+            } else {
+                 _showModal('Error', 'La función de compartir no está disponible.', successCallback);
+            }
         } catch(e) {
-            console.error(e);
-            _showModal('Error', `No se pudo generar la imagen del ticket. ${e.message}`, successCallback);
+            _showModal('Error', `No se pudo generar la imagen. ${e.message}`, successCallback);
         } finally {
             document.body.removeChild(tempDiv);
         }
+    }
+
+    /**
+     * Maneja la compartición del ticket como texto plano.
+     */
+    async function handleShareRawText(textContent, successCallback) {
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: 'Ticket de Venta', text: textContent });
+                _showModal('Éxito', 'Venta registrada. El ticket está listo para imprimir.', successCallback);
+            } catch (err) {
+                 _showModal('Aviso', 'No se compartió el ticket, pero la venta fue registrada.', successCallback);
+            }
+        } else {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = textContent;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', successCallback);
+            } catch (copyErr) {
+                 _showModal('Error', 'No se pudo compartir ni copiar el ticket. La venta fue registrada.', successCallback);
+            }
+        }
+    }
+
+    /**
+     * Muestra un modal para elegir entre imprimir (texto) o compartir (imagen).
+     */
+    function showSharingOptions(venta, productos, tipo, successCallback) {
+        const modalContent = `
+            <div class="text-center">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">¿Qué deseas hacer?</h3>
+                <p class="text-gray-600 mb-6">Elige el formato para tu ${tipo}.</p>
+                <div class="space-y-4">
+                    <button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Imprimir (Texto)</button>
+                    <button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Compartir (Imagen)</button>
+                </div>
+            </div>`;
+        
+        _showModal('Elige una opción', modalContent, null, ''); // Usamos _showModal sin botones por defecto
+
+        document.getElementById('printTextBtn').addEventListener('click', () => {
+            const rawTextTicket = createRawTextTicket(venta, productos, tipo);
+            handleShareRawText(rawTextTicket, successCallback);
+        });
+
+        document.getElementById('shareImageBtn').addEventListener('click', () => {
+            const ticketHTML = createTicketHTML(venta, productos, tipo);
+            handleShareTicket(ticketHTML, successCallback);
+        });
     }
 
     /**
@@ -472,42 +566,36 @@
             return;
         }
 
-        _showModal('Confirmar Venta', '¿Deseas guardar esta venta y generar el ticket?', async () => {
+        _showModal('Confirmar Venta', '¿Deseas guardar esta venta?', async () => {
             _showModal('Progreso', 'Procesando venta...');
             try {
-                // Usamos un batch en lugar de una transacción para compatibilidad sin conexión.
                 const batch = _writeBatch(_db);
                 const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
                 let totalVenta = 0;
                 const itemsVenta = [];
 
                 for (const p of productosVendidos) {
-                    // Verificamos el stock contra la caché local, que es la fuente de verdad sin conexión.
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
                     if (!productoEnCache || productoEnCache.cantidad < p.cantidadVendida) {
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                     }
-
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
                     const nuevoStock = productoEnCache.cantidad - p.cantidadVendida;
-                    
                     batch.update(productoRef, { cantidad: nuevoStock });
-
                     totalVenta += p.precio * p.cantidadVendida;
                     itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null, precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.' });
                 }
 
                 batch.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
-
                 await batch.commit();
 
-                const ticketHTML = createTicketHTML(_ventaActual, productosVendidos, 'ticket');
-                await handleShareTicket(ticketHTML, showNuevaVentaView);
+                // Mostrar opciones después de guardar la venta
+                showSharingOptions(_ventaActual, productosVendidos, 'ticket', showNuevaVentaView);
 
             } catch (e) {
                 _showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
             }
-        });
+        }, 'Sí, Guardar');
     }
 
     /**
@@ -591,8 +679,8 @@
                         <td class="py-2 px-3 border-b">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
                         <td class="py-2 px-3 border-b text-right font-semibold">$${venta.total.toFixed(2)}</td>
                         <td class="py-2 px-3 border-b text-center space-x-1">
-                            <button onclick="window.ventasModule.shareSaleTicket('${venta.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ticket</button>
-                            <button onclick="window.ventasModule.mostrarFactura('${venta.id}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Factura</button>
+                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ticket</button>
+                            <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'factura')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Factura</button>
                         </td>
                     </tr>
                 `;
@@ -636,7 +724,6 @@
         const clientData = {};
         let grandTotalValue = 0;
         
-        // Usamos un mapa para no duplicar productos y tener toda su info
         const allProductsMap = new Map();
 
         ventas.forEach(venta => {
@@ -667,7 +754,6 @@
 
         const sortedClients = Object.keys(clientData).sort();
 
-        // Agrupar productos por segmento y marca
         const groupedProducts = {};
         for (const product of allProductsMap.values()) {
             if (!groupedProducts[product.segmento]) {
@@ -679,15 +765,14 @@
             groupedProducts[product.segmento][product.marca].push(product.presentacion);
         }
 
-        // Ordenar el objeto agrupado
         const finalProductOrder = [];
         const sortedSegmentos = Object.keys(groupedProducts).sort();
         sortedSegmentos.forEach(segmento => {
             const sortedMarcas = Object.keys(groupedProducts[segmento]).sort();
-            groupedProducts[segmento].sortedMarcas = sortedMarcas; // Adjuntamos para la construcción del header
+            groupedProducts[segmento].sortedMarcas = sortedMarcas;
             sortedMarcas.forEach(marca => {
                 const sortedPresentaciones = groupedProducts[segmento][marca].sort();
-                groupedProducts[segmento][marca] = sortedPresentaciones; // Reemplazamos con el array ordenado
+                groupedProducts[segmento][marca] = sortedPresentaciones;
                 finalProductOrder.push(...sortedPresentaciones);
             });
         });
@@ -710,10 +795,9 @@
 
         const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedSegmentos } = processSalesDataForReport(ventas);
 
-        // --- Build Table Header (3 levels) ---
         let headerRow1 = `<tr class="sticky top-0"><th rowspan="3" class="p-2 border-b border-gray-300 bg-gray-200 sticky left-0 z-10">Cliente</th>`;
-        let headerRow2 = `<tr class="sticky" style="top: 36px;">`; // Adjust top position based on first row height
-        let headerRow3 = `<tr class="sticky" style="top: 72px;">`; // Adjust top for two rows
+        let headerRow2 = `<tr class="sticky" style="top: 36px;">`;
+        let headerRow3 = `<tr class="sticky" style="top: 72px;">`;
 
         sortedSegmentos.forEach(segmento => {
             let segmentoColspan = 0;
@@ -735,7 +819,6 @@
         headerRow2 += `</tr>`;
         headerRow3 += `</tr>`;
 
-        // --- Build Table Body ---
         let bodyHTML = '';
         sortedClients.forEach(clientName => {
             bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-2 border-b border-gray-300 font-medium bg-white sticky left-0">${clientName}</td>`;
@@ -747,7 +830,6 @@
             bodyHTML += `<td class="p-2 border-b border-gray-300 text-right font-semibold bg-white sticky right-0">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
-        // --- Build Table Footer (Totals) ---
         let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-2 border-b border-gray-300 sticky left-0">TOTALES</td>';
         finalProductOrder.forEach(productName => {
             let totalQty = 0;
@@ -777,7 +859,7 @@
      */
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada. Asegúrate de tener conexión a internet o de que el script esté en tu HTML.');
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
             return;
         }
 
@@ -786,8 +868,7 @@
         const dataForSheet = [];
         const merges = [];
         
-        // --- Build Header Rows for Excel ---
-        const headerRow1 = [""]; // Empty for "Cliente"
+        const headerRow1 = [""];
         const headerRow2 = [""];
         const headerRow3 = ["Cliente"];
         
@@ -818,16 +899,14 @@
             }
         });
         
-        headerRow1.push(""); // Placeholder for Total
+        headerRow1.push("");
         headerRow2.push("");
         headerRow3.push("Total Cliente");
         dataForSheet.push(headerRow1, headerRow2, headerRow3);
 
-        // Merge headers for "Cliente" and "Total Cliente"
         merges.push({ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } });
         merges.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 2, c: finalProductOrder.length + 1 } });
 
-        // --- Build Body Rows for Excel ---
         sortedClients.forEach(clientName => {
             const row = [clientName];
             const currentClient = clientData[clientName];
@@ -838,7 +917,6 @@
             dataForSheet.push(row);
         });
 
-        // --- Build Footer Row for Excel ---
         const footerRow = ["TOTALES"];
         finalProductOrder.forEach(productName => {
             let totalQty = 0;
@@ -850,7 +928,6 @@
         footerRow.push(grandTotalValue);
         dataForSheet.push(footerRow);
 
-        // --- Create and Download Excel File ---
         const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
         ws['!merges'] = merges;
         const wb = XLSX.utils.book_new();
@@ -878,19 +955,16 @@
                 }
 
                 try {
-                    // 1. Generate and Download Excel report
                     await exportCierreToExcel(ventas);
-                    _showModal('Progreso', 'Reporte Excel generado. Ahora procesando el cierre en la base de datos...');
+                    _showModal('Progreso', 'Reporte Excel generado. Ahora procesando el cierre...');
 
-                    // 2. Archive the sales data
                     const cierreRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
                     await _setDoc(cierreRef, {
                         fecha: new Date(),
-                        ventas: ventas.map(({id, ...rest}) => rest), // Guardar sin el ID de documento
+                        ventas: ventas.map(({id, ...rest}) => rest),
                         total: ventas.reduce((sum, v) => sum + v.total, 0)
                     });
 
-                    // 3. Delete current sales
                     const batch = _writeBatch(_db);
                     ventas.forEach(venta => {
                         batch.delete(_doc(ventasRef, venta.id));
@@ -907,26 +981,12 @@
     }
     
      /**
-     * Re-genera y comparte un ticket de una venta existente.
+     * Muestra las opciones para una venta pasada (imprimir o compartir).
      */
-    async function shareSaleTicket(ventaId) {
+    function showPastSaleOptions(ventaId, tipo = 'ticket') {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (venta) {
-            const ticketHTML = createTicketHTML(venta, venta.productos, 'ticket');
-            await handleShareTicket(ticketHTML, () => {});
-        } else {
-            _showModal('Error', 'No se encontró la venta seleccionada.');
-        }
-    }
-
-    /**
-     * Re-genera y comparte una factura fiscal de una venta existente.
-     */
-    async function mostrarFactura(ventaId) {
-        const venta = _ventasGlobal.find(v => v.id === ventaId);
-        if (venta) {
-            const facturaHTML = createTicketHTML(venta, venta.productos, 'factura');
-            await handleShareTicket(facturaHTML, () => {});
+            showSharingOptions(venta, venta.productos, tipo, () => {});
         } else {
             _showModal('Error', 'No se encontró la venta seleccionada.');
         }
@@ -936,7 +996,6 @@
     window.ventasModule = {
         toggleMoneda,
         updateVentaCantidad,
-        shareSaleTicket,
-        mostrarFactura
+        showPastSaleOptions,
     };
 })();
