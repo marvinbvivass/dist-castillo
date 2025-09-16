@@ -29,6 +29,12 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _deleteDoc = dependencies.deleteDoc;
+        
+        // Cargar y cachear clientes en segundo plano para validaciones
+        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        _onSnapshot(clientesRef, (snapshot) => {
+            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        });
     };
 
     /**
@@ -61,7 +67,7 @@
         `;
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
         document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
-        document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
+        document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
@@ -97,7 +103,7 @@
                             </div>
                             <div>
                                 <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg" required>
+                                <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg">
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cliente</button>
                         </form>
@@ -113,24 +119,50 @@
     }
 
     /**
-     * Agrega un nuevo cliente a la base de datos.
+     * Agrega un nuevo cliente a la base de datos, con validación de duplicados.
      */
     async function agregarCliente(e) {
         e.preventDefault();
-        const clienteData = {
-            sector: document.getElementById('sector').value,
-            nombreComercial: document.getElementById('nombreComercial').value,
-            nombrePersonal: document.getElementById('nombrePersonal').value,
-            telefono: document.getElementById('telefono').value,
-            codigoCEP: document.getElementById('codigoCEP').value
+        const form = e.target;
+        
+        const nombreComercial = form.nombreComercial.value.trim();
+        const nombrePersonal = form.nombrePersonal.value.trim();
+
+        const normComercial = nombreComercial.toLowerCase();
+        const normPersonal = nombrePersonal.toLowerCase();
+
+        const duplicado = _clientesCache.find(c => 
+            c.nombreComercial.toLowerCase() === normComercial || 
+            c.nombrePersonal.toLowerCase() === normPersonal
+        );
+
+        const guardar = async () => {
+            const clienteData = {
+                sector: form.sector.value,
+                nombreComercial: nombreComercial,
+                nombrePersonal: nombrePersonal,
+                telefono: form.telefono.value,
+                codigoCEP: form.codigoCEP.value
+            };
+            try {
+                await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
+                _showModal('Éxito', 'Cliente agregado correctamente.');
+                form.reset();
+            } catch (error) {
+                console.error("Error al agregar cliente:", error);
+                _showModal('Error', 'Hubo un error al guardar el cliente.');
+            }
         };
-        try {
-            await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
-            _showModal('Éxito', 'Cliente agregado correctamente.');
-            e.target.reset();
-        } catch (error) {
-            console.error("Error al agregar cliente:", error);
-            _showModal('Error', 'Hubo un error al guardar el cliente.');
+
+        if (duplicado) {
+            _showModal(
+                'Posible Duplicado',
+                `Ya existe un cliente llamado "${duplicado.nombreComercial}" (${duplicado.nombrePersonal}). ¿Deseas agregarlo de todas formas?`,
+                guardar, // Callback si el usuario confirma
+                'Sí, agregar'
+            );
+        } else {
+            await guardar();
         }
     }
 
@@ -143,7 +175,7 @@
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Clientes</h2>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Lista de Clientes</h2>
                         ${getFiltrosHTML()}
                         <div id="clientesListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando clientes...</p>
@@ -154,23 +186,25 @@
             </div>
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        setupFiltros(true);
-        renderClientesList('clientesListContainer', true);
+        setupFiltros('clientesListContainer');
+        renderClientesList('clientesListContainer');
     }
 
     /**
-     * Muestra la vista para modificar o eliminar un cliente.
+     * MUEVA VISTA: Muestra la interfaz de búsqueda para modificar o eliminar un cliente.
      */
-    function showModifyDeleteClienteView() {
-         _floatingControls.classList.add('hidden');
+    function showModifyDeleteSearchView() {
+        _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Cliente</h2>
-                        ${getFiltrosHTML()}
-                        <div id="clientesListContainer" class="overflow-x-auto max-h-96">
-                            <p class="text-gray-500 text-center">Cargando clientes...</p>
+                        <div class="mb-6">
+                            <input type="text" id="search-modify-input" placeholder="Buscar cliente por Nombre o Código..." class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div id="clientes-results-container" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Escribe en el campo superior para buscar un cliente.</p>
                         </div>
                         <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
@@ -178,8 +212,14 @@
             </div>
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        setupFiltros(false);
-        renderClientesList('clientesListContainer', false);
+        document.getElementById('search-modify-input').addEventListener('input', (e) => {
+            const searchTerm = e.target.value;
+            if (searchTerm.length > 1) {
+                renderClientesList('clientes-results-container', false, searchTerm);
+            } else {
+                document.getElementById('clientes-results-container').innerHTML = '<p class="text-gray-500 text-center">Escribe al menos 2 caracteres para buscar.</p>';
+            }
+        });
     }
 
     /**
@@ -203,14 +243,14 @@
     /**
      * Configura los event listeners para los filtros.
      */
-    function setupFiltros(isReadOnly) {
+    function setupFiltros(containerId) {
         _populateDropdown('sectores', 'filter-sector', 'Sector');
 
         const searchInput = document.getElementById('search-input');
         const sectorFilter = document.getElementById('filter-sector');
         const clearBtn = document.getElementById('clear-filters-btn');
 
-        const applyFilters = () => renderClientesList('clientesListContainer', isReadOnly);
+        const applyFilters = () => renderClientesList(containerId);
 
         searchInput.addEventListener('input', applyFilters);
         sectorFilter.addEventListener('change', applyFilters);
@@ -225,64 +265,68 @@
     /**
      * Renderiza la lista de clientes en una tabla.
      */
-    function renderClientesList(elementId, readOnly = false) {
+    function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        const unsubscribe = _onSnapshot(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), (snapshot) => {
-            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
-            const sectorFilter = document.getElementById('filter-sector')?.value || '';
+        // Si no hay caché, muestra cargando. El listener de onSnapshot se encargará de re-renderizar.
+        if (_clientesCache.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
+            return;
+        }
 
-            const filteredClients = _clientesCache.filter(cliente => {
-                const searchMatch = !searchTerm || 
-                                    cliente.nombreComercial.toLowerCase().includes(searchTerm) ||
-                                    cliente.nombrePersonal.toLowerCase().includes(searchTerm) ||
-                                    (cliente.codigoCEP && cliente.codigoCEP.toLowerCase().includes(searchTerm));
-                const sectorMatch = !sectorFilter || cliente.sector === sectorFilter;
-                return searchMatch && sectorMatch;
-            });
-            
-            if (filteredClients.length === 0) {
-                container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con los filtros.</p>`;
-                return;
-            }
+        const searchTerm = externalSearchTerm !== null ? externalSearchTerm.toLowerCase() : (document.getElementById('search-input')?.value.toLowerCase() || '');
+        const sectorFilter = document.getElementById('filter-sector')?.value || '';
 
-            let tableHTML = `
-                <table class="min-w-full bg-white border border-gray-200">
-                    <thead class="bg-gray-200 sticky top-0">
-                        <tr>
-                            <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
-                            <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
-                            <th class="py-2 px-4 border-b text-left text-sm">Sector</th>
-                            <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
-                            <th class="py-2 px-4 border-b text-left text-sm">Código CEP</th>
-                            ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            filteredClients.forEach(cliente => {
-                tableHTML += `
-                    <tr class="hover:bg-gray-50">
-                        <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
-                        <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
-                        <td class="py-2 px-4 border-b text-sm">${cliente.sector}</td>
-                        <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
-                        <td class="py-2 px-4 border-b text-sm">${cliente.codigoCEP || 'N/A'}</td>
-                        ${!readOnly ? `
-                        <td class="py-2 px-4 border-b text-center space-x-2">
-                            <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                            <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
-                        </td>` : ''}
-                    </tr>
-                `;
-            });
-            tableHTML += `</tbody></table>`;
-            container.innerHTML = tableHTML;
+        const filteredClients = _clientesCache.filter(cliente => {
+            const searchMatch = !searchTerm ||
+                cliente.nombreComercial.toLowerCase().includes(searchTerm) ||
+                cliente.nombrePersonal.toLowerCase().includes(searchTerm) ||
+                (cliente.codigoCEP && cliente.codigoCEP.toLowerCase().includes(searchTerm));
+            
+            // Si hay filtros de sector en la página, úsalos. Si no, ignóralos.
+            const sectorMatch = !sectorFilter || cliente.sector === sectorFilter;
+            
+            return searchMatch && sectorMatch;
         });
-        _activeListeners.push(unsubscribe);
+        
+        if (filteredClients.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con la búsqueda.</p>`;
+            return;
+        }
+
+        let tableHTML = `
+            <table class="min-w-full bg-white border border-gray-200">
+                <thead class="bg-gray-200 sticky top-0">
+                    <tr>
+                        <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
+                        <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
+                        ${readOnly ? '<th class="py-2 px-4 border-b text-left text-sm">Sector</th>' : ''}
+                        <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
+                        ${readOnly ? '<th class="py-2 px-4 border-b text-left text-sm">Código CEP</th>' : ''}
+                        ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        filteredClients.forEach(cliente => {
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
+                    ${readOnly ? `<td class="py-2 px-4 border-b text-sm">${cliente.sector}</td>` : ''}
+                    <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
+                    ${readOnly ? `<td class="py-2 px-4 border-b text-sm">${cliente.codigoCEP || 'N/A'}</td>` : ''}
+                    ${!readOnly ? `
+                    <td class="py-2 px-4 border-b text-center space-x-2">
+                        <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                        <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                    </td>` : ''}
+                </tr>
+            `;
+        });
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
     }
     
     /**
@@ -302,7 +346,6 @@
                             <div>
                                 <label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label>
                                 <select id="editSector" class="w-full px-4 py-2 border rounded-lg" required>
-                                    <option value="${cliente.sector}">${cliente.sector}</option>
                                 </select>
                             </div>
                             <div>
@@ -319,7 +362,7 @@
                             </div>
                             <div>
                                 <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
-                                <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg" required>
+                                <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg">
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
                         </form>
@@ -328,7 +371,7 @@
                 </div>
             </div>
         `;
-        _populateDropdown('sectores', 'editSector', 'sector');
+        _populateDropdown('sectores', 'editSector', 'sector', cliente.sector);
 
         document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -342,13 +385,13 @@
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId), updatedData, { merge: true });
                 _showModal('Éxito', 'Cliente modificado exitosamente.');
-                showModifyDeleteClienteView();
+                showModifyDeleteSearchView();
             } catch (error) {
                 console.error("Error al modificar el cliente:", error);
                 _showModal('Error', 'Hubo un error al modificar el cliente.');
             }
         });
-        document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteClienteView);
+        document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
     };
 
     /**
@@ -359,6 +402,11 @@
             try {
                 await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId));
                 _showModal('Éxito', 'Cliente eliminado correctamente.');
+                // Refrescar la vista de búsqueda
+                const searchInput = document.getElementById('search-modify-input');
+                if (searchInput) {
+                    searchInput.dispatchEvent(new Event('input'));
+                }
             } catch (error) {
                 console.error("Error al eliminar el cliente:", error);
                 _showModal('Error', 'Hubo un error al eliminar el cliente.');
