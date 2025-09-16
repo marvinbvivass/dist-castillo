@@ -10,6 +10,7 @@
     let _clientesCache = [];
     let _inventarioCache = [];
     let _ventasGlobal = [];
+    let _segmentoOrderCacheVentas = null; // Caché para el orden de segmentos en este módulo
     
     // Estado local de una venta en progreso
     let _ventaActual = { cliente: null, productos: {} };
@@ -17,6 +18,33 @@
     let _tasaBs = 0;
     let _monedaActual = 'USD';
 
+    /**
+     * Obtiene y cachea el mapa de orden de los segmentos.
+     */
+    async function getSegmentoOrderMapVentas() {
+        if (_segmentoOrderCacheVentas) return _segmentoOrderCacheVentas;
+        // Intenta llamar a la función de inventario si existe
+        if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
+            _segmentoOrderCacheVentas = await window.inventarioModule.getSegmentoOrderMap();
+            return _segmentoOrderCacheVentas;
+        }
+        // Fallback si el módulo de inventario no está cargado (copia de la lógica)
+        const map = {};
+        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+        try {
+            const snapshot = await _getDocs(segmentosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _segmentoOrderCacheVentas = map;
+            return map;
+        } catch (e) {
+            console.warn("No se pudo obtener el orden de los segmentos en ventas.js", e);
+            return null;
+        }
+    }
+    
     /**
      * Inicializa el módulo con las dependencias de la app principal.
      */
@@ -250,69 +278,74 @@
     }
 
     /**
-     * Renderiza la tabla de inventario para la venta.
+     * Renderiza la vista de inventario para la venta con el orden personalizado.
      */
-    function renderVentasInventario() {
+    async function renderVentasInventario() {
         const inventarioTableBody = document.getElementById('inventarioTableBody');
         const monedaIndicator = document.getElementById('monedaIndicator');
         const rubroFilter = document.getElementById('rubroFilter');
 
         if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
-        inventarioTableBody.innerHTML = '';
-
+        inventarioTableBody.innerHTML = `<p class="text-center text-gray-500 col-span-4">Cargando y ordenando...</p>`;
         monedaIndicator.textContent = `(${_monedaActual})`;
         
         const selectedRubro = rubroFilter.value;
         const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0);
-        const filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
+        let filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
+        
+        const segmentoOrderMap = await getSegmentoOrderMapVentas();
+        if (segmentoOrderMap) {
+            filteredInventario.sort((a, b) => {
+                const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                if (orderA !== orderB) return orderA - orderB;
+                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                return a.presentacion.localeCompare(b.presentacion);
+            });
+        }
 
-        const productosAgrupados = filteredInventario.reduce((acc, p) => {
-            const marca = p.marca || 'Sin Marca';
-            if (!acc[marca]) acc[marca] = [];
-            acc[marca].push(p);
-            return acc;
-        }, {});
-
-        const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
-
-        if (marcasOrdenadas.length === 0) {
+        inventarioTableBody.innerHTML = '';
+        if (filteredInventario.length === 0) {
             inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center">No hay productos que coincidan.</td></tr>`;
             return;
         }
 
-        marcasOrdenadas.forEach(marca => {
-            const marcaRow = document.createElement('tr');
-            marcaRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${marca}</td>`;
-            inventarioTableBody.appendChild(marcaRow);
+        let currentMarca = null;
+        filteredInventario.forEach(producto => {
+            const marca = producto.marca || 'Sin Marca';
+            if (marca !== currentMarca) {
+                currentMarca = marca;
+                const marcaRow = document.createElement('tr');
+                marcaRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${currentMarca}</td>`;
+                inventarioTableBody.appendChild(marcaRow);
+            }
 
-            productosAgrupados[marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion)).forEach(producto => {
-                const row = document.createElement('tr');
-                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
+            const row = document.createElement('tr');
+            row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
-                let precioMostrado;
-                if (_monedaActual === 'COP') {
-                    const precioConvertido = producto.precio * _tasaCOP;
-                    const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
-                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
-                } else if (_monedaActual === 'Bs') {
-                    const precioConvertido = producto.precio * _tasaBs;
-                    precioMostrado = `Bs.S ${precioConvertido.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                } else {
-                    precioMostrado = `$${producto.precio.toFixed(2)}`;
-                }
+            let precioMostrado;
+            if (_monedaActual === 'COP') {
+                const precioConvertido = producto.precio * _tasaCOP;
+                const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
+                precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+            } else if (_monedaActual === 'Bs') {
+                const precioConvertido = producto.precio * _tasaBs;
+                precioMostrado = `Bs.S ${precioConvertido.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            } else {
+                precioMostrado = `$${producto.precio.toFixed(2)}`;
+            }
 
-                row.innerHTML = `
-                    <td class="py-1 px-1 text-center">
-                        <input type="number" min="0" max="${producto.cantidad}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
-                               class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
-                               oninput="window.ventasModule.updateVentaCantidad(event)">
-                    </td>
-                    <td class="py-1 px-2 text-left whitespace-nowrap">${producto.presentacion} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
-                    <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                    <td class="py-1 px-1 text-center">${producto.cantidad}</td>
-                `;
-                inventarioTableBody.appendChild(row);
-            });
+            row.innerHTML = `
+                <td class="py-1 px-1 text-center">
+                    <input type="number" min="0" max="${producto.cantidad}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
+                           class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
+                           oninput="window.ventasModule.updateVentaCantidad(event)">
+                </td>
+                <td class="py-1 px-2 text-left whitespace-nowrap">${producto.presentacion} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
+                <td class="py-1 px-1 text-center">${producto.cantidad}</td>
+            `;
+            inventarioTableBody.appendChild(row);
         });
     }
 
@@ -1017,5 +1050,6 @@
         toggleMoneda,
         updateVentaCantidad,
         showPastSaleOptions,
+        invalidateCache: () => { _segmentoOrderCacheVentas = null; }
     };
 })();
