@@ -126,6 +126,14 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Segmentos</h2>
                         <p class="text-center text-gray-600 mb-6">Arrastra y suelta los segmentos para cambiar el orden en que aparecerán en las listas de productos.</p>
+                        
+                        <div class="mb-4">
+                           <label for="ordenarRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                           <select id="ordenarRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                               <option value="">Todos los Rubros</option>
+                           </select>
+                        </div>
+
                         <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
                             <p class="text-gray-500 text-center">Cargando segmentos...</p>
                         </ul>
@@ -141,23 +149,28 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenSegmentos);
         
-        renderSortableSegmentList();
+        const rubroFilter = document.getElementById('ordenarRubroFilter');
+        _populateDropdown('rubros', 'ordenarRubroFilter', 'Rubro');
+        rubroFilter.addEventListener('change', () => renderSortableSegmentList(rubroFilter.value));
+        renderSortableSegmentList('');
     }
 
     /**
-     * Renderiza la lista de segmentos para que se puedan ordenar.
+     * Renderiza la lista de segmentos para que se puedan ordenar, opcionalmente filtrada por rubro.
      */
-    async function renderSortableSegmentList() {
+    async function renderSortableSegmentList(rubro = '') {
         const container = document.getElementById('segmentos-sortable-list');
         if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
 
         try {
             const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
             let snapshot = await _getDocs(segmentosRef);
-            let segmentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (segmentos.length > 0 && segmentos.some(s => s.orden === undefined)) {
-                const sortedAlphabetically = segmentos.sort((a,b) => a.name.localeCompare(b.name));
+            // Inicializar el campo 'orden' si no existe
+            if (allSegments.length > 0 && allSegments.some(s => s.orden === undefined)) {
+                const sortedAlphabetically = allSegments.sort((a,b) => a.name.localeCompare(b.name));
                 const batch = _writeBatch(_db);
                 sortedAlphabetically.forEach((seg, index) => {
                     const docRef = _doc(segmentosRef, seg.id);
@@ -165,16 +178,32 @@
                 });
                 await batch.commit();
                 snapshot = await _getDocs(segmentosRef);
-                segmentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
 
-            segmentos.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
+            let segmentsToDisplay = allSegments;
+
+            // Filtrar por rubro si se especifica uno
+            if (rubro) {
+                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                const q = _query(inventarioRef, _where("rubro", "==", rubro));
+                const inventarioSnapshot = await _getDocs(q);
+                const usedSegmentNames = new Set(inventarioSnapshot.docs.map(doc => doc.data().segmento));
+                segmentsToDisplay = allSegments.filter(s => usedSegmentNames.has(s.name));
+            }
+
+            segmentsToDisplay.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
 
             container.innerHTML = ''; 
+            if(segmentsToDisplay.length === 0) {
+                 container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos para este rubro.</p>`;
+                 return;
+            }
 
-            segmentos.forEach(seg => {
+            segmentsToDisplay.forEach(seg => {
                 const li = document.createElement('li');
                 li.dataset.id = seg.id;
+                li.dataset.name = seg.name;
                 li.className = 'p-3 bg-gray-100 rounded shadow-sm cursor-grab active:cursor-grabbing';
                 li.textContent = seg.name;
                 li.draggable = true;
@@ -341,7 +370,7 @@
             
             marcasOrdenadas.forEach(marca => {
                 tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td></tr>`;
-                const productosOrdenados = productosAgrupados[marca]; // Ya están ordenados por la clasificación principal
+                const productosOrdenados = productosAgrupados[marca];
                 productosOrdenados.forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
