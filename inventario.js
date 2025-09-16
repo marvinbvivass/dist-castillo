@@ -145,7 +145,8 @@
             
             marcasOrdenadas.forEach(marca => {
                 tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td></tr>`;
-                productosAgrupados[marca].forEach(p => {
+                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
+                productosOrdenados.forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
                             <td class="py-2 px-4 border-b text-sm">
@@ -570,7 +571,8 @@
             
             marcasOrdenadas.forEach(marca => {
                 tableHTML += `<tr><td colspan="${readOnly ? 4 : 5}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${marca}</td></tr>`;
-                productosAgrupados[marca].forEach(p => {
+                const productosOrdenados = productosAgrupados[marca].sort((a, b) => a.presentacion.localeCompare(b.presentacion));
+                productosOrdenados.forEach(p => {
                     tableHTML += `
                         <tr class="hover:bg-gray-50">
                             <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
