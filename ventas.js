@@ -429,8 +429,8 @@
 
         const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
         const createRow = (col1, col2, col3) => {
-            const C1_WIDTH = 4;
-            const C2_WIDTH = 18;
+            const C1_WIDTH = 3;
+            const C2_WIDTH = 19;
             const C3_WIDTH = 10;
             return `${col1.padEnd(C1_WIDTH)}${col2.padEnd(C2_WIDTH)}${col3.padStart(C3_WIDTH)}\n`;
         };
@@ -452,9 +452,9 @@
 
             const lines = [];
             let tempName = productName;
-            while(tempName.length > 18) {
-                let breakPoint = tempName.lastIndexOf(' ', 18);
-                if (breakPoint === -1) breakPoint = 18;
+            while(tempName.length > 19) {
+                let breakPoint = tempName.lastIndexOf(' ', 19);
+                if (breakPoint === -1) breakPoint = 19;
                 lines.push(tempName.substring(0, breakPoint));
                 tempName = tempName.substring(breakPoint).trim();
             }
