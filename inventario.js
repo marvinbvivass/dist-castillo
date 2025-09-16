@@ -21,7 +21,7 @@
         _activeListeners = dependencies.activeListeners;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
-        _showAddItemModal = dependencies.showAddItemModal;
+        _showAddItemModal = dependencies.showAddItemModal; // Aunque no se use aquí, se mantiene por si otros módulos la necesitan
         _populateDropdown = dependencies.populateDropdown;
         _collection = dependencies.collection;
         _onSnapshot = dependencies.onSnapshot;
@@ -317,6 +317,69 @@
     }
 
     /**
+     * Muestra un modal para agregar un nuevo item (Rubro, Segmento, Marca) con validación de duplicados.
+     * Esta función es una versión mejorada y específica para este módulo.
+     */
+    function showValidatedAddItemModal(collectionName, itemName) {
+        // Accedemos a los elementos del modal global directamente.
+        const modalContainer = document.getElementById('modalContainer');
+        const modalContent = document.getElementById('modalContent');
+        
+        modalContent.innerHTML = `
+            <div class="text-center">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                <form id="addItemForm" class="space-y-4">
+                    <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
+                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
+                </form>
+                <p id="addItemMessage" class="text-sm mt-2 h-4"></p>
+                <div class="mt-4">
+                     <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
+                </div>
+            </div>
+        `;
+        modalContainer.classList.remove('hidden');
+
+        const newItemInput = document.getElementById('newItemInput');
+        const addItemMessage = document.getElementById('addItemMessage');
+
+        document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+
+        document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newItemName = newItemInput.value.trim();
+            if (!newItemName) return;
+            
+            addItemMessage.textContent = '';
+            addItemMessage.classList.remove('text-green-600', 'text-red-600');
+
+            try {
+                // Lógica de validación (case-insensitive)
+                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+                const snapshot = await _getDocs(collectionRef);
+                const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
+                
+                if (existingItems.includes(newItemName.toLowerCase())) {
+                    addItemMessage.classList.add('text-red-600');
+                    addItemMessage.textContent = `"${newItemName}" ya existe.`;
+                    return;
+                }
+                
+                // Si la validación pasa, se agrega el documento
+                await _addDoc(collectionRef, { name: newItemName });
+                addItemMessage.classList.add('text-green-600');
+                addItemMessage.textContent = `¡"${newItemName}" agregado!`;
+                newItemInput.value = '';
+                newItemInput.focus();
+                setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+            } catch (err) {
+                addItemMessage.classList.add('text-red-600');
+                addItemMessage.textContent = `Error al guardar o validar.`;
+            }
+        });
+    }
+
+    /**
      * Muestra la vista para agregar un nuevo producto.
      */
     function showAgregarProductoView() {
@@ -386,9 +449,11 @@
         
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
-        document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
-        document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
+        
+        // Llamar a la nueva función con validación
+        document.getElementById('addRubroBtn').addEventListener('click', () => showValidatedAddItemModal('rubros', 'Rubro'));
+        document.getElementById('addSegmentoBtn').addEventListener('click', () => showValidatedAddItemModal('segmentos', 'Segmento'));
+        document.getElementById('addMarcaBtn').addEventListener('click', () => showValidatedAddItemModal('marcas', 'Marca'));
     }
 
     /**
