@@ -368,14 +368,14 @@
             const effectiveStock = producto.cantidad + originalQty;
 
             row.innerHTML = `
-                <td class="py-2 px-1 text-center">
+                <td class="py-2 px-1 text-center align-middle">
                     <input type="number" min="0" max="${effectiveStock}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
                            class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
-                <td class="py-2 px-2 text-left whitespace-nowrap">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
-                <td class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-2 px-2 text-center">${effectiveStock}</td>
+                <td class="py-2 px-2 text-left align-middle">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                <td class="py-2 px-2 text-left price-toggle align-middle">${precioMostrado}</td>
+                <td class="py-2 px-2 text-center align-middle">${effectiveStock}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
