@@ -111,45 +111,45 @@
         _monedaActual = 'USD';
         _ventaActual = { cliente: null, productos: {} };
         _mainContent.innerHTML = `
-            <div class="p-2 sm:p-4 w-full">
-                <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
-                    <div id="venta-header-section" class="mb-4">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-bold text-gray-800">Nueva Venta</h2>
-                            <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+            <div class="p-2 w-full">
+                <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
+                    <div id="venta-header-section" class="mb-2">
+                        <div class="flex justify-between items-center mb-2">
+                            <h2 class="text-lg font-bold text-gray-800">Nueva Venta</h2>
+                            <button id="backToVentasBtn" class="px-3 py-1.5 bg-gray-400 text-white text-xs font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
                         <div id="client-search-container">
                             <label for="clienteSearch" class="block text-gray-700 font-medium mb-2">Seleccionar Cliente:</label>
                             <div class="relative"><input type="text" id="clienteSearch" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg"><div id="clienteDropdown" class="autocomplete-list hidden"></div></div>
                         </div>
-                        <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-4">
-                            <p class="text-gray-700 flex-grow"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
-                            <div id="tasasContainer" class="flex flex-row items-center gap-2 sm:gap-4">
+                        <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-2">
+                            <p class="text-gray-700 flex-grow text-sm"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p>
+                            <div id="tasasContainer" class="flex flex-row items-center gap-2">
                                 <div class="flex items-center space-x-1">
-                                    <label for="tasaCopInput" class="block text-gray-700 text-sm font-medium">COP:</label>
-                                    <input type="number" id="tasaCopInput" placeholder="4000" class="w-20 px-2 py-1 border rounded-lg">
+                                    <label for="tasaCopInput" class="block text-gray-700 text-xs font-medium">COP:</label>
+                                    <input type="number" id="tasaCopInput" placeholder="4000" class="w-16 px-1 py-1 text-sm border rounded-lg">
                                 </div>
                                 <div class="flex items-center space-x-1">
-                                    <label for="tasaBsInput" class="block text-gray-700 text-sm font-medium">Bs.:</label>
-                                    <input type="number" id="tasaBsInput" placeholder="36.5" class="w-20 px-2 py-1 border rounded-lg">
+                                    <label for="tasaBsInput" class="block text-gray-700 text-xs font-medium">Bs.:</label>
+                                    <input type="number" id="tasaBsInput" placeholder="36.5" class="w-16 px-1 py-1 text-sm border rounded-lg">
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
                          <div class="flex justify-between items-center mb-2">
-                            <h3 class="text-lg font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD)</span></h3>
+                            <h3 class="text-base font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD)</span></h3>
                              <div id="rubro-filter-container" class="w-1/2">
                                  <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                              </div>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
-                    <div id="venta-footer-section" class="mt-4 flex items-center justify-between hidden">
-                        <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
-                         <button id="generarTicketBtn" class="px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Ticket</button>
+                    <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden">
+                        <span id="ventaTotal" class="text-base font-bold text-gray-800">Total: $0.00</span>
+                         <button id="generarTicketBtn" class="px-5 py-2 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Generar Ticket</button>
                     </div>
                 </div>
             </div>
@@ -337,14 +337,14 @@
                 currentSegmento = segmento;
                 currentMarca = null; 
                 const segmentoRow = document.createElement('tr');
-                segmentoRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${currentSegmento}</td>`;
+                segmentoRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-base">${currentSegmento}</td>`;
                 inventarioTableBody.appendChild(segmentoRow);
             }
 
             if (isCerveceriaRubro && marca !== currentMarca) {
                 currentMarca = marca;
                 const marcaRow = document.createElement('tr');
-                marcaRow.innerHTML = `<td colspan="4" class="py-1 px-4 bg-gray-50 font-semibold text-gray-600 text-xs">${currentMarca}</td>`;
+                marcaRow.innerHTML = `<td colspan="4" class="py-1 px-4 bg-gray-50 font-semibold text-gray-600 text-sm">${currentMarca}</td>`;
                 inventarioTableBody.appendChild(marcaRow);
             }
             
@@ -368,14 +368,14 @@
             const effectiveStock = producto.cantidad + originalQty;
 
             row.innerHTML = `
-                <td class="py-1 px-1 text-center">
+                <td class="py-2 px-1 text-center">
                     <input type="number" min="0" max="${effectiveStock}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
-                           class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
+                           class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
-                <td class="py-1 px-2 text-left whitespace-nowrap">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
-                <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-1 px-1 text-center">${effectiveStock}</td>
+                <td class="py-2 px-2 text-left whitespace-nowrap">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                <td class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
+                <td class="py-2 px-2 text-center">${effectiveStock}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
