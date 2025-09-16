@@ -41,6 +41,10 @@
      */
     function invalidateSegmentOrderCache() {
         _segmentoOrderCache = null;
+        // También invalidamos la caché del módulo de ventas si existe
+        if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
+            window.ventasModule.invalidateCache();
+        }
     }
 
     /**
@@ -356,34 +360,27 @@
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
                 return;
             }
-
-            const productosAgrupados = productos.reduce((acc, p) => {
-                const marca = p.marca || 'Sin Marca';
-                if (!acc[marca]) acc[marca] = [];
-                acc[marca].push(p);
-                return acc;
-            }, {});
-
-            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
-
+            
             let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva</th></tr></thead><tbody>`;
             
-            marcasOrdenadas.forEach(marca => {
-                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${marca}</td></tr>`;
-                const productosOrdenados = productosAgrupados[marca];
-                productosOrdenados.forEach(p => {
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b text-sm">
-                                <p class="font-semibold">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span></p>
-                                <p class="text-xs text-gray-600">Actual: ${p.cantidad}</p>
-                            </td>
-                            <td class="py-2 px-4 border-b text-center">
-                                <input type="number" value="${p.cantidad}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
-                            </td>
-                        </tr>
-                    `;
-                });
+            let currentMarca = null;
+            productos.forEach(p => {
+                const marca = p.marca || 'Sin Marca';
+                if (marca !== currentMarca) {
+                    currentMarca = marca;
+                    tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
+                }
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-4 border-b text-sm">
+                            <p class="font-semibold">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span></p>
+                            <p class="text-xs text-gray-600">Actual: ${p.cantidad}</p>
+                        </td>
+                        <td class="py-2 px-4 border-b text-center">
+                            <input type="number" value="${p.cantidad}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
+                        </td>
+                    </tr>
+                `;
             });
 
             tableHTML += `</tbody></table>`;
@@ -826,6 +823,7 @@
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-center">Cargando y ordenando productos...</p>`;
 
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
@@ -860,36 +858,30 @@
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
                 return;
             }
-
-            const productosAgrupados = productos.reduce((acc, p) => {
-                const marca = p.marca || 'Sin Marca';
-                if (!acc[marca]) acc[marca] = [];
-                acc[marca].push(p);
-                return acc;
-            }, {});
-
-            const marcasOrdenadas = Object.keys(productosAgrupados).sort((a, b) => a.localeCompare(b));
-
+            
             let tableHTML = `<table class="min-w-full bg-white border border-gray-200"><thead class="bg-gray-200 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Presentación</th><th class="py-2 px-4 border-b text-left text-sm">Marca</th><th class="py-2 px-4 border-b text-right text-sm">Precio</th><th class="py-2 px-4 border-b text-center text-sm">Cantidad</th>${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}</tr></thead><tbody>`;
             
-            marcasOrdenadas.forEach(marca => {
-                tableHTML += `<tr><td colspan="${readOnly ? 4 : 5}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${marca}</td></tr>`;
-                const productosDeMarca = productosAgrupados[marca]; // Ya están ordenados
-                productosDeMarca.forEach(p => {
-                    tableHTML += `
-                        <tr class="hover:bg-gray-50">
-                            <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
-                            <td class="py-2 px-4 border-b text-sm">${p.marca}</td>
-                            <td class="py-2 px-4 border-b text-right text-sm">$${p.precio.toFixed(2)}</td>
-                            <td class="py-2 px-4 border-b text-center text-sm">${p.cantidad}</td>
-                            ${!readOnly ? `
-                            <td class="py-2 px-4 border-b text-center space-x-2">
-                                <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                                <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
-                            </td>` : ''}
-                        </tr>
-                    `;
-                });
+            let currentMarca = null;
+            productos.forEach(p => {
+                const marca = p.marca || 'Sin Marca';
+                if (marca !== currentMarca) {
+                    currentMarca = marca;
+                    tableHTML += `<tr><td colspan="${readOnly ? 4 : 5}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+                }
+
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
+                        <td class="py-2 px-4 border-b text-sm">${p.marca}</td>
+                        <td class="py-2 px-4 border-b text-right text-sm">$${p.precio.toFixed(2)}</td>
+                        <td class="py-2 px-4 border-b text-center text-sm">${p.cantidad}</td>
+                        ${!readOnly ? `
+                        <td class="py-2 px-4 border-b text-center space-x-2">
+                            <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                            <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                        </td>` : ''}
+                    </tr>
+                `;
             });
 
             tableHTML += `</tbody></table>`;
@@ -983,7 +975,9 @@
     window.inventarioModule = {
         editProducto,
         deleteProducto,
-        handleDeleteDataItem
+        handleDeleteDataItem,
+        getSegmentoOrderMap, // Exponer para que otros módulos puedan usarla
+        invalidateSegmentOrderCache
     };
 
 })();
