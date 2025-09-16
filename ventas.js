@@ -224,12 +224,12 @@
         const rubroFilter = document.getElementById('rubroFilter');
         if(!rubroFilter) return;
         const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
-        const currentVal = rubroFilter.value; // Guardar valor actual
+        const currentVal = rubroFilter.value;
         rubroFilter.innerHTML = '<option value="">Todos los Rubros</option>';
         rubros.forEach(rubro => {
              if(rubro) rubroFilter.innerHTML += `<option value="${rubro}">${rubro}</option>`;
         });
-        rubroFilter.value = currentVal; // Restaurar valor
+        rubroFilter.value = currentVal;
     }
 
     /**
