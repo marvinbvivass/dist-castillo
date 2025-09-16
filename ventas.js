@@ -1056,6 +1056,7 @@
      * Inicia la edición de una venta existente.
      */
     function editVenta(ventaId) {
+        console.log(`[Ventas.js] editVenta called for ID: ${ventaId}`);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) {
             _showModal('Error', 'No se pudo encontrar la venta para editar.');
@@ -1069,6 +1070,7 @@
      * Muestra la vista para editar una venta.
      */
     async function showEditVentaView(venta) {
+        console.log("[Ventas.js] 1. Entering showEditVentaView for sale:", venta.id);
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         
@@ -1109,27 +1111,45 @@
 
         _showModal('Progreso', 'Cargando datos para edición...');
         try {
+            console.log("[Ventas.js] 2. Fetching latest inventory for edit mode...");
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snapshot = await _getDocs(inventarioRef);
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            console.log(`[Ventas.js] 3. Inventory fetched successfully. Found ${_inventarioCache.length} products.`);
 
             _ventaActual = {
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
                 productos: venta.productos.reduce((acc, p) => {
                     const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
+                    if (!productoCompleto) {
+                         console.warn(`[Ventas.js] Product with ID ${p.id} from sale not found in current inventory.`);
+                    }
                     acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
                     return acc;
                 }, {})
             };
+            console.log("[Ventas.js] 4. _ventaActual object constructed:", _ventaActual);
             
             populateRubroFilter();
+            
+            const rubroFilter = document.getElementById('rubroFilter');
+            if (rubroFilter) {
+                rubroFilter.value = ''; // Default to "All Rubros"
+                console.log("[Ventas.js] 5. Rubro filter set to 'All'.");
+            }
+            
+            console.log("[Ventas.js] 6. Calling renderVentasInventario...");
             renderVentasInventario();
+            
+            console.log("[Ventas.js] 7. Calling updateVentaTotal...");
             updateVentaTotal();
 
             const modalContainer = document.getElementById('modalContainer');
             if (modalContainer) modalContainer.classList.add('hidden');
+            console.log("[Ventas.js] 8. Edit view setup complete.");
 
         } catch (error) {
+            console.error("[Ventas.js] CRITICAL ERROR in showEditVentaView:", error);
             _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
         }
     }
@@ -1211,3 +1231,5 @@
         invalidateCache: () => { _segmentoOrderCacheVentas = null; }
     };
 })();
+
+
