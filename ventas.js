@@ -286,7 +286,7 @@
         const rubroFilter = document.getElementById('rubroFilter');
 
         if (!inventarioTableBody || !monedaIndicator || !rubroFilter) return;
-        inventarioTableBody.innerHTML = `<p class="text-center text-gray-500 col-span-4">Cargando y ordenando...</p>`;
+        inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center text-gray-500">Cargando y ordenando...</td></tr>`;
         monedaIndicator.textContent = `(${_monedaActual})`;
         
         const selectedRubro = rubroFilter.value;
@@ -299,7 +299,7 @@
                 const orderA = segmentoOrderMap[a.segmento] ?? 9999;
                 const orderB = segmentoOrderMap[b.segmento] ?? 9999;
                 if (orderA !== orderB) return orderA - orderB;
-                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                if ((a.marca || '').localeCompare(b.marca || '') !== 0) return (a.marca || '').localeCompare(b.marca || '');
                 return a.presentacion.localeCompare(b.presentacion);
             });
         }
@@ -310,14 +310,14 @@
             return;
         }
 
-        let currentMarca = null;
+        let currentSegmento = null;
         filteredInventario.forEach(producto => {
-            const marca = producto.marca || 'Sin Marca';
-            if (marca !== currentMarca) {
-                currentMarca = marca;
-                const marcaRow = document.createElement('tr');
-                marcaRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${currentMarca}</td>`;
-                inventarioTableBody.appendChild(marcaRow);
+            const segmento = producto.segmento || 'Sin Segmento';
+            if (segmento !== currentSegmento) {
+                currentSegmento = segmento;
+                const segmentoRow = document.createElement('tr');
+                segmentoRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-sm">${currentSegmento}</td>`;
+                inventarioTableBody.appendChild(segmentoRow);
             }
 
             const row = document.createElement('tr');
@@ -334,6 +334,8 @@
             } else {
                 precioMostrado = `$${producto.precio.toFixed(2)}`;
             }
+            
+            const productName = `${producto.marca || ''} ${producto.presentacion}`;
 
             row.innerHTML = `
                 <td class="py-1 px-1 text-center">
@@ -341,7 +343,7 @@
                            class="w-12 p-1 text-center border rounded-lg text-sm" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
-                <td class="py-1 px-2 text-left whitespace-nowrap">${producto.presentacion} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                <td class="py-1 px-2 text-left whitespace-nowrap">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
                 <td class="py-1 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
                 <td class="py-1 px-1 text-center">${producto.cantidad}</td>
             `;
