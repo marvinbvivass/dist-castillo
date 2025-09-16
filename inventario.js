@@ -7,6 +7,7 @@
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch;
     
     let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
+    let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' }; // Objeto para persistir los filtros
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -70,7 +71,11 @@
         `;
         document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
         document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
-        document.getElementById('modifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+        document.getElementById('modifyDeleteBtn').addEventListener('click', () => {
+            // Reinicia los filtros al entrar desde el menú principal
+            _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
+            showModifyDeleteView();
+        });
         document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
         document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
@@ -506,19 +511,32 @@
         _populateDropdown('rubros', 'filter-rubro', 'Rubro');
         _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
         _populateDropdown('marcas', 'filter-marca', 'Marca');
+        
+        // Restaurar valores de los filtros y configurar los listeners
+        document.getElementById('search-input').value = _lastFilters.searchTerm;
+        document.getElementById('filter-rubro').value = _lastFilters.rubro;
+        document.getElementById('filter-segmento').value = _lastFilters.segmento;
+        document.getElementById('filter-marca').value = _lastFilters.marca;
 
-        const applyFilters = () => renderProductosList('productosListContainer', false);
-        document.getElementById('search-input').addEventListener('input', applyFilters);
-        document.getElementById('filter-rubro').addEventListener('change', applyFilters);
-        document.getElementById('filter-segmento').addEventListener('change', applyFilters);
-        document.getElementById('filter-marca').addEventListener('change', applyFilters);
+        const applyAndSaveFilters = () => {
+            _lastFilters.searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
+            _lastFilters.rubro = document.getElementById('filter-rubro')?.value || '';
+            _lastFilters.segmento = document.getElementById('filter-segmento')?.value || '';
+            _lastFilters.marca = document.getElementById('filter-marca')?.value || '';
+            renderProductosList('productosListContainer', false);
+        };
+
+        document.getElementById('search-input').addEventListener('input', applyAndSaveFilters);
+        document.getElementById('filter-rubro').addEventListener('change', applyAndSaveFilters);
+        document.getElementById('filter-segmento').addEventListener('change', applyAndSaveFilters);
+        document.getElementById('filter-marca').addEventListener('change', applyAndSaveFilters);
         
         document.getElementById('clear-filters-btn').addEventListener('click', () => {
             document.getElementById('search-input').value = '';
             document.getElementById('filter-rubro').value = '';
             document.getElementById('filter-segmento').value = '';
             document.getElementById('filter-marca').value = '';
-            applyFilters();
+            applyAndSaveFilters();
         });
 
         renderProductosList('productosListContainer', false);
@@ -539,16 +557,11 @@
                 const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
                 productos = _inventarioCache.filter(p => !rubroFilter || p.rubro === rubroFilter);
             } else {
-                const searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
-                const rubroFilter = document.getElementById('filter-rubro')?.value || '';
-                const segmentoFilter = document.getElementById('filter-segmento')?.value || '';
-                const marcaFilter = document.getElementById('filter-marca')?.value || '';
-                
                 productos = _inventarioCache.filter(p => {
-                    const searchMatch = !searchTerm || p.presentacion.toLowerCase().includes(searchTerm);
-                    const rubroMatch = !rubroFilter || p.rubro === rubroFilter;
-                    const segmentoMatch = !segmentoFilter || p.segmento === segmentoFilter;
-                    const marcaMatch = !marcaFilter || p.marca === marcaFilter;
+                    const searchMatch = !_lastFilters.searchTerm || p.presentacion.toLowerCase().includes(_lastFilters.searchTerm);
+                    const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
+                    const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
+                    const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
                     return searchMatch && rubroMatch && segmentoMatch && marcaMatch;
                 });
             }
