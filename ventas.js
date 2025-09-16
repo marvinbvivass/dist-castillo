@@ -1069,7 +1069,7 @@
      * Inicia la edición de una venta existente.
      */
     function editVenta(ventaId) {
-        // No se limpian los listeners aquí para mantener la lista de ventas en el fondo
+        cleanupVentasListeners();
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) {
             _showModal('Error', 'No se pudo encontrar la venta para editar.');
@@ -1080,46 +1080,48 @@
     }
     
     /**
-     * Muestra la vista para editar una venta en un MODAL.
+     * Muestra la vista para editar una venta.
      */
     async function showEditVentaView(venta) {
+        _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         
-        let modalEditHTML = `
-            <div class="bg-white p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="max-height: 90vh;">
-                <div id="venta-header-section" class="mb-4">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold text-gray-800">Editando Venta</h2>
-                        <button id="closeEditModalBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Cancelar</button>
-                    </div>
-                    <div class="flex-wrap items-center justify-between gap-4 p-4 bg-gray-100 rounded-lg">
-                        <p class="text-gray-700"><span class="font-medium">Cliente:</span> <span class="font-bold">${venta.clienteNombre}</span></p>
-                    </div>
-                </div>
-                <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
-                     <div class="flex justify-between items-center mb-2">
-                        <h3 class="text-lg font-semibold text-gray-800">Inventario</h3>
-                         <div id="rubro-filter-container" class="w-1/2">
-                            <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
+        _mainContent.innerHTML = `
+            <div class="p-2 sm:p-4 w-full">
+                <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
+                    <div id="venta-header-section" class="mb-4">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Editando Venta</h2>
+                            <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                        <div class="flex-wrap items-center justify-between gap-4 p-4 bg-gray-100 rounded-lg">
+                            <p class="text-gray-700"><span class="font-medium">Cliente:</span> <span class="font-bold">${venta.clienteNombre}</span></p>
                         </div>
                     </div>
-                    <div class="overflow-auto flex-grow rounded-lg shadow">
-                        <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                    <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
+                         <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-lg font-semibold text-gray-800">Inventario</h3>
+                             <div id="rubro-filter-container" class="w-1/2">
+                                <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
+                            </div>
+                        </div>
+                        <div class="overflow-auto flex-grow rounded-lg shadow">
+                            <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                        </div>
                     </div>
-                </div>
-                <div id="venta-footer-section" class="mt-4 flex items-center justify-between">
-                    <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
-                     <button id="saveChangesBtn" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                    <div id="venta-footer-section" class="mt-4 flex items-center justify-between">
+                        <span id="ventaTotal" class="text-lg font-bold text-gray-800">Total: $0.00</span>
+                         <button id="saveChangesBtn" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                    </div>
                 </div>
             </div>
         `;
-
-        _showModal('', modalEditHTML, null, '', false); // Mostrar modal sin botones por defecto
         
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
         document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada);
-        document.getElementById('closeEditModalBtn').addEventListener('click', () => document.getElementById('modalContainer').classList.add('hidden'));
+        document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
 
+        _showModal('Progreso', 'Cargando datos para edición...');
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snapshot = await _getDocs(inventarioRef);
@@ -1139,6 +1141,9 @@
             
             renderVentasInventario();
             updateVentaTotal();
+
+            const modalContainer = document.getElementById('modalContainer');
+            if (modalContainer) modalContainer.classList.add('hidden');
 
         } catch (error) {
             console.error("[Ventas.js] CRITICAL ERROR in showEditVentaView:", error);
@@ -1206,7 +1211,7 @@
             try {
                 await batch.commit();
                 _originalVentaForEdit = null;
-                // No llamamos a showVentasActualesView, la lista se actualiza sola
+                showVentasActualesView(); // Volver a la lista de ventas
             } catch (error) {
                 _showModal('Error', `Hubo un error al guardar los cambios: ${error.message}`);
             }
