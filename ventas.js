@@ -422,20 +422,25 @@
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
         const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre).toUpperCase();
         const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '').toUpperCase();
-        const LINE_WIDTH = 32; // Ancho estándar para papel de 58mm
+        const LINE_WIDTH = 32;
 
         let total = 0;
         let ticket = '';
 
         const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
+        const createRow = (col1, col2, col3) => {
+            const C1_WIDTH = 4;
+            const C2_WIDTH = 18;
+            const C3_WIDTH = 10;
+            return `${col1.padEnd(C1_WIDTH)}${col2.padEnd(C2_WIDTH)}${col3.padStart(C3_WIDTH)}\n`;
+        };
 
         ticket += center(tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA') + '\n';
         ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n\n';
-        
         ticket += `FECHA: ${fecha}\n`;
         ticket += `CLIENTE: ${clienteNombre}\n`;
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        ticket += 'CANT  PRODUCTO             SUBTOTAL\n';
+        ticket += createRow('CANT', 'PRODUCTO', 'SUBTOTAL');
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         productos.forEach(p => {
@@ -445,8 +450,23 @@
             const quantity = p.cantidadVendida.toString();
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
-            ticket += quantity.padEnd(4, ' ') + productName + '\n';
-            ticket += subtotalStr.padStart(LINE_WIDTH, ' ') + '\n';
+            const lines = [];
+            let tempName = productName;
+            while(tempName.length > 18) {
+                let breakPoint = tempName.lastIndexOf(' ', 18);
+                if (breakPoint === -1) breakPoint = 18;
+                lines.push(tempName.substring(0, breakPoint));
+                tempName = tempName.substring(breakPoint).trim();
+            }
+            lines.push(tempName);
+
+            lines.forEach((line, index) => {
+                if (index === 0) {
+                    ticket += createRow(quantity, line, (lines.length === 1) ? subtotalStr : '');
+                } else {
+                    ticket += createRow('', line, (index === lines.length - 1) ? subtotalStr : '');
+                }
+            });
         });
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
@@ -539,7 +559,7 @@
                 </div>
             </div>`;
         
-        _showModal('Elige una opción', modalContent, null, ''); // Usamos _showModal sin botones por defecto
+        _showModal('Elige una opción', modalContent, null, '');
 
         document.getElementById('printTextBtn').addEventListener('click', () => {
             const rawTextTicket = createRawTextTicket(venta, productos, tipo);
