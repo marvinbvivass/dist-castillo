@@ -274,10 +274,10 @@
                 let contentHtml = '<div class="space-y-4">';
                 brands.forEach(marca => {
                     contentHtml += `<table class="min-w-full bg-transparent text-lg">
-                        <thead class="text-black">
-                            <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
-                            <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
-                        </thead><tbody>`;
+                                <thead class="text-black">
+                                    <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
+                                    <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
+                                </thead><tbody>`;
                     const productosDeMarca = _productosAgrupadosCache[marca]; // Ya están ordenados
                     productosDeMarca.forEach(p => {
                         let precioConIvaMostrado = _catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0
@@ -312,7 +312,8 @@
                     pageWrapper.style.backgroundPosition = 'center';
                 }
 
-                const canvas = await html2canvas(pageWrapper, { scale: 2, useCORS: true });
+                // --- MEJORA DE CALIDAD APLICADA AQUÍ ---
+                const canvas = await html2canvas(pageWrapper, { scale: 3, useCORS: true, allowTaint: true });
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                 
                 document.body.removeChild(tempDiv);
