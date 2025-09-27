@@ -200,7 +200,6 @@
         
         document.getElementById('tipoVentaFilter').addEventListener('change', (e) => {
             _tipoVentaActual = e.target.value;
-            // Limpiar la venta actual al cambiar de tipo para evitar confusiones
             _ventaActual.productos = {};
             renderVentasInventario();
             updateVentaTotal();
@@ -287,10 +286,8 @@
     function toggleMoneda() {
         const cycle = ['USD', 'COP', 'Bs'];
         const rates = { 'USD': 1, 'COP': _tasaCOP, 'Bs': _tasaBs };
-        
         let currentIndex = cycle.indexOf(_monedaActual);
         let nextIndex = (currentIndex + 1) % cycle.length;
-
         while (nextIndex !== currentIndex) {
             if (rates[cycle[nextIndex]] > 0) {
                 _monedaActual = cycle[nextIndex];
@@ -322,16 +319,13 @@
         } else { // paquetes
             headerCantidad.textContent = 'Cant (Paq)';
             headerPrecio.textContent = 'Precio/Paq';
-            headerStock.textContent = 'Stock (Paq)';
+            headerStock.textContent = 'Stock'; // General label for mixed content
         }
 
         inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center text-gray-500">Cargando y ordenando...</td></tr>`;
         
         const selectedRubro = rubroFilter.value;
-        const inventarioConStock = _inventarioCache.filter(p => {
-            const totalUnits = (p.cantidadCargada || 0) * (p.unidadesPorPaquete || 0);
-            return totalUnits > 0 || _ventaActual.productos[p.id];
-        });
+        const inventarioConStock = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]);
         
         let filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
         
@@ -378,12 +372,11 @@
             const row = document.createElement('tr');
             row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
-            let precioMostrado, stockMostrado, maxStock, cantidadVendida;
+            let precioMostrado, stockMostrado, maxStock, cantidadVendida, inputDisabled = '';
             const precioPorUnidad = producto.precioPorUnidad || 0;
             const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
-            const cantidadCargada = producto.cantidadCargada || 0;
-
-            const totalStockUnidades = cantidadCargada * unidadesPorPaquete;
+            const totalStockUnidades = producto.cantidadUnidades || 0;
+            const stockPaquetesCompletos = Math.floor(totalStockUnidades / unidadesPorPaquete);
 
             if (_tipoVentaActual === 'unidades') {
                 stockMostrado = totalStockUnidades;
@@ -391,8 +384,7 @@
                 cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
                 
                 if (_monedaActual === 'COP') {
-                    const precioRedondeado = Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100;
-                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                    precioMostrado = `COP ${(Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                 } else if (_monedaActual === 'Bs') {
                     precioMostrado = `Bs.S ${(precioPorUnidad * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 } else {
@@ -401,13 +393,18 @@
 
             } else { // paquetes
                 const precioPaqueteUSD = precioPorUnidad * unidadesPorPaquete;
-                stockMostrado = cantidadCargada;
-                maxStock = cantidadCargada;
+                stockMostrado = stockPaquetesCompletos;
+                maxStock = stockPaquetesCompletos;
                 cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
 
+                if (stockPaquetesCompletos < 1 && totalStockUnidades > 0) {
+                    row.classList.add('bg-yellow-100');
+                    stockMostrado = `${totalStockUnidades} und.`;
+                    inputDisabled = 'disabled';
+                }
+
                 if (_monedaActual === 'COP') {
-                    const precioRedondeado = Math.ceil((precioPaqueteUSD * _tasaCOP) / 100) * 100;
-                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                    precioMostrado = `COP ${(Math.ceil((precioPaqueteUSD * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                 } else if (_monedaActual === 'Bs') {
                     precioMostrado = `Bs.S ${(precioPaqueteUSD * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 } else {
@@ -419,8 +416,8 @@
 
             row.innerHTML = `
                 <td class="py-2 px-1 text-center align-middle">
-                    <input type="number" min="0" max="${maxStock}" value="${cantidadVendida}"
-                           class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
+                    <input type="number" min="0" max="${maxStock}" value="${cantidadVendida}" ${inputDisabled}
+                           class="w-16 p-1.5 text-center border rounded-lg text-base disabled:bg-gray-200" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
                 <td class="py-2 px-2 text-left align-middle">${productName}</td>
@@ -452,7 +449,7 @@
             _ventaActual.productos[productId] = { 
                 ...producto, 
                 cantidadVendida: cantidadFinal,
-                ventaPor: _tipoVentaActual // Importante: guardar cómo se vendió
+                ventaPor: _tipoVentaActual
             };
         } else {
             delete _ventaActual.productos[productId];
@@ -744,7 +741,7 @@
                     if (!productoEnCache) throw new Error(`Producto ${p.presentacion} no encontrado.`);
 
                     const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-                    const stockUnidadesTotal = (productoEnCache.cantidadCargada || 0) * unidadesPorPaquete;
+                    const stockUnidadesTotal = productoEnCache.cantidadUnidades || 0;
                     
                     let unidadesARestar = 0;
                     if (p.ventaPor === 'paquetes') {
@@ -760,10 +757,9 @@
                     }
 
                     const stockUnidadesRestante = stockUnidadesTotal - unidadesARestar;
-                    const nuevoStockPaquetes = Math.floor(stockUnidadesRestante / unidadesPorPaquete);
                     
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
-                    batch.update(productoRef, { cantidadCargada: nuevoStockPaquetes });
+                    batch.update(productoRef, { cantidadUnidades: stockUnidadesRestante });
 
                     itemsVenta.push({ 
                         id: p.id, 
@@ -1225,7 +1221,7 @@
 
         _showModal(
             'Confirmar Eliminación',
-            `¿Estás seguro de que deseas eliminar la venta a "${venta.clienteNombre}"? Esta acción no se puede deshacer y el stock de los productos será devuelto al inventario.`,
+            `¿Estás seguro de que deseas eliminar la venta a "${venta.clienteNombre}"? El stock será devuelto al inventario.`,
             async () => {
                 _showModal('Progreso', 'Eliminando venta y restaurando stock...');
                 try {
@@ -1239,7 +1235,6 @@
                         const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
                         if (productoEnCache) {
                             const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
-                            const stockActualUnidades = productoEnCache.cantidadCargada * unidadesPorPaquete;
                             
                             let unidadesADevolver = 0;
                             if (productoVendido.ventaPor === 'paquetes') {
@@ -1247,12 +1242,10 @@
                             } else {
                                 unidadesADevolver = productoVendido.cantidadVendida;
                             }
-
-                            const nuevoStockUnidades = stockActualUnidades + unidadesADevolver;
-                            const nuevoStockPaquetes = Math.floor(nuevoStockUnidades / unidadesPorPaquete);
-
+                            
+                            const nuevoStockUnidades = (productoEnCache.cantidadUnidades || 0) + unidadesADevolver;
                             const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
-                            batch.update(productoRef, { cantidadCargada: nuevoStockPaquetes });
+                            batch.update(productoRef, { cantidadUnidades: nuevoStockUnidades });
                         }
                     }
 
@@ -1328,14 +1321,13 @@
             const snapshot = await _getDocs(inventarioRef);
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // Asume que todos los productos en una venta se venden del mismo modo (unidades o paquetes)
-            _tipoVentaActual = venta.productos[0]?.ventaPor || 'paquetes';
+            _tipoVentaActual = venta.productos[0]?.ventaPor || 'unidades';
 
             _ventaActual = {
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
                 productos: venta.productos.reduce((acc, p) => {
                     const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
-                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida, ventaPor: _tipoVentaActual };
+                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida, ventaPor: p.ventaPor };
                     return acc;
                 }, {})
             };
@@ -1373,7 +1365,7 @@
             return;
         }
 
-        _showModal('Confirmar Cambios', '¿Estás seguro de que deseas guardar los cambios en esta venta? El stock del inventario se ajustará automáticamente.', async () => {
+        _showModal('Confirmar Cambios', '¿Deseas guardar los cambios? El stock se ajustará automáticamente.', async () => {
             _showModal('Progreso', 'Guardando cambios y ajustando stock...');
 
             try {
@@ -1387,48 +1379,35 @@
                     const newProduct = newProducts.get(productId);
                     const productoEnCache = _inventarioCache.find(p => p.id === productId);
 
-                    if (!productoEnCache) {
-                        console.warn(`Producto con ID ${productId} no encontrado. Saltando ajuste de stock.`);
-                        continue;
-                    }
+                    if (!productoEnCache) continue;
 
                     const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
                     let originalUnitsSold = 0;
                     if (originalProduct) {
-                        if (originalProduct.ventaPor === 'paquetes') {
-                            originalUnitsSold = (originalProduct.cantidadVendida || 0) * unidadesPorPaquete;
-                        } else { // 'unidades' o formato antiguo
-                            originalUnitsSold = originalProduct.cantidadVendida || 0;
-                        }
+                        originalUnitsSold = originalProduct.ventaPor === 'paquetes' ? (originalProduct.cantidadVendida || 0) * unidadesPorPaquete : (originalProduct.cantidadVendida || 0);
                     }
 
                     let newUnitsSold = 0;
                     if (newProduct) {
-                         if (newProduct.ventaPor === 'paquetes') {
-                            newUnitsSold = (newProduct.cantidadVendida || 0) * unidadesPorPaquete;
-                        } else { // unidades
-                            newUnitsSold = newProduct.cantidadVendida || 0;
-                        }
+                         newUnitsSold = newProduct.ventaPor === 'paquetes' ? (newProduct.cantidadVendida || 0) * unidadesPorPaquete : (newProduct.cantidadVendida || 0);
                     }
 
                     const unitDelta = originalUnitsSold - newUnitsSold;
                     if (unitDelta === 0) continue;
 
-                    const currentStockUnits = productoEnCache.cantidadCargada * unidadesPorPaquete;
+                    const currentStockUnits = productoEnCache.cantidadUnidades || 0;
                     const finalStockUnits = currentStockUnits + unitDelta;
 
                     if (finalStockUnits < 0) {
                         throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
                     }
 
-                    const finalStockPackages = Math.floor(finalStockUnits / unidadesPorPaquete);
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
-                    batch.update(productoRef, { cantidadCargada: finalStockPackages });
+                    batch.update(productoRef, { cantidadUnidades: finalStockUnits });
                 }
 
-                const nuevosProductosVendidos = Object.values(_ventaActual.productos);
                 let nuevoTotal = 0;
-                const nuevosItemsVenta = nuevosProductosVendidos.map(p => {
+                const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
                     const subtotal = p.ventaPor === 'paquetes' 
                         ? (p.precioPorUnidad * p.unidadesPorPaquete) * p.cantidadVendida
                         : p.precioPorUnidad * p.cantidadVendida;
