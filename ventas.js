@@ -745,7 +745,7 @@
                         <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                         <div class="space-y-4">
                             <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                            <button id="ordenarCierreBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Rubros y Segmentos</button>
+                            <button id="ordenarCierreBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Orden de Rubros y Segmentos</button>
                             <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
                         </div>
                         <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -867,7 +867,6 @@
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         
-        // Primero, obtener todos los productos del inventario para tener la información completa
         const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
 
@@ -880,7 +879,7 @@
             grandTotalValue += venta.total;
             (venta.productos || []).forEach(p => {
                 const productoCompleto = inventarioMap.get(p.id);
-                if (!productoCompleto) return; // Si el producto ya no existe, saltarlo
+                if (!productoCompleto) return;
 
                 const productName = productoCompleto.presentacion;
                 if (!allProductsMap.has(productName)) {
@@ -1143,7 +1142,7 @@
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Reporte de Cierre</h2>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Orden de Rubros y Segmentos</h2>
                         <p class="text-center text-gray-600 mb-6">Arrastra y suelta para cambiar el orden en que aparecen en los reportes.</p>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1223,6 +1222,38 @@
         } catch (error) {
             console.error(`Error al renderizar la lista de ${collectionName}:`, error);
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar datos.</p>`;
+        }
+    }
+
+    /**
+     * Añade los manejadores de eventos para la funcionalidad de arrastrar y soltar.
+     */
+    function addDragAndDropHandlers(container) {
+        let draggedItem = null;
+        container.addEventListener('dragstart', e => {
+            draggedItem = e.target;
+            setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
+        });
+        container.addEventListener('dragend', e => {
+            if(draggedItem) draggedItem.style.opacity = '1';
+            draggedItem = null;
+        });
+        container.addEventListener('dragover', e => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(container, e.clientY);
+            if (draggedItem) {
+                if (afterElement == null) container.appendChild(draggedItem);
+                else container.insertBefore(draggedItem, afterElement);
+            }
+        });
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('li:not([style*="opacity: 0.5"])')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                else return closest;
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
     }
 
