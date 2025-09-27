@@ -460,12 +460,16 @@
                             </div>
                         </div>
 
-                        <button id="backToInventarioBtn" class="mt-8 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <div class="mt-8 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="deleteAllDatosMaestrosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Datos Maestros</button>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('deleteAllDatosMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros);
 
         renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
         renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
@@ -777,12 +781,16 @@
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
-                        <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Productos</button>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
         
         _populateDropdown('rubros', 'filter-rubro', 'Rubro');
         _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
@@ -970,6 +978,60 @@
             }
         });
     };
+
+    /**
+     * Maneja la eliminación de TODOS los productos del inventario.
+     */
+    async function handleDeleteAllProductos() {
+        _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los productos del inventario? Esta acción es irreversible.', async () => {
+            _showModal('Progreso', 'Eliminando todos los productos...');
+            try {
+                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                const snapshot = await _getDocs(collectionRef);
+                if (snapshot.empty) {
+                    _showModal('Aviso', 'No hay productos para eliminar.');
+                    return;
+                }
+                const batch = _writeBatch(_db);
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                _showModal('Éxito', 'Todos los productos han sido eliminados.');
+            } catch (error) {
+                console.error("Error al eliminar todos los productos:", error);
+                _showModal('Error', 'Hubo un error al eliminar los productos.');
+            }
+        });
+    }
+
+    /**
+     * Maneja la eliminación de TODOS los datos maestros (Rubros, Segmentos, Marcas).
+     */
+    async function handleDeleteAllDatosMaestros() {
+        _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Esta acción es irreversible.', async () => {
+            _showModal('Progreso', 'Eliminando datos maestros...');
+            try {
+                const collectionsToDelete = ['rubros', 'segmentos', 'marcas'];
+                for (const collectionName of collectionsToDelete) {
+                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+                    const snapshot = await _getDocs(collectionRef);
+                    if (!snapshot.empty) {
+                        const batch = _writeBatch(_db);
+                        snapshot.docs.forEach(doc => {
+                            batch.delete(doc.ref);
+                        });
+                        await batch.commit();
+                    }
+                }
+                _showModal('Éxito', 'Todos los datos maestros han sido eliminados.');
+            } catch (error) {
+                console.error("Error al eliminar todos los datos maestros:", error);
+                _showModal('Error', 'Hubo un error al eliminar los datos maestros.');
+            }
+        });
+    }
+
 
     // Exponer funciones públicas al objeto window para ser llamadas desde el HTML
     window.inventarioModule = {
