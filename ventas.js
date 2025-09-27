@@ -1155,7 +1155,7 @@
                             <div>
                                 <h3 class="text-xl font-semibold mb-4 text-center">Orden de Segmentos</h3>
                                 <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
-                                    <p class="text-gray-500 text-center">Cargando segmentos...</p>
+                                    <p class="text-gray-500 text-center">Selecciona un rubro para ver sus segmentos.</p>
                                 </ul>
                             </div>
                         </div>
@@ -1172,20 +1172,19 @@
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
         document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenCierre);
 
-        renderSortableList('rubros', 'rubros-sortable-list');
-        renderSortableList('segmentos', 'segmentos-sortable-list');
+        renderRubrosForOrdering();
     }
 
     /**
-     * Renderiza una lista genérica de items para ser ordenados.
+     * Renderiza la lista de Rubros y añade los listeners para seleccionar uno.
      */
-    async function renderSortableList(collectionName, containerId) {
-        const container = document.getElementById(containerId);
+    async function renderRubrosForOrdering() {
+        const container = document.getElementById('rubros-sortable-list');
         if (!container) return;
         container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
 
         try {
-            const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+            const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`);
             let snapshot = await _getDocs(collectionRef);
             let items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -1205,8 +1204,62 @@
             container.innerHTML = ''; 
 
             if(items.length === 0) {
-                 container.innerHTML = `<p class="text-gray-500 text-center">No hay datos para ordenar.</p>`;
+                 container.innerHTML = `<p class="text-gray-500 text-center">No hay rubros para ordenar.</p>`;
                  return;
+            }
+
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.dataset.id = item.id;
+                li.dataset.name = item.name;
+                li.className = 'p-3 bg-gray-100 rounded shadow-sm cursor-pointer hover:bg-gray-200';
+                li.textContent = item.name;
+                li.draggable = true;
+                li.addEventListener('click', (e) => {
+                    // Remove selection from others
+                    container.querySelectorAll('li').forEach(el => el.classList.remove('bg-blue-200', 'ring-2', 'ring-blue-500'));
+                    // Add selection to clicked
+                    e.currentTarget.classList.add('bg-blue-200', 'ring-2', 'ring-blue-500');
+                    renderSegmentosForOrdering(item.name);
+                });
+                container.appendChild(li);
+            });
+            addDragAndDropHandlers(container);
+        } catch (error) {
+            console.error(`Error al renderizar la lista de rubros:`, error);
+            container.innerHTML = `<p class="text-red-500 text-center">Error al cargar datos.</p>`;
+        }
+    }
+
+    /**
+     * Renderiza la lista de Segmentos filtrada por un Rubro.
+     */
+    async function renderSegmentosForOrdering(rubroName) {
+        const container = document.getElementById('segmentos-sortable-list');
+        if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-center">Cargando segmentos para "${rubroName}"...</p>`;
+
+        try {
+            // 1. Encontrar qué segmentos se usan en este rubro
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const q = _query(inventarioRef, _where("rubro", "==", rubroName));
+            const inventarioSnapshot = await _getDocs(q);
+            const usedSegmentNames = new Set(inventarioSnapshot.docs.map(doc => doc.data().segmento));
+
+            // 2. Obtener todos los segmentos con su orden
+            const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+            const segmentosSnapshot = await _getDocs(segmentosRef);
+            let allSegmentos = segmentosSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            // 3. Filtrar y ordenar
+            const items = allSegmentos
+                .filter(seg => usedSegmentNames.has(seg.name))
+                .sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
+
+            container.innerHTML = '';
+            if (items.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos asociados a este rubro.</p>`;
+                return;
             }
 
             items.forEach(item => {
@@ -1219,11 +1272,13 @@
                 container.appendChild(li);
             });
             addDragAndDropHandlers(container);
+
         } catch (error) {
-            console.error(`Error al renderizar la lista de ${collectionName}:`, error);
+            console.error(`Error al renderizar la lista de segmentos:`, error);
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar datos.</p>`;
         }
     }
+
 
     /**
      * Añade los manejadores de eventos para la funcionalidad de arrastrar y soltar.
@@ -1231,8 +1286,10 @@
     function addDragAndDropHandlers(container) {
         let draggedItem = null;
         container.addEventListener('dragstart', e => {
-            draggedItem = e.target;
-            setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
+            if (e.target.tagName === 'LI') {
+                draggedItem = e.target;
+                setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
+            }
         });
         container.addEventListener('dragend', e => {
             if(draggedItem) draggedItem.style.opacity = '1';
