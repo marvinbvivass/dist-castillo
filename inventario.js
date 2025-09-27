@@ -640,8 +640,8 @@
                                 <input type="number" step="0.01" id="precioPorUnidad" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="cantidadCargada" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Paquetes):</label>
-                                <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="cantidadCargadaUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Unidades):</label>
+                                <input type="number" id="cantidadCargadaUnidades" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
                                 <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
@@ -674,14 +674,26 @@
      */
     async function agregarProducto(e) {
         e.preventDefault();
+
+        const unidadesPorPaquete = parseInt(document.getElementById('unidadesPorPaquete').value, 10);
+        const cantidadCargadaUnidades = parseInt(document.getElementById('cantidadCargadaUnidades').value, 10);
+        
+        if (isNaN(unidadesPorPaquete) || unidadesPorPaquete <= 0) {
+            _showModal('Error de Datos', 'El número de "Unidades por Paquete" debe ser un número mayor que cero.');
+            return;
+        }
+
+        // Calcula la cantidad de paquetes completos para almacenar
+        const cantidadCargadaPaquetes = Math.floor(cantidadCargadaUnidades / unidadesPorPaquete);
+
         const producto = {
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
-            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
+            unidadesPorPaquete: unidadesPorPaquete,
             precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
-            cantidadCargada: parseInt(document.getElementById('cantidadCargada').value, 10),
+            cantidadCargada: cantidadCargadaPaquetes, // Almacenado como paquetes
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
 
