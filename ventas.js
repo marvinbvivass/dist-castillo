@@ -17,6 +17,7 @@
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
+    let _tipoVentaActual = 'unidades'; // 'unidades' o 'paquetes'
 
     /**
      * Limpia todos los listeners activos del módulo de ventas para prevenir fugas de memoria e interferencias.
@@ -110,6 +111,7 @@
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         _ventaActual = { cliente: null, productos: {} };
+        _tipoVentaActual = 'unidades'; // Reset on new sale
         _mainContent.innerHTML = `
             <div class="p-2 w-full">
                 <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
@@ -137,14 +139,21 @@
                         </div>
                     </div>
                     <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
-                         <div class="flex justify-between items-center mb-2">
-                            <h3 class="text-base font-semibold text-gray-800">Inventario <span id="monedaIndicator" class="text-sm font-normal text-gray-500">(USD)</span></h3>
+                         <div class="flex justify-between items-center mb-2 gap-4">
+                            <div class="w-1/2">
+                                <label for="tipoVentaFilter" class="text-xs font-medium">Tipo de Venta</label>
+                                <select id="tipoVentaFilter" class="w-full px-2 py-1 border rounded-lg text-sm">
+                                    <option value="unidades" selected>Productos por Unidades</option>
+                                    <option value="paquetes">Productos al Mayor</option>
+                                </select>
+                            </div>
                              <div id="rubro-filter-container" class="w-1/2">
+                                 <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
                                  <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                              </div>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th id="header-cantidad" class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th id="header-precio" class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th id="header-stock" class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
                     <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden">
@@ -189,6 +198,14 @@
             updateVentaTotal();
         });
         
+        document.getElementById('tipoVentaFilter').addEventListener('change', (e) => {
+            _tipoVentaActual = e.target.value;
+            // Limpiar la venta actual al cambiar de tipo para evitar confusiones
+            _ventaActual.productos = {};
+            renderVentasInventario();
+            updateVentaTotal();
+        });
+
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
         document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
@@ -229,7 +246,6 @@
         rubros.forEach(rubro => {
              if(rubro) rubroFilter.innerHTML += `<option value="${rubro}">${rubro}</option>`;
         });
-        // CORRECCIÓN: No restaurar el valor si no es una edición, para evitar el bug del filtro.
         if (!_originalVentaForEdit) {
             rubroFilter.value = currentVal;
         }
@@ -275,7 +291,6 @@
         let currentIndex = cycle.indexOf(_monedaActual);
         let nextIndex = (currentIndex + 1) % cycle.length;
 
-        // Loop to find the next available currency with a valid rate
         while (nextIndex !== currentIndex) {
             if (rates[cycle[nextIndex]] > 0) {
                 _monedaActual = cycle[nextIndex];
@@ -285,8 +300,6 @@
             }
             nextIndex = (nextIndex + 1) % cycle.length;
         }
-
-        // If no other currency is available
         _showModal('Aviso', 'Ingresa al menos una tasa de cambio para poder alternar monedas.');
     }
 
@@ -295,17 +308,31 @@
      */
     async function renderVentasInventario() {
         const inventarioTableBody = document.getElementById('inventarioTableBody');
-        const monedaIndicator = document.getElementById('monedaIndicator');
         const rubroFilter = document.getElementById('rubroFilter');
+        const headerCantidad = document.getElementById('header-cantidad');
+        const headerPrecio = document.getElementById('header-precio');
+        const headerStock = document.getElementById('header-stock');
 
-        if (!inventarioTableBody || !rubroFilter) return;
-        if (monedaIndicator) {
-             monedaIndicator.textContent = `(${_monedaActual})`;
+        if (!inventarioTableBody || !rubroFilter || !headerCantidad) return;
+        
+        if (_tipoVentaActual === 'unidades') {
+            headerCantidad.textContent = 'Cant (Und)';
+            headerPrecio.textContent = 'Precio/Und';
+            headerStock.textContent = 'Stock (Und)';
+        } else { // paquetes
+            headerCantidad.textContent = 'Cant (Paq)';
+            headerPrecio.textContent = 'Precio/Paq';
+            headerStock.textContent = 'Stock (Paq)';
         }
+
         inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center text-gray-500">Cargando y ordenando...</td></tr>`;
         
         const selectedRubro = rubroFilter.value;
-        const inventarioConStock = _inventarioCache.filter(p => p.cantidad > 0 || _ventaActual.productos[p.id]);
+        const inventarioConStock = _inventarioCache.filter(p => {
+            const totalUnits = (p.cantidadCargada || 0) * (p.unidadesPorPaquete || 0);
+            return totalUnits > 0 || _ventaActual.productos[p.id];
+        });
+        
         let filteredInventario = selectedRubro ? inventarioConStock.filter(p => p.rubro === selectedRubro) : inventarioConStock;
         
         const segmentoOrderMap = await getSegmentoOrderMapVentas();
@@ -351,31 +378,54 @@
             const row = document.createElement('tr');
             row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
-            let precioMostrado;
-            if (_monedaActual === 'COP') {
-                const precioConvertido = producto.precio * _tasaCOP;
-                const precioRedondeado = Math.ceil(precioConvertido / 100) * 100;
-                precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
-            } else if (_monedaActual === 'Bs') {
-                const precioConvertido = producto.precio * _tasaBs;
-                precioMostrado = `Bs.S ${precioConvertido.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            } else {
-                precioMostrado = `$${producto.precio.toFixed(2)}`;
+            let precioMostrado, stockMostrado, maxStock, cantidadVendida;
+            const precioPorUnidad = producto.precioPorUnidad || 0;
+            const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
+            const cantidadCargada = producto.cantidadCargada || 0;
+
+            const totalStockUnidades = cantidadCargada * unidadesPorPaquete;
+
+            if (_tipoVentaActual === 'unidades') {
+                stockMostrado = totalStockUnidades;
+                maxStock = totalStockUnidades;
+                cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
+                
+                if (_monedaActual === 'COP') {
+                    const precioRedondeado = Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100;
+                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                } else if (_monedaActual === 'Bs') {
+                    precioMostrado = `Bs.S ${(precioPorUnidad * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                } else {
+                    precioMostrado = `$${precioPorUnidad.toFixed(2)}`;
+                }
+
+            } else { // paquetes
+                const precioPaqueteUSD = precioPorUnidad * unidadesPorPaquete;
+                stockMostrado = cantidadCargada;
+                maxStock = cantidadCargada;
+                cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
+
+                if (_monedaActual === 'COP') {
+                    const precioRedondeado = Math.ceil((precioPaqueteUSD * _tasaCOP) / 100) * 100;
+                    precioMostrado = `COP ${precioRedondeado.toLocaleString('es-CO')}`;
+                } else if (_monedaActual === 'Bs') {
+                    precioMostrado = `Bs.S ${(precioPaqueteUSD * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                } else {
+                    precioMostrado = `$${precioPaqueteUSD.toFixed(2)}`;
+                }
             }
             
             const productName = `${producto.marca || ''} ${producto.presentacion}`;
-            const originalQty = _originalVentaForEdit?.productos.find(p => p.id === producto.id)?.cantidadVendida || 0;
-            const effectiveStock = producto.cantidad + originalQty;
 
             row.innerHTML = `
                 <td class="py-2 px-1 text-center align-middle">
-                    <input type="number" min="0" max="${effectiveStock}" value="${_ventaActual.productos[producto.id]?.cantidadVendida || 0}"
+                    <input type="number" min="0" max="${maxStock}" value="${cantidadVendida}"
                            class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
-                <td class="py-2 px-2 text-left align-middle">${productName} <span class="text-gray-500">(${producto.unidadTipo || 'und.'})</span></td>
+                <td class="py-2 px-2 text-left align-middle">${productName}</td>
                 <td class="py-2 px-2 text-left price-toggle align-middle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-2 px-2 text-center align-middle">${effectiveStock}</td>
+                <td class="py-2 px-2 text-center align-middle">${stockMostrado}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
@@ -399,7 +449,11 @@
         
         if (cantidadFinal > 0) {
             const producto = _inventarioCache.find(p => p.id === productId);
-            _ventaActual.productos[productId] = { ...producto, cantidadVendida: cantidadFinal };
+            _ventaActual.productos[productId] = { 
+                ...producto, 
+                cantidadVendida: cantidadFinal,
+                ventaPor: _tipoVentaActual // Importante: guardar cómo se vendió
+            };
         } else {
             delete _ventaActual.productos[productId];
         }
@@ -412,17 +466,26 @@
     function updateVentaTotal() {
         const totalEl = document.getElementById('ventaTotal');
         if(!totalEl) return;
-        let total = Object.values(_ventaActual.productos).reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
+        let totalUSD = 0;
         
+        Object.values(_ventaActual.productos).forEach(p => {
+            const precioUnidad = p.precioPorUnidad || 0;
+            const unidadesPaquete = p.unidadesPorPaquete || 1;
+            
+            if (p.ventaPor === 'unidades') {
+                totalUSD += precioUnidad * p.cantidadVendida;
+            } else { // paquetes
+                totalUSD += (precioUnidad * unidadesPaquete) * p.cantidadVendida;
+            }
+        });
+
         if (_monedaActual === 'COP') {
-            const totalCOP = total * _tasaCOP;
-            const totalRedondeado = Math.ceil(totalCOP / 100) * 100;
+            const totalRedondeado = Math.ceil((totalUSD * _tasaCOP) / 100) * 100;
             totalEl.textContent = `Total: COP ${totalRedondeado.toLocaleString('es-CO')}`;
         } else if (_monedaActual === 'Bs') {
-            const totalBs = total * _tasaBs;
-            totalEl.textContent = `Total: Bs.S ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            totalEl.textContent = `Total: Bs.S ${(totalUSD * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         } else {
-            totalEl.textContent = `Total: $${total.toFixed(2)}`;
+            totalEl.textContent = `Total: $${totalUSD.toFixed(2)}`;
         }
     }
     
@@ -436,14 +499,21 @@
         let total = 0;
         
         let productosHTML = productos.map(p => {
-            const subtotal = p.precio * p.cantidadVendida;
+            const esPorPaquetes = p.ventaPor === 'paquetes';
+            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+            const precioUnitarioReal = p.precioPorUnidad || (p.precio / unidadesPorPaquete) || 0;
+
+            const subtotal = esPorPaquetes 
+                ? (precioUnitarioReal * unidadesPorPaquete) * p.cantidadVendida 
+                : precioUnitarioReal * p.cantidadVendida;
+            
             total += subtotal;
             return `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
                     </td>
-                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida}</td>
+                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida} ${esPorPaquetes ? 'PAQ' : 'UND'}</td>
                     <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
@@ -497,8 +567,8 @@
 
         const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
         const createRow = (col1, col2, col3) => {
-            const C1_WIDTH = 3;
-            const C2_WIDTH = 19;
+            const C1_WIDTH = 6;
+            const C2_WIDTH = 16;
             const C3_WIDTH = 10;
             return `${col1.padEnd(C1_WIDTH)}${col2.padEnd(C2_WIDTH)}${col3.padStart(C3_WIDTH)}\n`;
         };
@@ -512,17 +582,24 @@
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         productos.forEach(p => {
-            const subtotal = p.precio * p.cantidadVendida;
+            const esPorPaquetes = p.ventaPor === 'paquetes';
+            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+            const precioUnitarioReal = p.precioPorUnidad || (p.precio / unidadesPorPaquete) || 0;
+
+            const subtotal = esPorPaquetes 
+                ? (precioUnitarioReal * unidadesPorPaquete) * p.cantidadVendida 
+                : precioUnitarioReal * p.cantidadVendida;
             total += subtotal;
-            const productName = `${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`.toUpperCase();
-            const quantity = p.cantidadVendida.toString();
+
+            const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
+            const quantity = `${p.cantidadVendida}${esPorPaquetes ? 'paq' : 'und'}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
             const lines = [];
             let tempName = productName;
-            while(tempName.length > 19) {
-                let breakPoint = tempName.lastIndexOf(' ', 19);
-                if (breakPoint === -1) breakPoint = 19;
+            while(tempName.length > 16) {
+                let breakPoint = tempName.lastIndexOf(' ', 16);
+                if (breakPoint === -1) breakPoint = 16;
                 lines.push(tempName.substring(0, breakPoint));
                 tempName = tempName.substring(breakPoint).trim();
             }
@@ -664,20 +741,53 @@
 
                 for (const p of productosVendidos) {
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
-                    if (!productoEnCache || productoEnCache.cantidad < p.cantidadVendida) {
+                    if (!productoEnCache) throw new Error(`Producto ${p.presentacion} no encontrado.`);
+
+                    const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+                    const stockUnidadesTotal = (productoEnCache.cantidadCargada || 0) * unidadesPorPaquete;
+                    
+                    let unidadesARestar = 0;
+                    if (p.ventaPor === 'paquetes') {
+                        unidadesARestar = p.cantidadVendida * unidadesPorPaquete;
+                        totalVenta += (p.precioPorUnidad * unidadesPorPaquete) * p.cantidadVendida;
+                    } else { // unidades
+                        unidadesARestar = p.cantidadVendida;
+                        totalVenta += p.precioPorUnidad * p.cantidadVendida;
+                    }
+
+                    if (stockUnidadesTotal < unidadesARestar) {
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                     }
+
+                    const stockUnidadesRestante = stockUnidadesTotal - unidadesARestar;
+                    const nuevoStockPaquetes = Math.floor(stockUnidadesRestante / unidadesPorPaquete);
+                    
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
-                    const nuevoStock = productoEnCache.cantidad - p.cantidadVendida;
-                    batch.update(productoRef, { cantidad: nuevoStock });
-                    totalVenta += p.precio * p.cantidadVendida;
-                    itemsVenta.push({ id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null, precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.' });
+                    batch.update(productoRef, { cantidadCargada: nuevoStockPaquetes });
+
+                    itemsVenta.push({ 
+                        id: p.id, 
+                        presentacion: p.presentacion, 
+                        marca: p.marca ?? null, 
+                        segmento: p.segmento ?? null, 
+                        precioPorUnidad: p.precioPorUnidad,
+                        unidadesPorPaquete: p.unidadesPorPaquete,
+                        cantidadVendida: p.cantidadVendida, 
+                        ventaPor: p.ventaPor,
+                        iva: p.iva ?? 0
+                    });
                 }
 
-                batch.set(ventaRef, { clienteId: _ventaActual.cliente.id, clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, fecha: new Date(), total: totalVenta, productos: itemsVenta });
+                batch.set(ventaRef, { 
+                    clienteId: _ventaActual.cliente.id, 
+                    clienteNombre: _ventaActual.cliente.nombreComercial || _ventaActual.cliente.nombrePersonal, 
+                    clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, 
+                    fecha: new Date(), 
+                    total: totalVenta, 
+                    productos: itemsVenta 
+                });
                 await batch.commit();
 
-                // Mostrar opciones después de guardar la venta
                 showSharingOptions(_ventaActual, productosVendidos, 'ticket', showNuevaVentaView);
 
             } catch (e) {
@@ -767,7 +877,7 @@
                     <tr class="hover:bg-gray-50">
                         <td class="py-2 px-3 border-b align-middle">${venta.clienteNombre}</td>
                         <td class="py-2 px-3 border-b align-middle">${venta.fecha.toDate().toLocaleDateString('es-ES')}</td>
-                        <td class="py-2 px-3 border-b text-right font-semibold align-middle">$${venta.total.toFixed(2)}</td>
+                        <td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(venta.total || 0).toFixed(2)}</td>
                         <td class="py-2 px-3 border-b">
                             <div class="flex flex-col items-center space-y-1">
                                 <button onclick="window.ventasModule.showPastSaleOptions('${venta.id}', 'ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs font-semibold rounded-lg hover:bg-blue-600">Compartir</button>
@@ -829,7 +939,7 @@
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
 
-            venta.productos.forEach(p => {
+            (venta.productos || []).forEach(p => {
                 const productName = p.presentacion;
                 if (!allProductsMap.has(productName)) {
                     allProductsMap.set(productName, {
@@ -842,7 +952,10 @@
                 if (!clientData[clientName].products[productName]) {
                     clientData[clientName].products[productName] = 0;
                 }
-                clientData[clientName].products[productName] += p.cantidadVendida;
+                
+                const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+                const cantidadEnUnidades = p.ventaPor === 'paquetes' ? p.cantidadVendida * unidadesPorPaquete : p.cantidadVendida;
+                clientData[clientName].products[productName] += cantidadEnUnidades;
             });
         });
 
@@ -924,7 +1037,7 @@
             bodyHTML += `<td class="p-2 border-b border-gray-300 text-right font-semibold bg-white sticky right-0">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-2 border-b border-gray-300 sticky left-0">TOTALES</td>';
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-2 border-b border-gray-300 sticky left-0">TOTALES (Uds)</td>';
         finalProductOrder.forEach(productName => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
@@ -936,7 +1049,7 @@
         
         const reporteHTML = `
             <div class="text-left max-h-[80vh] overflow-auto">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
                 <div class="overflow-auto border border-gray-300">
                     <table class="min-w-full bg-white text-xs">
                         <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}</thead>
@@ -1011,7 +1124,7 @@
             dataForSheet.push(row);
         });
 
-        const footerRow = ["TOTALES"];
+        const footerRow = ["TOTALES (Uds)"];
         finalProductOrder.forEach(productName => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
@@ -1122,25 +1235,30 @@
 
                     const batch = _writeBatch(_db);
 
-                    // Devolver el stock al inventario
                     for (const productoVendido of venta.productos) {
                         const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
                         if (productoEnCache) {
-                            const nuevoStock = productoEnCache.cantidad + productoVendido.cantidadVendida;
+                            const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
+                            const stockActualUnidades = productoEnCache.cantidadCargada * unidadesPorPaquete;
+                            
+                            let unidadesADevolver = 0;
+                            if (productoVendido.ventaPor === 'paquetes') {
+                                unidadesADevolver = productoVendido.cantidadVendida * unidadesPorPaquete;
+                            } else {
+                                unidadesADevolver = productoVendido.cantidadVendida;
+                            }
+
+                            const nuevoStockUnidades = stockActualUnidades + unidadesADevolver;
+                            const nuevoStockPaquetes = Math.floor(nuevoStockUnidades / unidadesPorPaquete);
+
                             const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
-                            batch.update(productoRef, { cantidad: nuevoStock });
-                        } else {
-                            console.warn(`El producto "${productoVendido.presentacion}" (ID: ${productoVendido.id}) no fue encontrado en el inventario. No se pudo restaurar su stock.`);
+                            batch.update(productoRef, { cantidadCargada: nuevoStockPaquetes });
                         }
                     }
 
-                    // Eliminar el documento de la venta
                     const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
                     batch.delete(ventaRef);
-
-                    // Ejecutar la transacción
                     await batch.commit();
-
                     _showModal('Éxito', 'La venta ha sido eliminada y el stock restaurado.');
 
                 } catch (error) {
@@ -1171,14 +1289,26 @@
                         </div>
                     </div>
                     <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
-                         <div class="flex justify-between items-center mb-2">
-                            <h3 class="text-lg font-semibold text-gray-800">Inventario</h3>
+                         <div class="flex justify-between items-center mb-2 gap-4">
+                            <div class="w-1/2">
+                                <label for="tipoVentaFilter" class="text-xs font-medium">Tipo de Venta</label>
+                                <select id="tipoVentaFilter" class="w-full px-2 py-1 border rounded-lg text-sm">
+                                    <option value="unidades">Productos por Unidades</option>
+                                    <option value="paquetes">Productos al Mayor</option>
+                                </select>
+                            </div>
                              <div id="rubro-filter-container" class="w-1/2">
+                                 <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
                                  <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                              </div>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal">
+                                <th id="header-cantidad" class="py-2 px-1 text-center">Cant.</th>
+                                <th class="py-2 px-2 text-left">Producto</th>
+                                <th id="header-precio" class="py-2 px-2 text-left">Precio</th>
+                                <th id="header-stock" class="py-2 px-1 text-center">Stock</th>
+                            </tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
                     <div id="venta-footer-section" class="mt-4 flex items-center justify-between">
@@ -1189,7 +1319,6 @@
             </div>
         `;
         
-        document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
         document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
 
@@ -1198,36 +1327,45 @@
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snapshot = await _getDocs(inventarioRef);
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Asume que todos los productos en una venta se venden del mismo modo (unidades o paquetes)
+            _tipoVentaActual = venta.productos[0]?.ventaPor || 'paquetes';
 
             _ventaActual = {
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
                 productos: venta.productos.reduce((acc, p) => {
                     const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
-                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
+                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida, ventaPor: _tipoVentaActual };
                     return acc;
                 }, {})
             };
             
+            const tipoVentaFilter = document.getElementById('tipoVentaFilter');
+            tipoVentaFilter.value = _tipoVentaActual;
+            tipoVentaFilter.addEventListener('change', (e) => {
+                _tipoVentaActual = e.target.value;
+                _ventaActual.productos = {};
+                renderVentasInventario();
+                updateVentaTotal();
+            });
+
+            document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
+
             populateRubroFilter();
             document.getElementById('rubroFilter').value = ''; 
             
             renderVentasInventario();
             updateVentaTotal();
 
-            const modalContainer = document.getElementById('modalContainer');
-            if (modalContainer) modalContainer.classList.add('hidden');
+            document.getElementById('modalContainer').classList.add('hidden');
 
         } catch (error) {
             _showModal('Error', `No se pudo cargar la información para editar: ${error.message}`);
         }
     }
     
-    // ============================================================================================
-    // == FUNCIÓN CORREGIDA Y MEJORADA ==
-    // ============================================================================================
     /**
-     * Guarda los cambios de una venta editada y ajusta el stock de forma atómica.
-     * Esta función ha sido reescrita para ser más clara, robusta y segura.
+     * Guarda los cambios de una venta editada y ajusta el stock.
      */
     async function handleGuardarVentaEditada() {
         if (!_originalVentaForEdit) {
@@ -1239,67 +1377,78 @@
             _showModal('Progreso', 'Guardando cambios y ajustando stock...');
 
             try {
-                // Mapa de cantidades originales: { productId: quantity }
-                const originalQuantities = new Map(
-                    _originalVentaForEdit.productos.map(p => [p.id, p.cantidadVendida])
-                );
-
-                // Mapa de nuevas cantidades: { productId: quantity }
-                const newQuantities = new Map(
-                    Object.values(_ventaActual.productos).map(p => [p.id, p.cantidadVendida])
-                );
-                
-                // Obtener todos los IDs de productos únicos de la venta original y la nueva
-                const allProductIds = new Set([
-                    ...originalQuantities.keys(),
-                    ...newQuantities.keys()
-                ]);
-
                 const batch = _writeBatch(_db);
+                const originalProducts = new Map(_originalVentaForEdit.productos.map(p => [p.id, p]));
+                const newProducts = new Map(Object.values(_ventaActual.productos).map(p => [p.id, p]));
+                const allProductIds = new Set([...originalProducts.keys(), ...newProducts.keys()]);
 
-                // 1. Calcular cambios de stock y validar que sean posibles
                 for (const productId of allProductIds) {
-                    const originalQty = originalQuantities.get(productId) || 0;
-                    const newQty = newQuantities.get(productId) || 0;
-                    const stockDelta = originalQty - newQty; // Positivo: devolver al stock, Negativo: tomar del stock
-
-                    if (stockDelta === 0) continue; // No hay cambios para este producto
-
+                    const originalProduct = originalProducts.get(productId);
+                    const newProduct = newProducts.get(productId);
                     const productoEnCache = _inventarioCache.find(p => p.id === productId);
+
                     if (!productoEnCache) {
-                        console.warn(`Producto con ID ${productId} no encontrado en inventario. No se ajustará el stock.`);
+                        console.warn(`Producto con ID ${productId} no encontrado. Saltando ajuste de stock.`);
                         continue;
                     }
-                    
-                    const finalStock = productoEnCache.cantidad + stockDelta;
 
-                    if (finalStock < 0) {
+                    const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
+                    let originalUnitsSold = 0;
+                    if (originalProduct) {
+                        if (originalProduct.ventaPor === 'paquetes') {
+                            originalUnitsSold = (originalProduct.cantidadVendida || 0) * unidadesPorPaquete;
+                        } else { // 'unidades' o formato antiguo
+                            originalUnitsSold = originalProduct.cantidadVendida || 0;
+                        }
+                    }
+
+                    let newUnitsSold = 0;
+                    if (newProduct) {
+                         if (newProduct.ventaPor === 'paquetes') {
+                            newUnitsSold = (newProduct.cantidadVendida || 0) * unidadesPorPaquete;
+                        } else { // unidades
+                            newUnitsSold = newProduct.cantidadVendida || 0;
+                        }
+                    }
+
+                    const unitDelta = originalUnitsSold - newUnitsSold;
+                    if (unitDelta === 0) continue;
+
+                    const currentStockUnits = productoEnCache.cantidadCargada * unidadesPorPaquete;
+                    const finalStockUnits = currentStockUnits + unitDelta;
+
+                    if (finalStockUnits < 0) {
                         throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
                     }
 
+                    const finalStockPackages = Math.floor(finalStockUnits / unidadesPorPaquete);
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
-                    batch.update(productoRef, { cantidad: finalStock });
+                    batch.update(productoRef, { cantidadCargada: finalStockPackages });
                 }
 
-                // 2. Actualizar el documento de la venta con los nuevos datos
                 const nuevosProductosVendidos = Object.values(_ventaActual.productos);
-                const nuevoTotal = nuevosProductosVendidos.reduce((sum, p) => sum + (p.precio * p.cantidadVendida), 0);
-                const nuevosItemsVenta = nuevosProductosVendidos.map(p => ({
-                    id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
-                    precio: p.precio, cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, unidadTipo: p.unidadTipo ?? 'und.'
-                }));
+                let nuevoTotal = 0;
+                const nuevosItemsVenta = nuevosProductosVendidos.map(p => {
+                    const subtotal = p.ventaPor === 'paquetes' 
+                        ? (p.precioPorUnidad * p.unidadesPorPaquete) * p.cantidadVendida
+                        : p.precioPorUnidad * p.cantidadVendida;
+                    nuevoTotal += subtotal;
+                    return {
+                        id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
+                        precioPorUnidad: p.precioPorUnidad, unidadesPorPaquete: p.unidadesPorPaquete,
+                        cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, ventaPor: p.ventaPor
+                    };
+                });
 
                 const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, _originalVentaForEdit.id);
                 batch.update(ventaRef, {
                     productos: nuevosItemsVenta,
                     total: nuevoTotal,
-                    fechaModificacion: new Date() // Es buena práctica guardar la fecha de modificación
+                    fechaModificacion: new Date()
                 });
-
-                // 3. Ejecutar todos los cambios en la base de datos
-                await batch.commit();
                 
-                _originalVentaForEdit = null; // Limpiar el estado de edición
+                await batch.commit();
+                _originalVentaForEdit = null;
                 _showModal('Éxito', 'La venta se ha actualizado correctamente.', showVentasActualesView);
 
             } catch (error) {
