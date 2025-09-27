@@ -361,7 +361,7 @@
                 return;
             }
             
-            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Paquetes)</th></tr></thead><tbody>`;
+            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Unidades)</th></tr></thead><tbody>`;
             
             let currentMarca = null;
             productos.forEach(p => {
@@ -370,14 +370,15 @@
                     currentMarca = marca;
                     tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
                 }
+                const cantidadActualUnidades = (p.cantidadCargada || 0) * (p.unidadesPorPaquete || 1);
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
                         <td class="py-2 px-4 border-b text-sm">
                             <p class="font-semibold">${p.presentacion}</p>
-                            <p class="text-xs text-gray-600">Actual: ${p.cantidadCargada} Paquetes</p>
+                            <p class="text-xs text-gray-600">Actual: ${cantidadActualUnidades} Unidades</p>
                         </td>
                         <td class="py-2 px-4 border-b text-center">
-                            <input type="number" value="${p.cantidadCargada}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
+                            <input type="number" value="${cantidadActualUnidades}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
                         </td>
                     </tr>
                 `;
@@ -404,13 +405,19 @@
 
         inputs.forEach(input => {
             const docId = input.dataset.docId;
-            const nuevaCantidad = parseInt(input.value, 10);
+            const nuevaCantidadUnidades = parseInt(input.value, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
 
-            if (!isNaN(nuevaCantidad) && productoOriginal && productoOriginal.cantidadCargada !== nuevaCantidad) {
-                const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
-                batch.update(docRef, { cantidadCargada: nuevaCantidad });
-                changesCount++;
+            if (productoOriginal) {
+                const unidadesPorPaquete = productoOriginal.unidadesPorPaquete || 1;
+                const cantidadOriginalUnidades = (productoOriginal.cantidadCargada || 0) * unidadesPorPaquete;
+
+                if (!isNaN(nuevaCantidadUnidades) && cantidadOriginalUnidades !== nuevaCantidadUnidades) {
+                    const nuevaCantidadPaquetes = Math.floor(nuevaCantidadUnidades / unidadesPorPaquete);
+                    const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
+                    batch.update(docRef, { cantidadCargada: nuevaCantidadPaquetes });
+                    changesCount++;
+                }
             }
         });
 
@@ -925,6 +932,8 @@
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
+        const cantidadActualUnidades = (producto.cantidadCargada || 0) * (producto.unidadesPorPaquete || 1);
+
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -945,8 +954,8 @@
                                 <input type="number" step="0.01" id="editPrecioPorUnidad" value="${producto.precioPorUnidad || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editCantidadCargada" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Paquetes):</label>
-                                <input type="number" id="editCantidadCargada" value="${producto.cantidadCargada || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="editCantidadCargadaUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Unidades):</label>
+                                <input type="number" id="editCantidadCargadaUnidades" value="${cantidadActualUnidades}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                              <div>
                                 <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
@@ -965,12 +974,23 @@
         
         document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const unidadesPorPaquete = parseInt(document.getElementById('editUnidadesPorPaquete').value, 10);
+            const cantidadCargadaUnidades = parseInt(document.getElementById('editCantidadCargadaUnidades').value, 10);
+
+            if (isNaN(unidadesPorPaquete) || unidadesPorPaquete <= 0) {
+                _showModal('Error de Datos', 'El número de "Unidades por Paquete" debe ser un número mayor que cero.');
+                return;
+            }
+
+            const cantidadCargadaPaquetes = Math.floor(cantidadCargadaUnidades / unidadesPorPaquete);
+
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
                     presentacion: document.getElementById('editPresentacion').value.trim(),
-                    unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
+                    unidadesPorPaquete: unidadesPorPaquete,
                     precioPorUnidad: parseFloat(document.getElementById('editPrecioPorUnidad').value),
-                    cantidadCargada: parseInt(document.getElementById('editCantidadCargada').value, 10),
+                    cantidadCargada: cantidadCargadaPaquetes,
                     iva: parseInt(document.getElementById('editIvaTipo').value, 10)
                 }, { merge: true });
                 _showModal('Éxito', 'Producto modificado exitosamente.');
@@ -1060,3 +1080,4 @@
     };
 
 })();
+
