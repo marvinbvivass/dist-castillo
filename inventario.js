@@ -361,7 +361,7 @@
                 return;
             }
             
-            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva</th></tr></thead><tbody>`;
+            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Paquetes)</th></tr></thead><tbody>`;
             
             let currentMarca = null;
             productos.forEach(p => {
@@ -373,11 +373,11 @@
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
                         <td class="py-2 px-4 border-b text-sm">
-                            <p class="font-semibold">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span></p>
-                            <p class="text-xs text-gray-600">Actual: ${p.cantidad}</p>
+                            <p class="font-semibold">${p.presentacion}</p>
+                            <p class="text-xs text-gray-600">Actual: ${p.cantidadCargada} Paquetes</p>
                         </td>
                         <td class="py-2 px-4 border-b text-center">
-                            <input type="number" value="${p.cantidad}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
+                            <input type="number" value="${p.cantidadCargada}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
                         </td>
                     </tr>
                 `;
@@ -407,9 +407,9 @@
             const nuevaCantidad = parseInt(input.value, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
 
-            if (!isNaN(nuevaCantidad) && productoOriginal && productoOriginal.cantidad !== nuevaCantidad) {
+            if (!isNaN(nuevaCantidad) && productoOriginal && productoOriginal.cantidadCargada !== nuevaCantidad) {
                 const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
-                batch.update(docRef, { cantidad: nuevaCantidad });
+                batch.update(docRef, { cantidadCargada: nuevaCantidad });
                 changesCount++;
             }
         });
@@ -629,21 +629,19 @@
                             </div>
                             <div>
                                 <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                <div class="flex items-center gap-2">
-                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
-                                    <select id="unidadTipo" class="px-2 py-2 border rounded-lg bg-gray-50">
-                                        <option value="und.">und.</option>
-                                        <option value="cj.">cj.</option>
-                                    </select>
-                                </div>
+                                <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="precio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
-                                <input type="number" step="0.01" id="precio" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="unidadesPorPaquete" class="block text-gray-700 font-medium mb-2">Unidades por Paquete:</label>
+                                <input type="number" id="unidadesPorPaquete" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="cantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
-                                <input type="number" id="cantidad" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="precioPorUnidad" class="block text-gray-700 font-medium mb-2">Precio por Unidad (USD):</label>
+                                <input type="number" step="0.01" id="precioPorUnidad" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="cantidadCargada" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Paquetes):</label>
+                                <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
                                 <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
@@ -681,9 +679,9 @@
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
-            unidadTipo: document.getElementById('unidadTipo').value,
-            precio: parseFloat(document.getElementById('precio').value),
-            cantidad: parseInt(document.getElementById('cantidad').value, 10),
+            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
+            precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
+            cantidadCargada: parseInt(document.getElementById('cantidadCargada').value, 10),
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
 
@@ -698,14 +696,13 @@
                 _where("rubro", "==", producto.rubro),
                 _where("segmento", "==", producto.segmento),
                 _where("marca", "==", producto.marca),
-                _where("presentacion", "==", producto.presentacion),
-                _where("unidadTipo", "==", producto.unidadTipo)
+                _where("presentacion", "==", producto.presentacion)
             );
 
             const querySnapshot = await _getDocs(q);
 
             if (!querySnapshot.empty) {
-                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca, Presentación y Tipo de Unidad.');
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
                 return;
             }
 
@@ -867,22 +864,32 @@
                 return;
             }
             
-            let tableHTML = `<table class="min-w-full bg-white border border-gray-200"><thead class="bg-gray-200 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Presentación</th><th class="py-2 px-4 border-b text-left text-sm">Marca</th><th class="py-2 px-4 border-b text-right text-sm">Precio</th><th class="py-2 px-4 border-b text-center text-sm">Cantidad</th>${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}</tr></thead><tbody>`;
+            let tableHTML = `<table class="min-w-full bg-white border border-gray-200"><thead class="bg-gray-200 sticky top-0"><tr>
+                <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
+                <th class="py-2 px-4 border-b text-center text-sm">Uds x Paq</th>
+                <th class="py-2 px-4 border-b text-right text-sm">Precio Unidad</th>
+                <th class="py-2 px-4 border-b text-right text-sm">Precio Paquete</th>
+                <th class="py-2 px-4 border-b text-center text-sm">Cant. Paquetes</th>
+                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+            </tr></thead><tbody>`;
             
             let currentMarca = null;
             productos.forEach(p => {
                 const marca = p.marca || 'Sin Marca';
                 if (marca !== currentMarca) {
                     currentMarca = marca;
-                    tableHTML += `<tr><td colspan="${readOnly ? 4 : 5}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+                    tableHTML += `<tr><td colspan="${readOnly ? 5 : 6}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
                 }
+
+                const precioPaquete = (p.precioPorUnidad || 0) * (p.unidadesPorPaquete || 0);
 
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
-                        <td class="py-2 px-4 border-b text-sm">${p.presentacion} <span class="text-xs text-gray-500">(${p.unidadTipo || 'und.'})</span> (${p.segmento})</td>
-                        <td class="py-2 px-4 border-b text-sm">${p.marca}</td>
-                        <td class="py-2 px-4 border-b text-right text-sm">$${p.precio.toFixed(2)}</td>
-                        <td class="py-2 px-4 border-b text-center text-sm">${p.cantidad}</td>
+                        <td class="py-2 px-4 border-b text-sm">${p.presentacion} (${p.segmento})</td>
+                        <td class="py-2 px-4 border-b text-center text-sm">${p.unidadesPorPaquete || 0}</td>
+                        <td class="py-2 px-4 border-b text-right text-sm">$${(p.precioPorUnidad || 0).toFixed(2)}</td>
+                        <td class="py-2 px-4 border-b text-right text-sm font-semibold">$${precioPaquete.toFixed(2)}</td>
+                        <td class="py-2 px-4 border-b text-center text-sm">${p.cantidadCargada || 0}</td>
                         ${!readOnly ? `
                         <td class="py-2 px-4 border-b text-center space-x-2">
                             <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
@@ -915,21 +922,19 @@
                             <p class="text-sm">Nota: Rubro, Segmento y Marca no se pueden editar para mantener la consistencia de los datos.</p>
                             <div>
                                 <label for="editPresentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                <div class="flex items-center gap-2">
-                                    <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
-                                    <select id="editUnidadTipo" class="px-2 py-2 border rounded-lg bg-gray-50">
-                                        <option value="und." ${producto.unidadTipo === 'und.' ? 'selected' : ''}>und.</option>
-                                        <option value="cj." ${producto.unidadTipo === 'cj.' ? 'selected' : ''}>cj.</option>
-                                    </select>
-                                </div>
+                                <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editPrecio" class="block text-gray-700 font-medium mb-2">Precio (USD):</label>
-                                <input type="number" step="0.01" id="editPrecio" value="${producto.precio}" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="editUnidadesPorPaquete" class="block text-gray-700 font-medium mb-2">Unidades por Paquete:</label>
+                                <input type="number" id="editUnidadesPorPaquete" value="${producto.unidadesPorPaquete || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editCantidad" class="block text-gray-700 font-medium mb-2">Cantidad:</label>
-                                <input type="number" id="editCantidad" value="${producto.cantidad}" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="editPrecioPorUnidad" class="block text-gray-700 font-medium mb-2">Precio por Unidad (USD):</label>
+                                <input type="number" step="0.01" id="editPrecioPorUnidad" value="${producto.precioPorUnidad || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editCantidadCargada" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Paquetes):</label>
+                                <input type="number" id="editCantidadCargada" value="${producto.cantidadCargada || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                              <div>
                                 <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
@@ -951,9 +956,9 @@
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
                     presentacion: document.getElementById('editPresentacion').value.trim(),
-                    unidadTipo: document.getElementById('editUnidadTipo').value,
-                    precio: parseFloat(document.getElementById('editPrecio').value),
-                    cantidad: parseInt(document.getElementById('editCantidad').value, 10),
+                    unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
+                    precioPorUnidad: parseFloat(document.getElementById('editPrecioPorUnidad').value),
+                    cantidadCargada: parseInt(document.getElementById('editCantidadCargada').value, 10),
                     iva: parseInt(document.getElementById('editIvaTipo').value, 10)
                 }, { merge: true });
                 _showModal('Éxito', 'Producto modificado exitosamente.');
