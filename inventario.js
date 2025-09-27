@@ -41,7 +41,6 @@
      */
     function invalidateSegmentOrderCache() {
         _segmentoOrderCache = null;
-        // También invalidamos la caché del módulo de ventas si existe
         if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
             window.ventasModule.invalidateCache();
         }
@@ -51,7 +50,7 @@
      * Renderiza el menú de subopciones de inventario.
      */
     window.showInventarioSubMenu = function() {
-        invalidateSegmentOrderCache(); // Invalida la caché al volver al menú
+        invalidateSegmentOrderCache();
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -59,27 +58,13 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                Ver Inventario
-                            </button>
-                            <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                Agregar Producto
-                            </button>
-                            <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
-                                Modificar / Eliminar Producto
-                            </button>
-                            <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600 transition duration-300 transform hover:scale-105">
-                                Ajuste Masivo de Cantidades
-                            </button>
-                             <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition duration-300 transform hover:scale-105">
-                                Ordenar Segmentos
-                            </button>
-                             <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-300 transform hover:scale-105">
-                                Modificar Datos Maestros
-                            </button>
-                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
-                                Volver al Menú Principal
-                            </button>
+                            <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Inventario</button>
+                            <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
+                            <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Modificar / Eliminar Producto</button>
+                            <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
+                             <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos</button>
+                             <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar Datos Maestros</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
                 </div>
@@ -102,7 +87,6 @@
      */
     async function getSegmentoOrderMap() {
         if (_segmentoOrderCache) return _segmentoOrderCache;
-
         const map = {};
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
         try {
@@ -129,15 +113,13 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Segmentos</h2>
-                        <p class="text-center text-gray-600 mb-6">Arrastra y suelta los segmentos para cambiar el orden en que aparecerán en las listas de productos.</p>
-                        
+                        <p class="text-center text-gray-600 mb-6">Arrastra y suelta los segmentos para cambiar el orden.</p>
                         <div class="mb-4">
                            <label for="ordenarRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
                            <select id="ordenarRubroFilter" class="w-full px-4 py-2 border rounded-lg">
                                <option value="">Todos los Rubros</option>
                            </select>
                         </div>
-
                         <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
                             <p class="text-gray-500 text-center">Cargando segmentos...</p>
                         </ul>
@@ -149,10 +131,8 @@
                 </div>
             </div>
         `;
-
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenSegmentos);
-        
         const rubroFilter = document.getElementById('ordenarRubroFilter');
         _populateDropdown('rubros', 'ordenarRubroFilter', 'Rubro');
         rubroFilter.addEventListener('change', () => renderSortableSegmentList(rubroFilter.value));
@@ -172,7 +152,6 @@
             let snapshot = await _getDocs(segmentosRef);
             let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Inicializar el campo 'orden' si no existe
             if (allSegments.length > 0 && allSegments.some(s => s.orden === undefined)) {
                 const sortedAlphabetically = allSegments.sort((a,b) => a.name.localeCompare(b.name));
                 const batch = _writeBatch(_db);
@@ -187,7 +166,6 @@
 
             let segmentsToDisplay = allSegments;
 
-            // Filtrar por rubro si se especifica uno
             if (rubro) {
                 const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
                 const q = _query(inventarioRef, _where("rubro", "==", rubro));
@@ -227,41 +205,29 @@
      */
     function addDragAndDropHandlers(container) {
         let draggedItem = null;
-
         container.addEventListener('dragstart', e => {
             draggedItem = e.target;
             setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
         });
-
         container.addEventListener('dragend', e => {
-            if(draggedItem) {
-                draggedItem.style.opacity = '1';
-            }
+            if(draggedItem) draggedItem.style.opacity = '1';
             draggedItem = null;
         });
-
         container.addEventListener('dragover', e => {
             e.preventDefault();
             const afterElement = getDragAfterElement(container, e.clientY);
             if (draggedItem) {
-                if (afterElement == null) {
-                    container.appendChild(draggedItem);
-                } else {
-                    container.insertBefore(draggedItem, afterElement);
-                }
+                if (afterElement == null) container.appendChild(draggedItem);
+                else container.insertBefore(draggedItem, afterElement);
             }
         });
-
         function getDragAfterElement(container, y) {
             const draggableElements = [...container.querySelectorAll('li:not([style*="opacity: 0.5"])')];
             return draggableElements.reduce((closest, child) => {
                 const box = child.getBoundingClientRect();
                 const offset = y - box.top - box.height / 2;
-                if (offset < 0 && offset > closest.offset) {
-                    return { offset: offset, element: child };
-                } else {
-                    return closest;
-                }
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                else return closest;
             }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
     }
@@ -275,17 +241,14 @@
             _showModal('Aviso', 'No hay segmentos para ordenar.');
             return;
         }
-
         const batch = _writeBatch(_db);
         listItems.forEach((item, index) => {
-            const docId = item.dataset.id;
-            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, docId);
+            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, item.dataset.id);
             batch.update(docRef, { orden: index });
         });
-
         try {
             await batch.commit();
-            invalidateSegmentOrderCache(); // Forzar recarga en la próxima vista
+            invalidateSegmentOrderCache();
             _showModal('Éxito', 'El orden de los segmentos ha sido guardado.');
             showInventarioSubMenu();
         } catch (error) {
@@ -335,12 +298,10 @@
     async function renderAjusteMasivoList(rubro = '') {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
-
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
             let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             _inventarioCache = productos; 
-            
             const segmentoOrderMap = await getSegmentoOrderMap();
             if (segmentoOrderMap) {
                 productos.sort((a, b) => {
@@ -351,18 +312,14 @@
                     return a.presentacion.localeCompare(b.presentacion);
                 });
             }
-
             if (rubro) {
                 productos = productos.filter(p => p.rubro === rubro);
             }
-
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
                 return;
             }
-            
             let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Unidades)</th></tr></thead><tbody>`;
-            
             let currentMarca = null;
             productos.forEach(p => {
                 const marca = p.marca || 'Sin Marca';
@@ -370,7 +327,7 @@
                     currentMarca = marca;
                     tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
                 }
-                const cantidadActualUnidades = (p.cantidadCargada || 0) * (p.unidadesPorPaquete || 1);
+                const cantidadActualUnidades = p.cantidadUnidades || 0;
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
                         <td class="py-2 px-4 border-b text-sm">
@@ -383,7 +340,6 @@
                     </tr>
                 `;
             });
-
             tableHTML += `</tbody></table>`;
             container.innerHTML = tableHTML;
         });
@@ -399,23 +355,16 @@
             _showModal('Aviso', 'No hay cambios que guardar.');
             return;
         }
-
         const batch = _writeBatch(_db);
         let changesCount = 0;
-
         inputs.forEach(input => {
             const docId = input.dataset.docId;
             const nuevaCantidadUnidades = parseInt(input.value, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
-
             if (productoOriginal) {
-                const unidadesPorPaquete = productoOriginal.unidadesPorPaquete || 1;
-                const cantidadOriginalUnidades = (productoOriginal.cantidadCargada || 0) * unidadesPorPaquete;
-
-                if (!isNaN(nuevaCantidadUnidades) && cantidadOriginalUnidades !== nuevaCantidadUnidades) {
-                    const nuevaCantidadPaquetes = Math.floor(nuevaCantidadUnidades / unidadesPorPaquete);
+                if (!isNaN(nuevaCantidadUnidades) && (productoOriginal.cantidadUnidades || 0) !== nuevaCantidadUnidades) {
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
-                    batch.update(docRef, { cantidadCargada: nuevaCantidadPaquetes });
+                    batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
                     changesCount++;
                 }
             }
@@ -425,7 +374,6 @@
             _showModal('Aviso', 'No se detectaron cambios en las cantidades.');
             return;
         }
-
         _showModal('Confirmar Cambios', `Estás a punto de actualizar ${changesCount} producto(s). ¿Deseas continuar?`, async () => {
             try {
                 await batch.commit();
@@ -448,25 +396,20 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar Datos Maestros</h2>
-                        
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <!-- Columna de Rubros -->
                             <div>
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Rubros</h3>
                                 <div id="rubros-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
                             </div>
-                            <!-- Columna de Segmentos -->
                             <div>
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Segmentos</h3>
                                 <div id="segmentos-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
                             </div>
-                            <!-- Columna de Marcas -->
                             <div>
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Marcas</h3>
                                 <div id="marcas-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
                             </div>
                         </div>
-
                         <div class="mt-8 flex flex-col sm:flex-row gap-4">
                             <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                             <button id="deleteAllDatosMaestrosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Datos Maestros</button>
@@ -477,7 +420,6 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllDatosMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros);
-
         renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
         renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
         renderDataListForEditing('marcas', 'marcas-list', 'Marca');
@@ -489,7 +431,6 @@
     function renderDataListForEditing(collectionName, containerId, itemName) {
         const container = document.getElementById(containerId);
         if (!container) return;
-
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
         const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
@@ -511,15 +452,10 @@
      * Maneja la eliminación de un item de datos maestros, con validación de uso.
      */
     async function handleDeleteDataItem(collectionName, itemName, itemType) {
-        const fieldMap = {
-            rubros: 'rubro',
-            segmentos: 'segmento',
-            marcas: 'marca'
-        };
+        const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' };
         const fieldName = fieldMap[collectionName];
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const q = _query(inventarioRef, _where(fieldName, "==", itemName));
-        
         try {
             const usageSnapshot = await _getDocs(q);
             if (!usageSnapshot.empty) {
@@ -529,77 +465,14 @@
             _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el ${itemType.toLowerCase()} "${itemName}"?`, async () => {
                 const itemQuery = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`), _where("name", "==", itemName));
                 const itemSnapshot = await _getDocs(itemQuery);
-
                 if (!itemSnapshot.empty) {
-                    const docId = itemSnapshot.docs[0].id;
-                    await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, docId));
+                    await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemSnapshot.docs[0].id));
                     _showModal('Éxito', `${itemType} "${itemName}" ha sido eliminado.`);
-                } else {
-                    _showModal('Error', `No se pudo encontrar el ${itemType.toLowerCase()} para eliminar.`);
-                }
+                } else _showModal('Error', `No se pudo encontrar el ${itemType.toLowerCase()} para eliminar.`);
             });
         } catch (error) {
             _showModal('Error', 'Ocurrió un error al intentar eliminar el item.');
         }
-    }
-
-    /**
-     * Muestra un modal para agregar un nuevo item (Rubro, Segmento, Marca) con validación de duplicados.
-     */
-    function showValidatedAddItemModal(collectionName, itemName) {
-        const modalContainer = document.getElementById('modalContainer');
-        const modalContent = document.getElementById('modalContent');
-        
-        modalContent.innerHTML = `
-            <div class="text-center">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
-                <form id="addItemForm" class="space-y-4">
-                    <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
-                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
-                </form>
-                <p id="addItemMessage" class="text-sm mt-2 h-4"></p>
-                <div class="mt-4">
-                     <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
-                </div>
-            </div>
-        `;
-        modalContainer.classList.remove('hidden');
-
-        const newItemInput = document.getElementById('newItemInput');
-        const addItemMessage = document.getElementById('addItemMessage');
-
-        document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
-
-        document.getElementById('addItemForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const newItemName = newItemInput.value.trim();
-            if (!newItemName) return;
-            
-            addItemMessage.textContent = '';
-            addItemMessage.classList.remove('text-green-600', 'text-red-600');
-
-            try {
-                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
-                const snapshot = await _getDocs(collectionRef);
-                const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
-                
-                if (existingItems.includes(newItemName.toLowerCase())) {
-                    addItemMessage.classList.add('text-red-600');
-                    addItemMessage.textContent = `"${newItemName}" ya existe.`;
-                    return;
-                }
-                
-                await _addDoc(collectionRef, { name: newItemName });
-                addItemMessage.classList.add('text-green-600');
-                addItemMessage.textContent = `¡"${newItemName}" agregado!`;
-                newItemInput.value = '';
-                newItemInput.focus();
-                setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
-            } catch (err) {
-                addItemMessage.classList.add('text-red-600');
-                addItemMessage.textContent = `Error al guardar o validar.`;
-            }
-        });
     }
 
     /**
@@ -616,21 +489,21 @@
                             <div>
                                 <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
                                 <div class="flex items-center space-x-2">
-                                    <select id="rubro" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select>
                                     <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
                                 </div>
                             </div>
                             <div>
                                 <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
                                 <div class="flex items-center space-x-2">
-                                    <select id="segmento" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select>
                                     <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
                                 </div>
                             </div>
                             <div>
                                 <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
                                 <div class="flex items-center space-x-2">
-                                    <select id="marca" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select>
                                     <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
                                 </div>
                             </div>
@@ -647,8 +520,8 @@
                                 <input type="number" step="0.01" id="precioPorUnidad" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="cantidadCargadaUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Unidades):</label>
-                                <input type="number" id="cantidadCargadaUnidades" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="cantidadUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Total (Unidades):</label>
+                                <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
                                 <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
@@ -664,51 +537,35 @@
                 </div>
             </div>
         `;
-        _populateDropdown('rubros', 'rubro', 'rubro');
-        _populateDropdown('segmentos', 'segmento', 'segmento');
-        _populateDropdown('marcas', 'marca', 'marca');
-        
+        _populateDropdown('rubros', 'rubro', 'Rubro');
+        _populateDropdown('segmentos', 'segmento', 'Segmento');
+        _populateDropdown('marcas', 'marca', 'Marca');
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        
-        document.getElementById('addRubroBtn').addEventListener('click', () => showValidatedAddItemModal('rubros', 'Rubro'));
-        document.getElementById('addSegmentoBtn').addEventListener('click', () => showValidatedAddItemModal('segmentos', 'Segmento'));
-        document.getElementById('addMarcaBtn').addEventListener('click', () => showValidatedAddItemModal('marcas', 'Marca'));
+        document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
+        document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
+        document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
     }
 
     /**
-     * Agrega un nuevo producto al inventario con validación de duplicados.
+     * Agrega un nuevo producto al inventario. La cantidad se guarda en unidades.
      */
     async function agregarProducto(e) {
         e.preventDefault();
-
-        const unidadesPorPaquete = parseInt(document.getElementById('unidadesPorPaquete').value, 10);
-        const cantidadCargadaUnidades = parseInt(document.getElementById('cantidadCargadaUnidades').value, 10);
-        
-        if (isNaN(unidadesPorPaquete) || unidadesPorPaquete <= 0) {
-            _showModal('Error de Datos', 'El número de "Unidades por Paquete" debe ser un número mayor que cero.');
-            return;
-        }
-
-        // Calcula la cantidad de paquetes completos para almacenar
-        const cantidadCargadaPaquetes = Math.floor(cantidadCargadaUnidades / unidadesPorPaquete);
-
         const producto = {
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
-            unidadesPorPaquete: unidadesPorPaquete,
+            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
             precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
-            cantidadCargada: cantidadCargadaPaquetes, // Almacenado como paquetes
+            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10),
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
-
         if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
-            _showModal('Error', 'Todos los campos (Rubro, Segmento, Marca y Presentación) son obligatorios.');
+            _showModal('Error', 'Todos los campos de texto son obligatorios.');
             return;
         }
-
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const q = _query(inventarioRef, 
@@ -717,18 +574,14 @@
                 _where("marca", "==", producto.marca),
                 _where("presentacion", "==", producto.presentacion)
             );
-
             const querySnapshot = await _getDocs(q);
-
             if (!querySnapshot.empty) {
                 _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
                 return;
             }
-
             await _addDoc(inventarioRef, producto);
             _showModal('Éxito', 'Producto agregado correctamente.');
             e.target.reset();
-
         } catch (err) {
             console.error("Error al agregar producto:", err);
             _showModal('Error', 'Hubo un error al guardar el producto.');
@@ -776,7 +629,6 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
-                        
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
                             <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
                             <div>
@@ -793,7 +645,6 @@
                             </div>
                             <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
                         </div>
-                        
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
@@ -807,16 +658,13 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
-        
         _populateDropdown('rubros', 'filter-rubro', 'Rubro');
         _populateDropdown('segmentos', 'filter-segmento', 'Segmento');
         _populateDropdown('marcas', 'filter-marca', 'Marca');
-        
         document.getElementById('search-input').value = _lastFilters.searchTerm;
         document.getElementById('filter-rubro').value = _lastFilters.rubro;
         document.getElementById('filter-segmento').value = _lastFilters.segmento;
         document.getElementById('filter-marca').value = _lastFilters.marca;
-
         const applyAndSaveFilters = () => {
             _lastFilters.searchTerm = document.getElementById('search-input')?.value.toLowerCase() || '';
             _lastFilters.rubro = document.getElementById('filter-rubro')?.value || '';
@@ -824,12 +672,10 @@
             _lastFilters.marca = document.getElementById('filter-marca')?.value || '';
             renderProductosList('productosListContainer', false);
         };
-
         document.getElementById('search-input').addEventListener('input', applyAndSaveFilters);
         document.getElementById('filter-rubro').addEventListener('change', applyAndSaveFilters);
         document.getElementById('filter-segmento').addEventListener('change', applyAndSaveFilters);
         document.getElementById('filter-marca').addEventListener('change', applyAndSaveFilters);
-        
         document.getElementById('clear-filters-btn').addEventListener('click', () => {
             document.getElementById('search-input').value = '';
             document.getElementById('filter-rubro').value = '';
@@ -837,23 +683,20 @@
             document.getElementById('filter-marca').value = '';
             applyAndSaveFilters();
         });
-
         renderProductosList('productosListContainer', false);
     }
 
     /**
-     * Renderiza la lista de productos en una tabla, agrupada por marca y ordenada por segmento.
+     * Renderiza la lista de productos en una tabla, mostrando cantidades en unidades y paquetes.
      */
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
         container.innerHTML = `<p class="text-gray-500 text-center">Cargando y ordenando productos...</p>`;
-
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
             let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             _inventarioCache = productos;
-            
             const segmentoOrderMap = await getSegmentoOrderMap();
             if (segmentoOrderMap) {
                 productos.sort((a, b) => {
@@ -864,60 +707,56 @@
                     return a.presentacion.localeCompare(b.presentacion);
                 });
             }
-
             if (readOnly) {
                 const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
                 if (rubroFilter) productos = productos.filter(p => p.rubro === rubroFilter);
             } else {
                 productos = productos.filter(p => {
-                    const searchMatch = !_lastFilters.searchTerm || p.presentacion.toLowerCase().includes(_lastFilters.searchTerm);
-                    const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
-                    const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
-                    const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
-                    return searchMatch && rubroMatch && segmentoMatch && marcaMatch;
+                    return (!_lastFilters.searchTerm || p.presentacion.toLowerCase().includes(_lastFilters.searchTerm)) &&
+                           (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
+                           (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
+                           (!_lastFilters.marca || p.marca === _lastFilters.marca);
                 });
             }
-
             if (productos.length === 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
                 return;
             }
-            
-            let tableHTML = `<table class="min-w-full bg-white border border-gray-200"><thead class="bg-gray-200 sticky top-0"><tr>
-                <th class="py-2 px-4 border-b text-left text-sm">Presentación</th>
-                <th class="py-2 px-4 border-b text-center text-sm">Uds x Paq</th>
-                <th class="py-2 px-4 border-b text-right text-sm">Precio Unidad</th>
-                <th class="py-2 px-4 border-b text-right text-sm">Precio Paquete</th>
-                <th class="py-2 px-4 border-b text-center text-sm">Cant. Paquetes</th>
-                ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+            let tableHTML = `<table class="min-w-full bg-white border border-gray-200 text-sm"><thead class="bg-gray-200 sticky top-0"><tr>
+                <th class="py-2 px-3 border-b text-left">Presentación</th>
+                <th class="py-2 px-3 border-b text-center">Uds/Paq</th>
+                <th class="py-2 px-3 border-b text-right">Precio/Ud</th>
+                <th class="py-2 px-3 border-b text-right">Precio/Paq</th>
+                <th class="py-2 px-3 border-b text-center">Stock (Uds)</th>
+                <th class="py-2 px-3 border-b text-center">Stock (Paq)</th>
+                ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
             </tr></thead><tbody>`;
-            
             let currentMarca = null;
             productos.forEach(p => {
                 const marca = p.marca || 'Sin Marca';
                 if (marca !== currentMarca) {
                     currentMarca = marca;
-                    tableHTML += `<tr><td colspan="${readOnly ? 5 : 6}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+                    tableHTML += `<tr><td colspan="${readOnly ? 6 : 7}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
                 }
-
-                const precioPaquete = (p.precioPorUnidad || 0) * (p.unidadesPorPaquete || 0);
-
+                const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+                const precioPaquete = (p.precioPorUnidad || 0) * unidadesPorPaquete;
+                const stockPaquetes = Math.floor((p.cantidadUnidades || 0) / unidadesPorPaquete);
                 tableHTML += `
                     <tr class="hover:bg-gray-50">
-                        <td class="py-2 px-4 border-b text-sm">${p.presentacion} (${p.segmento})</td>
-                        <td class="py-2 px-4 border-b text-center text-sm">${p.unidadesPorPaquete || 0}</td>
-                        <td class="py-2 px-4 border-b text-right text-sm">$${(p.precioPorUnidad || 0).toFixed(2)}</td>
-                        <td class="py-2 px-4 border-b text-right text-sm font-semibold">$${precioPaquete.toFixed(2)}</td>
-                        <td class="py-2 px-4 border-b text-center text-sm">${p.cantidadCargada || 0}</td>
+                        <td class="py-2 px-3 border-b">${p.presentacion} (${p.segmento})</td>
+                        <td class="py-2 px-3 border-b text-center">${unidadesPorPaquete}</td>
+                        <td class="py-2 px-3 border-b text-right">$${(p.precioPorUnidad || 0).toFixed(2)}</td>
+                        <td class="py-2 px-3 border-b text-right font-semibold">$${precioPaquete.toFixed(2)}</td>
+                        <td class="py-2 px-3 border-b text-center font-bold">${p.cantidadUnidades || 0}</td>
+                        <td class="py-2 px-3 border-b text-center">${stockPaquetes}</td>
                         ${!readOnly ? `
-                        <td class="py-2 px-4 border-b text-center space-x-2">
-                            <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
-                            <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                        <td class="py-2 px-3 border-b text-center space-x-2">
+                            <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Editar</button>
+                            <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
                         </td>` : ''}
                     </tr>
                 `;
             });
-
             tableHTML += `</tbody></table>`;
             container.innerHTML = tableHTML;
         });
@@ -925,14 +764,12 @@
     }
     
     /**
-     * Muestra el formulario para editar un producto.
+     * Muestra el formulario para editar un producto. La cantidad se maneja en unidades.
      */
     function editProducto(productId) {
         _floatingControls.classList.add('hidden');
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
-
-        const cantidadActualUnidades = (producto.cantidadCargada || 0) * (producto.unidadesPorPaquete || 1);
 
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -940,25 +777,24 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                         <form id="editProductoForm" class="space-y-4 text-left">
-                            <p class="text-sm">Nota: Rubro, Segmento y Marca no se pueden editar para mantener la consistencia de los datos.</p>
                             <div>
-                                <label for="editPresentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                <label for="editPresentacion" class="block text-gray-700 font-medium">Presentación:</label>
                                 <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editUnidadesPorPaquete" class="block text-gray-700 font-medium mb-2">Unidades por Paquete:</label>
+                                <label for="editUnidadesPorPaquete" class="block text-gray-700 font-medium">Unidades por Paquete:</label>
                                 <input type="number" id="editUnidadesPorPaquete" value="${producto.unidadesPorPaquete || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editPrecioPorUnidad" class="block text-gray-700 font-medium mb-2">Precio por Unidad (USD):</label>
+                                <label for="editPrecioPorUnidad" class="block text-gray-700 font-medium">Precio por Unidad (USD):</label>
                                 <input type="number" step="0.01" id="editPrecioPorUnidad" value="${producto.precioPorUnidad || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                             <div>
-                                <label for="editCantidadCargadaUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Cargada (Unidades):</label>
-                                <input type="number" id="editCantidadCargadaUnidades" value="${cantidadActualUnidades}" class="w-full px-4 py-2 border rounded-lg" required>
+                                <label for="editCantidadUnidades" class="block text-gray-700 font-medium">Cantidad Total (Unidades):</label>
+                                <input type="number" id="editCantidadUnidades" value="${producto.cantidadUnidades || 0}" class="w-full px-4 py-2 border rounded-lg" required>
                             </div>
                              <div>
-                                <label for="editIvaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                <label for="editIvaTipo" class="block text-gray-700 font-medium">Tipo de IVA:</label>
                                 <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg" required>
                                     <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
                                     <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
@@ -974,23 +810,12 @@
         
         document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const unidadesPorPaquete = parseInt(document.getElementById('editUnidadesPorPaquete').value, 10);
-            const cantidadCargadaUnidades = parseInt(document.getElementById('editCantidadCargadaUnidades').value, 10);
-
-            if (isNaN(unidadesPorPaquete) || unidadesPorPaquete <= 0) {
-                _showModal('Error de Datos', 'El número de "Unidades por Paquete" debe ser un número mayor que cero.');
-                return;
-            }
-
-            const cantidadCargadaPaquetes = Math.floor(cantidadCargadaUnidades / unidadesPorPaquete);
-
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
                     presentacion: document.getElementById('editPresentacion').value.trim(),
-                    unidadesPorPaquete: unidadesPorPaquete,
+                    unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
                     precioPorUnidad: parseFloat(document.getElementById('editPrecioPorUnidad').value),
-                    cantidadCargada: cantidadCargadaPaquetes,
+                    cantidadUnidades: parseInt(document.getElementById('editCantidadUnidades').value, 10),
                     iva: parseInt(document.getElementById('editIvaTipo').value, 10)
                 }, { merge: true });
                 _showModal('Éxito', 'Producto modificado exitosamente.');
@@ -1030,9 +855,7 @@
                     return;
                 }
                 const batch = _writeBatch(_db);
-                snapshot.docs.forEach(doc => {
-                    batch.delete(doc.ref);
-                });
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
                 await batch.commit();
                 _showModal('Éxito', 'Todos los productos han sido eliminados.');
             } catch (error) {
@@ -1055,9 +878,7 @@
                     const snapshot = await _getDocs(collectionRef);
                     if (!snapshot.empty) {
                         const batch = _writeBatch(_db);
-                        snapshot.docs.forEach(doc => {
-                            batch.delete(doc.ref);
-                        });
+                        snapshot.docs.forEach(doc => batch.delete(doc.ref));
                         await batch.commit();
                     }
                 }
@@ -1069,13 +890,12 @@
         });
     }
 
-
-    // Exponer funciones públicas al objeto window para ser llamadas desde el HTML
+    // Exponer funciones públicas al objeto window
     window.inventarioModule = {
         editProducto,
         deleteProducto,
         handleDeleteDataItem,
-        getSegmentoOrderMap, // Exponer para que otros módulos puedan usarla
+        getSegmentoOrderMap,
         invalidateSegmentOrderCache
     };
 
