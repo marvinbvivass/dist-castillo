@@ -12,14 +12,13 @@
     let _inventarioCache = [];
     let _ventasGlobal = [];
     let _segmentoOrderCacheVentas = null;
-    let _rubroOrderCacheVentas = null; // Caché para el orden de rubros en el cierre
+    let _rubroOrderCacheVentas = null;
     let _ventaActual = { cliente: null, productos: {} };
     let _originalVentaForEdit = null;
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
-    let _tipoVentaActual = 'unidades';
-
+    
     /**
      * Limpia todos los listeners activos del módulo.
      */
@@ -135,13 +134,12 @@
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         _ventaActual = { cliente: null, productos: {} };
-        _tipoVentaActual = 'unidades';
         _mainContent.innerHTML = `
             <div class="p-2 w-full">
                 <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
                     <div id="venta-header-section" class="mb-2">
                         <div class="flex justify-between items-center mb-2">
-                            <h2 class="text-lg font-bold text-gray-800">Nueva Venta</h2>
+                            <h2 class="text-lg font-bold text-gray-800">Nueva Venta (Por Unidades)</h2>
                             <button id="backToVentasBtn" class="px-3 py-1.5 bg-gray-400 text-white text-xs font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
                         <div id="client-search-container">
@@ -163,21 +161,12 @@
                         </div>
                     </div>
                     <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
-                         <div class="flex justify-between items-center mb-2 gap-4">
-                            <div class="w-1/2">
-                                <label for="tipoVentaFilter" class="text-xs font-medium">Tipo de Venta</label>
-                                <select id="tipoVentaFilter" class="w-full px-2 py-1 border rounded-lg text-sm">
-                                    <option value="unidades" selected>Productos por Unidades</option>
-                                    <option value="paquetes">Productos al Mayor</option>
-                                </select>
-                            </div>
-                             <div id="rubro-filter-container" class="w-1/2">
-                                 <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
-                                 <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
-                             </div>
+                         <div id="rubro-filter-container" class="mb-2">
+                             <label for="rubroFilter" class="text-xs font-medium">Filtrar por Rubro</label>
+                             <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th id="header-cantidad" class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th id="header-precio" class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th id="header-stock" class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio/Und</th><th class="py-2 px-1 text-center">Stock (Und)</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
                     <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden">
@@ -218,13 +207,6 @@
         document.getElementById('tasaBsInput').addEventListener('input', (e) => {
             _tasaBs = parseFloat(e.target.value) || 0;
             localStorage.setItem('tasaBs', _tasaBs);
-            renderVentasInventario();
-            updateVentaTotal();
-        });
-        
-        document.getElementById('tipoVentaFilter').addEventListener('change', (e) => {
-            _tipoVentaActual = e.target.value;
-            _ventaActual.productos = {};
             renderVentasInventario();
             updateVentaTotal();
         });
@@ -325,26 +307,13 @@
     }
 
     /**
-     * Renderiza la vista de inventario para la venta con el orden personalizado.
+     * Renderiza la vista de inventario para la venta (solo por unidades).
      */
     async function renderVentasInventario() {
         const inventarioTableBody = document.getElementById('inventarioTableBody');
         const rubroFilter = document.getElementById('rubroFilter');
-        const headerCantidad = document.getElementById('header-cantidad');
-        const headerPrecio = document.getElementById('header-precio');
-        const headerStock = document.getElementById('header-stock');
 
-        if (!inventarioTableBody || !rubroFilter || !headerCantidad) return;
-        
-        if (_tipoVentaActual === 'unidades') {
-            headerCantidad.textContent = 'Cant (Und)';
-            headerPrecio.textContent = 'Precio/Und';
-            headerStock.textContent = 'Stock (Und)';
-        } else { // paquetes
-            headerCantidad.textContent = 'Cant (Paq)';
-            headerPrecio.textContent = 'Precio/Paq';
-            headerStock.textContent = 'Stock';
-        }
+        if (!inventarioTableBody || !rubroFilter) return;
 
         inventarioTableBody.innerHTML = `<tr><td colspan="4" class="py-3 px-6 text-center text-gray-500">Cargando y ordenando...</td></tr>`;
         
@@ -396,57 +365,30 @@
             const row = document.createElement('tr');
             row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
-            let precioMostrado, stockMostrado, maxStock, cantidadVendida, inputDisabled = '';
             const precioPorUnidad = producto.precioPorUnidad || 0;
-            const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
             const totalStockUnidades = producto.cantidadUnidades || 0;
-            const stockPaquetesCompletos = Math.floor(totalStockUnidades / unidadesPorPaquete);
-
-            if (_tipoVentaActual === 'unidades') {
-                stockMostrado = totalStockUnidades;
-                maxStock = totalStockUnidades;
-                cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
-                
-                if (_monedaActual === 'COP') {
-                    precioMostrado = `COP ${(Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                } else if (_monedaActual === 'Bs') {
-                    precioMostrado = `Bs.S ${(precioPorUnidad * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                } else {
-                    precioMostrado = `$${precioPorUnidad.toFixed(2)}`;
-                }
-
-            } else { // paquetes
-                const precioPaqueteUSD = precioPorUnidad * unidadesPorPaquete;
-                stockMostrado = stockPaquetesCompletos;
-                maxStock = stockPaquetesCompletos;
-                cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
-
-                if (stockPaquetesCompletos < 1 && totalStockUnidades > 0) {
-                    row.classList.add('bg-yellow-100');
-                    stockMostrado = `${totalStockUnidades} und.`;
-                    inputDisabled = 'disabled';
-                }
-
-                if (_monedaActual === 'COP') {
-                    precioMostrado = `COP ${(Math.ceil((precioPaqueteUSD * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-                } else if (_monedaActual === 'Bs') {
-                    precioMostrado = `Bs.S ${(precioPaqueteUSD * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                } else {
-                    precioMostrado = `$${precioPaqueteUSD.toFixed(2)}`;
-                }
+            const cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
+            
+            let precioMostrado;
+            if (_monedaActual === 'COP') {
+                precioMostrado = `COP ${(Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+            } else if (_monedaActual === 'Bs') {
+                precioMostrado = `Bs.S ${(precioPorUnidad * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            } else {
+                precioMostrado = `$${precioPorUnidad.toFixed(2)}`;
             }
             
             const productName = `${producto.marca || ''} ${producto.presentacion}`;
 
             row.innerHTML = `
                 <td class="py-2 px-1 text-center align-middle">
-                    <input type="number" min="0" max="${maxStock}" value="${cantidadVendida}" ${inputDisabled}
-                           class="w-16 p-1.5 text-center border rounded-lg text-base disabled:bg-gray-200" data-product-id="${producto.id}"
+                    <input type="number" min="0" max="${totalStockUnidades}" value="${cantidadVendida}"
+                           class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
                            oninput="window.ventasModule.updateVentaCantidad(event)">
                 </td>
                 <td class="py-2 px-2 text-left align-middle">${productName}</td>
                 <td class="py-2 px-2 text-left price-toggle align-middle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-2 px-2 text-center align-middle">${stockMostrado}</td>
+                <td class="py-2 px-2 text-center align-middle">${totalStockUnidades}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
@@ -473,7 +415,6 @@
             _ventaActual.productos[productId] = { 
                 ...producto, 
                 cantidadVendida: cantidadFinal,
-                ventaPor: _tipoVentaActual
             };
         } else {
             delete _ventaActual.productos[productId];
@@ -487,18 +428,10 @@
     function updateVentaTotal() {
         const totalEl = document.getElementById('ventaTotal');
         if(!totalEl) return;
-        let totalUSD = 0;
         
-        Object.values(_ventaActual.productos).forEach(p => {
-            const precioUnidad = p.precioPorUnidad || 0;
-            const unidadesPaquete = p.unidadesPorPaquete || 1;
-            
-            if (p.ventaPor === 'unidades') {
-                totalUSD += precioUnidad * p.cantidadVendida;
-            } else { // paquetes
-                totalUSD += (precioUnidad * unidadesPaquete) * p.cantidadVendida;
-            }
-        });
+        const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
+            return sum + (p.precioPorUnidad || 0) * p.cantidadVendida;
+        }, 0);
 
         if (_monedaActual === 'COP') {
             const totalRedondeado = Math.ceil((totalUSD * _tasaCOP) / 100) * 100;
@@ -520,21 +453,14 @@
         let total = 0;
         
         let productosHTML = productos.map(p => {
-            const esPorPaquetes = p.ventaPor === 'paquetes';
-            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-            const precioUnitarioReal = p.precioPorUnidad || (p.precio / unidadesPorPaquete) || 0;
-
-            const subtotal = esPorPaquetes 
-                ? (precioUnitarioReal * unidadesPorPaquete) * p.cantidadVendida 
-                : precioUnitarioReal * p.cantidadVendida;
-            
+            const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
             total += subtotal;
             return `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
                     </td>
-                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida} ${esPorPaquetes ? 'PAQ' : 'UND'}</td>
+                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida} UND</td>
                     <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
@@ -603,17 +529,11 @@
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         productos.forEach(p => {
-            const esPorPaquetes = p.ventaPor === 'paquetes';
-            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-            const precioUnitarioReal = p.precioPorUnidad || (p.precio / unidadesPorPaquete) || 0;
-
-            const subtotal = esPorPaquetes 
-                ? (precioUnitarioReal * unidadesPorPaquete) * p.cantidadVendida 
-                : precioUnitarioReal * p.cantidadVendida;
+            const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
             total += subtotal;
 
             const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
-            const quantity = `${p.cantidadVendida}${esPorPaquetes ? 'paq' : 'und'}`;
+            const quantity = `${p.cantidadVendida} und`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
             const lines = [];
@@ -764,22 +684,14 @@
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
                     if (!productoEnCache) throw new Error(`Producto ${p.presentacion} no encontrado.`);
 
-                    const unidadesPorPaquete = p.unidadesPorPaquete || 1;
                     const stockUnidadesTotal = productoEnCache.cantidadUnidades || 0;
+                    const unidadesARestar = p.cantidadVendida;
                     
-                    let unidadesARestar = 0;
-                    if (p.ventaPor === 'paquetes') {
-                        unidadesARestar = p.cantidadVendida * unidadesPorPaquete;
-                        totalVenta += (p.precioPorUnidad * unidadesPorPaquete) * p.cantidadVendida;
-                    } else { // unidades
-                        unidadesARestar = p.cantidadVendida;
-                        totalVenta += p.precioPorUnidad * p.cantidadVendida;
-                    }
-
                     if (stockUnidadesTotal < unidadesARestar) {
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                     }
 
+                    totalVenta += (p.precioPorUnidad || 0) * unidadesARestar;
                     const stockUnidadesRestante = stockUnidadesTotal - unidadesARestar;
                     
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
@@ -792,8 +704,7 @@
                         segmento: p.segmento ?? null, 
                         precioPorUnidad: p.precioPorUnidad,
                         unidadesPorPaquete: p.unidadesPorPaquete,
-                        cantidadVendida: p.cantidadVendida, 
-                        ventaPor: p.ventaPor,
+                        cantidadVendida: p.cantidadVendida,
                         iva: p.iva ?? 0
                     });
                 }
@@ -950,13 +861,16 @@
 
     /**
      * Procesa los datos de ventas para generar la estructura del reporte.
-     * AHORA AGRUPA POR RUBRO -> SEGMENTO -> MARCA
      */
     async function processSalesDataForReport(ventas) {
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         
+        // Primero, obtener todos los productos del inventario para tener la información completa
+        const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
         ventas.forEach(venta => {
             const clientName = venta.clienteNombre;
             if (!clientData[clientName]) {
@@ -965,27 +879,27 @@
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
             (venta.productos || []).forEach(p => {
-                const productName = p.presentacion;
+                const productoCompleto = inventarioMap.get(p.id);
+                if (!productoCompleto) return; // Si el producto ya no existe, saltarlo
+
+                const productName = productoCompleto.presentacion;
                 if (!allProductsMap.has(productName)) {
                     allProductsMap.set(productName, {
-                        rubro: p.rubro || 'Sin Rubro',
-                        segmento: p.segmento || 'Sin Segmento',
-                        marca: p.marca || 'Sin Marca',
-                        presentacion: p.presentacion
+                        rubro: productoCompleto.rubro || 'Sin Rubro',
+                        segmento: productoCompleto.segmento || 'Sin Segmento',
+                        marca: productoCompleto.marca || 'Sin Marca',
+                        presentacion: productoCompleto.presentacion
                     });
                 }
                 if (!clientData[clientName].products[productName]) {
                     clientData[clientName].products[productName] = 0;
                 }
-                const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-                const cantidadEnUnidades = p.ventaPor === 'paquetes' ? p.cantidadVendida * unidadesPorPaquete : p.cantidadVendida;
-                clientData[clientName].products[productName] += cantidadEnUnidades;
+                clientData[clientName].products[productName] += p.cantidadVendida;
             });
         });
 
         const sortedClients = Object.keys(clientData).sort();
 
-        // Nueva estructura de agrupación: { rubro: { segmento: { marca: [presentaciones] } } }
         const groupedProducts = {};
         for (const product of allProductsMap.values()) {
             if (!groupedProducts[product.rubro]) groupedProducts[product.rubro] = {};
@@ -1020,7 +934,6 @@
     
     /**
      * Muestra una vista previa del reporte de cierre de ventas.
-     * REFACTORIZADO para soportar agrupación por Rubro.
      */
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte de cierre...');
@@ -1107,7 +1020,6 @@
 
     /**
      * Genera y descarga un archivo de Excel con el reporte de cierre.
-     * REFACTORIZADO para soportar agrupación por Rubro.
      */
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') {
@@ -1401,15 +1313,7 @@
                     for (const productoVendido of venta.productos) {
                         const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
                         if (productoEnCache) {
-                            const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
-                            
-                            let unidadesADevolver = 0;
-                            if (productoVendido.ventaPor === 'paquetes') {
-                                unidadesADevolver = productoVendido.cantidadVendida * unidadesPorPaquete;
-                            } else {
-                                unidadesADevolver = productoVendido.cantidadVendida;
-                            }
-                            
+                            const unidadesADevolver = productoVendido.cantidadVendida || 0;
                             const nuevoStockUnidades = (productoEnCache.cantidadUnidades || 0) + unidadesADevolver;
                             const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
                             batch.update(productoRef, { cantidadUnidades: nuevoStockUnidades });
@@ -1449,25 +1353,16 @@
                         </div>
                     </div>
                     <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
-                         <div class="flex justify-between items-center mb-2 gap-4">
-                            <div class="w-1/2">
-                                <label for="tipoVentaFilter" class="text-xs font-medium">Tipo de Venta</label>
-                                <select id="tipoVentaFilter" class="w-full px-2 py-1 border rounded-lg text-sm">
-                                    <option value="unidades">Productos por Unidades</option>
-                                    <option value="paquetes">Productos al Mayor</option>
-                                </select>
-                            </div>
-                             <div id="rubro-filter-container" class="w-1/2">
-                                 <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
-                                 <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
-                             </div>
+                         <div class="mb-2">
+                             <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
+                             <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
                             <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal">
-                                <th id="header-cantidad" class="py-2 px-1 text-center">Cant.</th>
+                                <th class="py-2 px-1 text-center">Cant.</th>
                                 <th class="py-2 px-2 text-left">Producto</th>
-                                <th id="header-precio" class="py-2 px-2 text-left">Precio</th>
-                                <th id="header-stock" class="py-2 px-1 text-center">Stock</th>
+                                <th class="py-2 px-2 text-left">Precio/Und</th>
+                                <th class="py-2 px-1 text-center">Stock (Und)</th>
                             </tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
@@ -1487,29 +1382,17 @@
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snapshot = await _getDocs(inventarioRef);
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            _tipoVentaActual = venta.productos[0]?.ventaPor || 'unidades';
 
             _ventaActual = {
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
                 productos: venta.productos.reduce((acc, p) => {
                     const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
-                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida, ventaPor: p.ventaPor };
+                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
                     return acc;
                 }, {})
             };
-            
-            const tipoVentaFilter = document.getElementById('tipoVentaFilter');
-            tipoVentaFilter.value = _tipoVentaActual;
-            tipoVentaFilter.addEventListener('change', (e) => {
-                _tipoVentaActual = e.target.value;
-                _ventaActual.productos = {};
-                renderVentasInventario();
-                updateVentaTotal();
-            });
 
             document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
-
             populateRubroFilter();
             document.getElementById('rubroFilter').value = ''; 
             
@@ -1547,19 +1430,11 @@
                     const productoEnCache = _inventarioCache.find(p => p.id === productId);
 
                     if (!productoEnCache) continue;
-
-                    const unidadesPorPaquete = productoEnCache.unidadesPorPaquete || 1;
-                    let originalUnitsSold = 0;
-                    if (originalProduct) {
-                        originalUnitsSold = originalProduct.ventaPor === 'paquetes' ? (originalProduct.cantidadVendida || 0) * unidadesPorPaquete : (originalProduct.cantidadVendida || 0);
-                    }
-
-                    let newUnitsSold = 0;
-                    if (newProduct) {
-                         newUnitsSold = newProduct.ventaPor === 'paquetes' ? (newProduct.cantidadVendida || 0) * unidadesPorPaquete : (newProduct.cantidadVendida || 0);
-                    }
-
+                    
+                    const originalUnitsSold = originalProduct ? (originalProduct.cantidadVendida || 0) : 0;
+                    const newUnitsSold = newProduct ? (newProduct.cantidadVendida || 0) : 0;
                     const unitDelta = originalUnitsSold - newUnitsSold;
+
                     if (unitDelta === 0) continue;
 
                     const currentStockUnits = productoEnCache.cantidadUnidades || 0;
@@ -1575,14 +1450,12 @@
 
                 let nuevoTotal = 0;
                 const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
-                    const subtotal = p.ventaPor === 'paquetes' 
-                        ? (p.precioPorUnidad * p.unidadesPorPaquete) * p.cantidadVendida
-                        : p.precioPorUnidad * p.cantidadVendida;
+                    const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
                     nuevoTotal += subtotal;
                     return {
                         id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
                         precioPorUnidad: p.precioPorUnidad, unidadesPorPaquete: p.unidadesPorPaquete,
-                        cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0, ventaPor: p.ventaPor
+                        cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0
                     };
                 });
 
