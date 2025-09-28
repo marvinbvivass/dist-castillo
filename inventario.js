@@ -588,7 +588,6 @@
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
-            preciosContainer.innerHTML = '';
             
             const ventaPorUnd = document.getElementById('ventaPorUnd').checked;
             const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
@@ -601,11 +600,21 @@
                 empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Caja:</label><input type="number" id="unidadesPorCaja" class="w-full px-2 py-1 border rounded" value="1"></div>`;
             }
 
-            if (ventaPorUnd) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
-            if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
-            if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            let preciosHTML = '';
+            if (ventaPorUnd) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
+            } else {
+                preciosHTML += `<input type="hidden" id="precioUnd" data-source="und">`;
+            }
+            if (ventaPorPaq) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
+            }
+            if (ventaPorCj) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            }
+            preciosContainer.innerHTML = preciosHTML;
             
-            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input') || input })));
+            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
 
             // Lógica para actualizar el dropdown de "Cantidad cargada en"
@@ -1054,18 +1063,29 @@
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
-            preciosContainer.innerHTML = '';
+            
+            const ventaPorUnd = document.getElementById('ventaPorUnd').checked;
             const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
             const ventaPorCj = document.getElementById('ventaPorCj').checked;
 
             if (ventaPorPaq) empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Paquete:</label><input type="number" id="unidadesPorPaquete" class="w-full px-2 py-1 border rounded" value="1"></div>`;
             if (ventaPorCj) empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Caja:</label><input type="number" id="unidadesPorCaja" class="w-full px-2 py-1 border rounded" value="1"></div>`;
 
-            preciosContainer.innerHTML = `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
-            if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
-            if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            let preciosHTML = '';
+            if (ventaPorUnd) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
+            } else {
+                preciosHTML += `<input type="hidden" id="precioUnd" data-source="und">`;
+            }
+            if (ventaPorPaq) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
+            }
+            if (ventaPorCj) {
+                preciosHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            }
+            preciosContainer.innerHTML = preciosHTML;
             
-            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input') })));
+            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
         };
 
