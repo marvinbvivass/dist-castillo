@@ -9,6 +9,7 @@
     let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' }; // Objeto para persistir los filtros
     let _segmentoOrderCache = null; // Caché para el orden de los segmentos
+    let _inventarioListenerUnsubscribe = null; // Referencia al listener principal de inventario
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -35,6 +36,23 @@
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
     };
+
+    /**
+     * Inicia el listener principal para la colección de inventario.
+     * Este listener mantendrá _inventarioCache siempre actualizada.
+     */
+    function startMainInventarioListener(callback) {
+        if (_inventarioListenerUnsubscribe) {
+            _inventarioListenerUnsubscribe();
+        }
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            if (callback) callback(); // Llama al callback para re-renderizar la vista actual
+        });
+        _activeListeners.push(_inventarioListenerUnsubscribe);
+    }
+
 
     /**
      * Invalida la caché de orden de segmentos para forzar una recarga.
@@ -117,7 +135,7 @@
                         <div class="mb-4">
                            <label for="ordenarRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
                            <select id="ordenarRubroFilter" class="w-full px-4 py-2 border rounded-lg">
-                               <option value="">Todos los Rubros</option>
+                               <option value="">Todos los Segmentos</option>
                            </select>
                         </div>
                         <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
@@ -746,10 +764,13 @@
         
         _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
         
-        rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true));
-        searchInput.addEventListener('input', () => renderProductosList('productosListContainer', true));
-
-        renderProductosList('productosListContainer', true);
+        const renderCallback = () => renderProductosList('productosListContainer', true);
+        
+        rubroFilter.addEventListener('change', renderCallback);
+        searchInput.addEventListener('input', renderCallback);
+        
+        startMainInventarioListener(renderCallback);
+        renderCallback(); 
     }
 
     /**
@@ -800,10 +821,7 @@
         const marcaFilter = document.getElementById('filter-marca');
         const clearBtn = document.getElementById('clear-filters-btn');
 
-        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
-            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
+        const setupFilters = () => {
             const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
             rubroFilter.innerHTML = '<option value="">Todos</option>';
             rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
@@ -818,8 +836,10 @@
             marcaFilter.value = _lastFilters.marca;
             
             renderProductosList('productosListContainer', false);
-        });
-        _activeListeners.push(unsubscribe);
+        };
+        
+        startMainInventarioListener(setupFilters);
+        setupFilters();
 
         function updateSegmentoFilter() {
             const selectedRubro = rubroFilter.value;
@@ -830,6 +850,7 @@
                 segmentoFilter.disabled = false;
             } else {
                 segmentoFilter.disabled = true;
+                segmentoFilter.value = '';
             }
         }
 
@@ -843,6 +864,7 @@
                 marcaFilter.disabled = false;
             } else {
                 marcaFilter.disabled = true;
+                marcaFilter.value = '';
             }
         }
 
@@ -965,43 +987,35 @@
     }
     
     /**
-     * Muestra el formulario para editar un producto. (NOTA: No es compatible con la nueva estructura de datos)
+     * Muestra el formulario para editar un producto.
      */
     function editProducto(productId) {
-        _floatingControls.classList.add('hidden');
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
-        // AVISO: Este formulario usa la estructura de datos anterior.
+        _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto (Legacy)</h2>
-                        <p class="text-red-500 mb-4">Aviso: La edición avanzada de precios no está disponible aquí.</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
                         <form id="editProductoForm" class="space-y-4 text-left">
-                            <div>
-                                <label for="editPresentacion" class="block text-gray-700 font-medium">Presentación:</label>
-                                <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label for="rubro" class="block text-gray-700 font-medium mb-1">Rubro:</label><select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select></div>
+                                <div><label for="segmento" class="block text-gray-700 font-medium mb-1">Segmento:</label><select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select></div>
+                                <div><label for="marca" class="block text-gray-700 font-medium mb-1">Marca:</label><select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select></div>
+                                <div><label for="presentacion" class="block text-gray-700 font-medium mb-1">Presentación:</label><input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required></div>
                             </div>
-                            <div>
-                                <label for="editUnidadesPorPaquete" class="block text-gray-700 font-medium">Unidades por Paquete:</label>
-                                <input type="number" id="editUnidadesPorPaquete" value="${producto.unidadesPorPaquete || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                            <div class="border-t pt-4">
+                                <div><label class="block text-gray-700 font-medium mb-2">Venta por:</label><div id="ventaPorContainer" class="flex items-center space-x-4"><label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label><label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label><label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label></div></div>
+                                <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
+                                <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
                             </div>
-                            <div>
-                                <label for="editPrecioPorUnidad" class="block text-gray-700 font-medium">Precio por Unidad (USD):</label>
-                                <input type="number" step="0.01" id="editPrecioPorUnidad" value="${producto.precioPorUnidad || 0}" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                            <div>
-                                <label for="editCantidadUnidades" class="block text-gray-700 font-medium">Cantidad Total (Unidades):</label>
-                                <input type="number" id="editCantidadUnidades" value="${producto.cantidadUnidades || 0}" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                             <div>
-                                <label for="editIvaTipo" class="block text-gray-700 font-medium">Tipo de IVA:</label>
-                                <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg" required>
-                                    <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
-                                    <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
-                                </select>
+                            <div class="border-t pt-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div><label class="block text-gray-700 font-medium mb-1">Stock Total (en Unidades):</label><input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                    <div><label for="ivaTipo" class="block text-gray-700 font-medium mb-1">Tipo de IVA:</label><select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required><option value="16">IVA 16%</option><option value="0">Exento</option></select></div>
+                                </div>
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
                         </form>
@@ -1011,25 +1025,117 @@
             </div>
         `;
         
-        document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            try {
-                // Solo actualiza los campos básicos para evitar romper la nueva estructura
-                await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
-                    presentacion: document.getElementById('editPresentacion').value.trim(),
-                    unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
-                    precioPorUnidad: parseFloat(document.getElementById('editPrecioPorUnidad').value),
-                    cantidadUnidades: parseInt(document.getElementById('editCantidadUnidades').value, 10),
-                    iva: parseInt(document.getElementById('editIvaTipo').value, 10)
-                }, { merge: true });
-                _showModal('Éxito', 'Producto modificado exitosamente.');
-                showModifyDeleteView();
-            } catch (err) {
-                _showModal('Error', 'Hubo un error al modificar el producto.');
+        // --- LÓGICA DINÁMICA DEL FORMULARIO DE EDICIÓN ---
+        _populateDropdown('rubros', 'rubro', 'Rubro');
+        _populateDropdown('segmentos', 'segmento', 'Segmento');
+        _populateDropdown('marcas', 'marca', 'Marca');
+
+        const ventaPorContainer = document.getElementById('ventaPorContainer');
+        const preciosContainer = document.getElementById('preciosContainer');
+        const empaquesContainer = document.getElementById('empaquesContainer');
+
+        const updateDynamicInputs = () => {
+            empaquesContainer.innerHTML = '';
+            preciosContainer.innerHTML = '';
+            const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
+            const ventaPorCj = document.getElementById('ventaPorCj').checked;
+
+            if (ventaPorPaq) empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Paquete:</label><input type="number" id="unidadesPorPaquete" class="w-full px-2 py-1 border rounded" value="1"></div>`;
+            if (ventaPorCj) empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Caja:</label><input type="number" id="unidadesPorCaja" class="w-full px-2 py-1 border rounded" value="1"></div>`;
+
+            preciosContainer.innerHTML = `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
+            if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
+            if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            
+            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input') })));
+            preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
+        };
+
+        const handlePrecioChange = (e) => {
+            if (!e || !e.target) return;
+            const source = e.target.dataset.source;
+            const value = parseFloat(e.target.value) || 0;
+            const unidadesPorPaquete = parseFloat(document.getElementById('unidadesPorPaquete')?.value) || 1;
+            const unidadesPorCaja = parseFloat(document.getElementById('unidadesPorCaja')?.value) || 1;
+            const precioUndInput = document.getElementById('precioUnd');
+            const precioPaqInput = document.getElementById('precioPaq');
+            const precioCjInput = document.getElementById('precioCj');
+            let basePrecioUnd = 0;
+
+            if (source === 'und') basePrecioUnd = value;
+            else if (source === 'paq') basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
+            else if (source === 'cj') basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
+
+            if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
+            if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
+            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorCaja).toFixed(2);
+        };
+
+        // --- POBLAR EL FORMULARIO CON DATOS EXISTENTES ---
+        setTimeout(() => { // Timeout to allow dropdowns to populate
+            document.getElementById('rubro').value = producto.rubro;
+            document.getElementById('segmento').value = producto.segmento;
+            document.getElementById('marca').value = producto.marca;
+            document.getElementById('presentacion').value = producto.presentacion;
+            document.getElementById('cantidadUnidades').value = producto.cantidadUnidades || 0;
+            document.getElementById('ivaTipo').value = producto.iva !== undefined ? producto.iva : 16;
+            
+            if (producto.ventaPor) {
+                document.getElementById('ventaPorUnd').checked = producto.ventaPor.und;
+                document.getElementById('ventaPorPaq').checked = producto.ventaPor.paq;
+                document.getElementById('ventaPorCj').checked = producto.ventaPor.cj;
             }
-        });
+            updateDynamicInputs(); // Generate dynamic fields
+
+            // Populate dynamic fields with data
+            if (producto.ventaPor.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
+            if (producto.ventaPor.cj) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
+            
+            const precioUndInput = document.getElementById('precioUnd');
+            if (precioUndInput) {
+                precioUndInput.value = producto.precioPorUnidad || 0;
+                handlePrecioChange({target: precioUndInput}); // Trigger price calculation for other fields
+            }
+        }, 200);
+
+        ventaPorContainer.addEventListener('change', updateDynamicInputs);
+        document.getElementById('editProductoForm').addEventListener('submit', (e) => handleUpdateProducto(e, productId));
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     };
+
+    /**
+     * Maneja el guardado del producto editado.
+     */
+    async function handleUpdateProducto(e, productId) {
+        e.preventDefault();
+        
+        const updatedData = {
+            rubro: document.getElementById('rubro').value,
+            segmento: document.getElementById('segmento').value,
+            marca: document.getElementById('marca').value,
+            presentacion: document.getElementById('presentacion').value.trim(),
+            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete')?.value, 10) || 1,
+            unidadesPorCaja: parseInt(document.getElementById('unidadesPorCaja')?.value, 10) || 1,
+            ventaPor: {
+                und: document.getElementById('ventaPorUnd').checked,
+                paq: document.getElementById('ventaPorPaq').checked,
+                cj: document.getElementById('ventaPorCj').checked,
+            },
+            precioPorUnidad: parseFloat(document.getElementById('precioUnd')?.value) || 0,
+            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10) || 0,
+            iva: parseInt(document.getElementById('ivaTipo').value, 10)
+        };
+
+        try {
+            await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData);
+            _showModal('Éxito', 'Producto modificado exitosamente.');
+            showModifyDeleteView();
+        } catch (err) {
+            console.error("Error al modificar producto:", err);
+            _showModal('Error', 'Hubo un error al modificar el producto.');
+        }
+    }
+
 
     /**
      * Elimina un producto.
