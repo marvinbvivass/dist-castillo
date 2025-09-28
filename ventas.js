@@ -381,7 +381,7 @@
                     Math.floor(producto.cantidadUnidades / unidadesPorCaja),
                     producto.precioPorUnidad * unidadesPorCaja,
                     `${Math.floor(producto.cantidadUnidades / unidadesPorCaja)} Cj`,
-                    `${producto.presentacion} (Caja con ${unidadesPorCaja} unds)`
+                    `${producto.presentacion} (Cj. con ${unidadesPorCaja} unds)`
                 );
             }
             if (ventaPor.paq) {
@@ -402,7 +402,7 @@
                     producto.cantidadUnidades,
                     producto.precioPorUnidad,
                     `${producto.cantidadUnidades} Und`,
-                    `${producto.presentacion} (Unidad)`
+                    `${producto.presentacion}`
                 );
             }
         });
