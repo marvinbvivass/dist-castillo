@@ -7,6 +7,7 @@
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch;
     
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
+    let _clientesParaImportar = []; // Caché para la data del Excel a importar
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -54,8 +55,7 @@
                             <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
                             <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
                             <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Modificar / Eliminar Cliente</button>
-                            <button id="datosMaestrosSectoresBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Datos Maestros (Sectores)</button>
-                            <button id="deleteAllClientesBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Clientes</button>
+                            <button id="funcionesAvanzadasBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Funciones Avanzadas</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -65,10 +65,215 @@
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
         document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
         document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
-        document.getElementById('datosMaestrosSectoresBtn').addEventListener('click', showDatosMaestrosSectoresView);
-        document.getElementById('deleteAllClientesBtn').addEventListener('click', handleDeleteAllClientes);
+        document.getElementById('funcionesAvanzadasBtn').addEventListener('click', showFuncionesAvanzadasView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
+
+    /**
+     * Muestra la vista de funciones avanzadas.
+     */
+    function showFuncionesAvanzadasView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Funciones Avanzadas de Clientes</h1>
+                        <div class="space-y-4">
+                            <button id="importarClientesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Importar Clientes desde Excel</button>
+                            <button id="datosMaestrosSectoresBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Gestionar Sectores</button>
+                            <button id="deleteAllClientesBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Clientes</button>
+                            <button id="backToClientesMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver a Clientes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('importarClientesBtn').addEventListener('click', showImportarClientesView);
+        document.getElementById('datosMaestrosSectoresBtn').addEventListener('click', showDatosMaestrosSectoresView);
+        document.getElementById('deleteAllClientesBtn').addEventListener('click', handleDeleteAllClientes);
+        document.getElementById('backToClientesMenuBtn').addEventListener('click', showClientesSubMenu);
+    }
+
+    /**
+     * Muestra la vista para importar clientes desde un archivo Excel.
+     */
+    function showImportarClientesView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-4xl">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Importar Clientes desde Excel</h2>
+                        <p class="text-center text-gray-600 mb-6">Selecciona un archivo .xlsx o .csv. La primera fila debe contener los encabezados: Sector, Nombre Comercial, Nombre Personal, telefono, CEP.</p>
+                        <input type="file" id="excel-uploader" accept=".xlsx, .xls, .csv" class="w-full p-4 border-2 border-dashed rounded-lg">
+                        <div id="preview-container" class="mt-6 overflow-auto max-h-96"></div>
+                        <div id="import-actions" class="mt-6 flex flex-col sm:flex-row gap-4 hidden">
+                             <button id="confirmImportBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Confirmar e Importar</button>
+                             <button id="cancelImportBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Cancelar</button>
+                        </div>
+                         <button id="backToAdvancedFunctionsBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('excel-uploader').addEventListener('change', handleFileUpload);
+        document.getElementById('backToAdvancedFunctionsBtn').addEventListener('click', showFuncionesAvanzadasView);
+    }
+
+    /**
+     * Maneja la carga y parseo del archivo Excel.
+     */
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = e.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            if (jsonData.length < 2) {
+                _showModal('Error', 'El archivo está vacío o no tiene datos después de la fila de encabezado.');
+                return;
+            }
+
+            const headers = jsonData[0].map(h => h.toString().toLowerCase().trim());
+            const requiredHeaders = ['sector', 'nombre comercial', 'nombre personal', 'telefono', 'cep'];
+            
+            // Mapea los encabezados del archivo a los esperados
+            const headerMap = {};
+            requiredHeaders.forEach(rh => {
+                const fileHeader = headers.find(h => h.replace(/\s+/g, '') === rh.replace(/\s+/g, ''));
+                if (fileHeader) {
+                    headerMap[rh] = headers.indexOf(fileHeader);
+                } else {
+                     _showModal('Error', `Falta la columna requerida: "${rh}" en el archivo.`);
+                     return;
+                }
+            });
+
+
+            _clientesParaImportar = jsonData.slice(1).map(row => {
+                const cliente = {
+                    sector: (row[headerMap['sector']] || '').toString().trim().toUpperCase(),
+                    nombreComercial: (row[headerMap['nombre comercial']] || '').toString().trim().toUpperCase(),
+                    nombrePersonal: (row[headerMap['nombre personal']] || '').toString().trim().toUpperCase(),
+                    telefono: (row[headerMap['telefono']] || '').toString().trim(),
+                    codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim()
+                };
+                if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
+                return cliente;
+            }).filter(c => c.nombreComercial && c.nombrePersonal); // Filtrar filas vacías
+
+            renderPreviewTable(_clientesParaImportar);
+        };
+        reader.readAsBinaryString(file);
+    }
+
+    /**
+     * Muestra una tabla de vista previa con los datos del Excel.
+     */
+    function renderPreviewTable(clientes) {
+        const container = document.getElementById('preview-container');
+        const actionsContainer = document.getElementById('import-actions');
+        const backButton = document.getElementById('backToAdvancedFunctionsBtn');
+        
+        if (clientes.length === 0) {
+            container.innerHTML = `<p class="text-center text-red-500">No se encontraron clientes válidos para importar.</p>`;
+            actionsContainer.classList.add('hidden');
+            return;
+        }
+
+        let tableHTML = `<h3 class="font-bold text-lg mb-2">Vista Previa (${clientes.length} clientes a importar)</h3>
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200"><tr>
+                    <th class="py-2 px-3 text-left">Sector</th>
+                    <th class="py-2 px-3 text-left">N. Comercial</th>
+                    <th class="py-2 px-3 text-left">N. Personal</th>
+                    <th class="py-2 px-3 text-left">Teléfono</th>
+                    <th class="py-2 px-3 text-left">CEP</th>
+                </tr></thead><tbody>`;
+        
+        clientes.forEach(c => {
+            tableHTML += `<tr class="border-b">
+                <td class="py-2 px-3">${c.sector}</td>
+                <td class="py-2 px-3">${c.nombreComercial}</td>
+                <td class="py-2 px-3">${c.nombrePersonal}</td>
+                <td class="py-2 px-3">${c.telefono}</td>
+                <td class="py-2 px-3">${c.codigoCEP}</td>
+            </tr>`;
+        });
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+
+        actionsContainer.classList.remove('hidden');
+        backButton.classList.add('hidden');
+        document.getElementById('confirmImportBtn').onclick = handleConfirmImport;
+        document.getElementById('cancelImportBtn').onclick = () => {
+             _clientesParaImportar = [];
+             renderPreviewTable([]);
+             document.getElementById('excel-uploader').value = '';
+             actionsContainer.classList.add('hidden');
+             backButton.classList.remove('hidden');
+             container.innerHTML = '';
+        };
+    }
+
+    /**
+     * Confirma y guarda los clientes y sectores importados en Firestore.
+     */
+    async function handleConfirmImport() {
+        if (_clientesParaImportar.length === 0) {
+            _showModal('Error', 'No hay clientes para importar.');
+            return;
+        }
+        
+        _showModal('Progreso', `Importando ${_clientesParaImportar.length} clientes...`);
+
+        try {
+            // 1. Manejar sectores
+            const sectoresRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/sectores`);
+            const sectoresSnapshot = await _getDocs(sectoresRef);
+            const existingSectores = new Set(sectoresSnapshot.docs.map(doc => doc.data().name.toUpperCase()));
+            
+            const newSectores = new Set(
+                _clientesParaImportar
+                    .map(c => c.sector)
+                    .filter(s => s && !existingSectores.has(s))
+            );
+
+            const batch = _writeBatch(_db);
+
+            // Agregar nuevos sectores
+            newSectores.forEach(sectorName => {
+                const newSectorRef = _doc(sectoresRef);
+                batch.set(newSectorRef, { name: sectorName });
+            });
+            
+            // 2. Agregar clientes
+            const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+            _clientesParaImportar.forEach(cliente => {
+                const newClienteRef = _doc(clientesRef);
+                batch.set(newClienteRef, cliente);
+            });
+
+            await batch.commit();
+
+            _showModal('Éxito', `Se han importado ${_clientesParaImportar.length} clientes y ${newSectores.size} nuevos sectores.`);
+            showFuncionesAvanzadasView();
+
+        } catch (error) {
+            _showModal('Error', `Ocurrió un error durante la importación: ${error.message}`);
+        } finally {
+            _clientesParaImportar = [];
+        }
+    }
+
+
+    // El resto de las funciones (agregar, editar, ver, etc.) permanecen igual que en el archivo anterior.
+    // ... (Se omite el código anterior sin cambios para brevedad) ...
 
     /**
      * Muestra la vista de agregar cliente.
@@ -135,9 +340,6 @@
         document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal('sectores', 'Sector'));
     }
 
-    /**
-     * Agrega un nuevo cliente a la base de datos, con validación de duplicados y convirtiendo a mayúsculas.
-     */
     async function agregarCliente(e) {
         e.preventDefault();
         const form = e.target;
@@ -212,9 +414,6 @@
         }
     }
 
-    /**
-     * Muestra la vista de "Ver Clientes".
-     */
     function showVerClientesView() {
          _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -236,9 +435,6 @@
         renderClientesList('clientesListContainer');
     }
 
-    /**
-     * Muestra la interfaz de búsqueda para modificar o eliminar un cliente.
-     */
     function showModifyDeleteSearchView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -268,9 +464,6 @@
         });
     }
 
-    /**
-     * Genera el HTML para los controles de filtro y búsqueda.
-     */
     function getFiltrosHTML() {
         return `
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
@@ -286,9 +479,6 @@
         `;
     }
 
-    /**
-     * Configura los event listeners para los filtros.
-     */
     function setupFiltros(containerId) {
         _populateDropdown('sectores', 'filter-sector', 'Sector');
 
@@ -308,9 +498,6 @@
         });
     }
 
-    /**
-     * Renderiza la lista de clientes en una tabla.
-     */
     function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
         const container = document.getElementById(elementId);
         if (!container) return;
@@ -373,9 +560,6 @@
         container.innerHTML = tableHTML;
     }
     
-    /**
-     * Muestra el formulario para editar un cliente.
-     */
     function editCliente(clienteId) {
         _floatingControls.classList.add('hidden');
         const cliente = _clientesCache.find(c => c.id === clienteId);
@@ -467,9 +651,6 @@
         document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
     };
 
-    /**
-     * Elimina un cliente.
-     */
     function deleteCliente(clienteId) {
         _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
             try {
@@ -486,9 +667,6 @@
         });
     };
 
-    /**
-     * Muestra un modal validado para agregar un nuevo item de datos maestros.
-     */
     function showValidatedAddItemModal(collectionName, itemName) {
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
@@ -545,9 +723,6 @@
         });
     }
 
-    /**
-     * Muestra la vista para gestionar los datos maestros de sectores.
-     */
     function showDatosMaestrosSectoresView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -564,13 +739,10 @@
             </div>
         `;
         document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal('sectores', 'Sector'));
-        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        document.getElementById('backToClientesBtn').addEventListener('click', showFuncionesAvanzadasView);
         renderSectoresParaGestion();
     }
     
-    /**
-     * Renderiza la lista de sectores para su gestión.
-     */
     function renderSectoresParaGestion() {
         const container = document.getElementById('sectores-list');
         if (!container) return;
@@ -593,14 +765,10 @@
         _activeListeners.push(unsubscribe);
     }
     
-    /**
-     * Permite editar el nombre de un sector.
-     */
     async function editSector(sectorId, currentName) {
         const newName = prompt('Introduce el nuevo nombre para el sector:', currentName);
         if (newName && newName.trim() !== '' && newName.trim().toUpperCase() !== currentName.toUpperCase()) {
             const nuevoNombreMayus = newName.trim().toUpperCase();
-            // Validar si el nuevo nombre ya existe
             const q = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/sectores`), _where("name", "==", nuevoNombreMayus));
             const querySnapshot = await _getDocs(q);
             if (!querySnapshot.empty) {
@@ -609,10 +777,8 @@
             }
 
             try {
-                // Actualizar el sector
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/sectores`, sectorId), { name: nuevoNombreMayus });
 
-                // Actualizar todos los clientes que usaban el nombre antiguo
                 const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
                 const clientesQuery = _query(clientesRef, _where("sector", "==", currentName));
                 const clientesSnapshot = await _getDocs(clientesQuery);
@@ -632,9 +798,6 @@
         }
     }
 
-    /**
-     * Elimina un sector, con validación de uso.
-     */
     async function deleteSector(sectorId, sectorName) {
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
         const q = _query(clientesRef, _where("sector", "==", sectorName));
@@ -654,9 +817,6 @@
         }
     }
 
-    /**
-     * Maneja la eliminación de TODOS los clientes.
-     */
     async function handleDeleteAllClientes() {
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los clientes? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando todos los clientes...');
