@@ -306,8 +306,11 @@
         document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
         const rubroFilter = document.getElementById('ajusteRubroFilter');
         _populateDropdown('rubros', 'ajusteRubroFilter', 'Rubro');
-        rubroFilter.addEventListener('change', () => renderAjusteMasivoList(rubroFilter.value));
-        renderAjusteMasivoList('');
+        
+        const renderCallback = () => renderAjusteMasivoList(rubroFilter.value);
+        startMainInventarioListener(renderCallback);
+        rubroFilter.addEventListener('change', renderCallback);
+        renderCallback();
     }
 
     /**
@@ -316,52 +319,69 @@
     async function renderAjusteMasivoList(rubro = '') {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
-        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
-            let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            _inventarioCache = productos; 
-            const segmentoOrderMap = await getSegmentoOrderMap();
-            if (segmentoOrderMap) {
-                productos.sort((a, b) => {
-                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
-                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
-                    if (orderA !== orderB) return orderA - orderB;
-                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
-                    return a.presentacion.localeCompare(b.presentacion);
-                });
-            }
-            if (rubro) {
-                productos = productos.filter(p => p.rubro === rubro);
-            }
-            if (productos.length === 0) {
-                container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
-                return;
-            }
-            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Unidades)</th></tr></thead><tbody>`;
-            let currentMarca = null;
-            productos.forEach(p => {
-                const marca = p.marca || 'Sin Marca';
-                if (marca !== currentMarca) {
-                    currentMarca = marca;
-                    tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
-                }
-                const cantidadActualUnidades = p.cantidadUnidades || 0;
-                tableHTML += `
-                    <tr class="hover:bg-gray-50">
-                        <td class="py-2 px-4 border-b text-sm">
-                            <p class="font-semibold">${p.presentacion}</p>
-                            <p class="text-xs text-gray-600">Actual: ${cantidadActualUnidades} Unidades</p>
-                        </td>
-                        <td class="py-2 px-4 border-b text-center">
-                            <input type="number" value="${cantidadActualUnidades}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
-                        </td>
-                    </tr>
-                `;
+        
+        let productos = [..._inventarioCache];
+        const segmentoOrderMap = await getSegmentoOrderMap();
+        if (segmentoOrderMap) {
+            productos.sort((a, b) => {
+                const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                if (orderA !== orderB) return orderA - orderB;
+                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                return a.presentacion.localeCompare(b.presentacion);
             });
-            tableHTML += `</tbody></table>`;
-            container.innerHTML = tableHTML;
+        }
+        if (rubro) {
+            productos = productos.filter(p => p.rubro === rubro);
+        }
+        if (productos.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
+            return;
+        }
+        
+        let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-40">Cantidad Nueva</th></tr></thead><tbody>`;
+        let currentMarca = null;
+        productos.forEach(p => {
+            const marca = p.marca || 'Sin Marca';
+            if (marca !== currentMarca) {
+                currentMarca = marca;
+                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
+            }
+
+            const ventaPor = p.ventaPor || { und: true };
+            let unitType = 'Und';
+            let conversionFactor = 1;
+            let currentStockInUnits = p.cantidadUnidades || 0;
+
+            if (ventaPor.cj) {
+                unitType = 'Cj';
+                conversionFactor = p.unidadesPorCaja || 1;
+            } else if (ventaPor.paq) {
+                unitType = 'Paq';
+                conversionFactor = p.unidadesPorPaquete || 1;
+            }
+            
+            const currentStockInDisplayUnits = Math.floor(currentStockInUnits / conversionFactor);
+
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-4 border-b text-sm">
+                        <p class="font-semibold">${p.presentacion}</p>
+                        <p class="text-xs text-gray-600">Actual: ${currentStockInDisplayUnits} ${unitType}.</p>
+                    </td>
+                    <td class="py-2 px-4 border-b text-center">
+                        <div class="flex items-center justify-center">
+                            <input type="number" value="${currentStockInDisplayUnits}" 
+                                   data-doc-id="${p.id}" data-conversion-factor="${conversionFactor}"
+                                   class="w-20 p-1 text-center border rounded-lg">
+                            <span class="ml-2 font-semibold text-gray-600">${unitType}.</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
         });
-        _activeListeners.push(unsubscribe);
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
     }
     
     /**
@@ -375,12 +395,16 @@
         }
         const batch = _writeBatch(_db);
         let changesCount = 0;
+        
         inputs.forEach(input => {
             const docId = input.dataset.docId;
-            const nuevaCantidadUnidades = parseInt(input.value, 10);
+            const conversionFactor = parseInt(input.dataset.conversionFactor, 10);
+            const newValueInDisplayUnits = parseInt(input.value, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
-            if (productoOriginal) {
-                if (!isNaN(nuevaCantidadUnidades) && (productoOriginal.cantidadUnidades || 0) !== nuevaCantidadUnidades) {
+
+            if (productoOriginal && !isNaN(newValueInDisplayUnits)) {
+                const nuevaCantidadUnidades = newValueInDisplayUnits * conversionFactor;
+                if ((productoOriginal.cantidadUnidades || 0) !== nuevaCantidadUnidades) {
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
                     batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
                     changesCount++;
