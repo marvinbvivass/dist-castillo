@@ -627,8 +627,6 @@
             let preciosHTML = '';
             if (ventaPorUnd) {
                 preciosHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
-            } else {
-                preciosHTML += `<input type="hidden" id="precioUnd" data-source="und">`;
             }
             if (ventaPorPaq) {
                 preciosHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
@@ -668,22 +666,7 @@
 
         const handlePrecioChange = (e) => {
             if (!e || !e.target) return;
-            const source = e.target.dataset.source;
-            const value = parseFloat(e.target.value) || 0;
-            const unidadesPorPaquete = parseFloat(document.getElementById('unidadesPorPaquete')?.value) || 1;
-            const unidadesPorCaja = parseFloat(document.getElementById('unidadesPorCaja')?.value) || 1;
-            const precioUndInput = document.getElementById('precioUnd');
-            const precioPaqInput = document.getElementById('precioPaq');
-            const precioCjInput = document.getElementById('precioCj');
-            let basePrecioUnd = 0;
-
-            if (source === 'und') basePrecioUnd = value;
-            else if (source === 'paq') basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
-            else if (source === 'cj') basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
-
-            if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
-            if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
-            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorCaja).toFixed(2);
+            // No hacer nada aquí, el cálculo se hará al guardar.
         };
         
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
@@ -706,26 +689,25 @@
         const unidadesPorPaquete = unidadesPorPaqueteInput ? (parseInt(unidadesPorPaqueteInput.value, 10) || 1) : 1;
         const unidadesPorCaja = unidadesPorCajaInput ? (parseInt(unidadesPorCajaInput.value, 10) || 1) : 1;
         
-        // --- LÓGICA DE PRECIO CORREGIDA Y CENTRALIZADA ---
-        let precioFinalPorUnidad = 0;
         const precioUndInput = document.getElementById('precioUnd');
         const precioPaqInput = document.getElementById('precioPaq');
         const precioCjInput = document.getElementById('precioCj');
 
-        const precioUndValue = precioUndInput ? parseFloat(precioUndInput.value) : NaN;
-        const precioPaqValue = precioPaqInput ? parseFloat(precioPaqInput.value) : NaN;
-        const precioCjValue = precioCjInput ? parseFloat(precioCjInput.value) : NaN;
+        const precios = {
+            und: precioUndInput ? (parseFloat(precioUndInput.value) || 0) : 0,
+            paq: precioPaqInput ? (parseFloat(precioPaqInput.value) || 0) : 0,
+            cj: precioCjInput ? (parseFloat(precioCjInput.value) || 0) : 0,
+        };
 
-        // Prioriza el precio de la unidad más pequeña disponible para calcular el precio base.
-        if (!isNaN(precioUndValue) && precioUndValue > 0) {
-            precioFinalPorUnidad = precioUndValue;
-        } else if (!isNaN(precioPaqValue) && precioPaqValue > 0) {
-            precioFinalPorUnidad = unidadesPorPaquete > 0 ? precioPaqValue / unidadesPorPaquete : 0;
-        } else if (!isNaN(precioCjValue) && precioCjValue > 0) {
-            precioFinalPorUnidad = unidadesPorCaja > 0 ? precioCjValue / unidadesPorCaja : 0;
+        let precioFinalPorUnidad = 0;
+        if (precios.und > 0) {
+            precioFinalPorUnidad = precios.und;
+        } else if (precios.paq > 0) {
+            precioFinalPorUnidad = unidadesPorPaquete > 0 ? precios.paq / unidadesPorPaquete : 0;
+        } else if (precios.cj > 0) {
+            precioFinalPorUnidad = unidadesPorCaja > 0 ? precios.cj / unidadesPorCaja : 0;
         }
         
-        // Esta lógica solo se usa para el stock inicial al agregar, no al editar.
         let cantidadTotalUnidades = 0;
         const cantidadCargadaInput = document.getElementById('cantidadCargada');
         if (cantidadCargadaInput) {
@@ -735,7 +717,6 @@
             else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
             else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
         } else {
-             // En modo edición, tomamos el valor directo del campo de stock total.
              cantidadTotalUnidades = parseInt(document.getElementById('cantidadUnidades')?.value, 10) || 0;
         }
 
@@ -751,6 +732,7 @@
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
+            precios: precios,
             precioPorUnidad: precioFinalPorUnidad,
             cantidadUnidades: cantidadTotalUnidades,
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
@@ -1032,23 +1014,22 @@
 
             const ventaPor = p.ventaPor || { und: true };
             let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+            
+            let displayPrecio = `$0.00`;
+            let displayStock = `${p.cantidadUnidades || 0} Und`;
+
             if (ventaPor.cj) {
                 displayPresentacion += ` (${p.unidadesPorCaja} und.)`;
-            } else if (ventaPor.paq) {
-                displayPresentacion += ` (${p.unidadesPorPaquete} und.)`;
-            }
-
-            const precioPorUnidad = p.precioPorUnidad || 0;
-            let displayPrecio = `$${precioPorUnidad.toFixed(2)}`;
-
-            let displayStock = `${p.cantidadUnidades || 0} Und`;
-            if (ventaPor.cj) {
+                displayPrecio = `$${(p.precios?.cj || 0).toFixed(2)}`;
                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorCaja || 1))} Cj`;
             } else if (ventaPor.paq) {
+                displayPresentacion += ` (${p.unidadesPorPaquete} und.)`;
+                displayPrecio = `$${(p.precios?.paq || 0).toFixed(2)}`;
                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorPaquete || 1))} Paq`;
+            } else {
+                 displayPrecio = `$${(p.precios?.und || p.precioPorUnidad || 0).toFixed(2)}`;
             }
             
-
             tableHTML += `
                 <tr class="hover:bg-gray-50">
                     <td class="py-2 px-3 border-b">${displayPresentacion}</td>
@@ -1127,8 +1108,6 @@
             let preciosHTML = '';
             if (ventaPorUnd) {
                 preciosHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
-            } else {
-                preciosHTML += `<input type="hidden" id="precioUnd" data-source="und">`;
             }
             if (ventaPorPaq) {
                 preciosHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
@@ -1143,23 +1122,7 @@
         };
 
         const handlePrecioChange = (e) => {
-            if (!e || !e.target) return;
-            const source = e.target.dataset.source;
-            const value = parseFloat(e.target.value) || 0;
-            const unidadesPorPaquete = parseFloat(document.getElementById('unidadesPorPaquete')?.value) || 1;
-            const unidadesPorCaja = parseFloat(document.getElementById('unidadesPorCaja')?.value) || 1;
-            const precioUndInput = document.getElementById('precioUnd');
-            const precioPaqInput = document.getElementById('precioPaq');
-            const precioCjInput = document.getElementById('precioCj');
-            let basePrecioUnd = 0;
-
-            if (source === 'und') basePrecioUnd = value;
-            else if (source === 'paq') basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
-            else if (source === 'cj') basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
-
-            if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
-            if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
-            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorCaja).toFixed(2);
+             // No hacer nada aquí, el cálculo se hará al guardar.
         };
 
         // --- POBLAR EL FORMULARIO CON DATOS EXISTENTES ---
@@ -1182,11 +1145,15 @@
             if (producto.ventaPor.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
             if (producto.ventaPor.cj) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
             
-            const precioUndInput = document.getElementById('precioUnd');
-            if (precioUndInput) {
-                precioUndInput.value = producto.precioPorUnidad || 0;
-                handlePrecioChange({target: precioUndInput}); // Trigger price calculation for other fields
+            if (producto.precios) {
+                 if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = producto.precios.und || 0;
+                 if (document.getElementById('precioPaq')) document.getElementById('precioPaq').value = producto.precios.paq || 0;
+                 if (document.getElementById('precioCj')) document.getElementById('precioCj').value = producto.precios.cj || 0;
+            } else if (producto.precioPorUnidad) {
+                // Compatibilidad con datos antiguos
+                 if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = producto.precioPorUnidad;
             }
+            
         }, 200);
 
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
@@ -1285,3 +1252,4 @@
     };
 
 })();
+
