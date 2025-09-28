@@ -37,9 +37,20 @@
     };
 
     /**
-     * Muestra el submenú de opciones de inventario.
+     * Invalida la caché de orden de segmentos para forzar una recarga.
+     */
+    function invalidateSegmentOrderCache() {
+        _segmentoOrderCache = null;
+        if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
+            window.ventasModule.invalidateCache();
+        }
+    }
+
+    /**
+     * Renderiza el menú de subopciones de inventario.
      */
     window.showInventarioSubMenu = function() {
+        invalidateSegmentOrderCache();
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -47,468 +58,916 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            <button id="addProductoBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Agregar Producto</button>
-                            <button id="modificarProductoBtn" class="w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar / Eliminar Producto</button>
-                            <button id="datosMaestrosBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Datos Maestros</button>
+                            <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Inventario</button>
+                            <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
+                            <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Modificar / Eliminar Producto</button>
+                            <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
+                             <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos</button>
+                             <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar Datos Maestros</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
-                        <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
-
-        document.getElementById('addProductoBtn').addEventListener('click', () => showAddOrEditProductoView());
-        document.getElementById('modificarProductoBtn').addEventListener('click', showModificarEliminarView);
-        document.getElementById('datosMaestrosBtn').addEventListener('click', showDatosMaestrosView);
+        document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
+        document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
+        document.getElementById('modifyDeleteBtn').addEventListener('click', () => {
+            _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
+            showModifyDeleteView();
+        });
+        document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
+        document.getElementById('ordenarSegmentosBtn').addEventListener('click', showOrdenarSegmentosView);
+        document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
-    };
-
-    /**
-     * Muestra la vista para modificar o eliminar productos.
-     */
-    function showModificarEliminarView() {
-        _mainContent.innerHTML = `
-            <div class="p-4 w-full">
-                <div class="bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-xl">
-                    <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Inventario de Productos</h2>
-                        <button id="backToInventarioMenuBtn" class="px-4 py-2 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 w-full sm:w-auto">Volver</button>
-                    </div>
-                    
-                    <!-- NUEVO: Contenedor de Búsqueda y Filtros -->
-                    <div class="mb-4 p-4 bg-gray-50 rounded-lg border">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                            <!-- Búsqueda -->
-                            <div class="col-span-1 sm:col-span-2 md:col-span-4">
-                                <label for="searchInput" class="block text-sm font-medium text-gray-700">Buscar por Código, Marca o Presentación</label>
-                                <input type="text" id="searchInput" placeholder="Ej: 12345, Pepsi, 1.5L..." class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            </div>
-                            <!-- Filtro Rubro -->
-                            <div>
-                                <label for="rubroFilter" class="block text-sm font-medium text-gray-700">Rubro</label>
-                                <select id="rubroFilter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"></select>
-                            </div>
-                            <!-- Filtro Segmento -->
-                            <div>
-                                <label for="segmentoFilter" class="block text-sm font-medium text-gray-700">Segmento</label>
-                                <select id="segmentoFilter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md" disabled></select>
-                            </div>
-                            <!-- Filtro Marca -->
-                            <div>
-                                <label for="marcaFilter" class="block text-sm font-medium text-gray-700">Marca</label>
-                                <select id="marcaFilter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md" disabled></select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="inventarioContainer" class="overflow-x-auto"><p class="text-gray-500 text-center">Cargando inventario...</p></div>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('backToInventarioMenuBtn').addEventListener('click', showInventarioSubMenu);
-        
-        // Cargar el inventario en caché y luego configurar los filtros y renderizar la tabla
-        loadInventarioCache().then(() => {
-            setupCascadingFilters();
-            applyFiltersAndRender();
-        });
-    }
-
-    /**
-     * Carga el inventario completo en la caché local.
-     */
-    function loadInventarioCache() {
-        return new Promise((resolve, reject) => {
-            const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
-                _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                resolve(); // Resuelve la promesa una vez que los datos están cargados
-            }, (error) => {
-                console.error("Error al cargar el inventario: ", error);
-                document.getElementById('inventarioContainer').innerHTML = `<p class="text-red-500 text-center">Error al cargar el inventario.</p>`;
-                reject(error);
-            });
-            _activeListeners.push(unsubscribe); // Guardar para limpieza posterior
-        });
-    }
-
-    /**
-     * Configura los listeners para los filtros en cascada.
-     */
-    function setupCascadingFilters() {
-        const rubroFilter = document.getElementById('rubroFilter');
-        const segmentoFilter = document.getElementById('segmentoFilter');
-        const marcaFilter = document.getElementById('marcaFilter');
-        const searchInput = document.getElementById('searchInput');
-
-        // Poblar el filtro de rubros inicial
-        const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
-        rubroFilter.innerHTML = '<option value="">Todos los Rubros</option>';
-        rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
-
-        // Listeners
-        searchInput.addEventListener('input', applyFiltersAndRender);
-        rubroFilter.addEventListener('change', () => {
-            updateSegmentoFilter();
-            applyFiltersAndRender();
-        });
-        segmentoFilter.addEventListener('change', () => {
-            updateMarcaFilter();
-            applyFiltersAndRender();
-        });
-        marcaFilter.addEventListener('change', applyFiltersAndRender);
-
-        // Restaurar estado de los filtros
-        searchInput.value = _lastFilters.searchTerm;
-        rubroFilter.value = _lastFilters.rubro;
-        updateSegmentoFilter(); // Esto poblará y seleccionará el segmento
-        segmentoFilter.value = _lastFilters.segmento;
-        updateMarcaFilter(); // Y esto poblará y seleccionará la marca
-        marcaFilter.value = _lastFilters.marca;
-    }
-
-    /**
-     * Actualiza el dropdown de Segmentos basado en el Rubro seleccionado.
-     */
-    function updateSegmentoFilter() {
-        const rubroFilter = document.getElementById('rubroFilter');
-        const segmentoFilter = document.getElementById('segmentoFilter');
-        const marcaFilter = document.getElementById('marcaFilter');
-        const selectedRubro = rubroFilter.value;
-
-        // Limpiar y deshabilitar filtros dependientes
-        segmentoFilter.innerHTML = '<option value="">Todos los Segmentos</option>';
-        marcaFilter.innerHTML = '<option value="">Todas las Marcas</option>';
-        segmentoFilter.disabled = true;
-        marcaFilter.disabled = true;
-
-        if (selectedRubro) {
-            const segmentos = [...new Set(
-                _inventarioCache
-                    .filter(p => p.rubro === selectedRubro)
-                    .map(p => p.segmento)
-            )].sort();
-            
-            if (segmentos.length > 0) {
-                segmentos.forEach(s => segmentoFilter.innerHTML += `<option value="${s}">${s}</option>`);
-                segmentoFilter.disabled = false;
-            }
-        }
-    }
-
-    /**
-     * Actualiza el dropdown de Marcas basado en el Rubro y Segmento seleccionados.
-     */
-    function updateMarcaFilter() {
-        const rubroFilter = document.getElementById('rubroFilter');
-        const segmentoFilter = document.getElementById('segmentoFilter');
-        const marcaFilter = document.getElementById('marcaFilter');
-        const selectedRubro = rubroFilter.value;
-        const selectedSegmento = segmentoFilter.value;
-
-        marcaFilter.innerHTML = '<option value="">Todas las Marcas</option>';
-        marcaFilter.disabled = true;
-
-        if (selectedRubro && selectedSegmento) {
-            const marcas = [...new Set(
-                _inventarioCache
-                    .filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento)
-                    .map(p => p.marca)
-            )].sort();
-
-            if (marcas.length > 0) {
-                marcas.forEach(m => marcaFilter.innerHTML += `<option value="${m}">${m}</option>`);
-                marcaFilter.disabled = false;
-            }
-        }
-    }
-
-    /**
-     * Lee los filtros, los guarda y llama a renderInventario.
-     */
-    function applyFiltersAndRender() {
-        _lastFilters.searchTerm = document.getElementById('searchInput').value;
-        _lastFilters.rubro = document.getElementById('rubroFilter').value;
-        _lastFilters.segmento = document.getElementById('segmentoFilter').value;
-        _lastFilters.marca = document.getElementById('marcaFilter').value;
-        renderInventario();
     }
     
     /**
-     * Renderiza la tabla de inventario basado en los filtros y la búsqueda.
+     * Obtiene y cachea el mapa de orden de los segmentos.
      */
-    function renderInventario() {
-        const container = document.getElementById('inventarioContainer');
+    async function getSegmentoOrderMap() {
+        if (_segmentoOrderCache) return _segmentoOrderCache;
+        const map = {};
+        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+        try {
+            const snapshot = await _getDocs(segmentosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _segmentoOrderCache = map;
+            return map;
+        } catch (e) {
+            console.warn("No se pudo obtener el orden de los segmentos, se usará orden alfabético.", e);
+            return null;
+        }
+    }
+
+    /**
+     * Muestra la vista para ordenar los segmentos.
+     */
+    function showOrdenarSegmentosView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Segmentos</h2>
+                        <p class="text-center text-gray-600 mb-6">Arrastra y suelta los segmentos para cambiar el orden.</p>
+                        <div class="mb-4">
+                           <label for="ordenarRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                           <select id="ordenarRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                               <option value="">Todos los Rubros</option>
+                           </select>
+                        </div>
+                        <ul id="segmentos-sortable-list" class="space-y-2 border rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <p class="text-gray-500 text-center">Cargando segmentos...</p>
+                        </ul>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="saveOrderBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Orden</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenSegmentos);
+        const rubroFilter = document.getElementById('ordenarRubroFilter');
+        _populateDropdown('rubros', 'ordenarRubroFilter', 'Rubro');
+        rubroFilter.addEventListener('change', () => renderSortableSegmentList(rubroFilter.value));
+        renderSortableSegmentList('');
+    }
+
+    /**
+     * Renderiza la lista de segmentos para que se puedan ordenar, opcionalmente filtrada por rubro.
+     */
+    async function renderSortableSegmentList(rubro = '') {
+        const container = document.getElementById('segmentos-sortable-list');
         if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
 
-        // Aplicar filtros
-        const { searchTerm, rubro, segmento, marca } = _lastFilters;
-        const searchTermLower = searchTerm.toLowerCase();
+        try {
+            const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
+            let snapshot = await _getDocs(segmentosRef);
+            let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        let filteredInventario = _inventarioCache.filter(p => {
-            const matchesSearch = searchTermLower === '' ||
-                (p.codigo && p.codigo.toLowerCase().includes(searchTermLower)) ||
-                (p.marca && p.marca.toLowerCase().includes(searchTermLower)) ||
-                (p.presentacion && p.presentacion.toLowerCase().includes(searchTermLower));
-            
-            const matchesRubro = rubro === '' || p.rubro === rubro;
-            const matchesSegmento = segmento === '' || p.segmento === segmento;
-            const matchesMarca = marca === '' || p.marca === marca;
+            if (allSegments.length > 0 && allSegments.some(s => s.orden === undefined)) {
+                const sortedAlphabetically = allSegments.sort((a,b) => a.name.localeCompare(b.name));
+                const batch = _writeBatch(_db);
+                sortedAlphabetically.forEach((seg, index) => {
+                    const docRef = _doc(segmentosRef, seg.id);
+                    batch.update(docRef, { orden: index });
+                });
+                await batch.commit();
+                snapshot = await _getDocs(segmentosRef);
+                allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            }
 
-            return matchesSearch && matchesRubro && matchesSegmento && matchesMarca;
+            let segmentsToDisplay = allSegments;
+
+            if (rubro) {
+                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                const q = _query(inventarioRef, _where("rubro", "==", rubro));
+                const inventarioSnapshot = await _getDocs(q);
+                const usedSegmentNames = new Set(inventarioSnapshot.docs.map(doc => doc.data().segmento));
+                segmentsToDisplay = allSegments.filter(s => usedSegmentNames.has(s.name));
+            }
+
+            segmentsToDisplay.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
+
+            container.innerHTML = ''; 
+            if(segmentsToDisplay.length === 0) {
+                 container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos para este rubro.</p>`;
+                 return;
+            }
+
+            segmentsToDisplay.forEach(seg => {
+                const li = document.createElement('li');
+                li.dataset.id = seg.id;
+                li.dataset.name = seg.name;
+                li.className = 'p-3 bg-gray-100 rounded shadow-sm cursor-grab active:cursor-grabbing';
+                li.textContent = seg.name;
+                li.draggable = true;
+                container.appendChild(li);
+            });
+
+            addDragAndDropHandlers(container);
+
+        } catch (error) {
+            console.error("Error al renderizar la lista de segmentos:", error);
+            container.innerHTML = `<p class="text-red-500 text-center">Error al cargar los segmentos.</p>`;
+        }
+    }
+    
+    /**
+     * Añade los manejadores de eventos para la funcionalidad de arrastrar y soltar.
+     */
+    function addDragAndDropHandlers(container) {
+        let draggedItem = null;
+        container.addEventListener('dragstart', e => {
+            draggedItem = e.target;
+            setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
         });
-
-        // Ordenar el inventario filtrado
-        filteredInventario.sort((a, b) => {
-            if (a.rubro !== b.rubro) return (a.rubro || '').localeCompare(b.rubro || '');
-            if (a.segmento !== b.segmento) return (a.segmento || '').localeCompare(b.segmento || '');
-            if (a.marca !== b.marca) return (a.marca || '').localeCompare(b.marca || '');
-            return (a.presentacion || '').localeCompare(b.presentacion || '');
+        container.addEventListener('dragend', e => {
+            if(draggedItem) draggedItem.style.opacity = '1';
+            draggedItem = null;
         });
+        container.addEventListener('dragover', e => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(container, e.clientY);
+            if (draggedItem) {
+                if (afterElement == null) container.appendChild(draggedItem);
+                else container.insertBefore(draggedItem, afterElement);
+            }
+        });
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('li:not([style*="opacity: 0.5"])')];
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                else return closest;
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+    }
 
-        if (filteredInventario.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500 py-4">No se encontraron productos que coincidan con los filtros.</p>`;
+    /**
+     * Guarda el nuevo orden de los segmentos.
+     */
+    async function handleGuardarOrdenSegmentos() {
+        const listItems = document.querySelectorAll('#segmentos-sortable-list li');
+        if (listItems.length === 0) {
+            _showModal('Aviso', 'No hay segmentos para ordenar.');
             return;
         }
+        const batch = _writeBatch(_db);
+        listItems.forEach((item, index) => {
+            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, item.dataset.id);
+            batch.update(docRef, { orden: index });
+        });
+        try {
+            await batch.commit();
+            invalidateSegmentOrderCache();
+            _showModal('Éxito', 'El orden de los segmentos ha sido guardado.');
+            showInventarioSubMenu();
+        } catch (error) {
+            console.error("Error guardando el orden de los segmentos:", error);
+            _showModal('Error', 'Hubo un error al guardar el nuevo orden.');
+        }
+    }
 
-        let tableHTML = `
-            <table class="min-w-full bg-white text-sm">
-                <thead class="bg-gray-200">
-                    <tr>
-                        <th class="py-2 px-3 border-b text-left">Producto</th>
-                        <th class="py-2 px-3 border-b text-left">Rubro</th>
-                        <th class="py-2 px-3 border-b text-right">Precio Und.</th>
-                        <th class="py-2 px-3 border-b text-right">Stock Und.</th>
-                        <th class="py-2 px-3 border-b text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
+    /**
+     * Muestra la vista para el ajuste masivo de cantidades.
+     */
+    function showAjusteMasivoView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ajuste Masivo de Cantidades</h2>
+                        <div class="mb-4">
+                           <label for="ajusteRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                           <select id="ajusteRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                               <option value="">Todos los Rubros</option>
+                           </select>
+                        </div>
+                        <div id="ajusteListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="saveAjusteBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
-        filteredInventario.forEach(producto => {
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
+        const rubroFilter = document.getElementById('ajusteRubroFilter');
+        _populateDropdown('rubros', 'ajusteRubroFilter', 'Rubro');
+        rubroFilter.addEventListener('change', () => renderAjusteMasivoList(rubroFilter.value));
+        renderAjusteMasivoList('');
+    }
+
+    /**
+     * Renderiza la lista de productos para el ajuste masivo, agrupada por marca.
+     */
+    async function renderAjusteMasivoList(rubro = '') {
+        const container = document.getElementById('ajusteListContainer');
+        if (!container) return;
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const unsubscribe = _onSnapshot(collectionRef, async (snapshot) => {
+            let productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            _inventarioCache = productos; 
+            const segmentoOrderMap = await getSegmentoOrderMap();
+            if (segmentoOrderMap) {
+                productos.sort((a, b) => {
+                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                    if (orderA !== orderB) return orderA - orderB;
+                    if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                    return a.presentacion.localeCompare(b.presentacion);
+                });
+            }
+            if (rubro) {
+                productos = productos.filter(p => p.rubro === rubro);
+            }
+            if (productos.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
+                return;
+            }
+            let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-32">Cantidad Nueva (Unidades)</th></tr></thead><tbody>`;
+            let currentMarca = null;
+            productos.forEach(p => {
+                const marca = p.marca || 'Sin Marca';
+                if (marca !== currentMarca) {
+                    currentMarca = marca;
+                    tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
+                }
+                const cantidadActualUnidades = p.cantidadUnidades || 0;
+                tableHTML += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="py-2 px-4 border-b text-sm">
+                            <p class="font-semibold">${p.presentacion}</p>
+                            <p class="text-xs text-gray-600">Actual: ${cantidadActualUnidades} Unidades</p>
+                        </td>
+                        <td class="py-2 px-4 border-b text-center">
+                            <input type="number" value="${cantidadActualUnidades}" data-doc-id="${p.id}" class="w-24 p-1 text-center border rounded-lg">
+                        </td>
+                    </tr>
+                `;
+            });
+            tableHTML += `</tbody></table>`;
+            container.innerHTML = tableHTML;
+        });
+        _activeListeners.push(unsubscribe);
+    }
+    
+    /**
+     * Guarda los cambios de cantidad realizados masivamente.
+     */
+    async function handleGuardarAjusteMasivo() {
+        const inputs = document.querySelectorAll('#ajusteListContainer input[data-doc-id]');
+        if (inputs.length === 0) {
+            _showModal('Aviso', 'No hay cambios que guardar.');
+            return;
+        }
+        const batch = _writeBatch(_db);
+        let changesCount = 0;
+        inputs.forEach(input => {
+            const docId = input.dataset.docId;
+            const nuevaCantidadUnidades = parseInt(input.value, 10);
+            const productoOriginal = _inventarioCache.find(p => p.id === docId);
+            if (productoOriginal) {
+                if (!isNaN(nuevaCantidadUnidades) && (productoOriginal.cantidadUnidades || 0) !== nuevaCantidadUnidades) {
+                    const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
+                    batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
+                    changesCount++;
+                }
+            }
+        });
+
+        if (changesCount === 0) {
+            _showModal('Aviso', 'No se detectaron cambios en las cantidades.');
+            return;
+        }
+        _showModal('Confirmar Cambios', `Estás a punto de actualizar ${changesCount} producto(s). ¿Deseas continuar?`, async () => {
+            try {
+                await batch.commit();
+                _showModal('Éxito', 'Las cantidades del inventario se han actualizado correctamente.');
+                showInventarioSubMenu();
+            } catch (error) {
+                console.error("Error al guardar ajuste masivo:", error);
+                _showModal('Error', 'Hubo un error al guardar los cambios.');
+            }
+        });
+    }
+
+    /**
+     * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
+     */
+    function showModificarDatosView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar Datos Maestros</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Rubros</h3>
+                                <div id="rubros-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Segmentos</h3>
+                                <div id="segmentos-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-b pb-2">Marcas</h3>
+                                <div id="marcas-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                            </div>
+                        </div>
+                        <div class="mt-8 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="deleteAllDatosMaestrosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Datos Maestros</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('deleteAllDatosMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros);
+        renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
+        renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
+        renderDataListForEditing('marcas', 'marcas-list', 'Marca');
+    }
+
+    /**
+     * Renderiza una lista de datos (rubros, etc.) con botones para eliminar.
+     */
+    function renderDataListForEditing(collectionName, containerId, itemName) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
+            if (items.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-sm">No hay ${itemName.toLowerCase()}s.</p>`;
+                return;
+            }
+            container.innerHTML = items.map(item => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                    <span class="text-gray-800">${item.name}</span>
+                    <button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
+                </div>
+            `).join('');
+        });
+        _activeListeners.push(unsubscribe);
+    }
+
+    /**
+     * Maneja la eliminación de un item de datos maestros, con validación de uso.
+     */
+    async function handleDeleteDataItem(collectionName, itemName, itemType) {
+        const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' };
+        const fieldName = fieldMap[collectionName];
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const q = _query(inventarioRef, _where(fieldName, "==", itemName));
+        try {
+            const usageSnapshot = await _getDocs(q);
+            if (!usageSnapshot.empty) {
+                _showModal('Error al Eliminar', `No se puede eliminar el ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s).`);
+                return;
+            }
+            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el ${itemType.toLowerCase()} "${itemName}"?`, async () => {
+                const itemQuery = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`), _where("name", "==", itemName));
+                const itemSnapshot = await _getDocs(itemQuery);
+                if (!itemSnapshot.empty) {
+                    await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemSnapshot.docs[0].id));
+                    _showModal('Éxito', `${itemType} "${itemName}" ha sido eliminado.`);
+                } else _showModal('Error', `No se pudo encontrar el ${itemType.toLowerCase()} para eliminar.`);
+            });
+        } catch (error) {
+            _showModal('Error', 'Ocurrió un error al intentar eliminar el item.');
+        }
+    }
+
+    /**
+     * Muestra la vista para agregar un nuevo producto.
+     */
+    function showAgregarProductoView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
+                        <form id="productoForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                    <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                    <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                    <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
+                                <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="unidadesPorPaquete" class="block text-gray-700 font-medium mb-2">Unidades por Paquete:</label>
+                                <input type="number" id="unidadesPorPaquete" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="precioPorUnidad" class="block text-gray-700 font-medium mb-2">Precio por Unidad (USD):</label>
+                                <input type="number" step="0.01" id="precioPorUnidad" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="cantidadUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Total (Unidades):</label>
+                                <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
+                                <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <option value="16">IVA 16%</option>
+                                    <option value="0">Excento</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Producto</button>
+                        </form>
+                        <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        _populateDropdown('rubros', 'rubro', 'Rubro');
+        _populateDropdown('segmentos', 'segmento', 'Segmento');
+        _populateDropdown('marcas', 'marca', 'Marca');
+        document.getElementById('productoForm').addEventListener('submit', agregarProducto);
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
+        document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
+        document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
+    }
+
+    /**
+     * Agrega un nuevo producto al inventario. La cantidad se guarda en unidades.
+     */
+    async function agregarProducto(e) {
+        e.preventDefault();
+        const producto = {
+            rubro: document.getElementById('rubro').value,
+            segmento: document.getElementById('segmento').value,
+            marca: document.getElementById('marca').value,
+            presentacion: document.getElementById('presentacion').value.trim(),
+            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
+            precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
+            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10),
+            iva: parseInt(document.getElementById('ivaTipo').value, 10)
+        };
+        if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
+            _showModal('Error', 'Todos los campos de texto son obligatorios.');
+            return;
+        }
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const q = _query(inventarioRef, 
+                _where("rubro", "==", producto.rubro),
+                _where("segmento", "==", producto.segmento),
+                _where("marca", "==", producto.marca),
+                _where("presentacion", "==", producto.presentacion)
+            );
+            const querySnapshot = await _getDocs(q);
+            if (!querySnapshot.empty) {
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
+                return;
+            }
+            await _addDoc(inventarioRef, producto);
+            _showModal('Éxito', 'Producto agregado correctamente.');
+            e.target.reset();
+        } catch (err) {
+            console.error("Error al agregar producto:", err);
+            _showModal('Error', 'Hubo un error al guardar el producto.');
+        }
+    }
+
+    /**
+     * Muestra la vista de "Ver Inventario".
+     * AÑADIDO: Campo de búsqueda.
+     */
+    function showVerInventarioView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
+                        
+                        <!-- INICIO: Cambios para búsqueda -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                               <label for="verInventarioSearchInput" class="block text-gray-700 font-medium mb-2">Buscar por Presentación o Marca:</label>
+                               <input type="text" id="verInventarioSearchInput" class="w-full px-4 py-2 border rounded-lg" placeholder="Ej: Pepsi 1.5L...">
+                            </div>
+                            <div>
+                               <label for="verInventarioRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
+                               <select id="verInventarioRubroFilter" class="w-full px-4 py-2 border rounded-lg">
+                                   <option value="">Todos los Rubros</option>
+                               </select>
+                            </div>
+                        </div>
+                        <!-- FIN: Cambios para búsqueda -->
+
+                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        const rubroFilter = document.getElementById('verInventarioRubroFilter');
+        const searchInput = document.getElementById('verInventarioSearchInput');
+        
+        _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
+        
+        // Listeners para los filtros
+        rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true));
+        searchInput.addEventListener('input', () => renderProductosList('productosListContainer', true));
+
+        renderProductosList('productosListContainer', true);
+    }
+
+    /**
+     * Muestra la vista para modificar o eliminar un producto.
+     * AÑADIDO: Lógica para filtros en cascada.
+     */
+    function showModifyDeleteView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
+                        
+                        <!-- INICIO: Cambios para filtros en cascada -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
+                            <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
+                            <div>
+                                <label for="filter-rubro" class="text-sm font-medium">Rubro</label>
+                                <select id="filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-segmento" class="text-sm font-medium">Segmento</label>
+                                <select id="filter-segmento" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Rubro</option></select>
+                            </div>
+                             <div>
+                                <label for="filter-marca" class="text-sm font-medium">Marca</label>
+                                <select id="filter-marca" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Segmento</option></select>
+                            </div>
+                            <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
+                        </div>
+                        <!-- FIN: Cambios para filtros en cascada -->
+
+                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando productos...</p>
+                        </div>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Productos</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
+
+        // --- INICIO: Lógica de filtros en cascada ---
+        const searchInput = document.getElementById('search-input');
+        const rubroFilter = document.getElementById('filter-rubro');
+        const segmentoFilter = document.getElementById('filter-segmento');
+        const marcaFilter = document.getElementById('filter-marca');
+        const clearBtn = document.getElementById('clear-filters-btn');
+
+        // Cargar inventario en caché para usar en los filtros
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // Poblar el primer filtro (Rubro) una vez que el caché está listo
+            const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
+            rubroFilter.innerHTML = '<option value="">Todos</option>';
+            rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
+
+            // Restaurar estado de los filtros si existen
+            searchInput.value = _lastFilters.searchTerm;
+            rubroFilter.value = _lastFilters.rubro;
+            updateDependentFilters();
+            segmentoFilter.value = _lastFilters.segmento;
+            updateDependentFilters();
+            marcaFilter.value = _lastFilters.marca;
+            
+            // Renderizar la lista inicial
+            renderProductosList('productosListContainer', false);
+        });
+        _activeListeners.push(unsubscribe);
+
+
+        const applyAndSaveFilters = () => {
+            _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
+            _lastFilters.rubro = rubroFilter.value || '';
+            _lastFilters.segmento = segmentoFilter.value || '';
+            _lastFilters.marca = marcaFilter.value || '';
+            renderProductosList('productosListContainer', false);
+        };
+
+        const updateDependentFilters = () => {
+            const selectedRubro = rubroFilter.value;
+            const selectedSegmento = segmentoFilter.value;
+
+            // Actualizar Segmentos
+            segmentoFilter.innerHTML = '<option value="">Todos</option>';
+            if (selectedRubro) {
+                const segmentos = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro).map(p => p.segmento))].sort();
+                segmentos.forEach(s => segmentoFilter.innerHTML += `<option value="${s}">${s}</option>`);
+                segmentoFilter.disabled = false;
+            } else {
+                segmentoFilter.disabled = true;
+            }
+
+            // Actualizar Marcas
+            marcaFilter.innerHTML = '<option value="">Todos</option>';
+            if (selectedRubro && selectedSegmento) {
+                const marcas = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento).map(p => p.marca))].sort();
+                marcas.forEach(m => marcaFilter.innerHTML += `<option value="${m}">${m}</option>`);
+                marcaFilter.disabled = false;
+            } else {
+                marcaFilter.disabled = true;
+            }
+        };
+
+        searchInput.addEventListener('input', applyAndSaveFilters);
+        rubroFilter.addEventListener('change', () => {
+            segmentoFilter.value = '';
+            marcaFilter.value = '';
+            updateDependentFilters();
+            applyAndSaveFilters();
+        });
+        segmentoFilter.addEventListener('change', () => {
+            marcaFilter.value = '';
+            updateDependentFilters();
+            applyAndSaveFilters();
+        });
+        marcaFilter.addEventListener('change', applyAndSaveFilters);
+        
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            rubroFilter.value = '';
+            segmentoFilter.value = '';
+            marcaFilter.value = '';
+            updateDependentFilters();
+            applyAndSaveFilters();
+        });
+
+        // --- FIN: Lógica de filtros en cascada ---
+    }
+
+
+    /**
+     * Renderiza la lista de productos en una tabla, mostrando cantidades en unidades y paquetes.
+     * MODIFICADO: para soportar la nueva búsqueda en "Ver Inventario".
+     */
+    async function renderProductosList(elementId, readOnly = false) {
+        const container = document.getElementById(elementId);
+        if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-center">Cargando y ordenando productos...</p>`;
+        
+        // Ya no se suscribe aquí, usa el _inventarioCache que ya está actualizado por el listener.
+        let productos = [..._inventarioCache]; 
+
+        const segmentoOrderMap = await getSegmentoOrderMap();
+        if (segmentoOrderMap) {
+            productos.sort((a, b) => {
+                const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                if (orderA !== orderB) return orderA - orderB;
+                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
+                return a.presentacion.localeCompare(b.presentacion);
+            });
+        }
+
+        if (readOnly) {
+            // Lógica para "Ver Inventario"
+            const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
+            const searchTerm = document.getElementById('verInventarioSearchInput')?.value.toLowerCase() || '';
+
+            if (rubroFilter) productos = productos.filter(p => p.rubro === rubroFilter);
+            if (searchTerm) {
+                productos = productos.filter(p => 
+                    (p.presentacion && p.presentacion.toLowerCase().includes(searchTerm)) ||
+                    (p.marca && p.marca.toLowerCase().includes(searchTerm))
+                );
+            }
+
+        } else {
+            // Lógica para "Modificar/Eliminar"
+            productos = productos.filter(p => {
+                return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
+                       (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
+                       (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
+                       (!_lastFilters.marca || p.marca === _lastFilters.marca);
+            });
+        }
+
+        if (productos.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
+            return;
+        }
+        
+        let tableHTML = `<table class="min-w-full bg-white border border-gray-200 text-sm"><thead class="bg-gray-200 sticky top-0"><tr>
+            <th class="py-2 px-3 border-b text-left">Presentación</th>
+            <th class="py-2 px-3 border-b text-center">Uds/Paq</th>
+            <th class="py-2 px-3 border-b text-right">Precio/Ud</th>
+            <th class="py-2 px-3 border-b text-right">Precio/Paq</th>
+            <th class="py-2 px-3 border-b text-center">Stock (Uds)</th>
+            <th class="py-2 px-3 border-b text-center">Stock (Paq)</th>
+            ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
+        </tr></thead><tbody>`;
+
+        let currentMarca = null;
+        productos.forEach(p => {
+            const marca = p.marca || 'Sin Marca';
+            if (marca !== currentMarca) {
+                currentMarca = marca;
+                tableHTML += `<tr><td colspan="${readOnly ? 6 : 7}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+            }
+            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+            const precioPaquete = (p.precioPorUnidad || 0) * unidadesPorPaquete;
+            const stockPaquetes = Math.floor((p.cantidadUnidades || 0) / unidadesPorPaquete);
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b align-middle font-medium">${producto.marca || ''} ${producto.presentacion || ''}</td>
-                    <td class="py-2 px-3 border-b align-middle">${producto.rubro || 'N/A'}</td>
-                    <td class="py-2 px-3 border-b text-right align-middle">$${(producto.precioPorUnidad || 0).toFixed(2)}</td>
-                    <td class="py-2 px-3 border-b text-right align-middle font-semibold">${producto.cantidadUnidades || 0}</td>
-                    <td class="py-2 px-3 border-b text-center align-middle">
-                        <button onclick="window.inventarioModule.editProducto('${producto.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-lg hover:bg-yellow-600">Editar</button>
-                        <button onclick="window.inventarioModule.deleteProducto('${producto.id}')" class="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 ml-1">Eliminar</button>
-                    </td>
+                    <td class="py-2 px-3 border-b">${p.presentacion} (${p.segmento})</td>
+                    <td class="py-2 px-3 border-b text-center">${unidadesPorPaquete}</td>
+                    <td class="py-2 px-3 border-b text-right">$${(p.precioPorUnidad || 0).toFixed(2)}</td>
+                    <td class="py-2 px-3 border-b text-right font-semibold">$${precioPaquete.toFixed(2)}</td>
+                    <td class="py-2 px-3 border-b text-center font-bold">${p.cantidadUnidades || 0}</td>
+                    <td class="py-2 px-3 border-b text-center">${stockPaquetes}</td>
+                    ${!readOnly ? `
+                    <td class="py-2 px-3 border-b text-center space-x-2">
+                        <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Editar</button>
+                        <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
+                    </td>` : ''}
                 </tr>
             `;
         });
         tableHTML += `</tbody></table>`;
         container.innerHTML = tableHTML;
     }
-
-    // ... El resto de las funciones (showAddOrEditProductoView, showDatosMaestrosView, etc.) permanecen igual.
-    // Solo se necesitará ajustar la llamada a renderInventario si se modifica desde otras vistas.
-    // A continuación, se incluyen las funciones sin modificar para que el archivo esté completo.
-
-    /**
-     * Muestra la vista para agregar o editar un producto.
-     * Si se proporciona un productoId, carga los datos para editar.
-     */
-    function showAddOrEditProductoView(productoId = null) {
-        const esEdicion = productoId !== null;
-        const titulo = esEdicion ? 'Editar Producto' : 'Agregar Nuevo Producto';
-        _mainContent.innerHTML = `
-            <div class="p-4 w-full">
-                <div class="bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-xl">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-6">${titulo}</h2>
-                    <form id="productoForm" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label class="block text-gray-700">Código de Barras</label><input type="text" id="codigo" class="w-full px-3 py-2 border rounded-lg"></div>
-                            <div><label class="block text-gray-700">Rubro</label><select id="rubro" class="w-full px-3 py-2 border rounded-lg"></select></div>
-                            <div><label class="block text-gray-700">Segmento</label><select id="segmento" class="w-full px-3 py-2 border rounded-lg"></select></div>
-                            <div><label class="block text-gray-700">Marca</label><select id="marca" class="w-full px-3 py-2 border rounded-lg"></select></div>
-                            <div><label class="block text-gray-700">Presentación</label><input type="text" id="presentacion" class="w-full px-3 py-2 border rounded-lg"></div>
-                            <div><label class="block text-gray-700">Unidades por Paquete</label><input type="number" id="unidadesPorPaquete" class="w-full px-3 py-2 border rounded-lg"></div>
-                            <div><label class="block text-gray-700">Precio por Paquete (USD)</label><input type="number" step="0.01" id="precioPorPaquete" class="w-full px-3 py-2 border rounded-lg"></div>
-                            <div><label class="block text-gray-700">Precio por Unidad (USD)</label><input type="number" step="0.01" id="precioPorUnidad" class="w-full px-3 py-2 border rounded-lg" readonly></div>
-                            <div><label class="block text-gray-700">Cantidad de Paquetes (Stock)</label><input type="number" id="cantidadPaquetes" class="w-full px-3 py-2 border rounded-lg"></div>
-                            <div><label class="block text-gray-700">Cantidad de Unidades (Stock)</label><input type="number" id="cantidadUnidades" class="w-full px-3 py-2 border rounded-lg" readonly></div>
-                            <div><label class="block text-gray-700">IVA (%)</label><input type="number" id="iva" class="w-full px-3 py-2 border rounded-lg" value="0"></div>
-                        </div>
-                        <div class="flex space-x-4 mt-6">
-                            <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar</button>
-                            <button type="button" id="backBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('backBtn').addEventListener('click', showInventarioSubMenu);
-
-        // Llenar los dropdowns
-        _populateDropdown('rubros', 'rubro', 'Rubro');
-        _populateDropdown('segmentos', 'segmento', 'Segmento');
-        _populateDropdown('marcas', 'marca', 'Marca');
-
-        // Lógica para calcular precios y cantidades
-        const unidadesInput = document.getElementById('unidadesPorPaquete');
-        const precioPaqueteInput = document.getElementById('precioPorPaquete');
-        const precioUnidadInput = document.getElementById('precioPorUnidad');
-        const cantidadPaquetesInput = document.getElementById('cantidadPaquetes');
-        const cantidadUnidadesInput = document.getElementById('cantidadUnidades');
-
-        function updateCalculos() {
-            const unidades = parseFloat(unidadesInput.value) || 0;
-            const precioPaquete = parseFloat(precioPaqueteInput.value) || 0;
-            const cantidadPaquetes = parseFloat(cantidadPaquetesInput.value) || 0;
-
-            if (unidades > 0) {
-                precioUnidadInput.value = (precioPaquete / unidades).toFixed(2);
-            } else {
-                precioUnidadInput.value = '';
-            }
-            cantidadUnidadesInput.value = Math.floor(cantidadPaquetes * unidades);
-        }
-
-        unidadesInput.addEventListener('input', updateCalculos);
-        precioPaqueteInput.addEventListener('input', updateCalculos);
-        cantidadPaquetesInput.addEventListener('input', updateCalculos);
-
-        if (esEdicion) {
-            const producto = _inventarioCache.find(p => p.id === productoId);
-            if (producto) {
-                document.getElementById('codigo').value = producto.codigo || '';
-                document.getElementById('rubro').value = producto.rubro || '';
-                document.getElementById('segmento').value = producto.segmento || '';
-                document.getElementById('marca').value = producto.marca || '';
-                document.getElementById('presentacion').value = producto.presentacion || '';
-                document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || '';
-                document.getElementById('precioPorPaquete').value = producto.precioPorPaquete || '';
-                document.getElementById('cantidadPaquetes').value = producto.cantidadPaquetes || '';
-                document.getElementById('iva').value = producto.iva || 0;
-                updateCalculos(); // Para llenar campos calculados
-            }
-        }
-
-        document.getElementById('productoForm').addEventListener('submit', (e) => handleSaveProducto(e, productoId));
-    }
-
-    /**
-     * Maneja el guardado de un producto (nuevo o editado).
-     */
-    async function handleSaveProducto(e, productoId) {
-        e.preventDefault();
-        const productoData = {
-            codigo: document.getElementById('codigo').value,
-            rubro: document.getElementById('rubro').value,
-            segmento: document.getElementById('segmento').value,
-            marca: document.getElementById('marca').value,
-            presentacion: document.getElementById('presentacion').value,
-            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
-            precioPorPaquete: parseFloat(document.getElementById('precioPorPaquete').value),
-            precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
-            cantidadPaquetes: parseInt(document.getElementById('cantidadPaquetes').value, 10),
-            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10),
-            iva: parseFloat(document.getElementById('iva').value)
-        };
-
-        try {
-            if (productoId) {
-                // Editar
-                const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoId);
-                await _setDoc(docRef, productoData);
-                _showModal('Éxito', 'Producto actualizado correctamente.', showModificarEliminarView);
-            } else {
-                // Agregar
-                await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), productoData);
-                _showModal('Éxito', 'Producto agregado correctamente.', showInventarioSubMenu);
-            }
-        } catch (error) {
-            _showModal('Error', `Ocurrió un error al guardar el producto: ${error.message}`);
-        }
-    }
     
     /**
-     * Muestra la vista para gestionar datos maestros (Rubros, Segmentos, Marcas).
+     * Muestra el formulario para editar un producto. La cantidad se maneja en unidades.
      */
-    function showDatosMaestrosView() {
+    function editProducto(productId) {
+        _floatingControls.classList.add('hidden');
+        const producto = _inventarioCache.find(p => p.id === productId);
+        if (!producto) return;
+
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Gestionar Datos Maestros</h2>
-                        <p class="text-gray-600 mb-6">Agrega o elimina las categorías base para tus productos.</p>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <button id="addRubroBtn" class="w-full px-4 py-2 bg-sky-500 text-white rounded-lg">Agregar Rubro</button>
-                            <button id="addSegmentoBtn" class="w-full px-4 py-2 bg-sky-500 text-white rounded-lg">Agregar Segmento</button>
-                            <button id="addMarcaBtn" class="w-full px-4 py-2 bg-sky-500 text-white rounded-lg">Agregar Marca</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <div><h3 class="font-bold mb-2">Rubros</h3><ul id="rubrosList" class="text-left space-y-1"></ul></div>
-                            <div><h3 class="font-bold mb-2">Segmentos</h3><ul id="segmentosList" class="text-left space-y-1"></ul></div>
-                            <div><h3 class="font-bold mb-2">Marcas</h3><ul id="marcasList" class="text-left space-y-1"></ul></div>
-                        </div>
-                         <div class="mt-8 border-t pt-6">
-                             <button id="deleteAllMaestrosBtn" class="w-full md:w-auto px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800">Eliminar Todos los Datos Maestros</button>
-                        </div>
-                        <button id="backToInventarioMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
+                        <form id="editProductoForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="editPresentacion" class="block text-gray-700 font-medium">Presentación:</label>
+                                <input type="text" id="editPresentacion" value="${producto.presentacion}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editUnidadesPorPaquete" class="block text-gray-700 font-medium">Unidades por Paquete:</label>
+                                <input type="number" id="editUnidadesPorPaquete" value="${producto.unidadesPorPaquete || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editPrecioPorUnidad" class="block text-gray-700 font-medium">Precio por Unidad (USD):</label>
+                                <input type="number" step="0.01" id="editPrecioPorUnidad" value="${producto.precioPorUnidad || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editCantidadUnidades" class="block text-gray-700 font-medium">Cantidad Total (Unidades):</label>
+                                <input type="number" id="editCantidadUnidades" value="${producto.cantidadUnidades || 0}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                             <div>
+                                <label for="editIvaTipo" class="block text-gray-700 font-medium">Tipo de IVA:</label>
+                                <select id="editIvaTipo" class="w-full px-4 py-2 border rounded-lg" required>
+                                    <option value="16" ${producto.iva === 16 ? 'selected' : ''}>IVA 16%</option>
+                                    <option value="0" ${producto.iva === 0 ? 'selected' : ''}>Excento</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                        </form>
+                        <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
-
-        document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
-        document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
-        document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
-        document.getElementById('backToInventarioMenuBtn').addEventListener('click', showInventarioSubMenu);
-        document.getElementById('deleteAllMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros);
         
-        renderDataList('rubros', 'rubrosList');
-        renderDataList('segmentos', 'segmentosList');
-        renderDataList('marcas', 'marcasList');
-    }
-    
-    function renderDataList(collectionName, elementId) {
-        const listElement = document.getElementById(elementId);
-        if (!listElement) return;
-
-        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
-        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })).sort((a,b) => a.name.localeCompare(b.name));
-            listElement.innerHTML = '';
-            items.forEach(item => {
-                const li = document.createElement('li');
-                li.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
-                li.textContent = item.name;
-                const deleteBtn = document.createElement('button');
-                deleteBtn.innerHTML = '&times;';
-                deleteBtn.className = 'ml-2 text-red-500 font-bold hover:text-red-700';
-                deleteBtn.onclick = () => handleDeleteDataItem(collectionName, item.id, item.name);
-                li.appendChild(deleteBtn);
-                listElement.appendChild(li);
-            });
-        });
-        _activeListeners.push(unsubscribe);
-    }
-    
-    async function handleDeleteDataItem(collectionName, itemId, itemName) {
-        const singularName = collectionName.slice(0, -1); 
-        const q = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`), _where(singularName, '==', itemName));
-        
-        try {
-            const usageSnapshot = await _getDocs(q);
-            if (!usageSnapshot.empty) {
-                _showModal('Error', `No se puede eliminar "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s).`);
-                return;
+        document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
+                    presentacion: document.getElementById('editPresentacion').value.trim(),
+                    unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
+                    precioPorUnidad: parseFloat(document.getElementById('editPrecioPorUnidad').value),
+                    cantidadUnidades: parseInt(document.getElementById('editCantidadUnidades').value, 10),
+                    iva: parseInt(document.getElementById('editIvaTipo').value, 10)
+                }, { merge: true });
+                _showModal('Éxito', 'Producto modificado exitosamente.');
+                showModifyDeleteView();
+            } catch (err) {
+                _showModal('Error', 'Hubo un error al modificar el producto.');
             }
-            
-            _showModal('Confirmar Eliminación', `¿Seguro que quieres eliminar "${itemName}"?`, async () => {
-                await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemId));
-            });
+        });
+        document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
+    };
 
-        } catch (error) {
-            _showModal('Error', `Ocurrió un error: ${error.message}`);
-        }
+    /**
+     * Elimina un producto.
+     */
+    function deleteProducto(productId) {
+        _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
+            try {
+                await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId));
+                _showModal('Éxito', 'Producto eliminado correctamente.');
+            } catch (e) {
+                _showModal('Error', 'Hubo un error al eliminar el producto.');
+            }
+        });
+    };
+
+    /**
+     * Maneja la eliminación de TODOS los productos del inventario.
+     */
+    async function handleDeleteAllProductos() {
+        _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los productos del inventario? Esta acción es irreversible.', async () => {
+            _showModal('Progreso', 'Eliminando todos los productos...');
+            try {
+                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                const snapshot = await _getDocs(collectionRef);
+                if (snapshot.empty) {
+                    _showModal('Aviso', 'No hay productos para eliminar.');
+                    return;
+                }
+                const batch = _writeBatch(_db);
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                _showModal('Éxito', 'Todos los productos han sido eliminados.');
+            } catch (error) {
+                console.error("Error al eliminar todos los productos:", error);
+                _showModal('Error', 'Hubo un error al eliminar los productos.');
+            }
+        });
     }
 
+    /**
+     * Maneja la eliminación de TODOS los datos maestros (Rubros, Segmentos, Marcas).
+     */
     async function handleDeleteAllDatosMaestros() {
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando datos maestros...');
@@ -530,45 +989,6 @@
             }
         });
     }
-    
-    // Funciones públicas
-    function editProducto(productoId) {
-        showAddOrEditProductoView(productoId);
-    }
-
-    function deleteProducto(productoId) {
-        const producto = _inventarioCache.find(p => p.id === productoId);
-        _showModal('Confirmar Eliminación', `¿Seguro que quieres eliminar el producto "${producto.marca} ${producto.presentacion}"?`, async () => {
-            try {
-                await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoId));
-                // No se necesita llamar a renderInventario() porque el onSnapshot lo hará automáticamente.
-            } catch (error) {
-                 _showModal('Error', `Ocurrió un error al eliminar el producto: ${error.message}`);
-            }
-        });
-    }
-    
-    async function getSegmentoOrderMap() {
-        if (_segmentoOrderCache) return _segmentoOrderCache;
-        const map = {};
-        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
-        try {
-            const snapshot = await _getDocs(segmentosRef);
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
-            });
-            _segmentoOrderCache = map;
-            return map;
-        } catch (e) {
-            return null;
-        }
-    }
-    
-    function invalidateSegmentOrderCache() {
-        _segmentoOrderCache = null;
-    }
-
 
     // Exponer funciones públicas al objeto window
     window.inventarioModule = {
