@@ -502,7 +502,7 @@
             if (cantUnd > 0) cantidadDesc += `${cantUnd} UND, `;
             cantidadDesc = cantidadDesc.slice(0, -2); 
 
-            let presentacionModificada = `${p.marca || ''} ${p.presentacion} (${p.segmento})`;
+            let presentacionModificada = `${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`;
             
             productosHTML += `
                 <tr class="align-top">
@@ -520,8 +520,8 @@
         return `
             <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-5xl uppercase">${titulo}</h2>
-                    <p class="text-4xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                    <h2 class="text-4xl uppercase">${titulo}</h2>
+                    <p class="text-3xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
                 <div class="text-3xl mt-8">
                     <p>FECHA: ${fecha}</p>
@@ -563,7 +563,7 @@
         const clienteNombre = toTitleCase(venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
         const clienteNombrePersonal = toTitleCase((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
         
-        const LINE_WIDTH = 42; 
+        const LINE_WIDTH = 48; 
         let total = 0;
         let ticket = '';
 
@@ -597,19 +597,19 @@
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
-        const header = ['Cant.'.padEnd(9), 'Producto'.padEnd(16), 'Precio'.padEnd(8), 'Subtotal'.padStart(9)].join('');
+        const header = ['Cant.'.padEnd(9), 'Producto'.padEnd(20), 'Precio'.padEnd(9), 'Subtotal'.padStart(10)].join('');
         ticket += header + '\n';
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
-            const cant = p.cantidadVendida || p;
+            const cant = p.cantidadVendida || p; 
             const cantCj = cant.cantCj || cant.cj || 0;
             const cantPaq = cant.cantPaq || cant.paq || 0;
             const cantUnd = cant.cantUnd || cant.und || 0;
 
             const addProductLine = (quantity, unitLabel, unitPrice, lineSubtotal, productNameInfo) => {
-                const wrappedProductName = wordWrap(productNameInfo, 16);
+                const wrappedProductName = wordWrap(productNameInfo, 20);
                 wrappedProductName.forEach((line, index) => {
                     const qtyStr = index === 0 ? `${quantity} ${unitLabel}` : '';
                     const priceStr = index === 0 ? `$${unitPrice.toFixed(2)}` : '';
@@ -617,14 +617,14 @@
                     
                     ticket += [
                         qtyStr.padEnd(9),
-                        line.padEnd(16),
-                        priceStr.padEnd(8),
-                        subtotalStr.padStart(9)
+                        line.padEnd(20),
+                        priceStr.padEnd(9),
+                        subtotalStr.padStart(10)
                     ].join('') + '\n';
                 });
             };
 
-            const productNameBase = toTitleCase(`${p.marca || ''} ${p.presentacion} (${p.segmento})`);
+            const productNameBase = toTitleCase(`${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`);
             
             if (cantCj > 0) {
                 total += (precios.cj || 0) * cantCj;
@@ -1693,3 +1693,4 @@
         }
     };
 })();
+
