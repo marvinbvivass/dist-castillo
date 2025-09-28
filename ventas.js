@@ -352,7 +352,7 @@
             
             const ventaPor = producto.ventaPor || { und: true };
             const ventaActualProducto = _ventaActual.productos[producto.id] || {};
-            const precios = producto.precios || {};
+            const precios = producto.precios || { und: producto.precioPorUnidad || 0 };
             
             const formatPrice = (value) => {
                 if (_monedaActual === 'COP') return `COP ${(Math.ceil((value * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
@@ -368,7 +368,7 @@
                         <input type="number" min="0" max="${max}" value="${cant}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="${tipo}" oninput="window.ventasModule.handleQuantityChange(event)">
                     </td>
                     <td class="py-2 px-2 text-left align-middle">${desc}</td>
-                    <td class="py-2 px-2 text-left align-middle font-semibold">${formatPrice(precio)}</td>
+                    <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${formatPrice(precio)}</td>
                     <td class="py-2 px-2 text-center align-middle">${stock}</td>
                 `;
                 inventarioTableBody.appendChild(row);
@@ -455,7 +455,7 @@
         if(!totalEl) return;
         
         const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
-            const precios = p.precios || {};
+            const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const subtotal = 
                 (precios.cj || 0) * (p.cantCj || 0) +
                 (precios.paq || 0) * (p.cantPaq || 0) +
@@ -483,7 +483,7 @@
         let total = 0;
         
         let productosHTML = productos.map(p => {
-            const precios = p.precios || {};
+            const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const subtotal = 
                 (precios.cj || 0) * (p.cantCj || 0) +
                 (precios.paq || 0) * (p.cantPaq || 0) +
@@ -611,7 +611,7 @@
         
         // Productos
         productos.forEach(p => {
-            const precios = p.precios || {};
+            const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const subtotal = 
                 (precios.cj || 0) * (p.cantCj || 0) +
                 (precios.paq || 0) * (p.cantPaq || 0) +
@@ -783,7 +783,7 @@
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                     }
 
-                    const precios = p.precios || {};
+                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
                     const subtotal = 
                         (precios.cj || 0) * (p.cantCj || 0) +
                         (precios.paq || 0) * (p.cantPaq || 0) +
@@ -1645,7 +1645,7 @@
 
                 let nuevoTotal = 0;
                 const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
-                     const precios = p.precios || {};
+                     const precios = p.precios || { und: p.precioPorUnidad || 0 };
                      const subtotal = 
                         (precios.cj || 0) * (p.cantCj || 0) +
                         (precios.paq || 0) * (p.cantPaq || 0) +
@@ -1699,4 +1699,3 @@
         }
     };
 })();
-
