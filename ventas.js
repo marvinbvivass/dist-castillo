@@ -3,11 +3,10 @@
 (function() {
     // Variables locales del módulo
     let _db, _userId, _appId, _mainContent, _floatingControls;
-    let _showMainMenu, _showModal;
+    let _showMainMenu, _showModal, _activeListeners;
     let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
     
     // Variables específicas del módulo
-    let _ventasActiveListeners = [];
     let _clientesCache = [];
     let _inventarioCache = [];
     let _ventasGlobal = [];
@@ -18,14 +17,6 @@
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
-    
-    /**
-     * Limpia todos los listeners activos del módulo.
-     */
-    function cleanupVentasListeners() {
-        _ventasActiveListeners.forEach(unsub => unsub());
-        _ventasActiveListeners = [];
-    }
 
     /**
      * Obtiene y cachea el mapa de orden de los rubros.
@@ -84,6 +75,7 @@
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
+        _activeListeners = dependencies.activeListeners; // Usa la lista global
         _collection = dependencies.collection;
         _onSnapshot = dependencies.onSnapshot;
         _doc = dependencies.doc;
@@ -102,7 +94,6 @@
      * Renderiza la vista principal de ventas.
      */
     window.showVentasView = function() {
-        cleanupVentasListeners();
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -129,7 +120,6 @@
      * Renderiza la vista para iniciar una nueva venta.
      */
     function showNuevaVentaView() {
-        cleanupVentasListeners();
         _originalVentaForEdit = null;
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
@@ -236,7 +226,7 @@
             }
         });
 
-        _ventasActiveListeners.push(unsubClientes, unsubInventario);
+        _activeListeners.push(unsubClientes, unsubInventario);
     }
     
     /**
@@ -776,7 +766,6 @@
      * Muestra la vista de ventas totales.
      */
     function showVentasTotalesView() {
-        cleanupVentasListeners();
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -803,7 +792,6 @@
      * Muestra la vista con la lista de todas las ventas actuales.
      */
     function showVentasActualesView() {
-        cleanupVentasListeners();
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 w-full">
@@ -872,14 +860,13 @@
             console.error("Error cargando ventas: ", error);
             container.innerHTML = `<p class="text-center text-red-500">Error al cargar las ventas.</p>`;
         });
-        _ventasActiveListeners.push(unsubscribe);
+        _activeListeners.push(unsubscribe);
     }
     
     /**
      * Muestra el submenú de opciones para el cierre de ventas.
      */
     function showCierreSubMenuView() {
-        cleanupVentasListeners();
          _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -1406,7 +1393,6 @@
      * Inicia la edición de una venta existente.
      */
     function editVenta(ventaId) {
-        cleanupVentasListeners();
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) {
             _showModal('Error', 'No se pudo encontrar la venta para editar.');
