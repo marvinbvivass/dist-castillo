@@ -512,14 +512,41 @@
         let total = 0;
         let ticket = '';
 
-        const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
+        // Helper for centering text
+        const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
+
+        // Helper for intelligent word wrapping
+        const wordWrap = (text, maxWidth) => {
+            const lines = [];
+            if (!text) return lines;
+            let currentLine = '';
+            const words = text.split(' ');
+            for (const word of words) {
+                if ((currentLine + ' ' + word).trim().length > maxWidth && currentLine.length > 0) {
+                    lines.push(currentLine.trim());
+                    currentLine = word;
+                } else {
+                    currentLine = (currentLine + ' ' + word).trim();
+                }
+            }
+            if (currentLine) {
+                lines.push(currentLine.trim());
+            }
+            return lines;
+        };
         
         // Encabezado
+        ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n';
         ticket += center('NOTA DE ENTREGA') + '\n';
-        ticket += center('(no valido como factura fiscal)') + '\n';
-        ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n\n';
+        ticket += center('(no valido como factura fiscal)') + '\n\n';
+        
+        // Datos del cliente (con word wrap)
+        const wrappedClientName = wordWrap(`CLIENTE: ${clienteNombre}`, LINE_WIDTH);
+        wrappedClientName.forEach(line => {
+            ticket += line + '\n';
+        });
         ticket += `FECHA: ${fecha}\n`;
-        ticket += `CLIENTE: ${clienteNombre}\n`;
+
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         // Cabecera de la tabla
@@ -550,20 +577,12 @@
             const unitPriceStr = `$${precioUnitario.toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
-            let lines = [];
-            let tempName = productName;
-            while(tempName.length > 20) {
-                let breakPoint = tempName.lastIndexOf(' ', 20);
-                if (breakPoint === -1) breakPoint = 20;
-                lines.push(tempName.substring(0, breakPoint));
-                tempName = tempName.substring(breakPoint).trim();
-            }
-            lines.push(tempName);
+            const wrappedProductName = wordWrap(productName, 20); // Wrap product name
 
-            lines.forEach((line, index) => {
+            wrappedProductName.forEach((line, index) => {
                 const q = index === 0 ? quantity : '';
                 const uPrice = index === 0 ? unitPriceStr : '';
-                const sTotal = index === lines.length - 1 ? subtotalStr : '';
+                const sTotal = index === wrappedProductName.length - 1 ? subtotalStr : '';
 
                 ticket += [
                     q.padEnd(5),
