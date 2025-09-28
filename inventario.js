@@ -638,7 +638,7 @@
 
     /**
      * Muestra la vista para modificar o eliminar un producto.
-     * AÑADIDO: Lógica para filtros en cascada.
+     * CORREGIDO: Lógica para filtros en cascada.
      */
     function showModifyDeleteView() {
         _floatingControls.classList.add('hidden');
@@ -648,7 +648,6 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
                         
-                        <!-- INICIO: Cambios para filtros en cascada -->
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
                             <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
                             <div>
@@ -665,7 +664,6 @@
                             </div>
                             <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
                         </div>
-                        <!-- FIN: Cambios para filtros en cascada -->
 
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
@@ -681,50 +679,36 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
 
-        // --- INICIO: Lógica de filtros en cascada ---
+        // --- INICIO: Lógica CORREGIDA de filtros en cascada ---
         const searchInput = document.getElementById('search-input');
         const rubroFilter = document.getElementById('filter-rubro');
         const segmentoFilter = document.getElementById('filter-segmento');
         const marcaFilter = document.getElementById('filter-marca');
         const clearBtn = document.getElementById('clear-filters-btn');
 
-        // Cargar inventario en caché para usar en los filtros
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // Poblar el primer filtro (Rubro) una vez que el caché está listo
             const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
             rubroFilter.innerHTML = '<option value="">Todos</option>';
             rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
 
-            // Restaurar estado de los filtros si existen
             searchInput.value = _lastFilters.searchTerm;
             rubroFilter.value = _lastFilters.rubro;
-            updateDependentFilters();
+            
+            updateSegmentoFilter();
             segmentoFilter.value = _lastFilters.segmento;
-            updateDependentFilters();
+            
+            updateMarcaFilter();
             marcaFilter.value = _lastFilters.marca;
             
-            // Renderizar la lista inicial
             renderProductosList('productosListContainer', false);
         });
         _activeListeners.push(unsubscribe);
 
-
-        const applyAndSaveFilters = () => {
-            _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
-            _lastFilters.rubro = rubroFilter.value || '';
-            _lastFilters.segmento = segmentoFilter.value || '';
-            _lastFilters.marca = marcaFilter.value || '';
-            renderProductosList('productosListContainer', false);
-        };
-
-        const updateDependentFilters = () => {
+        function updateSegmentoFilter() {
             const selectedRubro = rubroFilter.value;
-            const selectedSegmento = segmentoFilter.value;
-
-            // Actualizar Segmentos
             segmentoFilter.innerHTML = '<option value="">Todos</option>';
             if (selectedRubro) {
                 const segmentos = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro).map(p => p.segmento))].sort();
@@ -733,8 +717,11 @@
             } else {
                 segmentoFilter.disabled = true;
             }
+        }
 
-            // Actualizar Marcas
+        function updateMarcaFilter() {
+            const selectedRubro = rubroFilter.value;
+            const selectedSegmento = segmentoFilter.value;
             marcaFilter.innerHTML = '<option value="">Todos</option>';
             if (selectedRubro && selectedSegmento) {
                 const marcas = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento).map(p => p.marca))].sort();
@@ -743,32 +730,39 @@
             } else {
                 marcaFilter.disabled = true;
             }
+        }
+
+        function applyAndSaveFilters() {
+            _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
+            _lastFilters.rubro = rubroFilter.value || '';
+            _lastFilters.segmento = segmentoFilter.value || '';
+            _lastFilters.marca = marcaFilter.value || '';
+            renderProductosList('productosListContainer', false);
         };
 
         searchInput.addEventListener('input', applyAndSaveFilters);
+        
         rubroFilter.addEventListener('change', () => {
-            segmentoFilter.value = '';
-            marcaFilter.value = '';
-            updateDependentFilters();
+            updateSegmentoFilter();
+            updateMarcaFilter(); // Se resetea porque segmento cambió a ''
             applyAndSaveFilters();
         });
+        
         segmentoFilter.addEventListener('change', () => {
-            marcaFilter.value = '';
-            updateDependentFilters();
+            updateMarcaFilter();
             applyAndSaveFilters();
         });
+
         marcaFilter.addEventListener('change', applyAndSaveFilters);
         
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             rubroFilter.value = '';
-            segmentoFilter.value = '';
-            marcaFilter.value = '';
-            updateDependentFilters();
+            updateSegmentoFilter();
+            updateMarcaFilter();
             applyAndSaveFilters();
         });
-
-        // --- FIN: Lógica de filtros en cascada ---
+        // --- FIN: Lógica CORREGIDA de filtros en cascada ---
     }
 
 
@@ -779,9 +773,9 @@
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
-        container.innerHTML = `<p class="text-gray-500 text-center">Cargando y ordenando productos...</p>`;
         
-        // Ya no se suscribe aquí, usa el _inventarioCache que ya está actualizado por el listener.
+        // Se quita el "Cargando" de aquí para evitar parpadeo. Se renderiza desde la caché.
+        
         let productos = [..._inventarioCache]; 
 
         const segmentoOrderMap = await getSegmentoOrderMap();
@@ -791,7 +785,7 @@
                 const orderB = segmentoOrderMap[b.segmento] ?? 9999;
                 if (orderA !== orderB) return orderA - orderB;
                 if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
-                return a.presentacion.localeCompare(b.presentacion);
+                return (a.presentacion || '').localeCompare(b.presentacion);
             });
         }
 
