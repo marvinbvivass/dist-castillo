@@ -352,6 +352,7 @@
             
             const ventaPor = producto.ventaPor || { und: true };
             const ventaActualProducto = _ventaActual.productos[producto.id] || {};
+            const precios = producto.precios || {};
             
             const formatPrice = (value) => {
                 if (_monedaActual === 'COP') return `COP ${(Math.ceil((value * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
@@ -379,7 +380,7 @@
                     'cj',
                     ventaActualProducto.cantCj || 0,
                     Math.floor(producto.cantidadUnidades / unidadesPorCaja),
-                    producto.precioPorUnidad * unidadesPorCaja,
+                    precios.cj || 0,
                     `${Math.floor(producto.cantidadUnidades / unidadesPorCaja)} Cj`,
                     `${producto.presentacion} (Cj. con ${unidadesPorCaja} unds)`
                 );
@@ -390,7 +391,7 @@
                     'paq',
                     ventaActualProducto.cantPaq || 0,
                     Math.floor(producto.cantidadUnidades / unidadesPorPaquete),
-                    producto.precioPorUnidad * unidadesPorPaquete,
+                    precios.paq || 0,
                     `${Math.floor(producto.cantidadUnidades / unidadesPorPaquete)} Paq`,
                     `${producto.presentacion} (Paq. con ${unidadesPorPaquete} unds)`
                 );
@@ -400,7 +401,7 @@
                     'und',
                     ventaActualProducto.cantUnd || 0,
                     producto.cantidadUnidades,
-                    producto.precioPorUnidad,
+                    precios.und || 0,
                     `${producto.cantidadUnidades} Und`,
                     `${producto.presentacion}`
                 );
@@ -454,7 +455,12 @@
         if(!totalEl) return;
         
         const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
-            return sum + (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
+            const precios = p.precios || {};
+            const subtotal = 
+                (precios.cj || 0) * (p.cantCj || 0) +
+                (precios.paq || 0) * (p.cantPaq || 0) +
+                (precios.und || 0) * (p.cantUnd || 0);
+            return sum + subtotal;
         }, 0);
 
         if (_monedaActual === 'COP') {
@@ -477,7 +483,11 @@
         let total = 0;
         
         let productosHTML = productos.map(p => {
-            const subtotal = (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
+            const precios = p.precios || {};
+            const subtotal = 
+                (precios.cj || 0) * (p.cantCj || 0) +
+                (precios.paq || 0) * (p.cantPaq || 0) +
+                (precios.und || 0) * (p.cantUnd || 0);
             total += subtotal;
             
             // Construir descripción de cantidad
@@ -601,8 +611,11 @@
         
         // Productos
         productos.forEach(p => {
-            const precioUnitario = p.precioPorUnidad || 0;
-            const subtotal = precioUnitario * p.totalUnidadesVendidas;
+            const precios = p.precios || {};
+            const subtotal = 
+                (precios.cj || 0) * (p.cantCj || 0) +
+                (precios.paq || 0) * (p.cantPaq || 0) +
+                (precios.und || 0) * (p.cantUnd || 0);
             total += subtotal;
 
             const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
@@ -613,7 +626,7 @@
             if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd}UND `;
             cantidadDesc = cantidadDesc.trim();
 
-            const unitPriceStr = `$${precioUnitario.toFixed(2)}`;
+            const unitPriceStr = `$${(p.precioPorUnidad || 0).toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
             const wrappedProductName = wordWrap(productName, 20); // Wrap product name
@@ -770,7 +783,13 @@
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
                     }
 
-                    totalVenta += (p.precioPorUnidad || 0) * unidadesARestar;
+                    const precios = p.precios || {};
+                    const subtotal = 
+                        (precios.cj || 0) * (p.cantCj || 0) +
+                        (precios.paq || 0) * (p.cantPaq || 0) +
+                        (precios.und || 0) * (p.cantUnd || 0);
+                    totalVenta += subtotal;
+
                     const stockUnidadesRestante = stockUnidadesTotal - unidadesARestar;
                     
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
@@ -781,7 +800,7 @@
                         presentacion: p.presentacion, 
                         marca: p.marca ?? null, 
                         segmento: p.segmento ?? null, 
-                        precioPorUnidad: p.precioPorUnidad,
+                        precios: p.precios,
                         unidadesPorPaquete: p.unidadesPorPaquete,
                         unidadesPorCaja: p.unidadesPorCaja,
                         cantidadVendida: { // Objeto detallado
@@ -1626,11 +1645,16 @@
 
                 let nuevoTotal = 0;
                 const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
-                    const subtotal = (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
+                     const precios = p.precios || {};
+                     const subtotal = 
+                        (precios.cj || 0) * (p.cantCj || 0) +
+                        (precios.paq || 0) * (p.cantPaq || 0) +
+                        (precios.und || 0) * (p.cantUnd || 0);
                     nuevoTotal += subtotal;
                     return {
                         id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
-                        precioPorUnidad: p.precioPorUnidad, unidadesPorPaquete: p.unidadesPorPaquete,
+                        precios: p.precios, 
+                        unidadesPorPaquete: p.unidadesPorPaquete,
                         unidadesPorCaja: p.unidadesPorCaja,
                         cantidadVendida: {
                             cj: p.cantCj || 0,
@@ -1675,3 +1699,4 @@
         }
     };
 })();
+
