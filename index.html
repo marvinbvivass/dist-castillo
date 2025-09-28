@@ -227,25 +227,51 @@
             `;
             modalContainer.classList.remove('hidden');
 
-            const newItemInput = document.getElementById('newItemInput');
-            const addItemMessage = document.getElementById('addItemMessage');
-
             document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
 
             document.getElementById('addItemForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const newItemInput = document.getElementById('newItemInput');
                 const newItemName = newItemInput.value.trim();
+                const addItemMessage = document.getElementById('addItemMessage');
+                const submitButton = e.target.querySelector('button[type="submit"]');
+
                 if (!newItemName) return;
 
+                // Resetear mensaje y deshabilitar botón mientras se procesa
+                addItemMessage.textContent = '';
+                submitButton.disabled = true;
+                submitButton.textContent = 'Verificando...';
+
                 try {
-                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`), { name: newItemName });
-                    addItemMessage.textContent = `¡"${newItemName}" agregado!`;
-                    newItemInput.value = '';
-                    newItemInput.focus();
-                    setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+                    const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+                    
+                    // Obtener todos los documentos para verificar duplicados sin distinción de mayúsculas/minúsculas
+                    const snapshot = await getDocs(collectionRef);
+                    const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
+
+                    // Verificar si el nuevo ítem (en minúsculas) ya existe
+                    if (existingItems.includes(newItemName.toLowerCase())) {
+                        addItemMessage.textContent = `"${itemName}" ya existe.`;
+                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                        setTimeout(() => { addItemMessage.textContent = ''; }, 3000);
+                    } else {
+                        // Si no es un duplicado, agregarlo
+                        await addDoc(collectionRef, { name: newItemName });
+                        addItemMessage.textContent = `¡"${newItemName}" agregado!`;
+                        addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
+                        newItemInput.value = '';
+                        newItemInput.focus();
+                        setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+                    }
                 } catch (err) {
-                    addItemMessage.classList.add('text-red-600');
+                    console.error(`Error al agregar ${itemName}:`, err);
                     addItemMessage.textContent = `Error al guardar.`;
+                    addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                } finally {
+                    // Volver a habilitar el botón
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Agregar';
                 }
             });
         }
