@@ -557,11 +557,7 @@
                                         <label class="block text-gray-700 font-medium mb-1">Cantidad cargada en:</label>
                                         <div class="flex items-center space-x-2">
                                             <input type="number" id="cantidadCargada" class="w-2/3 px-4 py-2 border rounded-lg" required>
-                                            <select id="unidadCargada" class="w-1/3 px-4 py-2 border rounded-lg">
-                                                <option value="und">Und.</option>
-                                                <option value="paq">Paq.</option>
-                                                <option value="cj">Cj.</option>
-                                            </select>
+                                            <select id="unidadCargada" class="w-1/3 px-4 py-2 border rounded-lg"></select>
                                         </div>
                                     </div>
                                     <div>
@@ -591,7 +587,6 @@
         const empaquesContainer = document.getElementById('empaquesContainer');
 
         const updateDynamicInputs = () => {
-            // Limpiar contenedores
             empaquesContainer.innerHTML = '';
             preciosContainer.innerHTML = '';
             
@@ -599,7 +594,6 @@
             const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
             const ventaPorCj = document.getElementById('ventaPorCj').checked;
 
-            // Mostrar campos de unidades condicionalmente
             if (ventaPorPaq) {
                 empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Paquete:</label><input type="number" id="unidadesPorPaquete" class="w-full px-2 py-1 border rounded" value="1"></div>`;
             }
@@ -607,39 +601,52 @@
                 empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Caja:</label><input type="number" id="unidadesPorCaja" class="w-full px-2 py-1 border rounded" value="1"></div>`;
             }
 
-            // Mostrar campos de precios condicionalmente
             if (ventaPorUnd) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
             if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
             if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
             
-            // Re-asignar listeners
             empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input') || input })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
+
+            // Lógica para actualizar el dropdown de "Cantidad cargada en"
+            const unidadCargadaSelect = document.getElementById('unidadCargada');
+            if (unidadCargadaSelect) {
+                const currentValue = unidadCargadaSelect.value;
+                unidadCargadaSelect.innerHTML = ''; // Clear options
+
+                if (ventaPorUnd) unidadCargadaSelect.innerHTML += `<option value="und">Und.</option>`;
+                if (ventaPorPaq) unidadCargadaSelect.innerHTML += `<option value="paq">Paq.</option>`;
+                if (ventaPorCj) unidadCargadaSelect.innerHTML += `<option value="cj">Cj.</option>`;
+                
+                const cantidadCargadaInput = document.getElementById('cantidadCargada');
+                if (unidadCargadaSelect.innerHTML === '') {
+                    unidadCargadaSelect.disabled = true;
+                    if(cantidadCargadaInput) cantidadCargadaInput.disabled = true;
+                } else {
+                    unidadCargadaSelect.disabled = false;
+                     if(cantidadCargadaInput) cantidadCargadaInput.disabled = false;
+                }
+                
+                if ([...unidadCargadaSelect.options].some(opt => opt.value === currentValue)) {
+                    unidadCargadaSelect.value = currentValue;
+                }
+            }
         };
 
         const handlePrecioChange = (e) => {
             if (!e || !e.target) return;
             const source = e.target.dataset.source;
             const value = parseFloat(e.target.value) || 0;
-
-            const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
-            const unidadesPorCajaInput = document.getElementById('unidadesPorCaja');
-            const unidadesPorPaquete = unidadesPorPaqueteInput ? (parseFloat(unidadesPorPaqueteInput.value) || 1) : 1;
-            const unidadesPorCaja = unidadesPorCajaInput ? (parseFloat(unidadesPorCajaInput.value) || 1) : 1;
-
+            const unidadesPorPaquete = parseFloat(document.getElementById('unidadesPorPaquete')?.value) || 1;
+            const unidadesPorCaja = parseFloat(document.getElementById('unidadesPorCaja')?.value) || 1;
             const precioUndInput = document.getElementById('precioUnd');
             const precioPaqInput = document.getElementById('precioPaq');
             const precioCjInput = document.getElementById('precioCj');
-
             let basePrecioUnd = 0;
 
-            if (source === 'und') {
-                basePrecioUnd = value;
-            } else if (source === 'paq') {
-                basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
-            } else if (source === 'cj') {
-                basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
-            }
+            if (source === 'und') basePrecioUnd = value;
+            else if (source === 'paq') basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
+            else if (source === 'cj') basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
 
             if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
             if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
@@ -654,7 +661,7 @@
         document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
         document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
         
-        updateDynamicInputs();
+        updateDynamicInputs(); // Initial call to set up the form correctly
     }
 
     /**
