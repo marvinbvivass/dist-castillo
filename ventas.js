@@ -486,26 +486,24 @@
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const cant = p.cantidadVendida || p;
+            const cantCj = cant.cantCj || cant.cj || 0;
+            const cantPaq = cant.cantPaq || cant.paq || 0;
+            const cantUnd = cant.cantUnd || cant.und || 0;
             
             const subtotal = 
-                (precios.cj || 0) * (cant.cantCj || cant.cj || 0) +
-                (precios.paq || 0) * (cant.cantPaq || cant.paq || 0) +
-                (precios.und || 0) * (cant.cantUnd || cant.und || 0);
+                (precios.cj || 0) * cantCj +
+                (precios.paq || 0) * cantPaq +
+                (precios.und || 0) * cantUnd;
             total += subtotal;
             
             let cantidadDesc = '';
-            if ((cant.cantCj || cant.cj) > 0) cantidadDesc += `${(cant.cantCj || cant.cj)} CJ, `;
-            if ((cant.cantPaq || cant.paq) > 0) cantidadDesc += `${(cant.cantPaq || cant.paq)} PAQ, `;
-            if ((cant.cantUnd || cant.und) > 0) cantidadDesc += `${(cant.cantUnd || cant.und)} UND, `;
+            if (cantCj > 0) cantidadDesc += `${cantCj} CJ, `;
+            if (cantPaq > 0) cantidadDesc += `${cantPaq} PAQ, `;
+            if (cantUnd > 0) cantidadDesc += `${cantUnd} UND, `;
             cantidadDesc = cantidadDesc.slice(0, -2); 
 
-            let presentacionModificada = `${p.marca || ''} ${p.presentacion}`;
-            if (p.ventaPor.cj && (cant.cantCj || cant.cj) > 0) {
-                presentacionModificada += ` (Cj. ${p.unidadesPorCaja} unds)`;
-            } else if (p.ventaPor.paq && (cant.cantPaq || cant.paq) > 0) {
-                presentacionModificada += ` (Paq. ${p.unidadesPorPaquete} unds)`;
-            }
-
+            let presentacionModificada = `${p.marca || ''} ${p.presentacion} (${p.segmento})`;
+            
             productosHTML += `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
@@ -565,8 +563,7 @@
         const clienteNombre = toTitleCase(venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
         const clienteNombrePersonal = toTitleCase((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
         
-        const LINE_WIDTH = 40; 
-        const leftPadding = '  ';
+        const LINE_WIDTH = 42; 
         let total = 0;
         let ticket = '';
 
@@ -592,30 +589,24 @@
         ticket += center('Nota de Entrega') + '\n';
         ticket += center('(no valido como factura fiscal)') + '\n\n';
         
-        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH - leftPadding.length);
+        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH);
         wrappedClientName.forEach(line => {
-            ticket += leftPadding + line + '\n';
+            ticket += line + '\n';
         });
-        ticket += leftPadding + `Fecha: ${fecha}\n`;
+        ticket += `Fecha: ${fecha}\n`;
 
-        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
-        const header = ['Cant.'.padEnd(7), 'Producto'.padEnd(16), 'Precio'.padEnd(8), 'Subtotal'.padStart(9)].join('');
-        ticket += leftPadding + header + '\n';
-        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
+        const header = ['Cant.'.padEnd(9), 'Producto'.padEnd(16), 'Precio'.padEnd(8), 'Subtotal'.padStart(9)].join('');
+        ticket += header + '\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
-            const cant = p.cantidadVendida || p; // Handle both live and stored sale objects
+            const cant = p.cantidadVendida || p;
             const cantCj = cant.cantCj || cant.cj || 0;
             const cantPaq = cant.cantPaq || cant.paq || 0;
             const cantUnd = cant.cantUnd || cant.und || 0;
-
-            const subtotal = 
-                (precios.cj || 0) * cantCj +
-                (precios.paq || 0) * cantPaq +
-                (precios.und || 0) * cantUnd;
-            total += subtotal;
 
             const addProductLine = (quantity, unitLabel, unitPrice, lineSubtotal, productNameInfo) => {
                 const wrappedProductName = wordWrap(productNameInfo, 16);
@@ -624,8 +615,8 @@
                     const priceStr = index === 0 ? `$${unitPrice.toFixed(2)}` : '';
                     const subtotalStr = index === wrappedProductName.length - 1 ? `$${lineSubtotal.toFixed(2)}` : '';
                     
-                    ticket += leftPadding + [
-                        qtyStr.padEnd(7),
+                    ticket += [
+                        qtyStr.padEnd(9),
                         line.padEnd(16),
                         priceStr.padEnd(8),
                         subtotalStr.padStart(9)
@@ -633,27 +624,30 @@
                 });
             };
 
-            const productNameBase = toTitleCase(`${p.marca || ''} ${p.presentacion}`);
+            const productNameBase = toTitleCase(`${p.marca || ''} ${p.presentacion} (${p.segmento})`);
             
             if (cantCj > 0) {
+                total += (precios.cj || 0) * cantCj;
                 addProductLine(cantCj, 'cj', precios.cj, precios.cj * cantCj, `${productNameBase} (${p.unidadesPorCaja} unds)`);
             }
             if (cantPaq > 0) {
+                total += (precios.paq || 0) * cantPaq;
                  addProductLine(cantPaq, 'paq', precios.paq, precios.paq * cantPaq, `${productNameBase} (${p.unidadesPorPaquete} unds)`);
             }
             if (cantUnd > 0) {
+                total += (precios.und || 0) * cantUnd;
                  addProductLine(cantUnd, 'und', precios.und, precios.und * cantUnd, productNameBase);
             }
         });
 
-        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
         const totalString = `TOTAL: $${total.toFixed(2)}`;
         ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
         
         ticket += '\n\n\n\n';
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
-        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
 
         return ticket;
     }
@@ -1699,4 +1693,3 @@
         }
     };
 })();
-
