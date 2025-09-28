@@ -497,9 +497,9 @@
             cantidadDesc = cantidadDesc.slice(0, -2); 
 
             let presentacionModificada = `${p.marca || ''} ${p.presentacion}`;
-            if (p.ventaPor.cj) {
+            if (p.ventaPor.cj && p.cantCj > 0) {
                 presentacionModificada += ` (Cj. ${p.unidadesPorCaja} unds)`;
-            } else if (p.ventaPor.paq) {
+            } else if (p.ventaPor.paq && p.cantPaq > 0) {
                 presentacionModificada += ` (Paq. ${p.unidadesPorPaquete} unds)`;
             }
 
@@ -605,9 +605,9 @@
             total += subtotal;
 
             let productName = `${p.marca || ''} ${p.presentacion}`;
-            if (p.ventaPor.cj) {
+             if (p.ventaPor.cj && p.cantCj > 0) {
                 productName += `(${p.unidadesPorCaja}u)`;
-            } else if (p.ventaPor.paq) {
+            } else if (p.ventaPor.paq && p.cantPaq > 0) {
                 productName += `(${p.unidadesPorPaquete}u)`;
             }
             
@@ -1689,3 +1689,4 @@
         }
     };
 })();
+
