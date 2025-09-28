@@ -476,7 +476,7 @@
     }
 
     /**
-     * Muestra la vista para agregar un nuevo producto.
+     * Muestra la vista para agregar un nuevo producto. (MODIFICADA)
      */
     function showAgregarProductoView() {
         _floatingControls.classList.add('hidden');
@@ -486,49 +486,87 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Producto</h2>
                         <form id="productoForm" class="space-y-4 text-left">
-                            <div>
-                                <label for="rubro" class="block text-gray-700 font-medium mb-2">Rubro:</label>
-                                <div class="flex items-center space-x-2">
-                                    <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select>
-                                    <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                            
+                            <!-- Datos Básicos -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="rubro" class="block text-gray-700 font-medium mb-1">Rubro:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                        <button type="button" id="addRubroBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="segmento" class="block text-gray-700 font-medium mb-1">Segmento:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                        <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="marca" class="block text-gray-700 font-medium mb-1">Marca:</label>
+                                    <div class="flex items-center space-x-2">
+                                        <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select>
+                                        <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="presentacion" class="block text-gray-700 font-medium mb-1">Presentación:</label>
+                                    <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
                                 </div>
                             </div>
-                            <div>
-                                <label for="segmento" class="block text-gray-700 font-medium mb-2">Segmento:</label>
-                                <div class="flex items-center space-x-2">
-                                    <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select>
-                                    <button type="button" id="addSegmentoBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+
+                            <!-- Unidades y Empaques -->
+                            <div class="border-t pt-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="unidadesPorPaquete" class="block text-gray-700 font-medium mb-1">Unidades por Paquete:</label>
+                                        <input type="number" id="unidadesPorPaquete" class="w-full px-4 py-2 border rounded-lg" value="1" required>
+                                    </div>
+                                    <div>
+                                        <label for="paquetesPorCaja" class="block text-gray-700 font-medium mb-1">Paquetes por Caja:</label>
+                                        <input type="number" id="paquetesPorCaja" class="w-full px-4 py-2 border rounded-lg" value="1" required>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <label for="marca" class="block text-gray-700 font-medium mb-2">Marca:</label>
-                                <div class="flex items-center space-x-2">
-                                    <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select>
-                                    <button type="button" id="addMarcaBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                            
+                            <!-- Precios y Venta -->
+                            <div class="border-t pt-4">
+                                <div>
+                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                    </div>
+                                </div>
+                                <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                    <!-- Los inputs de precios se generan aquí dinámicamente -->
                                 </div>
                             </div>
-                            <div>
-                                <label for="presentacion" class="block text-gray-700 font-medium mb-2">Presentación:</label>
-                                <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                            <div>
-                                <label for="unidadesPorPaquete" class="block text-gray-700 font-medium mb-2">Unidades por Paquete:</label>
-                                <input type="number" id="unidadesPorPaquete" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                            <div>
-                                <label for="precioPorUnidad" class="block text-gray-700 font-medium mb-2">Precio por Unidad (USD):</label>
-                                <input type="number" step="0.01" id="precioPorUnidad" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                            <div>
-                                <label for="cantidadUnidades" class="block text-gray-700 font-medium mb-2">Cantidad Total (Unidades):</label>
-                                <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required>
-                            </div>
-                            <div>
-                                <label for="ivaTipo" class="block text-gray-700 font-medium mb-2">Tipo de IVA:</label>
-                                <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required>
-                                    <option value="16">IVA 16%</option>
-                                    <option value="0">Excento</option>
-                                </select>
+
+                            <!-- Stock e IVA -->
+                            <div class="border-t pt-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-gray-700 font-medium mb-1">Cantidad cargada en:</label>
+                                        <div class="flex items-center space-x-2">
+                                            <input type="number" id="cantidadCargada" class="w-2/3 px-4 py-2 border rounded-lg" required>
+                                            <select id="unidadCargada" class="w-1/3 px-4 py-2 border rounded-lg">
+                                                <option value="und">Und.</option>
+                                                <option value="paq">Paq.</option>
+                                                <option value="cj">Cj.</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label for="ivaTipo" class="block text-gray-700 font-medium mb-1">Tipo de IVA:</label>
+                                        <select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required>
+                                            <option value="16">IVA 16%</option>
+                                            <option value="0">Exento</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Producto</button>
                         </form>
@@ -537,35 +575,133 @@
                 </div>
             </div>
         `;
+        
+        // --- INICIO LÓGICA DINÁMICA DEL FORMULARIO ---
         _populateDropdown('rubros', 'rubro', 'Rubro');
         _populateDropdown('segmentos', 'segmento', 'Segmento');
         _populateDropdown('marcas', 'marca', 'Marca');
+        
+        const ventaPorContainer = document.getElementById('ventaPorContainer');
+        const preciosContainer = document.getElementById('preciosContainer');
+        const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
+        const paquetesPorCajaInput = document.getElementById('paquetesPorCaja');
+
+        // Función para actualizar los inputs de precios visibles
+        const updatePrecioInputs = () => {
+            preciosContainer.innerHTML = '';
+            const ventaPorUnd = document.getElementById('ventaPorUnd').checked;
+            const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
+            const ventaPorCj = document.getElementById('ventaPorCj').checked;
+
+            if (ventaPorUnd) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
+            if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
+            if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
+            
+            // Re-asignar listeners a los nuevos inputs de precios
+            preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
+        };
+
+        // Función para calcular precios automáticamente
+        const handlePrecioChange = (e) => {
+            const source = e.target.dataset.source;
+            const value = parseFloat(e.target.value) || 0;
+            const unidadesPorPaquete = parseFloat(unidadesPorPaqueteInput.value) || 1;
+            const paquetesPorCaja = parseFloat(paquetesPorCajaInput.value) || 1;
+
+            const precioUndInput = document.getElementById('precioUnd');
+            const precioPaqInput = document.getElementById('precioPaq');
+            const precioCjInput = document.getElementById('precioCj');
+
+            let basePrecioUnd = 0;
+
+            if (source === 'und') {
+                basePrecioUnd = value;
+            } else if (source === 'paq') {
+                basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
+            } else if (source === 'cj') {
+                const precioPorPaq = paquetesPorCaja > 0 ? value / paquetesPorCaja : 0;
+                basePrecioUnd = unidadesPorPaquete > 0 ? precioPorPaq / unidadesPorPaquete : 0;
+            }
+
+            if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
+            if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
+            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorPaquete * paquetesPorCaja).toFixed(2);
+        };
+        
+        ventaPorContainer.addEventListener('change', updatePrecioInputs);
+        unidadesPorPaqueteInput.addEventListener('input', handlePrecioChange);
+        paquetesPorCajaInput.addEventListener('input', handlePrecioChange);
+        
+        // --- FIN LÓGICA DINÁMICA ---
+        
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('addRubroBtn').addEventListener('click', () => _showAddItemModal('rubros', 'Rubro'));
         document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
         document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
+        
+        // Inicializar
+        updatePrecioInputs();
     }
 
     /**
-     * Agrega un nuevo producto al inventario. La cantidad se guarda en unidades.
+     * Agrega un nuevo producto al inventario con la nueva lógica. (MODIFICADA)
      */
     async function agregarProducto(e) {
         e.preventDefault();
+
+        const unidadesPorPaquete = parseInt(document.getElementById('unidadesPorPaquete').value, 10) || 1;
+        const paquetesPorCaja = parseInt(document.getElementById('paquetesPorCaja').value, 10) || 1;
+        
+        // Calcular cantidad total en unidades
+        const cantidadCargada = parseInt(document.getElementById('cantidadCargada').value, 10) || 0;
+        const unidadCargada = document.getElementById('unidadCargada').value;
+        let cantidadTotalUnidades = 0;
+        if (unidadCargada === 'und') cantidadTotalUnidades = cantidadCargada;
+        else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
+        else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * paquetesPorCaja * unidadesPorPaquete;
+        
+        // Obtener precio base por unidad
+        const precioUndInput = document.getElementById('precioUnd');
+        const precioUnd = precioUndInput ? (parseFloat(precioUndInput.value) || 0) : 0;
+        
         const producto = {
+            // Datos básicos
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
-            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete').value, 10),
-            precioPorUnidad: parseFloat(document.getElementById('precioPorUnidad').value),
-            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10),
+            
+            // Estructura de empaque
+            unidadesPorPaquete: unidadesPorPaquete,
+            paquetesPorCaja: paquetesPorCaja,
+            
+            // Opciones de venta
+            ventaPor: {
+                und: document.getElementById('ventaPorUnd').checked,
+                paq: document.getElementById('ventaPorPaq').checked,
+                cj: document.getElementById('ventaPorCj').checked,
+            },
+            
+            // Precio (base en unidad)
+            precioPorUnidad: precioUnd,
+
+            // Stock (base en unidad)
+            cantidadUnidades: cantidadTotalUnidades,
+            
+            // IVA
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
+
         if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
-            _showModal('Error', 'Todos los campos de texto son obligatorios.');
+            _showModal('Error', 'Los campos de texto principales son obligatorios.');
             return;
         }
+        if (!producto.ventaPor.und && !producto.ventaPor.paq && !producto.ventaPor.cj) {
+            _showModal('Error', 'Debes seleccionar al menos una forma de venta (Und, Paq, o Cj).');
+            return;
+        }
+
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const q = _query(inventarioRef, 
@@ -581,7 +717,7 @@
             }
             await _addDoc(inventarioRef, producto);
             _showModal('Éxito', 'Producto agregado correctamente.');
-            e.target.reset();
+            showAgregarProductoView(); // Reinicia la vista
         } catch (err) {
             console.error("Error al agregar producto:", err);
             _showModal('Error', 'Hubo un error al guardar el producto.');
@@ -590,7 +726,6 @@
 
     /**
      * Muestra la vista de "Ver Inventario".
-     * AÑADIDO: Campo de búsqueda.
      */
     function showVerInventarioView() {
         _floatingControls.classList.add('hidden');
@@ -600,7 +735,6 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
                         
-                        <!-- INICIO: Cambios para búsqueda -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                             <div>
                                <label for="verInventarioSearchInput" class="block text-gray-700 font-medium mb-2">Buscar por Presentación o Marca:</label>
@@ -613,7 +747,6 @@
                                </select>
                             </div>
                         </div>
-                        <!-- FIN: Cambios para búsqueda -->
 
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
@@ -629,7 +762,6 @@
         
         _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
         
-        // Listeners para los filtros
         rubroFilter.addEventListener('change', () => renderProductosList('productosListContainer', true));
         searchInput.addEventListener('input', () => renderProductosList('productosListContainer', true));
 
@@ -638,7 +770,6 @@
 
     /**
      * Muestra la vista para modificar o eliminar un producto.
-     * CORREGIDO: Lógica para filtros en cascada.
      */
     function showModifyDeleteView() {
         _floatingControls.classList.add('hidden');
@@ -679,7 +810,6 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
 
-        // --- INICIO: Lógica CORREGIDA de filtros en cascada ---
         const searchInput = document.getElementById('search-input');
         const rubroFilter = document.getElementById('filter-rubro');
         const segmentoFilter = document.getElementById('filter-segmento');
@@ -744,7 +874,7 @@
         
         rubroFilter.addEventListener('change', () => {
             updateSegmentoFilter();
-            updateMarcaFilter(); // Se resetea porque segmento cambió a ''
+            updateMarcaFilter();
             applyAndSaveFilters();
         });
         
@@ -762,19 +892,14 @@
             updateMarcaFilter();
             applyAndSaveFilters();
         });
-        // --- FIN: Lógica CORREGIDA de filtros en cascada ---
     }
 
-
     /**
-     * Renderiza la lista de productos en una tabla, mostrando cantidades en unidades y paquetes.
-     * MODIFICADO: para soportar la nueva búsqueda en "Ver Inventario".
+     * Renderiza la lista de productos en una tabla. (NOTA: No es compatible con la nueva estructura de datos)
      */
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
-        
-        // Se quita el "Cargando" de aquí para evitar parpadeo. Se renderiza desde la caché.
         
         let productos = [..._inventarioCache]; 
 
@@ -790,7 +915,6 @@
         }
 
         if (readOnly) {
-            // Lógica para "Ver Inventario"
             const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
             const searchTerm = document.getElementById('verInventarioSearchInput')?.value.toLowerCase() || '';
 
@@ -803,7 +927,6 @@
             }
 
         } else {
-            // Lógica para "Modificar/Eliminar"
             productos = productos.filter(p => {
                 return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
                        (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
@@ -834,6 +957,7 @@
                 currentMarca = marca;
                 tableHTML += `<tr><td colspan="${readOnly ? 6 : 7}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
             }
+            // Lógica vieja para retrocompatibilidad visual
             const unidadesPorPaquete = p.unidadesPorPaquete || 1;
             const precioPaquete = (p.precioPorUnidad || 0) * unidadesPorPaquete;
             const stockPaquetes = Math.floor((p.cantidadUnidades || 0) / unidadesPorPaquete);
@@ -858,18 +982,20 @@
     }
     
     /**
-     * Muestra el formulario para editar un producto. La cantidad se maneja en unidades.
+     * Muestra el formulario para editar un producto. (NOTA: No es compatible con la nueva estructura de datos)
      */
     function editProducto(productId) {
         _floatingControls.classList.add('hidden');
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
+        // AVISO: Este formulario usa la estructura de datos anterior.
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto</h2>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Producto (Legacy)</h2>
+                        <p class="text-red-500 mb-4">Aviso: La edición avanzada de precios no está disponible aquí.</p>
                         <form id="editProductoForm" class="space-y-4 text-left">
                             <div>
                                 <label for="editPresentacion" class="block text-gray-700 font-medium">Presentación:</label>
@@ -905,6 +1031,7 @@
         document.getElementById('editProductoForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             try {
+                // Solo actualiza los campos básicos para evitar romper la nueva estructura
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), {
                     presentacion: document.getElementById('editPresentacion').value.trim(),
                     unidadesPorPaquete: parseInt(document.getElementById('editUnidadesPorPaquete').value, 10),
