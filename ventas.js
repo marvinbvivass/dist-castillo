@@ -156,7 +156,7 @@
                              <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-center w-48">Cantidad</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-2 text-center w-24">Cantidad</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
                     <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden">
@@ -297,7 +297,7 @@
     }
 
     /**
-     * Renderiza la vista de inventario para la venta (solo por unidades).
+     * Renderiza la vista de inventario para la venta.
      */
     async function renderVentasInventario() {
         const inventarioTableBody = document.getElementById('inventarioTableBody');
@@ -329,7 +329,6 @@
             return;
         }
 
-        const isCerveceriaRubro = (selectedRubro === 'Cerveceria y Vinos');
         let currentSegmento = null;
         let currentMarca = null;
 
@@ -344,72 +343,68 @@
                 segmentoRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold text-gray-700 text-base">${currentSegmento}</td>`;
                 inventarioTableBody.appendChild(segmentoRow);
             }
-
-            if (isCerveceriaRubro && marca !== currentMarca) {
+             if (marca !== currentMarca) {
                 currentMarca = marca;
                 const marcaRow = document.createElement('tr');
                 marcaRow.innerHTML = `<td colspan="4" class="py-1 px-4 bg-gray-50 font-semibold text-gray-600 text-sm">${currentMarca}</td>`;
                 inventarioTableBody.appendChild(marcaRow);
             }
             
-            const row = document.createElement('tr');
-            row.id = `row-${producto.id}`;
-            row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
-
             const ventaPor = producto.ventaPor || { und: true };
-            const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
-            const unidadesPorCaja = producto.unidadesPorCaja || 1;
-            const precioPorUnidad = producto.precioPorUnidad || 0;
-
             const ventaActualProducto = _ventaActual.productos[producto.id] || {};
-            const cantCj = ventaActualProducto.cantCj || 0;
-            const cantPaq = ventaActualProducto.cantPaq || 0;
-            const cantUnd = ventaActualProducto.cantUnd || 0;
             
-            // --- Celdas de Cantidad (Dinámicas) ---
-            let cantidadHTML = '<div class="flex flex-col space-y-1">';
-            if (ventaPor.cj) {
-                const maxCj = Math.floor(producto.cantidadUnidades / unidadesPorCaja);
-                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">CJ:</label><input type="number" min="0" max="${maxCj}" value="${cantCj}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="cj" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
-            }
-            if (ventaPor.paq) {
-                 const maxPaq = Math.floor(producto.cantidadUnidades / unidadesPorPaquete);
-                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">PAQ:</label><input type="number" min="0" max="${maxPaq}" value="${cantPaq}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="paq" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
-            }
-            if (ventaPor.und) {
-                const maxUnd = producto.cantidadUnidades;
-                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">UND:</label><input type="number" min="0" max="${maxUnd}" value="${cantUnd}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="und" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
-            }
-            cantidadHTML += '</div>';
-
-            // --- Celdas de Precio (Dinámicas) ---
-            let precioHTML = '<div class="flex flex-col text-xs">';
             const formatPrice = (value) => {
                 if (_monedaActual === 'COP') return `COP ${(Math.ceil((value * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                 if (_monedaActual === 'Bs') return `Bs.S ${(value * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 return `$${value.toFixed(2)}`;
             };
-            if(ventaPor.und) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad)}</span> /Und</div>`;
-            if(ventaPor.paq) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad * unidadesPorPaquete)}</span> /Paq</div>`;
-            if(ventaPor.cj) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad * unidadesPorCaja)}</span> /Caja</div>`;
-            precioHTML += '</div>';
             
-            // --- Celda de Stock ---
-            const stockPaquetes = Math.floor(producto.cantidadUnidades / unidadesPorPaquete);
-            const stockCajas = Math.floor(producto.cantidadUnidades / unidadesPorCaja);
-            let stockHTML = `<div class="flex flex-col text-xs text-right">
-                ${ventaPor.cj ? `<div>${stockCajas} Cj</div>` : ''}
-                ${ventaPor.paq ? `<div>${stockPaquetes} Paq</div>` : ''}
-                <div>${producto.cantidadUnidades} Und</div>
-            </div>`;
+            const createRow = (tipo, cant, max, precio, stock, desc) => {
+                const row = document.createElement('tr');
+                row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
+                row.innerHTML = `
+                    <td class="py-2 px-2 text-center align-middle">
+                        <input type="number" min="0" max="${max}" value="${cant}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="${tipo}" oninput="window.ventasModule.handleQuantityChange(event)">
+                    </td>
+                    <td class="py-2 px-2 text-left align-middle">${desc}</td>
+                    <td class="py-2 px-2 text-left align-middle font-semibold">${formatPrice(precio)}</td>
+                    <td class="py-2 px-2 text-center align-middle">${stock}</td>
+                `;
+                inventarioTableBody.appendChild(row);
+            };
 
-            row.innerHTML = `
-                <td class="py-2 px-2 text-left align-top">${producto.presentacion}</td>
-                <td class="py-2 px-2 text-center align-middle">${cantidadHTML}</td>
-                <td class="py-2 px-2 text-left align-middle price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioHTML}</td>
-                <td class="py-2 px-2 text-center align-middle">${stockHTML}</td>
-            `;
-            inventarioTableBody.appendChild(row);
+            if (ventaPor.cj) {
+                const unidadesPorCaja = producto.unidadesPorCaja || 1;
+                createRow(
+                    'cj',
+                    ventaActualProducto.cantCj || 0,
+                    Math.floor(producto.cantidadUnidades / unidadesPorCaja),
+                    producto.precioPorUnidad * unidadesPorCaja,
+                    `${Math.floor(producto.cantidadUnidades / unidadesPorCaja)} Cj`,
+                    `${producto.presentacion} (Caja con ${unidadesPorCaja} unds)`
+                );
+            }
+            if (ventaPor.paq) {
+                const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
+                 createRow(
+                    'paq',
+                    ventaActualProducto.cantPaq || 0,
+                    Math.floor(producto.cantidadUnidades / unidadesPorPaquete),
+                    producto.precioPorUnidad * unidadesPorPaquete,
+                    `${Math.floor(producto.cantidadUnidades / unidadesPorPaquete)} Paq`,
+                    `${producto.presentacion} (Paq. con ${unidadesPorPaquete} unds)`
+                );
+            }
+             if (ventaPor.und) {
+                 createRow(
+                    'und',
+                    ventaActualProducto.cantUnd || 0,
+                    producto.cantidadUnidades,
+                    producto.precioPorUnidad,
+                    `${producto.cantidadUnidades} Und`,
+                    `${producto.presentacion} (Unidad)`
+                );
+            }
         });
     }
 
@@ -419,39 +414,32 @@
     function handleQuantityChange(event) {
         const input = event.target;
         const productId = input.dataset.productId;
+        const tipoVenta = input.dataset.tipoVenta;
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
-        const row = document.getElementById(`row-${productId}`);
-        const cjInput = row.querySelector('input[data-tipo-venta="cj"]');
-        const paqInput = row.querySelector('input[data-tipo-venta="paq"]');
-        const undInput = row.querySelector('input[data-tipo-venta="und"]');
-
-        const cantCj = cjInput ? parseInt(cjInput.value, 10) || 0 : 0;
-        const cantPaq = paqInput ? parseInt(paqInput.value, 10) || 0 : 0;
-        const cantUnd = undInput ? parseInt(undInput.value, 10) || 0 : 0;
+        // Ensure product exists in current sale object
+        if (!_ventaActual.productos[productId]) {
+            _ventaActual.productos[productId] = { ...producto, cantCj: 0, cantPaq: 0, cantUnd: 0 };
+        }
         
-        const unidadesPorCaja = producto.unidadesPorCaja || 1;
-        const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
+        _ventaActual.productos[productId][`cant${tipoVenta.charAt(0).toUpperCase() + tipoVenta.slice(1)}`] = parseInt(input.value, 10) || 0;
 
-        const totalUnidadesVendidas = (cantCj * unidadesPorCaja) + (cantPaq * unidadesPorPaquete) + cantUnd;
+        const p = _ventaActual.productos[productId];
+        const unidadesPorCaja = p.unidadesPorCaja || 1;
+        const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+        
+        const totalUnidadesVendidas = (p.cantCj * unidadesPorCaja) + (p.cantPaq * unidadesPorPaquete) + (p.cantUnd || 0);
 
         if (totalUnidadesVendidas > producto.cantidadUnidades) {
             _showModal('Stock Insuficiente', `La cantidad total excede el stock de ${producto.cantidadUnidades} unidades.`);
-            // Revertir el cambio que causó el exceso
-            input.value = parseInt(input.value, 10) -1;
-            handleQuantityChange({target: input}); // re-evaluar
+            input.value = parseInt(input.value, 10) - 1; // Revert change
+            handleQuantityChange({target: input}); // Re-evaluate
             return;
         }
 
         if (totalUnidadesVendidas > 0) {
-            _ventaActual.productos[productId] = {
-                ...producto,
-                cantCj,
-                cantPaq,
-                cantUnd,
-                totalUnidadesVendidas
-            };
+            _ventaActual.productos[productId].totalUnidadesVendidas = totalUnidadesVendidas;
         } else {
             delete _ventaActual.productos[productId];
         }
