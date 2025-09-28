@@ -4,7 +4,7 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch;
     
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
 
@@ -29,8 +29,11 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _deleteDoc = dependencies.deleteDoc;
+        _getDocs = dependencies.getDocs;
+        _query = dependencies.query;
+        _where = dependencies.where;
+        _writeBatch = dependencies.writeBatch;
         
-        // Cargar y cachear clientes en segundo plano para validaciones
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
         _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -48,18 +51,12 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                         <div class="space-y-4">
-                            <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                Ver Clientes
-                            </button>
-                            <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                Agregar Cliente
-                            </button>
-                            <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-300 transform hover:scale-105">
-                                Modificar / Eliminar Cliente
-                            </button>
-                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-300 transform hover:scale-105">
-                                Volver al Menú Principal
-                            </button>
+                            <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
+                            <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
+                            <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Modificar / Eliminar Cliente</button>
+                            <button id="datosMaestrosSectoresBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Datos Maestros (Sectores)</button>
+                            <button id="deleteAllClientesBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Clientes</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
                 </div>
@@ -68,6 +65,8 @@
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
         document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
         document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
+        document.getElementById('datosMaestrosSectoresBtn').addEventListener('click', showDatosMaestrosSectoresView);
+        document.getElementById('deleteAllClientesBtn').addEventListener('click', handleDeleteAllClientes);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
@@ -133,18 +132,19 @@
 
         document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        document.getElementById('addSectorBtn').addEventListener('click', () => _showAddItemModal('sectores', 'Sector'));
+        document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal('sectores', 'Sector'));
     }
 
     /**
-     * Agrega un nuevo cliente a la base de datos, con validación de duplicados.
+     * Agrega un nuevo cliente a la base de datos, con validación de duplicados y convirtiendo a mayúsculas.
      */
     async function agregarCliente(e) {
         e.preventDefault();
         const form = e.target;
         
-        const nombreComercial = form.nombreComercial.value.trim();
-        const nombrePersonal = form.nombrePersonal.value.trim();
+        const nombreComercial = form.nombreComercial.value.trim().toUpperCase();
+        const nombrePersonal = form.nombrePersonal.value.trim().toUpperCase();
+        const sector = form.sector.value.toUpperCase();
         const telefono = form.telefono.value.trim();
         const codigoCEP = form.codigoCEP.value.trim();
 
@@ -170,7 +170,6 @@
                 motivo = "teléfono";
                 break;
             }
-            // Solo buscar duplicado de CEP si no está vacío y no es 'N/A'
             if (codigoCEP && codigoCEP.toLowerCase() !== 'n/a' && c.codigoCEP === codigoCEP) {
                 duplicado = c;
                 motivo = "código CEP";
@@ -180,7 +179,7 @@
 
         const guardar = async () => {
             const clienteData = {
-                sector: form.sector.value,
+                sector: sector,
                 nombreComercial: nombreComercial,
                 nombrePersonal: nombrePersonal,
                 telefono: telefono,
@@ -238,7 +237,7 @@
     }
 
     /**
-     * MUEVA VISTA: Muestra la interfaz de búsqueda para modificar o eliminar un cliente.
+     * Muestra la interfaz de búsqueda para modificar o eliminar un cliente.
      */
     function showModifyDeleteSearchView() {
         _floatingControls.classList.add('hidden');
@@ -316,7 +315,6 @@
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        // Si no hay caché, muestra cargando. El listener de onSnapshot se encargará de re-renderizar.
         if (_clientesCache.length === 0) {
             container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
             return;
@@ -331,7 +329,6 @@
                 cliente.nombrePersonal.toLowerCase().includes(searchTerm) ||
                 (cliente.codigoCEP && cliente.codigoCEP.toLowerCase().includes(searchTerm));
             
-            // Si hay filtros de sector en la página, úsalos. Si no, ignóralos.
             const sectorMatch = !sectorFilter || cliente.sector === sectorFilter;
             
             return searchMatch && sectorMatch;
@@ -447,14 +444,14 @@
                 editCepInput.focus();
             }
         });
-        syncEditCepState(); // Sincronizar estado al cargar
+        syncEditCepState();
 
         document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const updatedData = {
-                sector: document.getElementById('editSector').value,
-                nombreComercial: document.getElementById('editNombreComercial').value,
-                nombrePersonal: document.getElementById('editNombrePersonal').value,
+                sector: document.getElementById('editSector').value.toUpperCase(),
+                nombreComercial: document.getElementById('editNombreComercial').value.toUpperCase(),
+                nombrePersonal: document.getElementById('editNombrePersonal').value.toUpperCase(),
                 telefono: document.getElementById('editTelefono').value,
                 codigoCEP: document.getElementById('editCodigoCEP').value
             };
@@ -478,7 +475,6 @@
             try {
                 await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId));
                 _showModal('Éxito', 'Cliente eliminado correctamente.');
-                // Refrescar la vista de búsqueda
                 const searchInput = document.getElementById('search-modify-input');
                 if (searchInput) {
                     searchInput.dispatchEvent(new Event('input'));
@@ -490,10 +486,207 @@
         });
     };
 
+    /**
+     * Muestra un modal validado para agregar un nuevo item de datos maestros.
+     */
+    function showValidatedAddItemModal(collectionName, itemName) {
+        const modalContainer = document.getElementById('modalContainer');
+        const modalContent = document.getElementById('modalContent');
+        
+        modalContent.innerHTML = `
+            <div class="text-center">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                <form id="addItemForm" class="space-y-4">
+                    <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
+                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
+                </form>
+                <p id="addItemMessage" class="text-sm mt-2 h-4"></p>
+                <div class="mt-4">
+                     <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
+                </div>
+            </div>
+        `;
+        modalContainer.classList.remove('hidden');
+
+        const newItemInput = document.getElementById('newItemInput');
+        const addItemMessage = document.getElementById('addItemMessage');
+
+        document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+
+        document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newItemName = newItemInput.value.trim().toUpperCase();
+            if (!newItemName) return;
+            
+            addItemMessage.textContent = '';
+            addItemMessage.classList.remove('text-green-600', 'text-red-600');
+
+            try {
+                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+                const snapshot = await _getDocs(collectionRef);
+                const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
+                
+                if (existingItems.includes(newItemName.toLowerCase())) {
+                    addItemMessage.classList.add('text-red-600');
+                    addItemMessage.textContent = `"${newItemName}" ya existe.`;
+                    return;
+                }
+                
+                await _addDoc(collectionRef, { name: newItemName });
+                addItemMessage.classList.add('text-green-600');
+                addItemMessage.textContent = `¡"${newItemName}" agregado!`;
+                newItemInput.value = '';
+                newItemInput.focus();
+                setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+            } catch (err) {
+                addItemMessage.classList.add('text-red-600');
+                addItemMessage.textContent = `Error al guardar o validar.`;
+            }
+        });
+    }
+
+    /**
+     * Muestra la vista para gestionar los datos maestros de sectores.
+     */
+    function showDatosMaestrosSectoresView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-2xl">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Gestionar Sectores</h2>
+                        <div id="sectores-list" class="space-y-2 max-h-96 overflow-y-auto border p-4 rounded-lg"></div>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="addSectorMaestroBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Nuevo Sector</button>
+                            <button id="backToClientesBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal('sectores', 'Sector'));
+        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        renderSectoresParaGestion();
+    }
+    
+    /**
+     * Renderiza la lista de sectores para su gestión.
+     */
+    function renderSectoresParaGestion() {
+        const container = document.getElementById('sectores-list');
+        if (!container) return;
+
+        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/sectores`);
+        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
+            if (items.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay sectores definidos.</p>`;
+                return;
+            }
+            container.innerHTML = items.map(item => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                    <span class="text-gray-800 flex-grow">${item.name}</span>
+                    <button onclick="window.clientesModule.editSector('${item.id}', '${item.name}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600 mr-2">Editar</button>
+                    <button onclick="window.clientesModule.deleteSector('${item.id}', '${item.name}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                </div>
+            `).join('');
+        });
+        _activeListeners.push(unsubscribe);
+    }
+    
+    /**
+     * Permite editar el nombre de un sector.
+     */
+    async function editSector(sectorId, currentName) {
+        const newName = prompt('Introduce el nuevo nombre para el sector:', currentName);
+        if (newName && newName.trim() !== '' && newName.trim().toUpperCase() !== currentName.toUpperCase()) {
+            const nuevoNombreMayus = newName.trim().toUpperCase();
+            // Validar si el nuevo nombre ya existe
+            const q = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/sectores`), _where("name", "==", nuevoNombreMayus));
+            const querySnapshot = await _getDocs(q);
+            if (!querySnapshot.empty) {
+                _showModal('Error', `El sector "${nuevoNombreMayus}" ya existe.`);
+                return;
+            }
+
+            try {
+                // Actualizar el sector
+                await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/sectores`, sectorId), { name: nuevoNombreMayus });
+
+                // Actualizar todos los clientes que usaban el nombre antiguo
+                const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+                const clientesQuery = _query(clientesRef, _where("sector", "==", currentName));
+                const clientesSnapshot = await _getDocs(clientesQuery);
+
+                if (!clientesSnapshot.empty) {
+                    const batch = _writeBatch(_db);
+                    clientesSnapshot.docs.forEach(doc => {
+                        batch.update(doc.ref, { sector: nuevoNombreMayus });
+                    });
+                    await batch.commit();
+                }
+
+                _showModal('Éxito', `Sector renombrado a "${nuevoNombreMayus}" y actualizado en ${clientesSnapshot.size} cliente(s).`);
+            } catch (error) {
+                _showModal('Error', `Ocurrió un error al renombrar el sector: ${error.message}`);
+            }
+        }
+    }
+
+    /**
+     * Elimina un sector, con validación de uso.
+     */
+    async function deleteSector(sectorId, sectorName) {
+        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        const q = _query(clientesRef, _where("sector", "==", sectorName));
+        
+        try {
+            const usageSnapshot = await _getDocs(q);
+            if (!usageSnapshot.empty) {
+                _showModal('Error al Eliminar', `No se puede eliminar el sector "${sectorName}" porque está siendo utilizado por ${usageSnapshot.size} cliente(s).`);
+                return;
+            }
+            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el sector "${sectorName}"?`, async () => {
+                await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/sectores`, sectorId));
+                _showModal('Éxito', `El sector "${sectorName}" ha sido eliminado.`);
+            });
+        } catch (error) {
+            _showModal('Error', `Ocurrió un error al intentar eliminar el sector: ${error.message}`);
+        }
+    }
+
+    /**
+     * Maneja la eliminación de TODOS los clientes.
+     */
+    async function handleDeleteAllClientes() {
+        _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los clientes? Esta acción es irreversible.', async () => {
+            _showModal('Progreso', 'Eliminando todos los clientes...');
+            try {
+                const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+                const snapshot = await _getDocs(collectionRef);
+                if (snapshot.empty) {
+                    _showModal('Aviso', 'No hay clientes para eliminar.');
+                    return;
+                }
+                const batch = _writeBatch(_db);
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                _showModal('Éxito', 'Todos los clientes han sido eliminados.');
+            } catch (error) {
+                console.error("Error al eliminar todos los clientes:", error);
+                _showModal('Error', 'Hubo un error al eliminar los clientes.');
+            }
+        });
+    }
+
+
     // Exponer funciones públicas al objeto window
     window.clientesModule = {
         editCliente,
-        deleteCliente
+        deleteCliente,
+        editSector,
+        deleteSector
     };
 
 })();
