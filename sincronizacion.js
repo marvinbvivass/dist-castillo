@@ -44,7 +44,7 @@
                             <div>
                                 <p class="block text-gray-700 font-medium mb-2">Datos a Importar:</p>
                                 <div class="space-y-2">
-                                    <label class="flex items-center"><input type="checkbox" id="syncInventario" value="inventario" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Inventario y Catálogos</span></label>
+                                    <label class="flex items-center"><input type="checkbox" id="syncInventario" value="inventario" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Inventario (Productos, Rubros, Segmentos, Marcas y sus Órdenes)</span></label>
                                     <label class="flex items-center"><input type="checkbox" id="syncClientes" value="clientes" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Clientes y Sectores</span></label>
                                 </div>
                             </div>
@@ -208,4 +208,3 @@
     }
 
 })();
-
