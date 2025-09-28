@@ -553,10 +553,18 @@
      */
     function createRawTextTicket(venta, productos) {
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
-        const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
-        const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
-        const LINE_WIDTH = 42; 
+        
+        // Helper to convert to Title Case
+        const toTitleCase = (str) => {
+            if (!str) return '';
+            return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+        };
 
+        const clienteNombre = toTitleCase(venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
+        const clienteNombrePersonal = toTitleCase((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
+        
+        const LINE_WIDTH = 40; 
+        const leftPadding = '  ';
         let total = 0;
         let ticket = '';
 
@@ -567,8 +575,8 @@
             let currentLine = '';
             const words = text.split(' ');
             for (const word of words) {
-                if ((currentLine + ' ' + word).trim().length > maxWidth && currentLine.length > 0) {
-                    lines.push(currentLine.trim());
+                if ((currentLine + ' ' + word).trim().length > maxWidth) {
+                    if(currentLine.length > 0) lines.push(currentLine.trim());
                     currentLine = word;
                 } else {
                     currentLine = (currentLine + ' ' + word).trim();
@@ -578,23 +586,21 @@
             return lines;
         };
         
-        ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n';
-        ticket += center('NOTA DE ENTREGA') + '\n';
+        ticket += center('Distribuidora Castillo Yañez') + '\n';
+        ticket += center('Nota de Entrega') + '\n';
         ticket += center('(no valido como factura fiscal)') + '\n\n';
         
-        const wrappedClientName = wordWrap(`CLIENTE: ${clienteNombre}`, LINE_WIDTH);
+        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH - leftPadding.length);
         wrappedClientName.forEach(line => {
-            ticket += line + '\n';
+            ticket += leftPadding + line + '\n';
         });
-        ticket += `FECHA: ${fecha}\n`;
+        ticket += leftPadding + `Fecha: ${fecha}\n`;
 
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
         
-        const header = ['CANT'.padEnd(5), 'PRODUCTO'.padEnd(20), 'PRECIO'.padEnd(8), 'SUBTOTAL'.padStart(9)].join('');
-        const header2 = [''.padEnd(5), ''.padEnd(20), 'UNITARIO'.padEnd(8), ''.padStart(9)].join('');
-        ticket += header + '\n';
-        ticket += header2 + '\n';
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        const header = ['Cant.'.padEnd(7), 'Producto'.padEnd(16), 'Precio'.padEnd(8), 'Subtotal'.padStart(9)].join('');
+        ticket += leftPadding + header + '\n';
+        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
         
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
@@ -604,46 +610,46 @@
                 (precios.und || 0) * (p.cantUnd || 0);
             total += subtotal;
 
-            let productName = `${p.marca || ''} ${p.presentacion}`;
-             if (p.ventaPor.cj && p.cantCj > 0) {
-                productName += `(${p.unidadesPorCaja}u)`;
+            let productName = toTitleCase(`${p.marca || ''} ${p.presentacion}`);
+            if (p.ventaPor.cj && p.cantCj > 0) {
+                productName += ` (${p.unidadesPorCaja} unds)`;
             } else if (p.ventaPor.paq && p.cantPaq > 0) {
-                productName += `(${p.unidadesPorPaquete}u)`;
+                productName += ` (${p.unidadesPorPaquete} unds)`;
             }
             
             let cantidadDesc = '';
-            if (p.cantCj > 0) cantidadDesc += `${p.cantCj}CJ `;
-            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq}PAQ `;
-            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd}UND `;
+            if (p.cantCj > 0) cantidadDesc += `${p.cantCj} cj `;
+            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq} paq `;
+            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd} und `;
             cantidadDesc = cantidadDesc.trim();
 
             const unitPriceStr = `$${(p.precioPorUnidad || 0).toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
-            const wrappedProductName = wordWrap(productName, 20); 
+            const wrappedProductName = wordWrap(productName, 16); 
 
             wrappedProductName.forEach((line, index) => {
                 const q = index === 0 ? cantidadDesc : '';
                 const uPrice = index === 0 ? unitPriceStr : '';
                 const sTotal = index === wrappedProductName.length - 1 ? subtotalStr : '';
 
-                ticket += [
-                    q.padEnd(5),
-                    line.padEnd(20),
+                ticket += leftPadding + [
+                    q.padEnd(7),
+                    line.padEnd(16),
                     uPrice.padEnd(8),
                     sTotal.padStart(9)
                 ].join('') + '\n';
             });
         });
 
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
         const totalString = `TOTAL: $${total.toFixed(2)}`;
         ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
         
         ticket += '\n\n\n\n';
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
 
         return ticket;
     }
@@ -1689,4 +1695,3 @@
         }
     };
 })();
-
