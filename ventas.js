@@ -490,18 +490,23 @@
                 (precios.und || 0) * (p.cantUnd || 0);
             total += subtotal;
             
-            // Construir descripción de cantidad
             let cantidadDesc = '';
             if (p.cantCj > 0) cantidadDesc += `${p.cantCj} CJ, `;
             if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq} PAQ, `;
             if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd} UND, `;
-            cantidadDesc = cantidadDesc.slice(0, -2); // quitar la última coma y espacio
+            cantidadDesc = cantidadDesc.slice(0, -2); 
 
+            let presentacionModificada = `${p.marca || ''} ${p.presentacion}`;
+            if (p.ventaPor.cj) {
+                presentacionModificada += ` (Cj. ${p.unidadesPorCaja} unds)`;
+            } else if (p.ventaPor.paq) {
+                presentacionModificada += ` (Paq. ${p.unidadesPorPaquete} unds)`;
+            }
 
             return `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
-                        <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
+                        <div style="line-height: 1.2;">${presentacionModificada}</div>
                     </td>
                     <td class="py-2 text-center" style="width: 15%;">${cantidadDesc}</td>
                     <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
@@ -512,9 +517,9 @@
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
-            <div id="temp-ticket-for-image" class="bg-white text-black p-4 uppercase font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
+            <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
                 <div class="text-center">
-                    <h2 class="text-5xl">${titulo}</h2>
+                    <h2 class="text-5xl uppercase">${titulo}</h2>
                     <p class="text-4xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
                 </div>
                 <div class="text-3xl mt-8">
@@ -548,17 +553,14 @@
      */
     function createRawTextTicket(venta, productos) {
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
-        const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre).toUpperCase();
-        const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '').toUpperCase();
-        const LINE_WIDTH = 42; // Ancho para 80mm
+        const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
+        const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
+        const LINE_WIDTH = 42; 
 
         let total = 0;
         let ticket = '';
 
-        // Helper for centering text
         const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
-
-        // Helper for intelligent word wrapping
         const wordWrap = (text, maxWidth) => {
             const lines = [];
             if (!text) return lines;
@@ -572,18 +574,14 @@
                     currentLine = (currentLine + ' ' + word).trim();
                 }
             }
-            if (currentLine) {
-                lines.push(currentLine.trim());
-            }
+            if (currentLine) lines.push(currentLine.trim());
             return lines;
         };
         
-        // Encabezado
         ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n';
         ticket += center('NOTA DE ENTREGA') + '\n';
         ticket += center('(no valido como factura fiscal)') + '\n\n';
         
-        // Datos del cliente (con word wrap)
         const wrappedClientName = wordWrap(`CLIENTE: ${clienteNombre}`, LINE_WIDTH);
         wrappedClientName.forEach(line => {
             ticket += line + '\n';
@@ -592,24 +590,12 @@
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
-        // Cabecera de la tabla
-        const header = [
-            'CANT'.padEnd(5),
-            'PRODUCTO'.padEnd(20),
-            'PRECIO'.padEnd(8),
-            'SUBTOTAL'.padStart(9)
-        ].join('');
-        const header2 = [
-            ''.padEnd(5),
-            ''.padEnd(20),
-            'UNITARIO'.padEnd(8),
-            ''.padStart(9)
-        ].join('');
+        const header = ['CANT'.padEnd(5), 'PRODUCTO'.padEnd(20), 'PRECIO'.padEnd(8), 'SUBTOTAL'.padStart(9)].join('');
+        const header2 = [''.padEnd(5), ''.padEnd(20), 'UNITARIO'.padEnd(8), ''.padStart(9)].join('');
         ticket += header + '\n';
         ticket += header2 + '\n';
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
-        // Productos
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const subtotal = 
@@ -618,7 +604,12 @@
                 (precios.und || 0) * (p.cantUnd || 0);
             total += subtotal;
 
-            const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
+            let productName = `${p.marca || ''} ${p.presentacion}`;
+            if (p.ventaPor.cj) {
+                productName += `(${p.unidadesPorCaja}u)`;
+            } else if (p.ventaPor.paq) {
+                productName += `(${p.unidadesPorPaquete}u)`;
+            }
             
             let cantidadDesc = '';
             if (p.cantCj > 0) cantidadDesc += `${p.cantCj}CJ `;
@@ -629,7 +620,7 @@
             const unitPriceStr = `$${(p.precioPorUnidad || 0).toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
-            const wrappedProductName = wordWrap(productName, 20); // Wrap product name
+            const wrappedProductName = wordWrap(productName, 20); 
 
             wrappedProductName.forEach((line, index) => {
                 const q = index === 0 ? cantidadDesc : '';
@@ -645,12 +636,10 @@
             });
         });
 
-        // Total
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         const totalString = `TOTAL: $${total.toFixed(2)}`;
         ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
         
-        // Pie de página
         ticket += '\n\n\n\n';
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
@@ -801,6 +790,7 @@
                         marca: p.marca ?? null, 
                         segmento: p.segmento ?? null, 
                         precios: p.precios,
+                        ventaPor: p.ventaPor,
                         unidadesPorPaquete: p.unidadesPorPaquete,
                         unidadesPorCaja: p.unidadesPorCaja,
                         cantidadVendida: { // Objeto detallado
