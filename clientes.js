@@ -54,7 +54,6 @@
                         <div class="space-y-4">
                             <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
                             <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
-                            <button id="modifyDeleteClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Modificar / Eliminar Cliente</button>
                             <button id="funcionesAvanzadasBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Funciones Avanzadas</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
@@ -64,7 +63,6 @@
         `;
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
         document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
-        document.getElementById('modifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
         document.getElementById('funcionesAvanzadasBtn').addEventListener('click', showFuncionesAvanzadasView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
@@ -142,18 +140,18 @@
             const headers = jsonData[0].map(h => h.toString().toLowerCase().trim());
             const requiredHeaders = ['sector', 'nombre comercial', 'nombre personal', 'telefono', 'cep'];
             
-            // Mapea los encabezados del archivo a los esperados
             const headerMap = {};
+            let missingHeader = false;
             requiredHeaders.forEach(rh => {
                 const fileHeader = headers.find(h => h.replace(/\s+/g, '') === rh.replace(/\s+/g, ''));
                 if (fileHeader) {
                     headerMap[rh] = headers.indexOf(fileHeader);
                 } else {
                      _showModal('Error', `Falta la columna requerida: "${rh}" en el archivo.`);
-                     return;
+                     missingHeader = true;
                 }
             });
-
+            if (missingHeader) return;
 
             _clientesParaImportar = jsonData.slice(1).map(row => {
                 const cliente = {
@@ -165,7 +163,7 @@
                 };
                 if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
                 return cliente;
-            }).filter(c => c.nombreComercial && c.nombrePersonal); // Filtrar filas vacías
+            }).filter(c => c.nombreComercial && c.nombrePersonal);
 
             renderPreviewTable(_clientesParaImportar);
         };
@@ -233,7 +231,6 @@
         _showModal('Progreso', `Importando ${_clientesParaImportar.length} clientes...`);
 
         try {
-            // 1. Manejar sectores
             const sectoresRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/sectores`);
             const sectoresSnapshot = await _getDocs(sectoresRef);
             const existingSectores = new Set(sectoresSnapshot.docs.map(doc => doc.data().name.toUpperCase()));
@@ -246,13 +243,11 @@
 
             const batch = _writeBatch(_db);
 
-            // Agregar nuevos sectores
             newSectores.forEach(sectorName => {
                 const newSectorRef = _doc(sectoresRef);
                 batch.set(newSectorRef, { name: sectorName });
             });
             
-            // 2. Agregar clientes
             const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
             _clientesParaImportar.forEach(cliente => {
                 const newClienteRef = _doc(clientesRef);
@@ -270,10 +265,6 @@
             _clientesParaImportar = [];
         }
     }
-
-
-    // El resto de las funciones (agregar, editar, ver, etc.) permanecen igual que en el archivo anterior.
-    // ... (Se omite el código anterior sin cambios para brevedad) ...
 
     /**
      * Muestra la vista de agregar cliente.
@@ -432,36 +423,7 @@
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         setupFiltros('clientesListContainer');
-        renderClientesList('clientesListContainer');
-    }
-
-    function showModifyDeleteSearchView() {
-        _floatingControls.classList.add('hidden');
-        _mainContent.innerHTML = `
-            <div class="p-4 pt-8">
-                <div class="container mx-auto">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Cliente</h2>
-                        <div class="mb-6">
-                            <input type="text" id="search-modify-input" placeholder="Buscar cliente por Nombre o Código..." class="w-full px-4 py-2 border rounded-lg">
-                        </div>
-                        <div id="clientes-results-container" class="overflow-x-auto max-h-96">
-                            <p class="text-gray-500 text-center">Escribe en el campo superior para buscar un cliente.</p>
-                        </div>
-                        <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        document.getElementById('search-modify-input').addEventListener('input', (e) => {
-            const searchTerm = e.target.value;
-            if (searchTerm.length > 1) {
-                renderClientesList('clientes-results-container', false, searchTerm);
-            } else {
-                document.getElementById('clientes-results-container').innerHTML = '<p class="text-gray-500 text-center">Escribe al menos 2 caracteres para buscar.</p>';
-            }
-        });
+        renderClientesList('clientesListContainer', false); // Ahora esta vista permite editar/eliminar
     }
 
     function getFiltrosHTML() {
@@ -486,7 +448,7 @@
         const sectorFilter = document.getElementById('filter-sector');
         const clearBtn = document.getElementById('clear-filters-btn');
 
-        const applyFilters = () => renderClientesList(containerId);
+        const applyFilters = () => renderClientesList(containerId, false);
 
         searchInput.addEventListener('input', applyFilters);
         sectorFilter.addEventListener('change', applyFilters);
@@ -532,9 +494,7 @@
                     <tr>
                         <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
                         <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
-                        ${readOnly ? '<th class="py-2 px-4 border-b text-left text-sm">Sector</th>' : ''}
                         <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
-                        ${readOnly ? '<th class="py-2 px-4 border-b text-left text-sm">Código CEP</th>' : ''}
                         ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
                     </tr>
                 </thead>
@@ -545,9 +505,7 @@
                 <tr class="hover:bg-gray-50">
                     <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
-                    ${readOnly ? `<td class="py-2 px-4 border-b text-sm">${cliente.sector}</td>` : ''}
                     <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
-                    ${readOnly ? `<td class="py-2 px-4 border-b text-sm">${cliente.codigoCEP || 'N/A'}</td>` : ''}
                     ${!readOnly ? `
                     <td class="py-2 px-4 border-b text-center space-x-2">
                         <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
@@ -598,7 +556,7 @@
                             </div>
                             <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
                         </form>
-                        <button id="backToModifyDeleteClienteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <button id="backToVerClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
@@ -642,13 +600,13 @@
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId), updatedData, { merge: true });
                 _showModal('Éxito', 'Cliente modificado exitosamente.');
-                showModifyDeleteSearchView();
+                showVerClientesView();
             } catch (error) {
                 console.error("Error al modificar el cliente:", error);
                 _showModal('Error', 'Hubo un error al modificar el cliente.');
             }
         });
-        document.getElementById('backToModifyDeleteClienteBtn').addEventListener('click', showModifyDeleteSearchView);
+        document.getElementById('backToVerClientesBtn').addEventListener('click', showVerClientesView);
     };
 
     function deleteCliente(clienteId) {
@@ -656,10 +614,7 @@
             try {
                 await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId));
                 _showModal('Éxito', 'Cliente eliminado correctamente.');
-                const searchInput = document.getElementById('search-modify-input');
-                if (searchInput) {
-                    searchInput.dispatchEvent(new Event('input'));
-                }
+                showVerClientesView();
             } catch (error) {
                 console.error("Error al eliminar el cliente:", error);
                 _showModal('Error', 'Hubo un error al eliminar el cliente.');
