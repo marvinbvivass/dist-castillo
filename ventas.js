@@ -129,7 +129,7 @@
                 <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
                     <div id="venta-header-section" class="mb-2">
                         <div class="flex justify-between items-center mb-2">
-                            <h2 class="text-lg font-bold text-gray-800">Nueva Venta (Por Unidades)</h2>
+                            <h2 class="text-lg font-bold text-gray-800">Nueva Venta</h2>
                             <button id="backToVentasBtn" class="px-3 py-1.5 bg-gray-400 text-white text-xs font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
                         <div id="client-search-container">
@@ -156,7 +156,7 @@
                              <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos los Rubros</option></select>
                          </div>
                         <div class="overflow-auto flex-grow rounded-lg shadow">
-                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-1 text-center">Cant.</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio/Und</th><th class="py-2 px-1 text-center">Stock (Und)</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
+                            <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="text-gray-700 uppercase leading-normal"><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-center w-48">Cantidad</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600 font-light"></tbody></table>
                         </div>
                     </div>
                     <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden">
@@ -353,32 +353,61 @@
             }
             
             const row = document.createElement('tr');
+            row.id = `row-${producto.id}`;
             row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
 
+            const ventaPor = producto.ventaPor || { und: true };
+            const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
+            const unidadesPorCaja = producto.unidadesPorCaja || 1;
             const precioPorUnidad = producto.precioPorUnidad || 0;
-            const totalStockUnidades = producto.cantidadUnidades || 0;
-            const cantidadVendida = _ventaActual.productos[producto.id]?.cantidadVendida || 0;
+
+            const ventaActualProducto = _ventaActual.productos[producto.id] || {};
+            const cantCj = ventaActualProducto.cantCj || 0;
+            const cantPaq = ventaActualProducto.cantPaq || 0;
+            const cantUnd = ventaActualProducto.cantUnd || 0;
             
-            let precioMostrado;
-            if (_monedaActual === 'COP') {
-                precioMostrado = `COP ${(Math.ceil((precioPorUnidad * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
-            } else if (_monedaActual === 'Bs') {
-                precioMostrado = `Bs.S ${(precioPorUnidad * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            } else {
-                precioMostrado = `$${precioPorUnidad.toFixed(2)}`;
+            // --- Celdas de Cantidad (Dinámicas) ---
+            let cantidadHTML = '<div class="flex flex-col space-y-1">';
+            if (ventaPor.cj) {
+                const maxCj = Math.floor(producto.cantidadUnidades / unidadesPorCaja);
+                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">CJ:</label><input type="number" min="0" max="${maxCj}" value="${cantCj}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="cj" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
             }
+            if (ventaPor.paq) {
+                 const maxPaq = Math.floor(producto.cantidadUnidades / unidadesPorPaquete);
+                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">PAQ:</label><input type="number" min="0" max="${maxPaq}" value="${cantPaq}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="paq" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
+            }
+            if (ventaPor.und) {
+                const maxUnd = producto.cantidadUnidades;
+                cantidadHTML += `<div class="flex items-center justify-end space-x-2"><label class="text-xs font-medium">UND:</label><input type="number" min="0" max="${maxUnd}" value="${cantUnd}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="und" oninput="window.ventasModule.handleQuantityChange(event)"></div>`;
+            }
+            cantidadHTML += '</div>';
+
+            // --- Celdas de Precio (Dinámicas) ---
+            let precioHTML = '<div class="flex flex-col text-xs">';
+            const formatPrice = (value) => {
+                if (_monedaActual === 'COP') return `COP ${(Math.ceil((value * _tasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
+                if (_monedaActual === 'Bs') return `Bs.S ${(value * _tasaBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                return `$${value.toFixed(2)}`;
+            };
+            if(ventaPor.und) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad)}</span> /Und</div>`;
+            if(ventaPor.paq) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad * unidadesPorPaquete)}</span> /Paq</div>`;
+            if(ventaPor.cj) precioHTML += `<div><span class="font-bold">${formatPrice(precioPorUnidad * unidadesPorCaja)}</span> /Caja</div>`;
+            precioHTML += '</div>';
             
-            const productName = `${producto.marca || ''} ${producto.presentacion}`;
+            // --- Celda de Stock ---
+            const stockPaquetes = Math.floor(producto.cantidadUnidades / unidadesPorPaquete);
+            const stockCajas = Math.floor(producto.cantidadUnidades / unidadesPorCaja);
+            let stockHTML = `<div class="flex flex-col text-xs text-right">
+                ${ventaPor.cj ? `<div>${stockCajas} Cj</div>` : ''}
+                ${ventaPor.paq ? `<div>${stockPaquetes} Paq</div>` : ''}
+                <div>${producto.cantidadUnidades} Und</div>
+            </div>`;
 
             row.innerHTML = `
-                <td class="py-2 px-1 text-center align-middle">
-                    <input type="number" min="0" max="${totalStockUnidades}" value="${cantidadVendida}"
-                           class="w-16 p-1.5 text-center border rounded-lg text-base" data-product-id="${producto.id}"
-                           oninput="window.ventasModule.updateVentaCantidad(event)">
-                </td>
-                <td class="py-2 px-2 text-left align-middle">${productName}</td>
-                <td class="py-2 px-2 text-left price-toggle align-middle" onclick="window.ventasModule.toggleMoneda()">${precioMostrado}</td>
-                <td class="py-2 px-2 text-center align-middle">${totalStockUnidades}</td>
+                <td class="py-2 px-2 text-left align-top">${producto.presentacion}</td>
+                <td class="py-2 px-2 text-center align-middle">${cantidadHTML}</td>
+                <td class="py-2 px-2 text-left align-middle price-toggle" onclick="window.ventasModule.toggleMoneda()">${precioHTML}</td>
+                <td class="py-2 px-2 text-center align-middle">${stockHTML}</td>
             `;
             inventarioTableBody.appendChild(row);
         });
@@ -387,24 +416,41 @@
     /**
      * Actualiza la cantidad de un producto y el total.
      */
-    function updateVentaCantidad(event) {
-        const { productId } = event.target.dataset;
+    function handleQuantityChange(event) {
         const input = event.target;
-        const cantidad = parseInt(input.value, 10);
-        const maxStock = parseInt(input.max, 10);
+        const productId = input.dataset.productId;
+        const producto = _inventarioCache.find(p => p.id === productId);
+        if (!producto) return;
+
+        const row = document.getElementById(`row-${productId}`);
+        const cjInput = row.querySelector('input[data-tipo-venta="cj"]');
+        const paqInput = row.querySelector('input[data-tipo-venta="paq"]');
+        const undInput = row.querySelector('input[data-tipo-venta="und"]');
+
+        const cantCj = cjInput ? parseInt(cjInput.value, 10) || 0 : 0;
+        const cantPaq = paqInput ? parseInt(paqInput.value, 10) || 0 : 0;
+        const cantUnd = undInput ? parseInt(undInput.value, 10) || 0 : 0;
         
-        if (cantidad > maxStock) {
-            input.value = maxStock;
-             _showModal('Stock Insuficiente', `La cantidad máxima para este producto es ${maxStock}.`);
+        const unidadesPorCaja = producto.unidadesPorCaja || 1;
+        const unidadesPorPaquete = producto.unidadesPorPaquete || 1;
+
+        const totalUnidadesVendidas = (cantCj * unidadesPorCaja) + (cantPaq * unidadesPorPaquete) + cantUnd;
+
+        if (totalUnidadesVendidas > producto.cantidadUnidades) {
+            _showModal('Stock Insuficiente', `La cantidad total excede el stock de ${producto.cantidadUnidades} unidades.`);
+            // Revertir el cambio que causó el exceso
+            input.value = parseInt(input.value, 10) -1;
+            handleQuantityChange({target: input}); // re-evaluar
+            return;
         }
-        
-        const cantidadFinal = parseInt(input.value, 10);
-        
-        if (cantidadFinal > 0) {
-            const producto = _inventarioCache.find(p => p.id === productId);
-            _ventaActual.productos[productId] = { 
-                ...producto, 
-                cantidadVendida: cantidadFinal,
+
+        if (totalUnidadesVendidas > 0) {
+            _ventaActual.productos[productId] = {
+                ...producto,
+                cantCj,
+                cantPaq,
+                cantUnd,
+                totalUnidadesVendidas
             };
         } else {
             delete _ventaActual.productos[productId];
@@ -420,7 +466,7 @@
         if(!totalEl) return;
         
         const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
-            return sum + (p.precioPorUnidad || 0) * p.cantidadVendida;
+            return sum + (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
         }, 0);
 
         if (_monedaActual === 'COP') {
@@ -443,14 +489,23 @@
         let total = 0;
         
         let productosHTML = productos.map(p => {
-            const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
+            const subtotal = (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
             total += subtotal;
+            
+            // Construir descripción de cantidad
+            let cantidadDesc = '';
+            if (p.cantCj > 0) cantidadDesc += `${p.cantCj} CJ, `;
+            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq} PAQ, `;
+            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd} UND, `;
+            cantidadDesc = cantidadDesc.slice(0, -2); // quitar la última coma y espacio
+
+
             return `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${(p.segmento || '')} ${(p.marca || '')} ${p.presentacion}</div>
                     </td>
-                    <td class="py-2 text-center" style="width: 15%;">${p.cantidadVendida} UND</td>
+                    <td class="py-2 text-center" style="width: 15%;">${cantidadDesc}</td>
                     <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
@@ -559,18 +614,24 @@
         // Productos
         productos.forEach(p => {
             const precioUnitario = p.precioPorUnidad || 0;
-            const subtotal = precioUnitario * p.cantidadVendida;
+            const subtotal = precioUnitario * p.totalUnidadesVendidas;
             total += subtotal;
 
             const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
-            const quantity = p.cantidadVendida.toString();
+            
+            let cantidadDesc = '';
+            if (p.cantCj > 0) cantidadDesc += `${p.cantCj}CJ `;
+            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq}PAQ `;
+            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd}UND `;
+            cantidadDesc = cantidadDesc.trim();
+
             const unitPriceStr = `$${precioUnitario.toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
             const wrappedProductName = wordWrap(productName, 20); // Wrap product name
 
             wrappedProductName.forEach((line, index) => {
-                const q = index === 0 ? quantity : '';
+                const q = index === 0 ? cantidadDesc : '';
                 const uPrice = index === 0 ? unitPriceStr : '';
                 const sTotal = index === wrappedProductName.length - 1 ? subtotalStr : '';
 
@@ -715,7 +776,7 @@
                     if (!productoEnCache) throw new Error(`Producto ${p.presentacion} no encontrado.`);
 
                     const stockUnidadesTotal = productoEnCache.cantidadUnidades || 0;
-                    const unidadesARestar = p.cantidadVendida;
+                    const unidadesARestar = p.totalUnidadesVendidas;
                     
                     if (stockUnidadesTotal < unidadesARestar) {
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
@@ -734,7 +795,13 @@
                         segmento: p.segmento ?? null, 
                         precioPorUnidad: p.precioPorUnidad,
                         unidadesPorPaquete: p.unidadesPorPaquete,
-                        cantidadVendida: p.cantidadVendida,
+                        unidadesPorCaja: p.unidadesPorCaja,
+                        cantidadVendida: { // Objeto detallado
+                            cj: p.cantCj || 0,
+                            paq: p.cantPaq || 0,
+                            und: p.cantUnd || 0
+                        },
+                        totalUnidadesVendidas: p.totalUnidadesVendidas,
                         iva: p.iva ?? 0
                     });
                 }
@@ -920,7 +987,7 @@
                 if (!clientData[clientName].products[productName]) {
                     clientData[clientName].products[productName] = 0;
                 }
-                clientData[clientName].products[productName] += p.cantidadVendida;
+                clientData[clientName].products[productName] += p.totalUnidadesVendidas;
             });
         });
 
@@ -1427,7 +1494,7 @@
                     for (const productoVendido of venta.productos) {
                         const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
                         if (productoEnCache) {
-                            const unidadesADevolver = productoVendido.cantidadVendida || 0;
+                            const unidadesADevolver = productoVendido.totalUnidadesVendidas || 0;
                             const nuevoStockUnidades = (productoEnCache.cantidadUnidades || 0) + unidadesADevolver;
                             const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
                             batch.update(productoRef, { cantidadUnidades: nuevoStockUnidades });
@@ -1501,7 +1568,14 @@
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal },
                 productos: venta.productos.reduce((acc, p) => {
                     const productoCompleto = _inventarioCache.find(inv => inv.id === p.id) || p;
-                    acc[p.id] = { ...productoCompleto, cantidadVendida: p.cantidadVendida };
+                    const cant = p.cantidadVendida || {};
+                    acc[p.id] = { 
+                        ...productoCompleto, 
+                        cantCj: cant.cj || 0,
+                        cantPaq: cant.paq || 0,
+                        cantUnd: cant.und || 0,
+                        totalUnidadesVendidas: p.totalUnidadesVendidas
+                    };
                     return acc;
                 }, {})
             };
@@ -1545,8 +1619,8 @@
 
                     if (!productoEnCache) continue;
                     
-                    const originalUnitsSold = originalProduct ? (originalProduct.cantidadVendida || 0) : 0;
-                    const newUnitsSold = newProduct ? (newProduct.cantidadVendida || 0) : 0;
+                    const originalUnitsSold = originalProduct ? (originalProduct.totalUnidadesVendidas || 0) : 0;
+                    const newUnitsSold = newProduct ? (newProduct.totalUnidadesVendidas || 0) : 0;
                     const unitDelta = originalUnitsSold - newUnitsSold;
 
                     if (unitDelta === 0) continue;
@@ -1564,12 +1638,19 @@
 
                 let nuevoTotal = 0;
                 const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
-                    const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
+                    const subtotal = (p.precioPorUnidad || 0) * p.totalUnidadesVendidas;
                     nuevoTotal += subtotal;
                     return {
                         id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
                         precioPorUnidad: p.precioPorUnidad, unidadesPorPaquete: p.unidadesPorPaquete,
-                        cantidadVendida: p.cantidadVendida, iva: p.iva ?? 0
+                        unidadesPorCaja: p.unidadesPorCaja,
+                        cantidadVendida: {
+                            cj: p.cantCj || 0,
+                            paq: p.cantPaq || 0,
+                            und: p.cantUnd || 0
+                        },
+                        totalUnidadesVendidas: p.totalUnidadesVendidas,
+                        iva: p.iva ?? 0
                     };
                 });
 
@@ -1596,7 +1677,7 @@
     // Exponer funciones públicas al objeto window
     window.ventasModule = {
         toggleMoneda,
-        updateVentaCantidad,
+        handleQuantityChange,
         showPastSaleOptions,
         editVenta,
         deleteVenta,
