@@ -482,28 +482,31 @@
         const clienteNombrePersonal = (venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '';
         let total = 0;
         
-        let productosHTML = productos.map(p => {
+        let productosHTML = '';
+        productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
+            const cant = p.cantidadVendida || p;
+            
             const subtotal = 
-                (precios.cj || 0) * (p.cantCj || 0) +
-                (precios.paq || 0) * (p.cantPaq || 0) +
-                (precios.und || 0) * (p.cantUnd || 0);
+                (precios.cj || 0) * (cant.cantCj || cant.cj || 0) +
+                (precios.paq || 0) * (cant.cantPaq || cant.paq || 0) +
+                (precios.und || 0) * (cant.cantUnd || cant.und || 0);
             total += subtotal;
             
             let cantidadDesc = '';
-            if (p.cantCj > 0) cantidadDesc += `${p.cantCj} CJ, `;
-            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq} PAQ, `;
-            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd} UND, `;
+            if ((cant.cantCj || cant.cj) > 0) cantidadDesc += `${(cant.cantCj || cant.cj)} CJ, `;
+            if ((cant.cantPaq || cant.paq) > 0) cantidadDesc += `${(cant.cantPaq || cant.paq)} PAQ, `;
+            if ((cant.cantUnd || cant.und) > 0) cantidadDesc += `${(cant.cantUnd || cant.und)} UND, `;
             cantidadDesc = cantidadDesc.slice(0, -2); 
 
             let presentacionModificada = `${p.marca || ''} ${p.presentacion}`;
-            if (p.ventaPor.cj && p.cantCj > 0) {
+            if (p.ventaPor.cj && (cant.cantCj || cant.cj) > 0) {
                 presentacionModificada += ` (Cj. ${p.unidadesPorCaja} unds)`;
-            } else if (p.ventaPor.paq && p.cantPaq > 0) {
+            } else if (p.ventaPor.paq && (cant.cantPaq || cant.paq) > 0) {
                 presentacionModificada += ` (Paq. ${p.unidadesPorPaquete} unds)`;
             }
 
-            return `
+            productosHTML += `
                 <tr class="align-top">
                     <td class="py-2 pr-2 text-left" style="width: 60%;">
                         <div style="line-height: 1.2;">${presentacionModificada}</div>
@@ -512,7 +515,7 @@
                     <td class="py-2 pl-2 text-right" style="width: 25%;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
-        }).join('');
+        });
 
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
@@ -554,7 +557,6 @@
     function createRawTextTicket(venta, productos) {
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
         
-        // Helper to convert to Title Case
         const toTitleCase = (str) => {
             if (!str) return '';
             return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
@@ -604,42 +606,44 @@
         
         productos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
+            const cant = p.cantidadVendida || p; // Handle both live and stored sale objects
+            const cantCj = cant.cantCj || cant.cj || 0;
+            const cantPaq = cant.cantPaq || cant.paq || 0;
+            const cantUnd = cant.cantUnd || cant.und || 0;
+
             const subtotal = 
-                (precios.cj || 0) * (p.cantCj || 0) +
-                (precios.paq || 0) * (p.cantPaq || 0) +
-                (precios.und || 0) * (p.cantUnd || 0);
+                (precios.cj || 0) * cantCj +
+                (precios.paq || 0) * cantPaq +
+                (precios.und || 0) * cantUnd;
             total += subtotal;
 
-            let productName = toTitleCase(`${p.marca || ''} ${p.presentacion}`);
-            if (p.ventaPor.cj && p.cantCj > 0) {
-                productName += ` (${p.unidadesPorCaja} unds)`;
-            } else if (p.ventaPor.paq && p.cantPaq > 0) {
-                productName += ` (${p.unidadesPorPaquete} unds)`;
-            }
+            const addProductLine = (quantity, unitLabel, unitPrice, lineSubtotal, productNameInfo) => {
+                const wrappedProductName = wordWrap(productNameInfo, 16);
+                wrappedProductName.forEach((line, index) => {
+                    const qtyStr = index === 0 ? `${quantity} ${unitLabel}` : '';
+                    const priceStr = index === 0 ? `$${unitPrice.toFixed(2)}` : '';
+                    const subtotalStr = index === wrappedProductName.length - 1 ? `$${lineSubtotal.toFixed(2)}` : '';
+                    
+                    ticket += leftPadding + [
+                        qtyStr.padEnd(7),
+                        line.padEnd(16),
+                        priceStr.padEnd(8),
+                        subtotalStr.padStart(9)
+                    ].join('') + '\n';
+                });
+            };
+
+            const productNameBase = toTitleCase(`${p.marca || ''} ${p.presentacion}`);
             
-            let cantidadDesc = '';
-            if (p.cantCj > 0) cantidadDesc += `${p.cantCj} cj `;
-            if (p.cantPaq > 0) cantidadDesc += `${p.cantPaq} paq `;
-            if (p.cantUnd > 0) cantidadDesc += `${p.cantUnd} und `;
-            cantidadDesc = cantidadDesc.trim();
-
-            const unitPriceStr = `$${(p.precioPorUnidad || 0).toFixed(2)}`;
-            const subtotalStr = `$${subtotal.toFixed(2)}`;
-
-            const wrappedProductName = wordWrap(productName, 16); 
-
-            wrappedProductName.forEach((line, index) => {
-                const q = index === 0 ? cantidadDesc : '';
-                const uPrice = index === 0 ? unitPriceStr : '';
-                const sTotal = index === wrappedProductName.length - 1 ? subtotalStr : '';
-
-                ticket += leftPadding + [
-                    q.padEnd(7),
-                    line.padEnd(16),
-                    uPrice.padEnd(8),
-                    sTotal.padStart(9)
-                ].join('') + '\n';
-            });
+            if (cantCj > 0) {
+                addProductLine(cantCj, 'cj', precios.cj, precios.cj * cantCj, `${productNameBase} (${p.unidadesPorCaja} unds)`);
+            }
+            if (cantPaq > 0) {
+                 addProductLine(cantPaq, 'paq', precios.paq, precios.paq * cantPaq, `${productNameBase} (${p.unidadesPorPaquete} unds)`);
+            }
+            if (cantUnd > 0) {
+                 addProductLine(cantUnd, 'und', precios.und, precios.und * cantUnd, productNameBase);
+            }
         });
 
         ticket += leftPadding + '-'.repeat(LINE_WIDTH - leftPadding.length) + '\n';
@@ -1695,3 +1699,4 @@
         }
     };
 })();
+
