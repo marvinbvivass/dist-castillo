@@ -948,11 +948,8 @@
         
         let tableHTML = `<table class="min-w-full bg-white border border-gray-200 text-sm"><thead class="bg-gray-200 sticky top-0"><tr>
             <th class="py-2 px-3 border-b text-left">Presentación</th>
-            <th class="py-2 px-3 border-b text-center">Uds/Paq</th>
-            <th class="py-2 px-3 border-b text-right">Precio/Ud</th>
-            <th class="py-2 px-3 border-b text-right">Precio/Paq</th>
-            <th class="py-2 px-3 border-b text-center">Stock (Uds)</th>
-            <th class="py-2 px-3 border-b text-center">Stock (Paq)</th>
+            <th class="py-2 px-3 border-b text-right">Precio</th>
+            <th class="py-2 px-3 border-b text-center">Stock</th>
             ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
         </tr></thead><tbody>`;
 
@@ -961,19 +958,33 @@
             const marca = p.marca || 'Sin Marca';
             if (marca !== currentMarca) {
                 currentMarca = marca;
-                tableHTML += `<tr><td colspan="${readOnly ? 6 : 7}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
             }
-            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-            const precioPaquete = (p.precioPorUnidad || 0) * unidadesPorPaquete;
-            const stockPaquetes = Math.floor((p.cantidadUnidades || 0) / unidadesPorPaquete);
+
+            const ventaPor = p.ventaPor || { und: true };
+            let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+            if (ventaPor.cj) {
+                displayPresentacion += ` (${p.unidadesPorCaja} und.)`;
+            } else if (ventaPor.paq) {
+                displayPresentacion += ` (${p.unidadesPorPaquete} und.)`;
+            }
+
+            const precioPorUnidad = p.precioPorUnidad || 0;
+            let displayPrecio = `$${precioPorUnidad.toFixed(2)}`;
+
+            let displayStock = `${p.cantidadUnidades || 0} Und`;
+            if (ventaPor.cj) {
+                displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorCaja || 1))} Cj`;
+            } else if (ventaPor.paq) {
+                displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorPaquete || 1))} Paq`;
+            }
+            
+
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${p.presentacion} (${p.segmento})</td>
-                    <td class="py-2 px-3 border-b text-center">${unidadesPorPaquete}</td>
-                    <td class="py-2 px-3 border-b text-right">$${(p.precioPorUnidad || 0).toFixed(2)}</td>
-                    <td class="py-2 px-3 border-b text-right font-semibold">$${precioPaquete.toFixed(2)}</td>
-                    <td class="py-2 px-3 border-b text-center font-bold">${p.cantidadUnidades || 0}</td>
-                    <td class="py-2 px-3 border-b text-center">${stockPaquetes}</td>
+                    <td class="py-2 px-3 border-b">${displayPresentacion}</td>
+                    <td class="py-2 px-3 border-b text-right font-semibold">${displayPrecio}</td>
+                    <td class="py-2 px-3 border-b text-center font-bold">${displayStock}</td>
                     ${!readOnly ? `
                     <td class="py-2 px-3 border-b text-center space-x-2">
                         <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Editar</button>
