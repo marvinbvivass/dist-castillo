@@ -501,72 +501,93 @@
     }
 
     /**
-     * Crea un string de texto plano optimizado para impresoras térmicas.
+     * Crea un string de texto plano para impresoras térmicas de 80mm.
      */
-    function createRawTextTicket(venta, productos, tipo = 'ticket') {
+    function createRawTextTicket(venta, productos) {
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
         const clienteNombre = (venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre).toUpperCase();
         const clienteNombrePersonal = ((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '').toUpperCase();
-        const LINE_WIDTH = 32;
+        const LINE_WIDTH = 42; // Ancho para 80mm
 
         let total = 0;
         let ticket = '';
 
         const center = (text) => text.padStart(Math.floor(LINE_WIDTH / 2 + text.length / 2), ' ').padEnd(LINE_WIDTH, ' ');
-        const createRow = (col1, col2, col3) => {
-            const C1_WIDTH = 6;
-            const C2_WIDTH = 16;
-            const C3_WIDTH = 10;
-            return `${col1.padEnd(C1_WIDTH)}${col2.padEnd(C2_WIDTH)}${col3.padStart(C3_WIDTH)}\n`;
-        };
-
-        ticket += center(tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA') + '\n';
+        
+        // Encabezado
+        ticket += center('NOTA DE ENTREGA') + '\n';
+        ticket += center('(no valido como factura fiscal)') + '\n';
         ticket += center('DISTRIBUIDORA CASTILLO YAÑEZ') + '\n\n';
         ticket += `FECHA: ${fecha}\n`;
         ticket += `CLIENTE: ${clienteNombre}\n`;
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        ticket += createRow('CANT', 'PRODUCTO', 'SUBTOTAL');
+        
+        // Cabecera de la tabla
+        const header = [
+            'CANT'.padEnd(5),
+            'PRODUCTO'.padEnd(20),
+            'PRECIO'.padEnd(8),
+            'SUBTOTAL'.padStart(9)
+        ].join('');
+        const header2 = [
+            ''.padEnd(5),
+            ''.padEnd(20),
+            'UNITARIO'.padEnd(8),
+            ''.padStart(9)
+        ].join('');
+        ticket += header + '\n';
+        ticket += header2 + '\n';
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         
+        // Productos
         productos.forEach(p => {
-            const subtotal = (p.precioPorUnidad || 0) * p.cantidadVendida;
+            const precioUnitario = p.precioPorUnidad || 0;
+            const subtotal = precioUnitario * p.cantidadVendida;
             total += subtotal;
 
             const productName = `${p.marca || ''} ${p.presentacion}`.toUpperCase();
-            const quantity = `${p.cantidadVendida} und`;
+            const quantity = p.cantidadVendida.toString();
+            const unitPriceStr = `$${precioUnitario.toFixed(2)}`;
             const subtotalStr = `$${subtotal.toFixed(2)}`;
 
-            const lines = [];
+            let lines = [];
             let tempName = productName;
-            while(tempName.length > 16) {
-                let breakPoint = tempName.lastIndexOf(' ', 16);
-                if (breakPoint === -1) breakPoint = 16;
+            while(tempName.length > 20) {
+                let breakPoint = tempName.lastIndexOf(' ', 20);
+                if (breakPoint === -1) breakPoint = 20;
                 lines.push(tempName.substring(0, breakPoint));
                 tempName = tempName.substring(breakPoint).trim();
             }
             lines.push(tempName);
 
             lines.forEach((line, index) => {
-                if (index === 0) {
-                    ticket += createRow(quantity, line, (lines.length === 1) ? subtotalStr : '');
-                } else {
-                    ticket += createRow('', line, (index === lines.length - 1) ? subtotalStr : '');
-                }
+                const q = index === 0 ? quantity : '';
+                const uPrice = index === 0 ? unitPriceStr : '';
+                const sTotal = index === lines.length - 1 ? subtotalStr : '';
+
+                ticket += [
+                    q.padEnd(5),
+                    line.padEnd(20),
+                    uPrice.padEnd(8),
+                    sTotal.padStart(9)
+                ].join('') + '\n';
             });
         });
 
+        // Total
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         const totalString = `TOTAL: $${total.toFixed(2)}`;
         ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
         
+        // Pie de página
         ticket += '\n\n\n\n';
-        
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
 
         return ticket;
     }
+
 
     /**
      * Maneja la compartición de la imagen del ticket.
@@ -611,7 +632,7 @@
     async function handleShareRawText(textContent, successCallback) {
         if (navigator.share) {
             try {
-                await navigator.share({ title: 'Ticket de Venta', text: textContent });
+                await navigator.share({ title: 'Nota de Entrega', text: textContent });
                 _showModal('Éxito', 'Venta registrada. El ticket está listo para imprimir.', successCallback);
             } catch (err) {
                  _showModal('Aviso', 'No se compartió el ticket, pero la venta fue registrada.', successCallback);
@@ -624,7 +645,7 @@
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', successCallback);
+                _showModal('Copiado', 'Texto de la nota copiado. Pégalo en tu app de impresión.', successCallback);
             } catch (copyErr) {
                  _showModal('Error', 'No se pudo compartir ni copiar el ticket. La venta fue registrada.', successCallback);
             }
@@ -648,7 +669,7 @@
         _showModal('Elige una opción', modalContent, null, '');
 
         document.getElementById('printTextBtn').addEventListener('click', () => {
-            const rawTextTicket = createRawTextTicket(venta, productos, tipo);
+            const rawTextTicket = createRawTextTicket(venta, productos);
             handleShareRawText(rawTextTicket, successCallback);
         });
 
@@ -719,7 +740,7 @@
                 });
                 await batch.commit();
 
-                showSharingOptions(_ventaActual, productosVendidos, 'ticket', showNuevaVentaView);
+                showSharingOptions(_ventaActual, productosVendidos, 'Nota de Entrega', showNuevaVentaView);
 
             } catch (e) {
                 _showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
@@ -1356,7 +1377,7 @@
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (venta) {
-            showSharingOptions(venta, venta.productos, tipo, () => {});
+            showSharingOptions(venta, venta.productos, 'Nota de Entrega', () => {});
         } else {
             _showModal('Error', 'No se encontró la venta seleccionada.');
         }
