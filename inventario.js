@@ -516,20 +516,6 @@
                                 </div>
                             </div>
 
-                            <!-- Unidades y Empaques -->
-                            <div class="border-t pt-4">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label for="unidadesPorPaquete" class="block text-gray-700 font-medium mb-1">Unidades por Paquete:</label>
-                                        <input type="number" id="unidadesPorPaquete" class="w-full px-4 py-2 border rounded-lg" value="1" required>
-                                    </div>
-                                    <div>
-                                        <label for="paquetesPorCaja" class="block text-gray-700 font-medium mb-1">Paquetes por Caja:</label>
-                                        <input type="number" id="paquetesPorCaja" class="w-full px-4 py-2 border rounded-lg" value="1" required>
-                                    </div>
-                                </div>
-                            </div>
-                            
                             <!-- Precios y Venta -->
                             <div class="border-t pt-4">
                                 <div>
@@ -540,9 +526,10 @@
                                         <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
                                     </div>
                                 </div>
-                                <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                    <!-- Los inputs de precios se generan aquí dinámicamente -->
-                                </div>
+                                <!-- Contenedor para Unidades por empaque -->
+                                <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
+                                <!-- Contenedor para Precios -->
+                                <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
                             </div>
 
                             <!-- Stock e IVA -->
@@ -583,30 +570,44 @@
         
         const ventaPorContainer = document.getElementById('ventaPorContainer');
         const preciosContainer = document.getElementById('preciosContainer');
-        const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
-        const paquetesPorCajaInput = document.getElementById('paquetesPorCaja');
+        const empaquesContainer = document.getElementById('empaquesContainer');
 
-        // Función para actualizar los inputs de precios visibles
-        const updatePrecioInputs = () => {
+        const updateDynamicInputs = () => {
+            // Limpiar contenedores
+            empaquesContainer.innerHTML = '';
             preciosContainer.innerHTML = '';
+            
             const ventaPorUnd = document.getElementById('ventaPorUnd').checked;
             const ventaPorPaq = document.getElementById('ventaPorPaq').checked;
             const ventaPorCj = document.getElementById('ventaPorCj').checked;
 
+            // Mostrar campos de unidades condicionalmente
+            if (ventaPorPaq) {
+                empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Paquete:</label><input type="number" id="unidadesPorPaquete" class="w-full px-2 py-1 border rounded" value="1"></div>`;
+            }
+            if (ventaPorCj) {
+                empaquesContainer.innerHTML += `<div><label class="block text-sm font-medium">Unidades por Caja:</label><input type="number" id="unidadesPorCaja" class="w-full px-2 py-1 border rounded" value="1"></div>`;
+            }
+
+            // Mostrar campos de precios condicionalmente
             if (ventaPorUnd) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Und.</label><input type="number" step="0.01" id="precioUnd" class="w-full px-2 py-1 border rounded" data-source="und"></div>`;
             if (ventaPorPaq) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Paq.</label><input type="number" step="0.01" id="precioPaq" class="w-full px-2 py-1 border rounded" data-source="paq"></div>`;
             if (ventaPorCj) preciosContainer.innerHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
             
-            // Re-asignar listeners a los nuevos inputs de precios
+            // Re-asignar listeners
+            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input') || input })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
         };
 
-        // Función para calcular precios automáticamente
         const handlePrecioChange = (e) => {
+            if (!e || !e.target) return;
             const source = e.target.dataset.source;
             const value = parseFloat(e.target.value) || 0;
-            const unidadesPorPaquete = parseFloat(unidadesPorPaqueteInput.value) || 1;
-            const paquetesPorCaja = parseFloat(paquetesPorCajaInput.value) || 1;
+
+            const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
+            const unidadesPorCajaInput = document.getElementById('unidadesPorCaja');
+            const unidadesPorPaquete = unidadesPorPaqueteInput ? (parseFloat(unidadesPorPaqueteInput.value) || 1) : 1;
+            const unidadesPorCaja = unidadesPorCajaInput ? (parseFloat(unidadesPorCajaInput.value) || 1) : 1;
 
             const precioUndInput = document.getElementById('precioUnd');
             const precioPaqInput = document.getElementById('precioPaq');
@@ -619,20 +620,15 @@
             } else if (source === 'paq') {
                 basePrecioUnd = unidadesPorPaquete > 0 ? value / unidadesPorPaquete : 0;
             } else if (source === 'cj') {
-                const precioPorPaq = paquetesPorCaja > 0 ? value / paquetesPorCaja : 0;
-                basePrecioUnd = unidadesPorPaquete > 0 ? precioPorPaq / unidadesPorPaquete : 0;
+                basePrecioUnd = unidadesPorCaja > 0 ? value / unidadesPorCaja : 0;
             }
 
             if (precioUndInput && source !== 'und') precioUndInput.value = basePrecioUnd.toFixed(2);
             if (precioPaqInput && source !== 'paq') precioPaqInput.value = (basePrecioUnd * unidadesPorPaquete).toFixed(2);
-            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorPaquete * paquetesPorCaja).toFixed(2);
+            if (precioCjInput && source !== 'cj') precioCjInput.value = (basePrecioUnd * unidadesPorCaja).toFixed(2);
         };
         
-        ventaPorContainer.addEventListener('change', updatePrecioInputs);
-        unidadesPorPaqueteInput.addEventListener('input', handlePrecioChange);
-        paquetesPorCajaInput.addEventListener('input', handlePrecioChange);
-        
-        // --- FIN LÓGICA DINÁMICA ---
+        ventaPorContainer.addEventListener('change', updateDynamicInputs);
         
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
@@ -640,56 +636,44 @@
         document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
         document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
         
-        // Inicializar
-        updatePrecioInputs();
+        updateDynamicInputs();
     }
 
     /**
-     * Agrega un nuevo producto al inventario con la nueva lógica. (MODIFICADA)
+     * Agrega un nuevo producto al inventario con la nueva lógica.
      */
     async function agregarProducto(e) {
         e.preventDefault();
 
-        const unidadesPorPaquete = parseInt(document.getElementById('unidadesPorPaquete').value, 10) || 1;
-        const paquetesPorCaja = parseInt(document.getElementById('paquetesPorCaja').value, 10) || 1;
+        const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
+        const unidadesPorCajaInput = document.getElementById('unidadesPorCaja');
+        const unidadesPorPaquete = unidadesPorPaqueteInput ? (parseInt(unidadesPorPaqueteInput.value, 10) || 1) : 1;
+        const unidadesPorCaja = unidadesPorCajaInput ? (parseInt(unidadesPorCajaInput.value, 10) || 1) : 1;
         
-        // Calcular cantidad total en unidades
         const cantidadCargada = parseInt(document.getElementById('cantidadCargada').value, 10) || 0;
         const unidadCargada = document.getElementById('unidadCargada').value;
         let cantidadTotalUnidades = 0;
         if (unidadCargada === 'und') cantidadTotalUnidades = cantidadCargada;
         else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
-        else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * paquetesPorCaja * unidadesPorPaquete;
+        else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
         
-        // Obtener precio base por unidad
         const precioUndInput = document.getElementById('precioUnd');
         const precioUnd = precioUndInput ? (parseFloat(precioUndInput.value) || 0) : 0;
         
         const producto = {
-            // Datos básicos
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
             presentacion: document.getElementById('presentacion').value.trim(),
-            
-            // Estructura de empaque
             unidadesPorPaquete: unidadesPorPaquete,
-            paquetesPorCaja: paquetesPorCaja,
-            
-            // Opciones de venta
+            unidadesPorCaja: unidadesPorCaja,
             ventaPor: {
                 und: document.getElementById('ventaPorUnd').checked,
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
-            
-            // Precio (base en unidad)
             precioPorUnidad: precioUnd,
-
-            // Stock (base en unidad)
             cantidadUnidades: cantidadTotalUnidades,
-            
-            // IVA
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
 
@@ -717,7 +701,7 @@
             }
             await _addDoc(inventarioRef, producto);
             _showModal('Éxito', 'Producto agregado correctamente.');
-            showAgregarProductoView(); // Reinicia la vista
+            showAgregarProductoView();
         } catch (err) {
             console.error("Error al agregar producto:", err);
             _showModal('Error', 'Hubo un error al guardar el producto.');
@@ -895,7 +879,7 @@
     }
 
     /**
-     * Renderiza la lista de productos en una tabla. (NOTA: No es compatible con la nueva estructura de datos)
+     * Renderiza la lista de productos en una tabla.
      */
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
@@ -957,7 +941,6 @@
                 currentMarca = marca;
                 tableHTML += `<tr><td colspan="${readOnly ? 6 : 7}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
             }
-            // Lógica vieja para retrocompatibilidad visual
             const unidadesPorPaquete = p.unidadesPorPaquete || 1;
             const precioPaquete = (p.precioPorUnidad || 0) * unidadesPorPaquete;
             const stockPaquetes = Math.floor((p.cantidadUnidades || 0) / unidadesPorPaquete);
