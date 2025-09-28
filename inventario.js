@@ -674,27 +674,48 @@
     }
 
     /**
-     * Agrega un nuevo producto al inventario con la nueva lógica.
+     * Recolecta y calcula los datos del formulario de producto.
      */
-    async function agregarProducto(e) {
-        e.preventDefault();
-
+    function getProductoDataFromForm() {
         const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
         const unidadesPorCajaInput = document.getElementById('unidadesPorCaja');
         const unidadesPorPaquete = unidadesPorPaqueteInput ? (parseInt(unidadesPorPaqueteInput.value, 10) || 1) : 1;
         const unidadesPorCaja = unidadesPorCajaInput ? (parseInt(unidadesPorCajaInput.value, 10) || 1) : 1;
         
-        const cantidadCargada = parseInt(document.getElementById('cantidadCargada').value, 10) || 0;
-        const unidadCargada = document.getElementById('unidadCargada').value;
-        let cantidadTotalUnidades = 0;
-        if (unidadCargada === 'und') cantidadTotalUnidades = cantidadCargada;
-        else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
-        else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
-        
+        // --- LÓGICA DE PRECIO CORREGIDA Y CENTRALIZADA ---
+        let precioFinalPorUnidad = 0;
         const precioUndInput = document.getElementById('precioUnd');
-        const precioUnd = precioUndInput ? (parseFloat(precioUndInput.value) || 0) : 0;
+        const precioPaqInput = document.getElementById('precioPaq');
+        const precioCjInput = document.getElementById('precioCj');
+
+        const precioUndValue = precioUndInput ? parseFloat(precioUndInput.value) : NaN;
+        const precioPaqValue = precioPaqInput ? parseFloat(precioPaqInput.value) : NaN;
+        const precioCjValue = precioCjInput ? parseFloat(precioCjInput.value) : NaN;
+
+        // Prioriza el precio de la unidad más pequeña disponible para calcular el precio base.
+        if (!isNaN(precioUndValue) && precioUndValue > 0) {
+            precioFinalPorUnidad = precioUndValue;
+        } else if (!isNaN(precioPaqValue) && precioPaqValue > 0) {
+            precioFinalPorUnidad = unidadesPorPaquete > 0 ? precioPaqValue / unidadesPorPaquete : 0;
+        } else if (!isNaN(precioCjValue) && precioCjValue > 0) {
+            precioFinalPorUnidad = unidadesPorCaja > 0 ? precioCjValue / unidadesPorCaja : 0;
+        }
         
-        const producto = {
+        // Esta lógica solo se usa para el stock inicial al agregar, no al editar.
+        let cantidadTotalUnidades = 0;
+        const cantidadCargadaInput = document.getElementById('cantidadCargada');
+        if (cantidadCargadaInput) {
+            const cantidadCargada = parseInt(cantidadCargadaInput.value, 10) || 0;
+            const unidadCargada = document.getElementById('unidadCargada').value;
+            if (unidadCargada === 'und') cantidadTotalUnidades = cantidadCargada;
+            else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
+            else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
+        } else {
+             // En modo edición, tomamos el valor directo del campo de stock total.
+             cantidadTotalUnidades = parseInt(document.getElementById('cantidadUnidades')?.value, 10) || 0;
+        }
+
+        return {
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
             marca: document.getElementById('marca').value,
@@ -706,10 +727,18 @@
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
-            precioPorUnidad: precioUnd,
+            precioPorUnidad: precioFinalPorUnidad,
             cantidadUnidades: cantidadTotalUnidades,
             iva: parseInt(document.getElementById('ivaTipo').value, 10)
         };
+    }
+
+    /**
+     * Agrega un nuevo producto al inventario con la nueva lógica.
+     */
+    async function agregarProducto(e) {
+        e.preventDefault();
+        const producto = getProductoDataFromForm();
 
         if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
             _showModal('Error', 'Los campos de texto principales son obligatorios.');
@@ -1146,23 +1175,7 @@
      */
     async function handleUpdateProducto(e, productId) {
         e.preventDefault();
-        
-        const updatedData = {
-            rubro: document.getElementById('rubro').value,
-            segmento: document.getElementById('segmento').value,
-            marca: document.getElementById('marca').value,
-            presentacion: document.getElementById('presentacion').value.trim(),
-            unidadesPorPaquete: parseInt(document.getElementById('unidadesPorPaquete')?.value, 10) || 1,
-            unidadesPorCaja: parseInt(document.getElementById('unidadesPorCaja')?.value, 10) || 1,
-            ventaPor: {
-                und: document.getElementById('ventaPorUnd').checked,
-                paq: document.getElementById('ventaPorPaq').checked,
-                cj: document.getElementById('ventaPorCj').checked,
-            },
-            precioPorUnidad: parseFloat(document.getElementById('precioUnd')?.value) || 0,
-            cantidadUnidades: parseInt(document.getElementById('cantidadUnidades').value, 10) || 0,
-            iva: parseInt(document.getElementById('ivaTipo').value, 10)
-        };
+        const updatedData = getProductoDataFromForm();
 
         try {
             await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData);
