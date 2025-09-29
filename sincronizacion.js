@@ -1,4 +1,4 @@
-// --- Lógica del módulo de Sincronización ---
+// --- Lógica del módulo de Sincronización (Versión Mejorada) ---
 
 (function() {
     // Variables locales del módulo
@@ -147,10 +147,18 @@
             return;
         }
 
-        _showModal('Confirmar Importación', `
+        const confirmationMessage = `
             <p>Estás a punto de importar datos desde el usuario <strong class="font-mono">${sourceUserId}</strong>.</p>
-            <p class="mt-2 font-bold text-red-600">¡Atención! Esta acción puede sobrescribir tus datos actuales. ¿Estás seguro de que deseas continuar?</p>
-        `, async () => {
+            <p class="mt-2 font-bold text-red-600">¡Atención! Esta acción tendrá los siguientes efectos:</p>
+            <ul class="list-disc list-inside text-left text-sm mt-2">
+                ${syncInventario ? `<li>Tu <strong>catálogo de productos y categorías</strong> será reemplazado por el del otro usuario, pero <strong>se conservarán tus cantidades de stock actuales</strong>.</li>` : ''}
+                ${syncClientes ? `<li>Tu <strong>lista de clientes y sectores</strong> será completamente reemplazada.</li>` : ''}
+                <li>Tu historial de ventas no será modificado.</li>
+            </ul>
+             <p class="mt-2 font-bold">¿Estás seguro de que deseas continuar?</p>
+        `;
+
+        _showModal('Confirmar Importación', confirmationMessage, async () => {
             _showModal('Progreso', 'Importando datos... Por favor, no cierres la aplicación.');
 
             try {
@@ -165,7 +173,7 @@
                 const importedDataContainer = docSnap.data().data;
 
                 if (syncInventario) {
-                    await copyDataToLocal('inventario', importedDataContainer);
+                    await mergeInventarioData(importedDataContainer); // <-- Lógica de fusión
                     await copyDataToLocal('rubros', importedDataContainer);
                     await copyDataToLocal('segmentos', importedDataContainer);
                     await copyDataToLocal('marcas', importedDataContainer);
@@ -174,16 +182,71 @@
                     await copyDataToLocal('clientes', importedDataContainer);
                     await copyDataToLocal('sectores', importedDataContainer);
                 }
+
+                // Invalidar cachés de otros módulos para que reflejen los nuevos datos de ordenamiento
+                if (window.inventarioModule && typeof window.inventarioModule.invalidateSegmentOrderCache === 'function') {
+                    window.inventarioModule.invalidateSegmentOrderCache();
+                    console.log("Caché de orden de inventario invalidada.");
+                }
+                if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
+                    window.ventasModule.invalidateCache();
+                    console.log("Caché de orden de ventas invalidada.");
+                }
+                if (window.catalogoModule && typeof window.catalogoModule.invalidateCache === 'function') {
+                    window.catalogoModule.invalidateCache();
+                    console.log("Caché de orden de catálogo invalidada.");
+                }
+
                 _showModal('Éxito', 'La importación de datos se completó correctamente.');
+
             } catch (error) {
                 console.error("Error durante la importación: ", error);
                 _showModal('Error', `Ocurrió un error durante la importación: ${error.message}`);
             }
         });
     }
+    
+    /**
+     * Fusiona el inventario importado, conservando las cantidades de stock locales.
+     * @param {object} importedData - El objeto completo con todos los datos importados.
+     */
+    async function mergeInventarioData(importedData) {
+        const importedInventario = importedData['inventario'];
+        if (!importedInventario || importedInventario.length === 0) {
+            console.log("No hay datos de inventario para importar.");
+            return;
+        }
+
+        // 1. Obtener el inventario actual del usuario local para consultar las cantidades.
+        const localInventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const localInventarioSnapshot = await _getDocs(localInventarioRef);
+        const localInventarioMap = new Map(localInventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        const batch = _writeBatch(_db);
+
+        // 2. Iterar sobre el inventario importado.
+        importedInventario.forEach(item => {
+            const { id, ...data } = item;
+            const targetDocRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
+
+            if (localInventarioMap.has(id)) {
+                // 3. Si el producto existe, conservar la cantidad de stock local.
+                const currentStock = localInventarioMap.get(id).cantidadUnidades || 0;
+                data.cantidadUnidades = currentStock;
+            } else {
+                // 4. Si el producto es nuevo, establecer su stock en 0.
+                data.cantidadUnidades = 0;
+            }
+            batch.set(targetDocRef, data);
+        });
+
+        await batch.commit();
+        console.log("El inventario se ha fusionado exitosamente.");
+    }
+
 
     /**
-     * Escribe los datos importados en las colecciones locales del usuario actual.
+     * Escribe los datos importados en las colecciones locales del usuario actual (sobrescritura total).
      * @param {string} collectionName - El nombre de la colección a escribir.
      * @param {object} importedData - El objeto completo con todos los datos importados.
      */
