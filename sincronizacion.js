@@ -1,4 +1,4 @@
-// --- Lógica del módulo de Sincronización (Versión Mejorada) ---
+// --- Lógica del módulo de Sincronización (Versión con Exportación a Excel) ---
 
 (function() {
     // Variables locales del módulo
@@ -32,11 +32,11 @@
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Sincronización de Datos</h1>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Sincronización y Exportación</h1>
                         
                         <!-- SECCIÓN PARA IMPORTAR DATOS -->
                         <div class="text-left space-y-4 max-w-lg mx-auto border border-gray-200 p-6 rounded-lg mb-8">
-                            <h2 class="text-xl font-semibold text-gray-700 mb-4 text-center">1. Importar Datos de Otro Usuario</h2>
+                            <h2 class="text-xl font-semibold text-gray-700 mb-4 text-center">1. Sincronizar con Otro Usuario</h2>
                             <div>
                                 <label for="sourceUserId" class="block text-gray-700 font-medium mb-2">ID de Usuario Origen:</label>
                                 <input type="text" id="sourceUserId" placeholder="Pegue el ID del usuario a importar" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
@@ -44,7 +44,7 @@
                             <div>
                                 <p class="block text-gray-700 font-medium mb-2">Datos a Importar:</p>
                                 <div class="space-y-2">
-                                    <label class="flex items-center"><input type="checkbox" id="syncInventario" value="inventario" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Inventario (Productos, Rubros, Segmentos, Marcas y sus Órdenes)</span></label>
+                                    <label class="flex items-center"><input type="checkbox" id="syncInventario" value="inventario" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Inventario y Categorías</span></label>
                                     <label class="flex items-center"><input type="checkbox" id="syncClientes" value="clientes" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500" checked><span class="ml-2 text-gray-700">Clientes y Sectores</span></label>
                                 </div>
                             </div>
@@ -68,6 +68,19 @@
                             </button>
                         </div>
                         
+                        <!-- SECCIÓN PARA EXPORTAR A EXCEL -->
+                        <div class="text-left space-y-4 max-w-lg mx-auto border border-gray-200 p-6 rounded-lg mt-8">
+                            <h2 class="text-xl font-semibold text-gray-700 mb-4 text-center">3. Exportar Datos a Excel</h2>
+                            <div class="flex flex-col sm:flex-row gap-4">
+                                <button id="exportClientesBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition">
+                                    Exportar Clientes
+                                </button>
+                                <button id="exportInventarioBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition">
+                                    Exportar Inventario
+                                </button>
+                            </div>
+                        </div>
+
                          <button id="backToMenuBtn" class="mt-8 w-full max-w-lg mx-auto px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition">
                             Volver al Menú Principal
                         </button>
@@ -78,6 +91,8 @@
 
         document.getElementById('startImportBtn').addEventListener('click', handleImportacion);
         document.getElementById('startShareBtn').addEventListener('click', handleExportacion);
+        document.getElementById('exportClientesBtn').addEventListener('click', exportClientesToExcel);
+        document.getElementById('exportInventarioBtn').addEventListener('click', exportInventarioToExcel);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
@@ -110,7 +125,6 @@
                     }
                 }
                 
-                // Guardar los datos compilados en una ubicación pública, usando el ID del usuario como clave.
                 const publicExportRef = _doc(_db, `artifacts/${_appId}/public/data/sync_exports`, _userId);
                 await _setDoc(publicExportRef, {
                     data: dataToExport,
@@ -151,7 +165,7 @@
             <p>Estás a punto de importar datos desde el usuario <strong class="font-mono">${sourceUserId}</strong>.</p>
             <p class="mt-2 font-bold text-red-600">¡Atención! Esta acción tendrá los siguientes efectos:</p>
             <ul class="list-disc list-inside text-left text-sm mt-2">
-                ${syncInventario ? `<li>Tu <strong>catálogo de productos y categorías</strong> será reemplazado por el del otro usuario, pero <strong>se conservarán tus cantidades de stock actuales</strong>.</li>` : ''}
+                ${syncInventario ? `<li>Tu <strong>catálogo de productos y categorías</strong> será reemplazado, pero <strong>se conservarán tus cantidades de stock actuales</strong>.</li>` : ''}
                 ${syncClientes ? `<li>Tu <strong>lista de clientes y sectores</strong> será completamente reemplazada.</li>` : ''}
                 <li>Tu historial de ventas no será modificado.</li>
             </ul>
@@ -162,7 +176,6 @@
             _showModal('Progreso', 'Importando datos... Por favor, no cierres la aplicación.');
 
             try {
-                // Leer el documento público compartido por el usuario de origen.
                 const publicExportRef = _doc(_db, `artifacts/${_appId}/public/data/sync_exports`, sourceUserId);
                 const docSnap = await _getDoc(publicExportRef);
 
@@ -173,7 +186,7 @@
                 const importedDataContainer = docSnap.data().data;
 
                 if (syncInventario) {
-                    await mergeInventarioData(importedDataContainer); // <-- Lógica de fusión
+                    await mergeInventarioData(importedDataContainer);
                     await copyDataToLocal('rubros', importedDataContainer);
                     await copyDataToLocal('segmentos', importedDataContainer);
                     await copyDataToLocal('marcas', importedDataContainer);
@@ -183,18 +196,14 @@
                     await copyDataToLocal('sectores', importedDataContainer);
                 }
 
-                // Invalidar cachés de otros módulos para que reflejen los nuevos datos de ordenamiento
                 if (window.inventarioModule && typeof window.inventarioModule.invalidateSegmentOrderCache === 'function') {
                     window.inventarioModule.invalidateSegmentOrderCache();
-                    console.log("Caché de orden de inventario invalidada.");
                 }
                 if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
                     window.ventasModule.invalidateCache();
-                    console.log("Caché de orden de ventas invalidada.");
                 }
                 if (window.catalogoModule && typeof window.catalogoModule.invalidateCache === 'function') {
                     window.catalogoModule.invalidateCache();
-                    console.log("Caché de orden de catálogo invalidada.");
                 }
 
                 _showModal('Éxito', 'La importación de datos se completó correctamente.');
@@ -206,10 +215,6 @@
         });
     }
     
-    /**
-     * Fusiona el inventario importado, conservando las cantidades de stock locales.
-     * @param {object} importedData - El objeto completo con todos los datos importados.
-     */
     async function mergeInventarioData(importedData) {
         const importedInventario = importedData['inventario'];
         if (!importedInventario || importedInventario.length === 0) {
@@ -217,24 +222,20 @@
             return;
         }
 
-        // 1. Obtener el inventario actual del usuario local para consultar las cantidades.
         const localInventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const localInventarioSnapshot = await _getDocs(localInventarioRef);
         const localInventarioMap = new Map(localInventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
 
         const batch = _writeBatch(_db);
 
-        // 2. Iterar sobre el inventario importado.
         importedInventario.forEach(item => {
             const { id, ...data } = item;
             const targetDocRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
 
             if (localInventarioMap.has(id)) {
-                // 3. Si el producto existe, conservar la cantidad de stock local.
                 const currentStock = localInventarioMap.get(id).cantidadUnidades || 0;
                 data.cantidadUnidades = currentStock;
             } else {
-                // 4. Si el producto es nuevo, establecer su stock en 0.
                 data.cantidadUnidades = 0;
             }
             batch.set(targetDocRef, data);
@@ -244,12 +245,6 @@
         console.log("El inventario se ha fusionado exitosamente.");
     }
 
-
-    /**
-     * Escribe los datos importados en las colecciones locales del usuario actual (sobrescritura total).
-     * @param {string} collectionName - El nombre de la colección a escribir.
-     * @param {object} importedData - El objeto completo con todos los datos importados.
-     */
     async function copyDataToLocal(collectionName, importedData) {
         const dataToCopy = importedData[collectionName];
         if (!dataToCopy || dataToCopy.length === 0) {
@@ -262,12 +257,102 @@
 
         dataToCopy.forEach(item => {
             const { id, ...data } = item;
-            const targetDocRef = _doc(_db, targetPath, id); // Usa el mismo ID del documento
+            const targetDocRef = _doc(_db, targetPath, id);
             batch.set(targetDocRef, data);
         });
 
         await batch.commit();
         console.log(`Colección '${collectionName}' importada exitosamente.`);
+    }
+
+    /**
+     * Exporta los datos de clientes a un archivo Excel.
+     */
+    async function exportClientesToExcel() {
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+        _showModal('Progreso', 'Exportando datos de clientes a Excel...');
+        try {
+            const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+            const snapshot = await _getDocs(clientesRef);
+            if (snapshot.empty) {
+                _showModal('Aviso', 'No hay clientes para exportar.');
+                return;
+            }
+
+            const dataToExport = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    'Sector': data.sector,
+                    'Nombre Comercial': data.nombreComercial,
+                    'Nombre Personal': data.nombrePersonal,
+                    'Telefono': data.telefono,
+                    'CEP': data.codigoCEP
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+            
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Exportacion_Clientes_${today}.xlsx`);
+
+            document.getElementById('modalContainer').classList.add('hidden');
+        } catch (error) {
+            console.error("Error al exportar clientes:", error);
+            _showModal('Error', `Ocurrió un error al exportar los clientes: ${error.message}`);
+        }
+    }
+
+    /**
+     * Exporta los datos del inventario a un archivo Excel.
+     */
+    async function exportInventarioToExcel() {
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+        _showModal('Progreso', 'Exportando datos de inventario a Excel...');
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const snapshot = await _getDocs(inventarioRef);
+            if (snapshot.empty) {
+                _showModal('Aviso', 'No hay productos en el inventario para exportar.');
+                return;
+            }
+
+            const dataToExport = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    'Rubro': data.rubro,
+                    'Segmento': data.segmento,
+                    'Marca': data.marca,
+                    'Presentacion': data.presentacion,
+                    'Stock (Unidades)': data.cantidadUnidades || 0,
+                    'Precio Und ($)': data.precios?.und || data.precioPorUnidad || 0,
+                    'Precio Paq ($)': data.precios?.paq || 0,
+                    'Precio Cj ($)': data.precios?.cj || 0,
+                    'Unidades/Paq': data.unidadesPorPaquete || 0,
+                    'Unidades/Cj': data.unidadesPorCaja || 0,
+                    'IVA (%)': data.iva || 0
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Exportacion_Inventario_${today}.xlsx`);
+
+            document.getElementById('modalContainer').classList.add('hidden');
+        } catch (error) {
+            console.error("Error al exportar inventario:", error);
+            _showModal('Error', `Ocurrió un error al exportar el inventario: ${error.message}`);
+        }
     }
 
 })();
