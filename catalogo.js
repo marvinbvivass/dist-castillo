@@ -7,7 +7,6 @@
     // Estado específico del catálogo
     let _catalogoTasaCOP = 0;
     let _catalogoMonedaActual = 'USD';
-    let _catalogoVistaActual = 'unidades'; // 'unidades' o 'paquetes'
     let _currentRubros = [];
     let _currentBgImage = '';
     let _segmentoOrderCacheCatalogo = null;
@@ -103,7 +102,6 @@
         }
         document.body.classList.add('catalogo-active');
         _catalogoMonedaActual = 'USD';
-        _catalogoVistaActual = 'unidades'; // Vista por defecto
 
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -118,13 +116,6 @@
                                 <div id="tasa-input-container" class="flex-grow">
                                     <label for="catalogoTasaCopInput" class="block text-base font-medium mb-1">Tasa (USD a COP):</label>
                                     <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg">
-                                </div>
-                                <div id="vista-toggle-container">
-                                    <label for="vistaTipo" class="block text-base font-medium mb-1">Mostrar Precios Por:</label>
-                                    <select id="vistaTipo" class="w-full px-4 py-2 border rounded-lg bg-gray-50">
-                                        <option value="unidades">Unidad</option>
-                                        <option value="paquetes">Paquete</option>
-                                    </select>
                                 </div>
                             </div>
                             
@@ -151,11 +142,6 @@
             if (_catalogoMonedaActual === 'COP') {
                 renderCatalogo();
             }
-        });
-
-        document.getElementById('vistaTipo').addEventListener('change', (e) => {
-            _catalogoVistaActual = e.target.value;
-            renderCatalogo();
         });
 
         document.getElementById('backToCatalogoMenuBtn').addEventListener('click', showCatalogoSubMenu);
@@ -239,15 +225,14 @@
             _productosAgrupadosCache = productosAgrupados;
 
             let html = '<div class="space-y-4">';
-            const precioHeader = _catalogoVistaActual === 'unidades' ? 'PRECIO/UNIDAD' : 'PRECIO/PAQUETE';
-
+            
             marcasOrdenadas.forEach(marca => {
                 html += `<table class="min-w-full bg-transparent text-lg">
                             <thead class="text-black">
                                 <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
                                 <tr>
                                     <th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th>
-                                    <th class="py-2 px-2 text-right font-bold price-toggle" onclick="toggleCatalogoMoneda()">${precioHeader}</th>
+                                    <th class="py-2 px-2 text-right font-bold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO</th>
                                 </tr>
                             </thead>
                             <tbody>`;
@@ -255,9 +240,21 @@
                 const productosOrdenados = productosAgrupados[marca];
 
                 productosOrdenados.forEach(p => {
-                    const precioPorUnidad = p.precioPorUnidad || 0;
-                    const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-                    const precioBaseUSD = _catalogoVistaActual === 'unidades' ? precioPorUnidad : (precioPorUnidad * unidadesPorPaquete);
+                    const ventaPor = p.ventaPor || { und: true };
+                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                    
+                    let precioBaseUSD = 0;
+                    let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+
+                    if (ventaPor.cj && precios.cj > 0) {
+                        precioBaseUSD = precios.cj;
+                        displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Cj. con ${p.unidadesPorCaja || 1} unds.)</span> (${p.segmento})`;
+                    } else if (ventaPor.paq && precios.paq > 0) {
+                        precioBaseUSD = precios.paq;
+                        displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Paq. con ${p.unidadesPorPaquete || 1} unds.)</span> (${p.segmento})`;
+                    } else {
+                        precioBaseUSD = precios.und || 0;
+                    }
 
                     let precioMostrado;
                     if (_catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0) {
@@ -268,7 +265,7 @@
 
                     html += `
                         <tr class="border-b border-gray-200">
-                            <td class="py-2 px-2 text-gray-900">${p.presentacion} <span class="text-base text-gray-600">(${unidadesPorPaquete} unds.)</span> (${p.segmento})</td>
+                            <td class="py-2 px-2 text-gray-900">${displayPresentacion}</td>
                             <td class="py-2 px-2 text-right font-bold">${precioMostrado}</td>
                         </tr>
                     `;
@@ -291,7 +288,6 @@
 
         const shareButton = document.getElementById('generateCatalogoImageBtn');
         const tasaInputContainer = document.getElementById('tasa-input-container');
-        const vistaToggleContainer = document.getElementById('vista-toggle-container');
         const buttonsContainer = document.getElementById('catalogo-buttons-container');
 
         if (_marcasCache.length === 0) return;
@@ -305,32 +301,42 @@
         shareButton.textContent = `Generando ${totalPages} imagen(es)...`;
         shareButton.disabled = true;
         tasaInputContainer.classList.add('hidden');
-        vistaToggleContainer.classList.add('hidden');
         buttonsContainer.classList.add('hidden');
 
         try {
             const imageFiles = await Promise.all(pagesOfBrands.map(async (brands, index) => {
                 const pageNum = index + 1;
-                const precioHeader = _catalogoVistaActual === 'unidades' ? 'PRECIO/UNIDAD' : 'PRECIO/PAQUETE';
-
+                
                 let contentHtml = '<div class="space-y-4">';
                 brands.forEach(marca => {
                     contentHtml += `<table class="min-w-full bg-transparent text-lg">
                                 <thead class="text-black">
                                     <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
-                                    <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">${precioHeader}</th></tr>
+                                    <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
                                 </thead><tbody>`;
                     const productosDeMarca = _productosAgrupadosCache[marca];
                     productosDeMarca.forEach(p => {
-                        const precioPorUnidad = p.precioPorUnidad || 0;
-                        const unidadesPorPaquete = p.unidadesPorPaquete || 1;
-                        const precioBaseUSD = _catalogoVistaActual === 'unidades' ? precioPorUnidad : (precioPorUnidad * unidadesPorPaquete);
+                        const ventaPor = p.ventaPor || { und: true };
+                        const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                        
+                        let precioBaseUSD = 0;
+                        let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+
+                        if (ventaPor.cj && precios.cj > 0) {
+                            precioBaseUSD = precios.cj;
+                            displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Cj. con ${p.unidadesPorCaja || 1} unds.)</span> (${p.segmento})`;
+                        } else if (ventaPor.paq && precios.paq > 0) {
+                            precioBaseUSD = precios.paq;
+                            displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Paq. con ${p.unidadesPorPaquete || 1} unds.)</span> (${p.segmento})`;
+                        } else {
+                            precioBaseUSD = precios.und || 0;
+                        }
 
                         let precioMostrado = _catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0
                             ? `COP ${(Math.ceil((precioBaseUSD * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`
                             : `$${precioBaseUSD.toFixed(2)}`;
 
-                        contentHtml += `<tr class="border-b border-gray-200"><td class="py-2 px-2 text-gray-900">${p.presentacion} <span class="text-base text-gray-600">(${unidadesPorPaquete} unds.)</span> (${p.segmento})</td><td class="py-2 px-2 text-right font-bold">${precioMostrado}</td></tr>`;
+                        contentHtml += `<tr class="border-b border-gray-200"><td class="py-2 px-2 text-gray-900">${displayPresentacion}</td><td class="py-2 px-2 text-right font-bold">${precioMostrado}</td></tr>`;
                     });
                     contentHtml += `</tbody></table>`;
                 });
@@ -359,7 +365,8 @@
                     pageWrapper.style.backgroundPosition = 'center';
                 }
 
-                const canvas = await html2canvas(pageWrapper, { scale: 3, useCORS: true, allowTaint: true });
+                // MEJORA: Aumentamos la escala para mayor calidad de imagen.
+                const canvas = await html2canvas(pageWrapper, { scale: 4, useCORS: true, allowTaint: true });
                 const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
                 
                 document.body.removeChild(tempDiv);
@@ -377,7 +384,6 @@
             shareButton.textContent = 'Generar Imagen';
             shareButton.disabled = false;
             tasaInputContainer.classList.remove('hidden');
-            vistaToggleContainer.classList.remove('hidden');
             buttonsContainer.classList.remove('hidden');
         }
     }
