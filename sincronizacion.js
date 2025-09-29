@@ -300,7 +300,7 @@
             const today = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `Exportacion_Clientes_${today}.xlsx`);
 
-            document.getElementById('modalContainer').classList.add('hidden');
+            _showModal('Éxito', 'El archivo de clientes se ha generado y la descarga ha comenzado.');
         } catch (error) {
             console.error("Error al exportar clientes:", error);
             _showModal('Error', `Ocurrió un error al exportar los clientes: ${error.message}`);
@@ -348,7 +348,7 @@
             const today = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `Exportacion_Inventario_${today}.xlsx`);
 
-            document.getElementById('modalContainer').classList.add('hidden');
+            _showModal('Éxito', 'El archivo de inventario se ha generado y la descarga ha comenzado.');
         } catch (error) {
             console.error("Error al exportar inventario:", error);
             _showModal('Error', `Ocurrió un error al exportar el inventario: ${error.message}`);
