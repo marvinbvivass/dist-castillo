@@ -395,8 +395,17 @@
         }
 
         window.showMainMenu = function() {
-            // Limpia listeners de cualquier módulo anterior al volver al menú principal.
+            // Se limpia cualquier listener específico de un módulo antes de mostrar el menú principal.
             cleanupListeners();
+
+            // Se vuelve a crear el listener de estado de conexión, ya que es global.
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
+                const statusEl = document.getElementById('connectionStatus');
+                if (!statusEl) return;
+                statusEl.textContent = snapshot.metadata.fromCache ? "SIN CONEXIÓN" : "EN LÍNEA";
+                statusEl.className = `text-xs font-bold px-3 py-2 rounded-full shadow-lg ${snapshot.metadata.fromCache ? 'bg-yellow-400 text-yellow-900' : 'bg-green-400 text-green-900'}`;
+            });
+            activeListeners.push(unsubscribe);
             
             floatingControls.classList.remove('hidden');
             mainContent.innerHTML = `
@@ -416,27 +425,11 @@
                 </div>
             `;
 
-            // CORRECCIÓN: Se añade cleanupListeners() antes de mostrar la nueva vista para CADA botón.
-            document.getElementById('inventarioBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showInventarioSubMenu();
-            });
-            document.getElementById('clientesBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showClientesSubMenu();
-            });
-            document.getElementById('ventasBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showVentasView();
-            });
-            document.getElementById('catalogoBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showCatalogoSubMenu();
-            });
-            document.getElementById('sincronizacionBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showSincronizacionView();
-            });
+            document.getElementById('inventarioBtn').addEventListener('click', window.showInventarioSubMenu);
+            document.getElementById('clientesBtn').addEventListener('click', window.showClientesSubMenu);
+            document.getElementById('ventasBtn').addEventListener('click', window.showVentasView);
+            document.getElementById('catalogoBtn').addEventListener('click', window.showCatalogoSubMenu);
+            document.getElementById('sincronizacionBtn').addEventListener('click', window.showSincronizacionView);
         }
 
         // --- INICIALIZACIÓN DE LA APP ---
@@ -472,3 +465,4 @@
     </script>
 </body>
 </html>
+
