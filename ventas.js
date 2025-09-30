@@ -1283,17 +1283,26 @@
             let snapshot = await _getDocs(collectionRef);
             let items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (items.length > 0 && items.some(item => item.orden === undefined)) {
-                const sortedAlphabetically = items.sort((a,b) => a.name.localeCompare(b.name));
+            // CORRECCIÓN: Lógica para manejar rubros nuevos sin reiniciar el orden.
+            const itemsWithoutOrder = items.filter(item => item.orden === undefined);
+            const itemsWithOrder = items.filter(item => item.orden !== undefined);
+
+            if (itemsWithoutOrder.length > 0) {
+                const maxOrder = itemsWithOrder.reduce((max, item) => Math.max(max, item.orden), -1);
                 const batch = _writeBatch(_db);
-                sortedAlphabetically.forEach((item, index) => {
+
+                itemsWithoutOrder.sort((a,b) => a.name.localeCompare(b.name));
+
+                itemsWithoutOrder.forEach((item, index) => {
                     const docRef = _doc(collectionRef, item.id);
-                    batch.update(docRef, { orden: index });
+                    batch.update(docRef, { orden: maxOrder + 1 + index });
                 });
                 await batch.commit();
+                
                 snapshot = await _getDocs(collectionRef);
                 items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
+
 
             items.sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999));
             container.innerHTML = ''; 
