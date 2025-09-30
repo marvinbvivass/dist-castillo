@@ -36,9 +36,11 @@
         _writeBatch = dependencies.writeBatch;
         
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
-        _onSnapshot(clientesRef, (snapshot) => {
+        // CORRECCIÓN: Se guarda la función 'unsubscribe' para poder limpiarla al cerrar sesión.
+        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         });
+        _activeListeners.push(unsubscribe);
     };
 
     /**
