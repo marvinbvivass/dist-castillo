@@ -170,14 +170,23 @@
             let snapshot = await _getDocs(segmentosRef);
             let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (allSegments.length > 0 && allSegments.some(s => s.orden === undefined)) {
-                const sortedAlphabetically = allSegments.sort((a,b) => a.name.localeCompare(b.name));
+            // CORRECCIÓN: Lógica para manejar segmentos nuevos sin reiniciar el orden.
+            const segmentsWithoutOrder = allSegments.filter(s => s.orden === undefined);
+            const segmentsWithOrder = allSegments.filter(s => s.orden !== undefined);
+
+            if (segmentsWithoutOrder.length > 0) {
+                const maxOrder = segmentsWithOrder.reduce((max, s) => Math.max(max, s.orden), -1);
                 const batch = _writeBatch(_db);
-                sortedAlphabetically.forEach((seg, index) => {
+                
+                segmentsWithoutOrder.sort((a, b) => a.name.localeCompare(b.name));
+
+                segmentsWithoutOrder.forEach((seg, index) => {
                     const docRef = _doc(segmentosRef, seg.id);
-                    batch.update(docRef, { orden: index });
+                    batch.update(docRef, { orden: maxOrder + 1 + index });
                 });
                 await batch.commit();
+
+                // Volver a cargar los datos para tener la lista completa y ordenada
                 snapshot = await _getDocs(segmentosRef);
                 allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
@@ -1252,4 +1261,3 @@
     };
 
 })();
-
