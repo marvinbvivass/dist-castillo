@@ -34,13 +34,6 @@
         _query = dependencies.query;
         _where = dependencies.where;
         _writeBatch = dependencies.writeBatch;
-        
-        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
-        // CORRECCIÓN: Se guarda la función 'unsubscribe' para poder limpiarla al cerrar sesión.
-        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
-            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        });
-        _activeListeners.push(unsubscribe);
     };
 
     /**
@@ -408,7 +401,7 @@
     }
 
     function showVerClientesView() {
-         _floatingControls.classList.add('hidden');
+        _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -425,8 +418,21 @@
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         setupFiltros('clientesListContainer');
-        renderClientesList('clientesListContainer', false); // Ahora esta vista permite editar/eliminar
+
+        // CORRECCIÓN: Se inicia el listener aquí para asegurar que la vista siempre tenga datos actualizados.
+        const container = document.getElementById('clientesListContainer');
+        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
+            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderClientesList('clientesListContainer', false); // Re-renderiza la lista cada vez que los datos cambian.
+        }, (error) => {
+            console.error("Error al cargar clientes:", error);
+            container.innerHTML = `<p class="text-red-500 text-center">Error al cargar la lista de clientes.</p>`;
+        });
+
+        _activeListeners.push(unsubscribe); // Se registra el listener para su limpieza al salir de la vista.
     }
+
 
     function getFiltrosHTML() {
         return `
@@ -466,10 +472,7 @@
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        if (_clientesCache.length === 0) {
-            container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
-            return;
-        }
+        // CORRECCIÓN: Se elimina el chequeo inicial de `_clientesCache.length === 0` porque ahora el listener se encarga del renderizado.
 
         const searchTerm = externalSearchTerm !== null ? externalSearchTerm.toLowerCase() : (document.getElementById('search-input')?.value.toLowerCase() || '');
         const sectorFilter = document.getElementById('filter-sector')?.value || '';
@@ -486,7 +489,13 @@
         });
         
         if (filteredClients.length === 0) {
-            container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con la búsqueda.</p>`;
+            // Si el caché no está vacío, significa que no hay resultados para el filtro.
+            if (_clientesCache.length > 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con la búsqueda.</p>`;
+            } else {
+                // Si el caché está vacío, todavía se están cargando.
+                container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
+            }
             return;
         }
 
