@@ -1,4 +1,4 @@
-// --- Lógica del módulo de Sincronización (Versión con Exportación a Excel) ---
+// --- Lógica del módulo de Sincronización (Versión con Exportación y Limpieza de Caché) ---
 
 (function() {
     // Variables locales del módulo
@@ -25,14 +25,14 @@
     };
 
     /**
-     * Muestra la vista principal de sincronización con opciones para Importar y Compartir.
+     * Muestra la vista principal de sincronización con opciones para Importar, Compartir y Utilidades.
      */
     window.showSincronizacionView = function() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Sincronización y Exportación</h1>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Sincronización y Utilidades</h1>
                         
                         <!-- SECCIÓN PARA IMPORTAR DATOS -->
                         <div class="text-left space-y-4 max-w-lg mx-auto border border-gray-200 p-6 rounded-lg mb-8">
@@ -81,6 +81,15 @@
                             </div>
                         </div>
 
+                        <!-- NUEVA SECCIÓN DE UTILIDADES -->
+                        <div class="text-left space-y-4 max-w-lg mx-auto border border-gray-200 p-6 rounded-lg mt-8">
+                            <h2 class="text-xl font-semibold text-gray-700 mb-4 text-center">4. Utilidades</h2>
+                            <p class="text-sm text-gray-600 text-center">Si notas alguna inconsistencia en los datos o en el orden de los productos, usa esta opción para forzar una actualización.</p>
+                            <button id="cacheCleanupBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition">
+                                Limpieza de Caché
+                            </button>
+                        </div>
+
                          <button id="backToMenuBtn" class="mt-8 w-full max-w-lg mx-auto px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition">
                             Volver al Menú Principal
                         </button>
@@ -93,8 +102,31 @@
         document.getElementById('startShareBtn').addEventListener('click', handleExportacion);
         document.getElementById('exportClientesBtn').addEventListener('click', exportClientesToExcel);
         document.getElementById('exportInventarioBtn').addEventListener('click', exportInventarioToExcel);
+        document.getElementById('cacheCleanupBtn').addEventListener('click', handleCacheCleanup);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
+
+    /**
+     * Limpia la caché de datos de los módulos para forzar una recarga.
+     */
+    function handleCacheCleanup() {
+        _showModal('Confirmar Limpieza', 'Esto forzará a la aplicación a recargar la configuración de orden de productos y catálogos desde la base de datos. No se borrarán datos. ¿Deseas continuar?', () => {
+            try {
+                if (window.inventarioModule && typeof window.inventarioModule.invalidateSegmentOrderCache === 'function') {
+                    window.inventarioModule.invalidateSegmentOrderCache();
+                }
+                if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
+                    window.ventasModule.invalidateCache();
+                }
+                if (window.catalogoModule && typeof window.catalogoModule.invalidateCache === 'function') {
+                    window.catalogoModule.invalidateCache();
+                }
+                _showModal('Éxito', 'La caché ha sido limpiada. La nueva configuración se aplicará al navegar por las secciones.');
+            } catch (error) {
+                 _showModal('Error', `Ocurrió un error durante la limpieza: ${error.message}`);
+            }
+        });
+    }
 
     /**
      * Maneja la lógica para COMPARTIR (exportar) los datos del usuario actual a un lugar público.
@@ -196,15 +228,7 @@
                     await copyDataToLocal('sectores', importedDataContainer);
                 }
 
-                if (window.inventarioModule && typeof window.inventarioModule.invalidateSegmentOrderCache === 'function') {
-                    window.inventarioModule.invalidateSegmentOrderCache();
-                }
-                if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
-                    window.ventasModule.invalidateCache();
-                }
-                if (window.catalogoModule && typeof window.catalogoModule.invalidateCache === 'function') {
-                    window.catalogoModule.invalidateCache();
-                }
+                handleCacheCleanup(); // Limpia la caché automáticamente después de importar
 
                 _showModal('Éxito', 'La importación de datos se completó correctamente.');
 
@@ -255,6 +279,12 @@
         const targetPath = `artifacts/${_appId}/users/${_userId}/${collectionName}`;
         const batch = _writeBatch(_db);
 
+        // Primero, borra los datos locales para asegurar una sobreescritura limpia.
+        const localSnapshot = await _getDocs(_collection(_db, targetPath));
+        localSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
         dataToCopy.forEach(item => {
             const { id, ...data } = item;
             const targetDocRef = _doc(_db, targetPath, id);
@@ -300,7 +330,7 @@
             const today = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `Exportacion_Clientes_${today}.xlsx`);
 
-            _showModal('Éxito', 'El archivo de clientes se ha generado y la descarga ha comenzado.');
+            _showModal('Éxito', 'La exportación de clientes se ha completado. La descarga de tu archivo ha comenzado.');
         } catch (error) {
             console.error("Error al exportar clientes:", error);
             _showModal('Error', `Ocurrió un error al exportar los clientes: ${error.message}`);
@@ -348,7 +378,7 @@
             const today = new Date().toISOString().slice(0, 10);
             XLSX.writeFile(wb, `Exportacion_Inventario_${today}.xlsx`);
 
-            _showModal('Éxito', 'El archivo de inventario se ha generado y la descarga ha comenzado.');
+            _showModal('Éxito', 'La exportación del inventario se ha completado. La descarga de tu archivo ha comenzado.');
         } catch (error) {
             console.error("Error al exportar inventario:", error);
             _showModal('Error', `Ocurrió un error al exportar el inventario: ${error.message}`);
