@@ -1,10 +1,10 @@
-// --- Lógica del módulo de Sincronización (Versión con Exportación y Limpieza de Caché) ---
+// --- Lógica del módulo de Sincronización (Versión con Exportación y Limpieza Profunda) ---
 
 (function() {
     // Variables locales del módulo
     let _db, _userId, _appId, _mainContent;
     let _showMainMenu, _showModal;
-    let _collection, _getDocs, _writeBatch, _doc, _setDoc, _getDoc;
+    let _collection, _getDocs, _writeBatch, _doc, _setDoc, _getDoc, _deleteDoc;
 
     /**
      * Inicializa el módulo con las dependencias de la app principal.
@@ -22,6 +22,7 @@
         _writeBatch = dependencies.writeBatch;
         _doc = dependencies.doc;
         _setDoc = dependencies.setDoc;
+        _deleteDoc = dependencies.deleteDoc; // Asegurar que deleteDoc está disponible
     };
 
     /**
@@ -84,9 +85,12 @@
                         <!-- NUEVA SECCIÓN DE UTILIDADES -->
                         <div class="text-left space-y-4 max-w-lg mx-auto border border-gray-200 p-6 rounded-lg mt-8">
                             <h2 class="text-xl font-semibold text-gray-700 mb-4 text-center">4. Utilidades</h2>
-                            <p class="text-sm text-gray-600 text-center">Si notas alguna inconsistencia en los datos o en el orden de los productos, usa esta opción para forzar una actualización.</p>
-                            <button id="cacheCleanupBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition">
+                             <button id="cacheCleanupBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition">
                                 Limpieza de Caché
+                            </button>
+                            <p class="text-sm text-gray-600 text-center pt-4">Elimina permanentemente todo el historial de ventas y cierres para liberar espacio y empezar de cero.</p>
+                            <button id="deepCleanBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition">
+                                Limpieza Profunda de Datos
                             </button>
                         </div>
 
@@ -103,6 +107,7 @@
         document.getElementById('exportClientesBtn').addEventListener('click', exportClientesToExcel);
         document.getElementById('exportInventarioBtn').addEventListener('click', exportInventarioToExcel);
         document.getElementById('cacheCleanupBtn').addEventListener('click', handleCacheCleanup);
+        document.getElementById('deepCleanBtn').addEventListener('click', handleDeepClean);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
@@ -127,6 +132,54 @@
             }
         });
     }
+
+    /**
+     * Elimina datos históricos y no esenciales de la base de datos.
+     */
+    async function handleDeepClean() {
+        const warningMessage = `
+            <p class="font-bold text-red-600 text-lg">¡ADVERTENCIA! ESTA ACCIÓN ES IRREVERSIBLE.</p>
+            <p class="mt-4">Estás a punto de eliminar permanentemente:</p>
+            <ul class="list-disc list-inside text-left mt-2 mb-4">
+                <li>Todo tu historial de <strong>Ventas Actuales</strong>.</li>
+                <li>Todo tu historial de <strong>Cierres de Venta</strong>.</li>
+                <li>Cualquier dato que hayas compartido para sincronización.</li>
+            </ul>
+            <p>Tu inventario, clientes y categorías <strong>no serán afectados</strong>.</p>
+            <p class="mt-4 font-bold">¿Estás absolutamente seguro de que quieres continuar?</p>
+        `;
+
+        _showModal('Confirmación de Limpieza Profunda', warningMessage, async () => {
+            _showModal('Progreso', 'Realizando limpieza profunda...');
+            try {
+                const collectionsToClear = ['ventas', 'cierres'];
+                for (const collectionName of collectionsToClear) {
+                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
+                    const snapshot = await _getDocs(collectionRef);
+                    if (!snapshot.empty) {
+                        const batch = _writeBatch(_db);
+                        snapshot.docs.forEach(doc => {
+                            batch.delete(doc.ref);
+                        });
+                        await batch.commit();
+                        console.log(`Colección '${collectionName}' limpiada.`);
+                    }
+                }
+
+                // Limpiar también los datos de exportación
+                const publicExportRef = _doc(_db, `artifacts/${_appId}/public/data/sync_exports`, _userId);
+                await _deleteDoc(publicExportRef);
+                console.log('Datos de sincronización compartidos eliminados.');
+
+                _showModal('Éxito', 'La limpieza profunda se ha completado. Todo el historial de ventas y cierres ha sido eliminado.');
+
+            } catch (error) {
+                console.error("Error durante la limpieza profunda:", error);
+                _showModal('Error', `Ocurrió un error durante la limpieza: ${error.message}`);
+            }
+        }, 'Sí, Eliminar Historial');
+    }
+
 
     /**
      * Maneja la lógica para COMPARTIR (exportar) los datos del usuario actual a un lugar público.
