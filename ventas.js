@@ -976,26 +976,25 @@
             grandTotalValue += venta.total;
             
             (venta.productos || []).forEach(p => {
-                // CORRECCIÓN: Lógica resiliente para productos eliminados
                 const productoCompleto = inventarioMap.get(p.id);
                 const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
                 const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
                 const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
-                const presentacion = p.presentacion;
-
-                if (!allProductsMap.has(presentacion)) {
-                    allProductsMap.set(presentacion, {
+                
+                if (!allProductsMap.has(p.id)) {
+                    allProductsMap.set(p.id, {
+                        id: p.id,
                         rubro: rubro,
                         segmento: segmento,
                         marca: marca,
-                        presentacion: presentacion
+                        presentacion: p.presentacion
                     });
                 }
 
-                if (!clientData[clientName].products[presentacion]) {
-                    clientData[clientName].products[presentacion] = 0;
+                if (!clientData[clientName].products[p.id]) {
+                    clientData[clientName].products[p.id] = 0;
                 }
-                clientData[clientName].products[presentacion] += p.totalUnidadesVendidas;
+                clientData[clientName].products[p.id] += p.totalUnidadesVendidas;
             });
         });
 
@@ -1006,7 +1005,7 @@
             if (!groupedProducts[product.rubro]) groupedProducts[product.rubro] = {};
             if (!groupedProducts[product.rubro][product.segmento]) groupedProducts[product.rubro][product.segmento] = {};
             if (!groupedProducts[product.rubro][product.segmento][product.marca]) groupedProducts[product.rubro][product.segmento][product.marca] = [];
-            groupedProducts[product.rubro][product.segmento][product.marca].push(product.presentacion);
+            groupedProducts[product.rubro][product.segmento][product.marca].push(product);
         }
 
         const rubroOrderMap = await getRubroOrderMap();
@@ -1017,13 +1016,10 @@
         const finalProductOrder = [];
         sortedRubros.forEach(rubro => {
             const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
-            groupedProducts[rubro].sortedSegmentos = sortedSegmentos;
             sortedSegmentos.forEach(segmento => {
                 const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                groupedProducts[rubro][segmento].sortedMarcas = sortedMarcas;
                 sortedMarcas.forEach(marca => {
-                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort();
-                    groupedProducts[rubro][segmento][marca] = sortedPresentaciones;
+                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
                     finalProductOrder.push(...sortedPresentaciones);
                 });
             });
@@ -1031,7 +1027,6 @@
 
         return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros };
     }
-
     
     /**
      * Muestra una vista previa del reporte de cierre de ventas.
@@ -1055,26 +1050,30 @@
 
         sortedRubros.forEach(rubro => {
             let rubroColspan = 0;
-            groupedProducts[rubro].sortedSegmentos.forEach(segmento => {
-                groupedProducts[rubro][segmento].sortedMarcas.forEach(marca => {
+            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            sortedSegmentos.forEach(segmento => {
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
                     rubroColspan += groupedProducts[rubro][segmento][marca].length;
                 });
             });
             headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
 
-            groupedProducts[rubro].sortedSegmentos.forEach(segmento => {
+            sortedSegmentos.forEach(segmento => {
                 let segmentoColspan = 0;
-                groupedProducts[rubro][segmento].sortedMarcas.forEach(marca => {
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
                     segmentoColspan += groupedProducts[rubro][segmento][marca].length;
                 });
                 headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
 
-                groupedProducts[rubro][segmento].sortedMarcas.forEach(marca => {
+                sortedMarcas.forEach(marca => {
                     const marcaColspan = groupedProducts[rubro][segmento][marca].length;
                     headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
                     
-                    groupedProducts[rubro][segmento][marca].forEach(presentacion => {
-                        headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${presentacion}</th>`;
+                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
+                    sortedPresentaciones.forEach(producto => {
+                        headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
                     });
                 });
             });
@@ -1088,18 +1087,18 @@
         sortedClients.forEach(clientName => {
             bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
             const currentClient = clientData[clientName];
-            finalProductOrder.forEach(productName => {
-                const quantity = currentClient.products[productName] || 0;
+            finalProductOrder.forEach(product => {
+                const quantity = currentClient.products[product.id] || 0;
                 bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
             });
             bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
         let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
-        finalProductOrder.forEach(productName => {
+        finalProductOrder.forEach(product => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
-                totalQty += clientData[clientName].products[productName] || 0;
+                totalQty += clientData[clientName].products[product.id] || 0;
             });
             footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
         });
@@ -1132,6 +1131,7 @@
 
         const dataForSheet = [];
         const merges = [];
+        const segmentoOrderMap = await getSegmentoOrderMapVentas();
         
         const headerRow1 = [""]; // Rubros
         const headerRow2 = [""]; // Segmentos
@@ -1142,18 +1142,20 @@
         sortedRubros.forEach(rubro => {
             const rubroStartCol = currentColumn;
             let rubroColspan = 0;
-            groupedProducts[rubro].sortedSegmentos.forEach(segmento => {
+            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            sortedSegmentos.forEach(segmento => {
                 const segmentoStartCol = currentColumn;
                 let segmentoColspan = 0;
-                groupedProducts[rubro][segmento].sortedMarcas.forEach(marca => {
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
                     const marcaStartCol = currentColumn;
-                    const presentaciones = groupedProducts[rubro][segmento][marca];
+                    const presentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
                     rubroColspan += presentaciones.length;
                     segmentoColspan += presentaciones.length;
                     headerRow3.push(marca);
                     for (let i = 1; i < presentaciones.length; i++) headerRow3.push("");
                     if (presentaciones.length > 1) merges.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + presentaciones.length - 1 } });
-                    presentaciones.forEach(p => headerRow4.push(p));
+                    presentaciones.forEach(p => headerRow4.push(p.presentacion));
                     currentColumn += presentaciones.length;
                 });
                 headerRow2.push(segmento);
@@ -1173,15 +1175,15 @@
         sortedClients.forEach(clientName => {
             const row = [clientName];
             const currentClient = clientData[clientName];
-            finalProductOrder.forEach(productName => row.push(currentClient.products[productName] || 0));
+            finalProductOrder.forEach(product => row.push(currentClient.products[product.id] || 0));
             row.push(currentClient.totalValue);
             dataForSheet.push(row);
         });
 
         const footerRow = ["TOTALES (Uds)"];
-        finalProductOrder.forEach(productName => {
+        finalProductOrder.forEach(product => {
             let totalQty = 0;
-            sortedClients.forEach(clientName => totalQty += clientData[clientName].products[productName] || 0);
+            sortedClients.forEach(clientName => totalQty += clientData[clientName].products[product.id] || 0);
             footerRow.push(totalQty);
         });
         footerRow.push(grandTotalValue);
@@ -1719,4 +1721,3 @@
         }
     };
 })();
-
