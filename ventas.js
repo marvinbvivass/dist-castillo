@@ -791,6 +791,8 @@
                     itemsVenta.push({ 
                         id: p.id, 
                         presentacion: p.presentacion, 
+                        // CORRECCIÓN: Se añade el rubro al guardar la venta
+                        rubro: p.rubro ?? null,
                         marca: p.marca ?? null, 
                         segmento: p.segmento ?? null, 
                         precios: p.precios,
@@ -972,23 +974,28 @@
             }
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
+            
             (venta.productos || []).forEach(p => {
+                // CORRECCIÓN: Lógica resiliente para productos eliminados
                 const productoCompleto = inventarioMap.get(p.id);
-                if (!productoCompleto) return;
+                const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
+                const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
+                const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
+                const presentacion = p.presentacion;
 
-                const productName = productoCompleto.presentacion;
-                if (!allProductsMap.has(productName)) {
-                    allProductsMap.set(productName, {
-                        rubro: productoCompleto.rubro || 'Sin Rubro',
-                        segmento: productoCompleto.segmento || 'Sin Segmento',
-                        marca: productoCompleto.marca || 'Sin Marca',
-                        presentacion: productoCompleto.presentacion
+                if (!allProductsMap.has(presentacion)) {
+                    allProductsMap.set(presentacion, {
+                        rubro: rubro,
+                        segmento: segmento,
+                        marca: marca,
+                        presentacion: presentacion
                     });
                 }
-                if (!clientData[clientName].products[productName]) {
-                    clientData[clientName].products[productName] = 0;
+
+                if (!clientData[clientName].products[presentacion]) {
+                    clientData[clientName].products[presentacion] = 0;
                 }
-                clientData[clientName].products[productName] += p.totalUnidadesVendidas;
+                clientData[clientName].products[presentacion] += p.totalUnidadesVendidas;
             });
         });
 
@@ -1661,7 +1668,11 @@
                     const totalUnidadesVendidasRecalculado = (p.cantCj || 0) * unidadesPorCaja + (p.cantPaq || 0) * unidadesPorPaquete + (p.cantUnd || 0);
 
                     return {
-                        id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
+                        id: p.id, presentacion: p.presentacion, 
+                        // CORRECCIÓN: Se añade el rubro al guardar la venta
+                        rubro: p.rubro ?? null,
+                        marca: p.marca ?? null, 
+                        segmento: p.segmento ?? null,
                         precios: p.precios, 
                         unidadesPorPaquete: p.unidadesPorPaquete,
                         unidadesPorCaja: p.unidadesPorCaja,
@@ -1708,3 +1719,4 @@
         }
     };
 })();
+
