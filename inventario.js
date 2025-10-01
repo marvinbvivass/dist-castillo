@@ -1083,7 +1083,9 @@
                             </div>
                             <div class="border-t pt-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label class="block text-gray-700 font-medium mb-1">Stock Total (en Unidades):</label><input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required></div>
+                                    <div id="stock-edit-container">
+                                        <!-- Stock input will be dynamically inserted here -->
+                                    </div>
                                     <div><label for="ivaTipo" class="block text-gray-700 font-medium mb-1">Tipo de IVA:</label><select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required><option value="16">IVA 16%</option><option value="0">Exento</option></select></div>
                                 </div>
                             </div>
@@ -1140,7 +1142,37 @@
             document.getElementById('segmento').value = producto.segmento;
             document.getElementById('marca').value = producto.marca;
             document.getElementById('presentacion').value = producto.presentacion;
-            document.getElementById('cantidadUnidades').value = producto.cantidadUnidades || 0;
+            
+            // CORRECCIÓN: Lógica de stock inteligente
+            const stockContainer = document.getElementById('stock-edit-container');
+            const ventaPor = producto.ventaPor || {};
+            
+            if (ventaPor.cj && !ventaPor.paq && !ventaPor.und) {
+                stockContainer.innerHTML = `
+                    <label class="block text-gray-700 font-medium mb-1">Stock (en Cajas):</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
+                        <select id="unidadCargada" class="hidden"><option value="cj" selected>Cj.</option></select>
+                    </div>`;
+                const stockEnCajas = Math.floor((producto.cantidadUnidades || 0) / (producto.unidadesPorCaja || 1));
+                document.getElementById('cantidadCargada').value = stockEnCajas;
+            } else if (ventaPor.paq && !ventaPor.cj && !ventaPor.und) {
+                 stockContainer.innerHTML = `
+                    <label class="block text-gray-700 font-medium mb-1">Stock (en Paquetes):</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
+                        <select id="unidadCargada" class="hidden"><option value="paq" selected>Paq.</option></select>
+                    </div>`;
+                const stockEnPaquetes = Math.floor((producto.cantidadUnidades || 0) / (producto.unidadesPorPaquete || 1));
+                document.getElementById('cantidadCargada').value = stockEnPaquetes;
+            } else {
+                 stockContainer.innerHTML = `
+                    <label class="block text-gray-700 font-medium mb-1">Stock Total (en Unidades):</label>
+                    <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required>`;
+                document.getElementById('cantidadUnidades').value = producto.cantidadUnidades || 0;
+            }
+
+
             document.getElementById('ivaTipo').value = producto.iva !== undefined ? producto.iva : 16;
             
             if (producto.ventaPor) {
