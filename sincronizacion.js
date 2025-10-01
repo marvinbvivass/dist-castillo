@@ -2,7 +2,7 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _userId, _appId, _mainContent;
+    let _db, _userId, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal;
     let _collection, _getDocs, _writeBatch, _doc, _setDoc, _getDoc, _deleteDoc;
 
@@ -14,6 +14,7 @@
         _userId = dependencies.userId;
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
+        _floatingControls = dependencies.floatingControls; // Se añade la dependencia
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _collection = dependencies.collection;
@@ -29,6 +30,7 @@
      * Muestra la vista principal de sincronización con opciones para Importar, Compartir y Utilidades.
      */
     window.showSincronizacionView = function() {
+        _floatingControls.classList.add('hidden'); // CORRECCIÓN: Oculta los controles flotantes
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
