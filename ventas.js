@@ -1654,6 +1654,12 @@
                         (precios.paq || 0) * (p.cantPaq || 0) +
                         (precios.und || 0) * (p.cantUnd || 0);
                     nuevoTotal += subtotal;
+
+                    // CORRECCIÓN: Se recalcula 'totalUnidadesVendidas' antes de guardar.
+                    const unidadesPorCaja = p.unidadesPorCaja || 1;
+                    const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+                    const totalUnidadesVendidasRecalculado = (p.cantCj || 0) * unidadesPorCaja + (p.cantPaq || 0) * unidadesPorPaquete + (p.cantUnd || 0);
+
                     return {
                         id: p.id, presentacion: p.presentacion, marca: p.marca ?? null, segmento: p.segmento ?? null,
                         precios: p.precios, 
@@ -1664,7 +1670,7 @@
                             paq: p.cantPaq || 0,
                             und: p.cantUnd || 0
                         },
-                        totalUnidadesVendidas: p.totalUnidadesVendidas,
+                        totalUnidadesVendidas: totalUnidadesVendidasRecalculado,
                         iva: p.iva ?? 0
                     };
                 });
