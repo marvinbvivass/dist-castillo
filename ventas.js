@@ -1025,7 +1025,7 @@
             });
         });
 
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros };
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap };
     }
     
     /**
@@ -1041,7 +1041,7 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap } = await processSalesDataForReport(ventas);
 
         let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
         let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
@@ -1127,11 +1127,10 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap } = await processSalesDataForReport(ventas);
 
         const dataForSheet = [];
         const merges = [];
-        const segmentoOrderMap = await getSegmentoOrderMapVentas();
         
         const headerRow1 = [""]; // Rubros
         const headerRow2 = [""]; // Segmentos
@@ -1721,3 +1720,4 @@
         }
     };
 })();
+
