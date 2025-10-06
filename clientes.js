@@ -4,7 +4,7 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction;
     
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
     let _clientesParaImportar = []; // Caché para la data del Excel a importar
@@ -34,6 +34,7 @@
         _query = dependencies.query;
         _where = dependencies.where;
         _writeBatch = dependencies.writeBatch;
+        _runTransaction = dependencies.runTransaction;
     };
 
     /**
@@ -49,6 +50,7 @@
                         <div class="space-y-4">
                             <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
                             <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
+                            <button id="saldosVaciosBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600">Consultar Saldos de Vacíos</button>
                             <button id="funcionesAvanzadasBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Funciones Avanzadas</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
@@ -58,6 +60,7 @@
         `;
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
         document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
+        document.getElementById('saldosVaciosBtn').addEventListener('click', showSaldosVaciosView);
         document.getElementById('funcionesAvanzadasBtn').addEventListener('click', showFuncionesAvanzadasView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
@@ -154,7 +157,8 @@
                     nombreComercial: (row[headerMap['nombre comercial']] || '').toString().trim().toUpperCase(),
                     nombrePersonal: (row[headerMap['nombre personal']] || '').toString().trim().toUpperCase(),
                     telefono: (row[headerMap['telefono']] || '').toString().trim(),
-                    codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim()
+                    codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim(),
+                    saldoVacios: {} // Initialize empty returns object
                 };
                 if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
                 return cliente;
@@ -339,6 +343,11 @@
         const normComercial = nombreComercial.toLowerCase();
         const normPersonal = nombrePersonal.toLowerCase();
 
+        // Carga el caché más reciente antes de validar duplicados
+        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        const snapshot = await _getDocs(clientesRef);
+        _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
         let duplicado = null;
         let motivo = "";
 
@@ -371,7 +380,8 @@
                 nombreComercial: nombreComercial,
                 nombrePersonal: nombrePersonal,
                 telefono: telefono,
-                codigoCEP: codigoCEP
+                codigoCEP: codigoCEP,
+                saldoVacios: {} // Initialize empty returns object
             };
             try {
                 await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
@@ -401,7 +411,7 @@
     }
 
     function showVerClientesView() {
-        _floatingControls.classList.add('hidden');
+         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -419,18 +429,17 @@
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         setupFiltros('clientesListContainer');
 
-        // CORRECCIÓN: Se inicia el listener aquí para asegurar que la vista siempre tenga datos actualizados.
         const container = document.getElementById('clientesListContainer');
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
         const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            renderClientesList('clientesListContainer', false); // Re-renderiza la lista cada vez que los datos cambian.
+            renderClientesList('clientesListContainer', false); 
         }, (error) => {
             console.error("Error al cargar clientes:", error);
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar la lista de clientes.</p>`;
         });
 
-        _activeListeners.push(unsubscribe); // Se registra el listener para su limpieza al salir de la vista.
+        _activeListeners.push(unsubscribe);
     }
 
 
@@ -471,9 +480,7 @@
     function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
         const container = document.getElementById(elementId);
         if (!container) return;
-
-        // CORRECCIÓN: Se elimina el chequeo inicial de `_clientesCache.length === 0` porque ahora el listener se encarga del renderizado.
-
+        
         const searchTerm = externalSearchTerm !== null ? externalSearchTerm.toLowerCase() : (document.getElementById('search-input')?.value.toLowerCase() || '');
         const sectorFilter = document.getElementById('filter-sector')?.value || '';
 
@@ -489,11 +496,9 @@
         });
         
         if (filteredClients.length === 0) {
-            // Si el caché no está vacío, significa que no hay resultados para el filtro.
             if (_clientesCache.length > 0) {
                 container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con la búsqueda.</p>`;
             } else {
-                // Si el caché está vacío, todavía se están cargando.
                 container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
             }
             return;
@@ -606,7 +611,8 @@
                 nombreComercial: document.getElementById('editNombreComercial').value.toUpperCase(),
                 nombrePersonal: document.getElementById('editNombrePersonal').value.toUpperCase(),
                 telefono: document.getElementById('editTelefono').value,
-                codigoCEP: document.getElementById('editCodigoCEP').value
+                codigoCEP: document.getElementById('editCodigoCEP').value,
+                saldoVacios: cliente.saldoVacios || {} // Preserve existing returns data
             };
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId), updatedData, { merge: true });
@@ -806,13 +812,175 @@
         });
     }
 
+    // --- Lógica de Saldos de Vacíos ---
+
+    function showSaldosVaciosView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Saldos de Envases Retornables (Vacíos)</h2>
+                        <input type="text" id="saldo-search-input" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg mb-4">
+                        <div id="saldosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando saldos de clientes...</p>
+                        </div>
+                        <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        document.getElementById('saldo-search-input').addEventListener('input', renderSaldosList);
+        
+        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
+            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSaldosList();
+        });
+        _activeListeners.push(unsubscribe);
+    }
+
+    function renderSaldosList() {
+        const container = document.getElementById('saldosListContainer');
+        const searchTerm = document.getElementById('saldo-search-input').value.toLowerCase();
+
+        const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm));
+
+        if (filteredClients.length === 0) {
+            container.innerHTML = `<p class="text-gray-500 text-center">No se encontraron clientes.</p>`;
+            return;
+        }
+
+        let tableHTML = `<table class="min-w-full bg-white text-sm">
+            <thead class="bg-gray-200 sticky top-0"><tr>
+                <th class="py-2 px-4 border-b text-left">Cliente</th>
+                <th class="py-2 px-4 border-b text-center">Total Vacíos Pendientes</th>
+                <th class="py-2 px-4 border-b text-center">Acciones</th>
+            </tr></thead><tbody>`;
+
+        filteredClients.forEach(cliente => {
+            const saldoVacios = cliente.saldoVacios || {};
+            const totalVacios = Object.values(saldoVacios).reduce((sum, count) => sum + count, 0);
+            tableHTML += `<tr class="hover:bg-gray-50">
+                <td class="py-2 px-4 border-b">${cliente.nombreComercial}</td>
+                <td class="py-2 px-4 border-b text-center font-bold">${totalVacios}</td>
+                <td class="py-2 px-4 border-b text-center">
+                    <button onclick="window.clientesModule.showSaldoDetalleModal('${cliente.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver Detalle / Ajustar</button>
+                </td>
+            </tr>`;
+        });
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
+    }
+
+    async function showSaldoDetalleModal(clienteId) {
+        const cliente = _clientesCache.find(c => c.id === clienteId);
+        if (!cliente) return;
+
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const q = _query(inventarioRef, _where("manejaVacios", "==", true));
+        const inventarioSnapshot = await _getDocs(q);
+        const productosConVacios = inventarioSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        let optionsHTML = '<option value="">Seleccione un producto...</option>';
+        productosConVacios.forEach(p => {
+            optionsHTML += `<option value="${p.id}">${p.presentacion}</option>`;
+        });
+
+        const saldoVacios = cliente.saldoVacios || {};
+        let detalleHTML = '<p class="text-center text-gray-500">Este cliente no tiene saldos pendientes.</p>';
+        if (Object.keys(saldoVacios).length > 0) {
+            detalleHTML = '<ul class="space-y-2">';
+            for (const productoId in saldoVacios) {
+                if (saldoVacios[productoId] !== 0) {
+                    const producto = productosConVacios.find(p => p.id === productoId) || { presentacion: 'Producto Desconocido' };
+                    detalleHTML += `<li class="flex justify-between"><span>${producto.presentacion}:</span><span class="font-bold">${saldoVacios[productoId]}</span></li>`;
+                }
+            }
+            detalleHTML += '</ul>';
+        }
+
+        const modalContent = `
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Detalle de Saldo: ${cliente.nombreComercial}</h3>
+            <div class="mb-6 border-b pb-4">${detalleHTML}</div>
+            <h4 class="text-lg font-semibold mb-2">Ajuste Manual</h4>
+            <div class="space-y-4">
+                <div>
+                    <label for="ajusteProducto" class="block text-sm font-medium mb-1">Producto:</label>
+                    <select id="ajusteProducto" class="w-full px-2 py-1 border rounded-lg">${optionsHTML}</select>
+                </div>
+                <div>
+                    <label for="ajusteCantidad" class="block text-sm font-medium mb-1">Cantidad de Cajas:</label>
+                    <input type="number" id="ajusteCantidad" min="1" class="w-full px-2 py-1 border rounded-lg">
+                </div>
+                <div class="flex gap-4">
+                    <button id="ajusteDevolucionBtn" class="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">Registrar Devolución (-)</button>
+                    <button id="ajustePrestamoBtn" class="w-full px-4 py-2 bg-yellow-500 text-gray-800 rounded-lg hover:bg-yellow-600">Registrar Préstamo (+)</button>
+                </div>
+            </div>
+        `;
+        _showModal('Detalle de Saldo', modalContent);
+
+        document.getElementById('ajusteDevolucionBtn').addEventListener('click', () => {
+            const productoId = document.getElementById('ajusteProducto').value;
+            const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
+            if(productoId && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, productoId, cantidad, 'devolucion');
+            } else {
+                alert('Por favor, seleccione un producto y una cantidad válida.');
+            }
+        });
+        document.getElementById('ajustePrestamoBtn').addEventListener('click', () => {
+            const productoId = document.getElementById('ajusteProducto').value;
+            const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
+             if(productoId && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, productoId, cantidad, 'prestamo');
+            } else {
+                alert('Por favor, seleccione un producto y una cantidad válida.');
+            }
+        });
+    }
+
+    async function handleAjusteManualVacios(clienteId, productoId, cantidad, tipoAjuste) {
+        const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId);
+        _showModal('Progreso', 'Actualizando saldo...');
+        try {
+            await _runTransaction(_db, async (transaction) => {
+                const clienteDoc = await transaction.get(clienteRef);
+                if (!clienteDoc.exists()) {
+                    throw "El cliente no existe.";
+                }
+
+                const data = clienteDoc.data();
+                const saldoVacios = data.saldoVacios || {};
+                const saldoActual = saldoVacios[productoId] || 0;
+
+                let nuevoSaldo = saldoActual;
+                if (tipoAjuste === 'devolucion') {
+                    nuevoSaldo -= cantidad;
+                } else { // prestamo
+                    nuevoSaldo += cantidad;
+                }
+                
+                saldoVacios[productoId] = nuevoSaldo;
+                transaction.update(clienteRef, { saldoVacios: saldoVacios });
+            });
+            _showModal('Éxito', 'El saldo de vacíos se ha actualizado correctamente.');
+        } catch (error) {
+            console.error("Error en el ajuste manual de vacíos:", error);
+            _showModal('Error', `No se pudo actualizar el saldo: ${error}`);
+        }
+    }
+
 
     // Exponer funciones públicas al objeto window
     window.clientesModule = {
         editCliente,
         deleteCliente,
         editSector,
-        deleteSector
+        deleteSector,
+        showSaldoDetalleModal
     };
 
 })();
