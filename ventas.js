@@ -363,11 +363,28 @@
             const createRow = (tipo, cant, max, precio, stock, desc) => {
                 const row = document.createElement('tr');
                 row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
+                
+                let vaciosInputHTML = '';
+                if (tipo === 'cj' && producto.manejaVacios) {
+                    const vaciosDevueltos = ventaActualProducto.vaciosDevueltos || 0;
+                    vaciosInputHTML = `
+                        <div class="mt-1 text-xs flex items-center">
+                            <label for="vacios-${producto.id}" class="mr-2 font-medium text-cyan-700">Vacíos Devueltos:</label>
+                            <input type="number" min="0" value="${vaciosDevueltos}" id="vacios-${producto.id}"
+                                   class="w-16 p-1 text-center border rounded-md" 
+                                   data-product-id="${producto.id}" oninput="window.ventasModule.handleVaciosChange(event)">
+                        </div>
+                    `;
+                }
+
                 row.innerHTML = `
                     <td class="py-2 px-2 text-center align-middle">
                         <input type="number" min="0" max="${max}" value="${cant}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="${tipo}" oninput="window.ventasModule.handleQuantityChange(event)">
                     </td>
-                    <td class="py-2 px-2 text-left align-middle">${desc}</td>
+                    <td class="py-2 px-2 text-left align-middle">
+                        ${desc}
+                        ${vaciosInputHTML}
+                    </td>
                     <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${formatPrice(precio)}</td>
                     <td class="py-2 px-2 text-center align-middle">${stock}</td>
                 `;
@@ -410,7 +427,7 @@
     }
 
     /**
-     * Actualiza la cantidad de un producto y el total.
+     * Actualiza la cantidad de un producto en la venta actual.
      */
     function handleQuantityChange(event) {
         const input = event.target;
@@ -419,7 +436,6 @@
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
-        // Ensure product exists in current sale object
         if (!_ventaActual.productos[productId]) {
             _ventaActual.productos[productId] = { ...producto, cantCj: 0, cantPaq: 0, cantUnd: 0 };
         }
@@ -434,18 +450,37 @@
 
         if (totalUnidadesVendidas > producto.cantidadUnidades) {
             _showModal('Stock Insuficiente', `La cantidad total excede el stock de ${producto.cantidadUnidades} unidades.`);
-            input.value = parseInt(input.value, 10) - 1; // Revert change
-            handleQuantityChange({target: input}); // Re-evaluate
+            input.value = parseInt(input.value, 10) - 1; 
+            handleQuantityChange({target: input}); 
             return;
         }
 
         if (totalUnidadesVendidas > 0) {
             _ventaActual.productos[productId].totalUnidadesVendidas = totalUnidadesVendidas;
         } else {
-            delete _ventaActual.productos[productId];
+            // Si todas las cantidades son 0, se elimina el producto de la venta actual
+            if(!p.cantCj && !p.cantPaq && !p.cantUnd) {
+                delete _ventaActual.productos[productId];
+            }
         }
         updateVentaTotal();
     };
+
+    /**
+     * Actualiza la cantidad de vacíos devueltos en la venta actual.
+     */
+    function handleVaciosChange(event) {
+        const input = event.target;
+        const productId = input.dataset.productId;
+        
+        if (!_ventaActual.productos[productId]) {
+             // Si el producto no está en la venta, no hacer nada hasta que se agregue una cantidad
+            input.value = 0;
+            return;
+        }
+
+        _ventaActual.productos[productId].vaciosDevueltos = parseInt(input.value, 10) || 0;
+    }
 
     /**
      * Calcula y muestra el total de la venta.
@@ -764,6 +799,7 @@
                 const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
                 let totalVenta = 0;
                 const itemsVenta = [];
+                const vaciosChanges = {};
 
                 for (const p of productosVendidos) {
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
@@ -788,10 +824,18 @@
                     const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
                     batch.update(productoRef, { cantidadUnidades: stockUnidadesRestante });
 
+                    const vaciosDevueltos = p.vaciosDevueltos || 0;
+                    if (p.manejaVacios) {
+                        const cajasVendidas = p.cantCj || 0;
+                        const netChange = cajasVendidas - vaciosDevueltos;
+                        if (netChange !== 0) {
+                            vaciosChanges[p.id] = netChange;
+                        }
+                    }
+
                     itemsVenta.push({ 
                         id: p.id, 
                         presentacion: p.presentacion, 
-                        // CORRECCIÓN: Se añade el rubro al guardar la venta
                         rubro: p.rubro ?? null,
                         marca: p.marca ?? null, 
                         segmento: p.segmento ?? null, 
@@ -799,13 +843,34 @@
                         ventaPor: p.ventaPor,
                         unidadesPorPaquete: p.unidadesPorPaquete,
                         unidadesPorCaja: p.unidadesPorCaja,
-                        cantidadVendida: { // Objeto detallado
+                        cantidadVendida: {
                             cj: p.cantCj || 0,
                             paq: p.cantPaq || 0,
                             und: p.cantUnd || 0
                         },
                         totalUnidadesVendidas: p.totalUnidadesVendidas,
-                        iva: p.iva ?? 0
+                        iva: p.iva ?? 0,
+                        manejaVacios: p.manejaVacios || false,
+                        vaciosDevueltos: vaciosDevueltos
+                    });
+                }
+
+                if (Object.keys(vaciosChanges).length > 0) {
+                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _ventaActual.cliente.id);
+                    await _runTransaction(_db, async (transaction) => {
+                        const clienteDoc = await transaction.get(clienteRef);
+                        if (!clienteDoc.exists()) throw "El cliente no existe.";
+                        
+                        const clienteData = clienteDoc.data();
+                        const saldoVacios = clienteData.saldoVacios || {};
+                        
+                        for (const productoId in vaciosChanges) {
+                            const change = vaciosChanges[productoId];
+                            const saldoActual = saldoVacios[productoId] || 0;
+                            saldoVacios[productoId] = saldoActual + change;
+                        }
+                        
+                        transaction.update(clienteRef, { saldoVacios: saldoVacios });
                     });
                 }
 
@@ -963,6 +1028,7 @@
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
+        const vaciosMovements = {};
         
         const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
@@ -972,10 +1038,21 @@
             if (!clientData[clientName]) {
                 clientData[clientName] = { products: {}, totalValue: 0 };
             }
+             if(!vaciosMovements[clientName]) {
+                vaciosMovements[clientName] = {};
+            }
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
             
             (venta.productos || []).forEach(p => {
+                if (p.manejaVacios) {
+                    if (!vaciosMovements[clientName][p.id]) {
+                        vaciosMovements[clientName][p.id] = { entregados: 0, devueltos: 0 };
+                    }
+                    vaciosMovements[clientName][p.id].entregados += p.cantidadVendida?.cj || 0;
+                    vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
+                }
+
                 const productoCompleto = inventarioMap.get(p.id);
                 const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
                 const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
@@ -1025,8 +1102,9 @@
             });
         });
 
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap };
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
     }
+    
     
     /**
      * Muestra una vista previa del reporte de cierre de ventas.
@@ -1041,7 +1119,7 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
 
         let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
         let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
@@ -1104,6 +1182,47 @@
         });
         footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
+        let vaciosReportHTML = '';
+        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        
+        if (clientesConMovimientoVacios.length > 0) {
+            vaciosReportHTML = `
+                <h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos)</h3>
+                <div class="overflow-auto border">
+                    <table class="min-w-full bg-white text-xs">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="p-1 border text-left">Cliente</th>
+                                <th class="p-1 border text-left">Producto</th>
+                                <th class="p-1 border text-center">Entregados (Cajas)</th>
+                                <th class="p-1 border text-center">Devueltos (Cajas)</th>
+                                <th class="p-1 border text-center">Neto</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+            clientesConMovimientoVacios.forEach(cliente => {
+                const movimientos = vaciosMovements[cliente];
+                for(const productoId in movimientos) {
+                    const mov = movimientos[productoId];
+                    const producto = allProductsMap.get(productoId);
+                    const neto = mov.entregados - mov.devueltos;
+                    if(mov.entregados > 0 || mov.devueltos > 0) {
+                         vaciosReportHTML += `
+                            <tr class="hover:bg-blue-50">
+                                <td class="p-1 border">${cliente}</td>
+                                <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
+                                <td class="p-1 border text-center">${mov.entregados}</td>
+                                <td class="p-1 border text-center">${mov.devueltos}</td>
+                                <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
+                            </tr>
+                        `;
+                    }
+                }
+            });
+            vaciosReportHTML += '</tbody></table></div>';
+        }
+
         const reporteHTML = `
             <div class="text-left max-h-[80vh] overflow-auto">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
@@ -1114,6 +1233,7 @@
                         <tfoot>${footerHTML}</tfoot>
                     </table>
                 </div>
+                ${vaciosReportHTML}
             </div>`;
         _showModal('Reporte de Cierre', reporteHTML);
     }
@@ -1127,15 +1247,12 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
 
-        const dataForSheet = [];
-        const merges = [];
-        
-        const headerRow1 = [""]; // Rubros
-        const headerRow2 = [""]; // Segmentos
-        const headerRow3 = [""]; // Marcas
-        const headerRow4 = ["Cliente"]; // Presentaciones
+        // --- Hoja 1: Reporte de Ventas ---
+        const dataForSheet1 = [];
+        const merges1 = [];
+        const headerRow1 = [""]; const headerRow2 = [""]; const headerRow3 = [""]; const headerRow4 = ["Cliente"];
         
         let currentColumn = 1;
         sortedRubros.forEach(rubro => {
@@ -1153,30 +1270,30 @@
                     segmentoColspan += presentaciones.length;
                     headerRow3.push(marca);
                     for (let i = 1; i < presentaciones.length; i++) headerRow3.push("");
-                    if (presentaciones.length > 1) merges.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + presentaciones.length - 1 } });
+                    if (presentaciones.length > 1) merges1.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + presentaciones.length - 1 } });
                     presentaciones.forEach(p => headerRow4.push(p.presentacion));
                     currentColumn += presentaciones.length;
                 });
                 headerRow2.push(segmento);
                 for (let i = 1; i < segmentoColspan; i++) headerRow2.push("");
-                if (segmentoColspan > 1) merges.push({ s: { r: 1, c: segmentoStartCol }, e: { r: 1, c: segmentoStartCol + segmentoColspan - 1 } });
+                if (segmentoColspan > 1) merges1.push({ s: { r: 1, c: segmentoStartCol }, e: { r: 1, c: segmentoStartCol + segmentoColspan - 1 } });
             });
             headerRow1.push(rubro);
             for (let i = 1; i < rubroColspan; i++) headerRow1.push("");
-            if (rubroColspan > 1) merges.push({ s: { r: 0, c: rubroStartCol }, e: { r: 0, c: rubroStartCol + rubroColspan - 1 } });
+            if (rubroColspan > 1) merges1.push({ s: { r: 0, c: rubroStartCol }, e: { r: 0, c: rubroStartCol + rubroColspan - 1 } });
         });
         
         headerRow1.push(""); headerRow2.push(""); headerRow3.push(""); headerRow4.push("Total Cliente");
-        dataForSheet.push(headerRow1, headerRow2, headerRow3, headerRow4);
-        merges.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
-        merges.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 3, c: finalProductOrder.length + 1 } });
+        dataForSheet1.push(headerRow1, headerRow2, headerRow3, headerRow4);
+        merges1.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
+        merges1.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 3, c: finalProductOrder.length + 1 } });
 
         sortedClients.forEach(clientName => {
             const row = [clientName];
             const currentClient = clientData[clientName];
             finalProductOrder.forEach(product => row.push(currentClient.products[product.id] || 0));
             row.push(currentClient.totalValue);
-            dataForSheet.push(row);
+            dataForSheet1.push(row);
         });
 
         const footerRow = ["TOTALES (Uds)"];
@@ -1186,12 +1303,38 @@
             footerRow.push(totalQty);
         });
         footerRow.push(grandTotalValue);
-        dataForSheet.push(footerRow);
+        dataForSheet1.push(footerRow);
 
-        const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
-        ws['!merges'] = merges;
+        const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet1);
+        ws1['!merges'] = merges1;
+        
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Reporte de Cierre');
+        XLSX.utils.book_append_sheet(wb, ws1, 'Reporte de Cierre');
+
+        // --- Hoja 2: Reporte de Vacíos ---
+        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        if (clientesConMovimientoVacios.length > 0) {
+            const dataForSheet2 = [['Cliente', 'Producto', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
+            clientesConMovimientoVacios.forEach(cliente => {
+                 const movimientos = vaciosMovements[cliente];
+                for(const productoId in movimientos) {
+                    const mov = movimientos[productoId];
+                    const producto = allProductsMap.get(productoId);
+                    const neto = mov.entregados - mov.devueltos;
+                     if(mov.entregados > 0 || mov.devueltos > 0) {
+                        dataForSheet2.push([
+                            cliente,
+                            producto ? producto.presentacion : 'Producto Desconocido',
+                            mov.entregados,
+                            mov.devueltos,
+                            neto
+                        ]);
+                    }
+                }
+            });
+            const ws2 = XLSX.utils.aoa_to_sheet(dataForSheet2);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Reporte de Vacíos');
+        }
         
         const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
@@ -1499,30 +1642,55 @@
 
         _showModal(
             'Confirmar Eliminación',
-            `¿Estás seguro de que deseas eliminar la venta a "${venta.clienteNombre}"? El stock será devuelto al inventario.`,
+            `¿Estás seguro de que deseas eliminar la venta a "${venta.clienteNombre}"? El stock y los saldos de vacíos serán restaurados.`,
             async () => {
-                _showModal('Progreso', 'Eliminando venta y restaurando stock...');
+                _showModal('Progreso', 'Eliminando venta y restaurando datos...');
                 try {
-                    const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-                    const snapshot = await _getDocs(inventarioRef);
-                    _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
                     const batch = _writeBatch(_db);
+                    const vaciosAdjustments = {};
 
                     for (const productoVendido of venta.productos) {
-                        const productoEnCache = _inventarioCache.find(p => p.id === productoVendido.id);
-                        if (productoEnCache) {
+                        const productoEnCache = await _getDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id));
+                        
+                        if (productoEnCache.exists()) {
                             const unidadesADevolver = productoVendido.totalUnidadesVendidas || 0;
-                            const nuevoStockUnidades = (productoEnCache.cantidadUnidades || 0) + unidadesADevolver;
-                            const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
-                            batch.update(productoRef, { cantidadUnidades: nuevoStockUnidades });
+                            const nuevoStockUnidades = (productoEnCache.data().cantidadUnidades || 0) + unidadesADevolver;
+                            batch.update(productoEnCache.ref, { cantidadUnidades: nuevoStockUnidades });
                         }
+
+                        if (productoVendido.manejaVacios) {
+                            const cajasVendidas = productoVendido.cantidadVendida?.cj || 0;
+                            const devueltos = productoVendido.vaciosDevueltos || 0;
+                            const netChange = cajasVendidas - devueltos;
+                            if (netChange !== 0) {
+                                vaciosAdjustments[productoVendido.id] = -netChange;
+                            }
+                        }
+                    }
+
+                    if (Object.keys(vaciosAdjustments).length > 0) {
+                         const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, venta.clienteId);
+                         await _runTransaction(_db, async (transaction) => {
+                            const clienteDoc = await transaction.get(clienteRef);
+                            if (!clienteDoc.exists()) return;
+                            
+                            const clienteData = clienteDoc.data();
+                            const saldoVacios = clienteData.saldoVacios || {};
+                            
+                            for (const productoId in vaciosAdjustments) {
+                                const adjustment = vaciosAdjustments[productoId];
+                                const saldoActual = saldoVacios[productoId] || 0;
+                                saldoVacios[productoId] = saldoActual + adjustment;
+                            }
+                            
+                            transaction.update(clienteRef, { saldoVacios: saldoVacios });
+                        });
                     }
 
                     const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
                     batch.delete(ventaRef);
                     await batch.commit();
-                    _showModal('Éxito', 'La venta ha sido eliminada y el stock restaurado.');
+                    _showModal('Éxito', 'La venta ha sido eliminada y los datos restaurados.');
 
                 } catch (error) {
                     _showModal('Error', `Hubo un error al eliminar la venta: ${error.message}`);
@@ -1592,7 +1760,8 @@
                         cantCj: cant.cj || 0,
                         cantPaq: cant.paq || 0,
                         cantUnd: cant.und || 0,
-                        totalUnidadesVendidas: p.totalUnidadesVendidas
+                        totalUnidadesVendidas: p.totalUnidadesVendidas,
+                        vaciosDevueltos: p.vaciosDevueltos || 0
                     };
                     return acc;
                 }, {})
@@ -1621,14 +1790,16 @@
             return;
         }
 
-        _showModal('Confirmar Cambios', '¿Deseas guardar los cambios? El stock se ajustará automáticamente.', async () => {
-            _showModal('Progreso', 'Guardando cambios y ajustando stock...');
+        _showModal('Confirmar Cambios', '¿Deseas guardar los cambios? El stock y los saldos de vacíos se ajustarán automáticamente.', async () => {
+            _showModal('Progreso', 'Guardando cambios y ajustando datos...');
 
             try {
                 const batch = _writeBatch(_db);
                 const originalProducts = new Map(_originalVentaForEdit.productos.map(p => [p.id, p]));
                 const newProducts = new Map(Object.values(_ventaActual.productos).map(p => [p.id, p]));
                 const allProductIds = new Set([...originalProducts.keys(), ...newProducts.keys()]);
+
+                const vaciosAdjustments = {};
 
                 for (const productId of allProductIds) {
                     const originalProduct = originalProducts.get(productId);
@@ -1641,17 +1812,47 @@
                     const newUnitsSold = newProduct ? (newProduct.totalUnidadesVendidas || 0) : 0;
                     const unitDelta = originalUnitsSold - newUnitsSold;
 
-                    if (unitDelta === 0) continue;
-
-                    const currentStockUnits = productoEnCache.cantidadUnidades || 0;
-                    const finalStockUnits = currentStockUnits + unitDelta;
-
-                    if (finalStockUnits < 0) {
-                        throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
+                    if (unitDelta !== 0) {
+                        const currentStockUnits = productoEnCache.cantidadUnidades || 0;
+                        const finalStockUnits = currentStockUnits + unitDelta;
+                        if (finalStockUnits < 0) throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
+                        const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
+                        batch.update(productoRef, { cantidadUnidades: finalStockUnits });
                     }
+                    
+                    if(originalProduct?.manejaVacios || newProduct?.manejaVacios){
+                        const originalCajas = originalProduct?.cantidadVendida?.cj || 0;
+                        const originalDevueltos = originalProduct?.vaciosDevueltos || 0;
+                        const originalNetChange = originalCajas - originalDevueltos;
 
-                    const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
-                    batch.update(productoRef, { cantidadUnidades: finalStockUnits });
+                        const newCajas = newProduct?.cantCj || 0;
+                        const newDevueltos = newProduct?.vaciosDevueltos || 0;
+                        const newNetChange = newCajas - newDevueltos;
+
+                        const adjustment = newNetChange - originalNetChange;
+                        if(adjustment !== 0){
+                            vaciosAdjustments[productId] = adjustment;
+                        }
+                    }
+                }
+
+                if (Object.keys(vaciosAdjustments).length > 0) {
+                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _originalVentaForEdit.clienteId);
+                     await _runTransaction(_db, async (transaction) => {
+                        const clienteDoc = await transaction.get(clienteRef);
+                        if (!clienteDoc.exists()) return;
+                        
+                        const clienteData = clienteDoc.data();
+                        const saldoVacios = clienteData.saldoVacios || {};
+                        
+                        for (const productoId in vaciosAdjustments) {
+                            const adjustment = vaciosAdjustments[productoId];
+                            const saldoActual = saldoVacios[productoId] || 0;
+                            saldoVacios[productoId] = saldoActual + adjustment;
+                        }
+                        
+                        transaction.update(clienteRef, { saldoVacios: saldoVacios });
+                    });
                 }
 
                 let nuevoTotal = 0;
@@ -1663,14 +1864,12 @@
                         (precios.und || 0) * (p.cantUnd || 0);
                     nuevoTotal += subtotal;
 
-                    // CORRECCIÓN: Se recalcula 'totalUnidadesVendidas' antes de guardar.
                     const unidadesPorCaja = p.unidadesPorCaja || 1;
                     const unidadesPorPaquete = p.unidadesPorPaquete || 1;
                     const totalUnidadesVendidasRecalculado = (p.cantCj || 0) * unidadesPorCaja + (p.cantPaq || 0) * unidadesPorPaquete + (p.cantUnd || 0);
 
                     return {
                         id: p.id, presentacion: p.presentacion, 
-                        // CORRECCIÓN: Se añade el rubro al guardar la venta
                         rubro: p.rubro ?? null,
                         marca: p.marca ?? null, 
                         segmento: p.segmento ?? null,
@@ -1683,7 +1882,9 @@
                             und: p.cantUnd || 0
                         },
                         totalUnidadesVendidas: totalUnidadesVendidasRecalculado,
-                        iva: p.iva ?? 0
+                        iva: p.iva ?? 0,
+                        manejaVacios: p.manejaVacios || false,
+                        vaciosDevueltos: p.vaciosDevueltos || 0
                     };
                 });
 
@@ -1711,6 +1912,7 @@
     window.ventasModule = {
         toggleMoneda,
         handleQuantityChange,
+        handleVaciosChange,
         showPastSaleOptions,
         editVenta,
         deleteVenta,
@@ -1720,4 +1922,3 @@
         }
     };
 })();
-
