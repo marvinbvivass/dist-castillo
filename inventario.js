@@ -76,9 +76,8 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            <button id="verInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Inventario</button>
+                            <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver / Modificar Productos</button>
                             <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
-                            <button id="modifyDeleteBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Modificar / Eliminar Producto</button>
                             <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
                              <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos</button>
                              <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar Datos Maestros</button>
@@ -88,12 +87,11 @@
                 </div>
             </div>
         `;
-        document.getElementById('verInventarioBtn').addEventListener('click', showVerInventarioView);
-        document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
-        document.getElementById('modifyDeleteBtn').addEventListener('click', () => {
+        document.getElementById('verModificarBtn').addEventListener('click', () => {
             _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
             showModifyDeleteView();
         });
+        document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
         document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
         document.getElementById('ordenarSegmentosBtn').addEventListener('click', showOrdenarSegmentosView);
         document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
@@ -170,7 +168,6 @@
             let snapshot = await _getDocs(segmentosRef);
             let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // CORRECCIÓN: Lógica para manejar segmentos nuevos sin reiniciar el orden.
             const segmentsWithoutOrder = allSegments.filter(s => s.orden === undefined);
             const segmentsWithOrder = allSegments.filter(s => s.orden !== undefined);
 
@@ -186,7 +183,6 @@
                 });
                 await batch.commit();
 
-                // Volver a cargar los datos para tener la lista completa y ordenada
                 snapshot = await _getDocs(segmentosRef);
                 allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
@@ -294,12 +290,7 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ajuste Masivo de Cantidades</h2>
-                        <div class="mb-4">
-                           <label for="ajusteRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
-                           <select id="ajusteRubroFilter" class="w-full px-4 py-2 border rounded-lg">
-                               <option value="">Todos los Rubros</option>
-                           </select>
-                        </div>
+                        ${getFiltrosHTML('ajuste')}
                         <div id="ajusteListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
@@ -313,23 +304,29 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
-        const rubroFilter = document.getElementById('ajusteRubroFilter');
-        _populateDropdown('rubros', 'ajusteRubroFilter', 'Rubro');
         
-        const renderCallback = () => renderAjusteMasivoList(rubroFilter.value);
+        const renderCallback = () => renderAjusteMasivoList();
+        setupFiltros('ajuste', renderCallback);
         startMainInventarioListener(renderCallback);
-        rubroFilter.addEventListener('change', renderCallback);
-        renderCallback();
     }
 
     /**
      * Renderiza la lista de productos para el ajuste masivo, agrupada por marca.
      */
-    async function renderAjusteMasivoList(rubro = '') {
+    async function renderAjusteMasivoList() {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
         
         let productos = [..._inventarioCache];
+        
+        // Aplicar filtros
+        productos = productos.filter(p => {
+            return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
+                   (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
+                   (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
+                   (!_lastFilters.marca || p.marca === _lastFilters.marca);
+        });
+
         const segmentoOrderMap = await getSegmentoOrderMap();
         if (segmentoOrderMap) {
             productos.sort((a, b) => {
@@ -340,21 +337,27 @@
                 return a.presentacion.localeCompare(b.presentacion);
             });
         }
-        if (rubro) {
-            productos = productos.filter(p => p.rubro === rubro);
-        }
+
         if (productos.length === 0) {
             container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
             return;
         }
         
         let tableHTML = `<table class="min-w-full bg-white border"><thead class="bg-gray-100 sticky top-0"><tr><th class="py-2 px-4 border-b text-left text-sm">Producto</th><th class="py-2 px-4 border-b text-center text-sm w-40">Cantidad Nueva</th></tr></thead><tbody>`;
+        let currentSegmento = null;
         let currentMarca = null;
         productos.forEach(p => {
+            const segmento = p.segmento || 'Sin Segmento';
             const marca = p.marca || 'Sin Marca';
+
+            if (segmento !== currentSegmento) {
+                currentSegmento = segmento;
+                currentMarca = null; // Reset marca when segment changes
+                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
+            }
             if (marca !== currentMarca) {
                 currentMarca = marca;
-                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-200 font-bold text-gray-700">${currentMarca}</td></tr>`;
+                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 pl-8">${currentMarca}</td></tr>`;
             }
 
             const ventaPor = p.ventaPor || { und: true };
@@ -374,7 +377,7 @@
 
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-4 border-b text-sm">
+                    <td class="py-2 px-4 border-b text-sm pl-12">
                         <p class="font-semibold">${p.presentacion}</p>
                         <p class="text-xs text-gray-600">Actual: ${currentStockInDisplayUnits} ${unitType}.</p>
                     </td>
@@ -527,7 +530,7 @@
     }
 
     /**
-     * Muestra la vista para agregar un nuevo producto. (MODIFICADA)
+     * Muestra la vista para agregar un nuevo producto.
      */
     function showAgregarProductoView() {
         _floatingControls.classList.add('hidden');
@@ -793,53 +796,6 @@
     }
 
     /**
-     * Muestra la vista de "Ver Inventario".
-     */
-    function showVerInventarioView() {
-        _floatingControls.classList.add('hidden');
-        _mainContent.innerHTML = `
-            <div class="p-4 pt-8">
-                <div class="container mx-auto">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver Inventario</h2>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                               <label for="verInventarioSearchInput" class="block text-gray-700 font-medium mb-2">Buscar por Presentación o Marca:</label>
-                               <input type="text" id="verInventarioSearchInput" class="w-full px-4 py-2 border rounded-lg" placeholder="Ej: Pepsi 1.5L...">
-                            </div>
-                            <div>
-                               <label for="verInventarioRubroFilter" class="block text-gray-700 font-medium mb-2">Filtrar por Rubro:</label>
-                               <select id="verInventarioRubroFilter" class="w-full px-4 py-2 border rounded-lg">
-                                   <option value="">Todos los Rubros</option>
-                               </select>
-                            </div>
-                        </div>
-
-                        <div id="productosListContainer" class="overflow-x-auto max-h-96">
-                            <p class="text-gray-500 text-center">Cargando productos...</p>
-                        </div>
-                        <button id="backToInventarioBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        const rubroFilter = document.getElementById('verInventarioRubroFilter');
-        const searchInput = document.getElementById('verInventarioSearchInput');
-        
-        _populateDropdown('rubros', 'verInventarioRubroFilter', 'Rubro');
-        
-        const renderCallback = () => renderProductosList('productosListContainer', true);
-        
-        rubroFilter.addEventListener('change', renderCallback);
-        searchInput.addEventListener('input', renderCallback);
-        
-        startMainInventarioListener(renderCallback);
-        renderCallback(); 
-    }
-
-    /**
      * Muestra la vista para modificar o eliminar un producto.
      */
     function showModifyDeleteView() {
@@ -848,25 +804,8 @@
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Modificar / Eliminar Producto</h2>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
-                            <input type="text" id="search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
-                            <div>
-                                <label for="filter-rubro" class="text-sm font-medium">Rubro</label>
-                                <select id="filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
-                            </div>
-                             <div>
-                                <label for="filter-segmento" class="text-sm font-medium">Segmento</label>
-                                <select id="filter-segmento" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Rubro</option></select>
-                            </div>
-                             <div>
-                                <label for="filter-marca" class="text-sm font-medium">Marca</label>
-                                <select id="filter-marca" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Segmento</option></select>
-                            </div>
-                            <button id="clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
-                        </div>
-
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver / Modificar Productos</h2>
+                        ${getFiltrosHTML('modify')}
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
@@ -881,32 +820,52 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
 
-        const searchInput = document.getElementById('search-input');
-        const rubroFilter = document.getElementById('filter-rubro');
-        const segmentoFilter = document.getElementById('filter-segmento');
-        const marcaFilter = document.getElementById('filter-marca');
-        const clearBtn = document.getElementById('clear-filters-btn');
+        const renderCallback = () => renderProductosList('productosListContainer', false);
+        setupFiltros('modify', renderCallback);
+        startMainInventarioListener(renderCallback);
+    }
 
-        const setupFilters = () => {
-            const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
-            rubroFilter.innerHTML = '<option value="">Todos</option>';
-            rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
+    /**
+     * Genera el HTML para los controles de filtro.
+     */
+    function getFiltrosHTML(prefix) {
+        return `
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
+                <input type="text" id="${prefix}-search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
+                <div>
+                    <label for="${prefix}-filter-rubro" class="text-sm font-medium">Rubro</label>
+                    <select id="${prefix}-filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                </div>
+                 <div>
+                    <label for="${prefix}-filter-segmento" class="text-sm font-medium">Segmento</label>
+                    <select id="${prefix}-filter-segmento" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Rubro</option></select>
+                </div>
+                 <div>
+                    <label for="${prefix}-filter-marca" class="text-sm font-medium">Marca</label>
+                    <select id="${prefix}-filter-marca" class="w-full px-2 py-1 border rounded-lg text-sm" disabled><option value="">Seleccione Segmento</option></select>
+                </div>
+                <button id="${prefix}-clear-filters-btn" class="bg-gray-300 text-sm font-semibold rounded-lg self-end py-1">Limpiar Filtros</button>
+            </div>
+        `;
+    }
 
-            searchInput.value = _lastFilters.searchTerm;
-            rubroFilter.value = _lastFilters.rubro;
-            
-            updateSegmentoFilter();
-            segmentoFilter.value = _lastFilters.segmento;
-            
-            updateMarcaFilter();
-            marcaFilter.value = _lastFilters.marca;
-            
-            renderProductosList('productosListContainer', false);
-        };
+    /**
+     * Configura los listeners y la lógica para los filtros.
+     */
+    function setupFiltros(prefix, renderCallback) {
+        const searchInput = document.getElementById(`${prefix}-search-input`);
+        const rubroFilter = document.getElementById(`${prefix}-filter-rubro`);
+        const segmentoFilter = document.getElementById(`${prefix}-filter-segmento`);
+        const marcaFilter = document.getElementById(`${prefix}-filter-marca`);
+        const clearBtn = document.getElementById(`${prefix}-clear-filters-btn`);
         
-        startMainInventarioListener(setupFilters);
-        setupFilters();
+        const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
+        rubroFilter.innerHTML = '<option value="">Todos</option>';
+        rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
 
+        searchInput.value = _lastFilters.searchTerm;
+        rubroFilter.value = _lastFilters.rubro;
+        
         function updateSegmentoFilter() {
             const selectedRubro = rubroFilter.value;
             segmentoFilter.innerHTML = '<option value="">Todos</option>';
@@ -933,30 +892,31 @@
                 marcaFilter.value = '';
             }
         }
+        
+        updateSegmentoFilter();
+        segmentoFilter.value = _lastFilters.segmento;
+        updateMarcaFilter();
+        marcaFilter.value = _lastFilters.marca;
 
         function applyAndSaveFilters() {
             _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
             _lastFilters.rubro = rubroFilter.value || '';
             _lastFilters.segmento = segmentoFilter.value || '';
             _lastFilters.marca = marcaFilter.value || '';
-            renderProductosList('productosListContainer', false);
+            renderCallback();
         };
 
         searchInput.addEventListener('input', applyAndSaveFilters);
-        
         rubroFilter.addEventListener('change', () => {
             updateSegmentoFilter();
             updateMarcaFilter();
             applyAndSaveFilters();
         });
-        
         segmentoFilter.addEventListener('change', () => {
             updateMarcaFilter();
             applyAndSaveFilters();
         });
-
         marcaFilter.addEventListener('change', applyAndSaveFilters);
-        
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             rubroFilter.value = '';
@@ -964,7 +924,10 @@
             updateMarcaFilter();
             applyAndSaveFilters();
         });
+
+        renderCallback();
     }
+
 
     /**
      * Renderiza la lista de productos en una tabla.
@@ -974,6 +937,13 @@
         if (!container) return;
         
         let productos = [..._inventarioCache]; 
+
+        productos = productos.filter(p => {
+            return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
+                   (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
+                   (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
+                   (!_lastFilters.marca || p.marca === _lastFilters.marca);
+        });
 
         const segmentoOrderMap = await getSegmentoOrderMap();
         if (segmentoOrderMap) {
@@ -986,26 +956,6 @@
             });
         }
 
-        if (readOnly) {
-            const rubroFilter = document.getElementById('verInventarioRubroFilter')?.value || '';
-            const searchTerm = document.getElementById('verInventarioSearchInput')?.value.toLowerCase() || '';
-
-            if (rubroFilter) productos = productos.filter(p => p.rubro === rubroFilter);
-            if (searchTerm) {
-                productos = productos.filter(p => 
-                    (p.presentacion && p.presentacion.toLowerCase().includes(searchTerm)) ||
-                    (p.marca && p.marca.toLowerCase().includes(searchTerm))
-                );
-            }
-
-        } else {
-            productos = productos.filter(p => {
-                return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
-                       (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
-                       (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
-                       (!_lastFilters.marca || p.marca === _lastFilters.marca);
-            });
-        }
 
         if (productos.length === 0) {
             container.innerHTML = `<p class="text-gray-500 text-center">No hay productos que coincidan.</p>`;
@@ -1019,16 +969,24 @@
             ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
         </tr></thead><tbody>`;
 
+        let currentSegmento = null;
         let currentMarca = null;
         productos.forEach(p => {
+            const segmento = p.segmento || 'Sin Segmento';
             const marca = p.marca || 'Sin Marca';
+
+            if(segmento !== currentSegmento) {
+                currentSegmento = segmento;
+                currentMarca = null; // Reset marca
+                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
+            }
             if (marca !== currentMarca) {
                 currentMarca = marca;
-                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-100 font-bold text-gray-600">${currentMarca}</td></tr>`;
+                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-100 font-semibold text-gray-600 pl-8">${currentMarca}</td></tr>`;
             }
 
             const ventaPor = p.ventaPor || { und: true };
-            let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+            let displayPresentacion = `${p.presentacion}`;
             
             let displayPrecio = `$0.00`;
             let displayStock = `${p.cantidadUnidades || 0} Und`;
@@ -1047,7 +1005,7 @@
             
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${displayPresentacion}</td>
+                    <td class="py-2 px-3 border-b pl-12">${displayPresentacion}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">${displayPrecio}</td>
                     <td class="py-2 px-3 border-b text-center font-bold">${displayStock}</td>
                     ${!readOnly ? `
