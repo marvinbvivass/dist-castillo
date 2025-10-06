@@ -569,12 +569,17 @@
 
                             <!-- Precios y Venta -->
                             <div class="border-t pt-4">
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
-                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja envases retornables (vacíos)</span></label>
                                     </div>
                                 </div>
                                 <!-- Contenedor para Unidades por empaque -->
@@ -741,6 +746,7 @@
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
+            manejaVacios: document.getElementById('manejaVacios').checked,
             precios: precios,
             precioPorUnidad: precioFinalPorUnidad,
             cantidadUnidades: cantidadTotalUnidades,
@@ -1077,7 +1083,19 @@
                                 <div><label for="presentacion" class="block text-gray-700 font-medium mb-1">Presentación:</label><input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required></div>
                             </div>
                             <div class="border-t pt-4">
-                                <div><label class="block text-gray-700 font-medium mb-2">Venta por:</label><div id="ventaPorContainer" class="flex items-center space-x-4"><label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label><label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label><label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label></div></div>
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja envases retornables (vacíos)</span></label>
+                                    </div>
+                                </div>
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
                             </div>
@@ -1179,6 +1197,9 @@
                 document.getElementById('ventaPorUnd').checked = producto.ventaPor.und;
                 document.getElementById('ventaPorPaq').checked = producto.ventaPor.paq;
                 document.getElementById('ventaPorCj').checked = producto.ventaPor.cj;
+            }
+            if (producto.manejaVacios) {
+                document.getElementById('manejaVacios').checked = true;
             }
             updateDynamicInputs(); // Generate dynamic fields
 
