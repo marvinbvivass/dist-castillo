@@ -253,7 +253,7 @@
             <p class="mt-2 font-bold text-red-600">¡Atención! Esta acción tendrá los siguientes efectos:</p>
             <ul class="list-disc list-inside text-left text-sm mt-2">
                 ${syncInventario ? `<li>Tu <strong>catálogo de productos y categorías</strong> será reemplazado, pero <strong>se conservarán tus cantidades de stock actuales</strong>.</li>` : ''}
-                ${syncClientes ? `<li>Tu <strong>lista de clientes y sectores</strong> será completamente reemplazada.</li>` : ''}
+                ${syncClientes ? `<li>Tu <strong>lista de clientes y sectores</strong> será completamente reemplazada, pero <strong>se conservarán tus saldos de vacíos actuales</strong>.</li>` : ''}
                 <li>Tu historial de ventas no será modificado.</li>
             </ul>
              <p class="mt-2 font-bold">¿Estás seguro de que deseas continuar?</p>
@@ -279,7 +279,7 @@
                     await copyDataToLocal('marcas', importedDataContainer);
                 }
                 if (syncClientes) {
-                    await copyDataToLocal('clientes', importedDataContainer);
+                    await mergeClientesData(importedDataContainer); // CORRECCIÓN: Usar la nueva función de fusión
                     await copyDataToLocal('sectores', importedDataContainer);
                 }
 
@@ -323,6 +323,39 @@
         await batch.commit();
         console.log("El inventario se ha fusionado exitosamente.");
     }
+
+    // CORRECCIÓN: Nueva función para fusionar clientes preservando saldos de vacíos
+    async function mergeClientesData(importedData) {
+        const importedClientes = importedData['clientes'];
+        if (!importedClientes || importedClientes.length === 0) {
+            console.log("No hay datos de clientes para importar.");
+            return;
+        }
+
+        const localClientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        const localClientesSnapshot = await _getDocs(localClientesRef);
+        const localClientesMap = new Map(localClientesSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        const batch = _writeBatch(_db);
+
+        importedClientes.forEach(item => {
+            const { id, ...data } = item;
+            const targetDocRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, id);
+            
+            // Preserva el saldo de vacíos si el cliente ya existe
+            if (localClientesMap.has(id)) {
+                const currentSaldo = localClientesMap.get(id).saldoVacios || {};
+                data.saldoVacios = currentSaldo;
+            } else {
+                data.saldoVacios = {};
+            }
+            batch.set(targetDocRef, data);
+        });
+
+        await batch.commit();
+        console.log("Los clientes se han fusionado exitosamente.");
+    }
+
 
     async function copyDataToLocal(collectionName, importedData) {
         const dataToCopy = importedData[collectionName];
@@ -422,7 +455,8 @@
                     'Precio Cj ($)': data.precios?.cj || 0,
                     'Unidades/Paq': data.unidadesPorPaquete || 0,
                     'Unidades/Cj': data.unidadesPorCaja || 0,
-                    'IVA (%)': data.iva || 0
+                    'IVA (%)': data.iva || 0,
+                    'Maneja Vacíos': data.manejaVacios ? 'Sí' : 'No'
                 };
             });
 
