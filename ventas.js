@@ -455,13 +455,10 @@
             return;
         }
 
-        if (totalUnidadesVendidas > 0) {
-            _ventaActual.productos[productId].totalUnidadesVendidas = totalUnidadesVendidas;
-        } else {
-            // Si todas las cantidades son 0, se elimina el producto de la venta actual
-            if(!p.cantCj && !p.cantPaq && !p.cantUnd) {
-                delete _ventaActual.productos[productId];
-            }
+        p.totalUnidadesVendidas = totalUnidadesVendidas;
+
+        if (p.totalUnidadesVendidas === 0 && (p.vaciosDevueltos || 0) === 0) {
+            delete _ventaActual.productos[productId];
         }
         updateVentaTotal();
     };
@@ -472,14 +469,19 @@
     function handleVaciosChange(event) {
         const input = event.target;
         const productId = input.dataset.productId;
+        const producto = _inventarioCache.find(p => p.id === productId);
+        if (!producto) return;
         
         if (!_ventaActual.productos[productId]) {
-             // Si el producto no está en la venta, no hacer nada hasta que se agregue una cantidad
-            input.value = 0;
-            return;
+             _ventaActual.productos[productId] = { ...producto, cantCj: 0, cantPaq: 0, cantUnd: 0, totalUnidadesVendidas: 0 };
         }
 
-        _ventaActual.productos[productId].vaciosDevueltos = parseInt(input.value, 10) || 0;
+        const p = _ventaActual.productos[productId];
+        p.vaciosDevueltos = parseInt(input.value, 10) || 0;
+
+        if ((p.totalUnidadesVendidas || 0) === 0 && p.vaciosDevueltos === 0) {
+            delete _ventaActual.productos[productId];
+        }
     }
 
     /**
@@ -490,6 +492,7 @@
         if(!totalEl) return;
         
         const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
+            if (!p.precios) return sum; // Si solo se devuelven vacíos, no hay precios.
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const subtotal = 
                 (precios.cj || 0) * (p.cantCj || 0) +
@@ -518,7 +521,8 @@
         let total = 0;
         
         let productosHTML = '';
-        productos.forEach(p => {
+        const productosVendidos = productos.filter(p => p.totalUnidadesVendidas > 0);
+        productosVendidos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const cant = p.cantidadVendida || p;
             const cantCj = cant.cantCj || cant.cj || 0;
@@ -550,6 +554,28 @@
             `;
         });
 
+        let vaciosHTML = '';
+        const productosConDevolucion = productos.filter(p => (p.vaciosDevueltos || 0) > 0);
+        if (productosConDevolucion.length > 0) {
+            vaciosHTML += `
+                <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
+                    <p>ENVASES DEVUELTOS:</p>
+                    <table class="w-full text-3xl mt-2">
+                        <tbody>`;
+            productosConDevolucion.forEach(p => {
+                vaciosHTML += `
+                    <tr>
+                        <td class="py-1 pr-2 text-left" style="width: 70%;">${p.presentacion}</td>
+                        <td class="py-1 pl-2 text-right" style="width: 30%;">${p.vaciosDevueltos} CJ</td>
+                    </tr>`;
+            });
+            vaciosHTML += `
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
 
         return `
@@ -562,6 +588,7 @@
                     <p>FECHA: ${fecha}</p>
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
+                ${productosVendidos.length > 0 ? `
                 <table class="w-full text-3xl mt-6">
                     <thead>
                         <tr>
@@ -572,6 +599,8 @@
                     </thead>
                     <tbody>${productosHTML}</tbody>
                 </table>
+                ` : ''}
+                ${vaciosHTML}
                 <div class="text-right text-4xl mt-6 border-t border-black border-dashed pt-4">
                     <p>TOTAL: $${total.toFixed(2)}</p>
                 </div>
@@ -630,50 +659,66 @@
         });
         ticket += `Fecha: ${fecha}\n`;
 
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        
-        const header = ['Cant.'.padEnd(9), 'Producto'.padEnd(20), 'Precio'.padEnd(9), 'Subtotal'.padStart(10)].join('');
-        ticket += header + '\n';
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        
-        productos.forEach(p => {
-            const precios = p.precios || { und: p.precioPorUnidad || 0 };
-            const cant = p.cantidadVendida || p; 
-            const cantCj = cant.cantCj || cant.cj || 0;
-            const cantPaq = cant.cantPaq || cant.paq || 0;
-            const cantUnd = cant.cantUnd || cant.und || 0;
-
-            const addProductLine = (quantity, unitLabel, unitPrice, lineSubtotal, productNameInfo) => {
-                const wrappedProductName = wordWrap(productNameInfo, 20);
-                wrappedProductName.forEach((line, index) => {
-                    const qtyStr = index === 0 ? `${quantity} ${unitLabel}` : '';
-                    const priceStr = index === 0 ? `$${unitPrice.toFixed(2)}` : '';
-                    const subtotalStr = index === wrappedProductName.length - 1 ? `$${lineSubtotal.toFixed(2)}` : '';
-                    
-                    ticket += [
-                        qtyStr.padEnd(9),
-                        line.padEnd(20),
-                        priceStr.padEnd(9),
-                        subtotalStr.padStart(10)
-                    ].join('') + '\n';
-                });
-            };
-
-            const productNameBase = toTitleCase(`${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`);
+        const productosVendidos = productos.filter(p => p.totalUnidadesVendidas > 0);
+        if (productosVendidos.length > 0) {
+            ticket += '-'.repeat(LINE_WIDTH) + '\n';
             
-            if (cantCj > 0) {
-                total += (precios.cj || 0) * cantCj;
-                addProductLine(cantCj, 'cj', precios.cj, precios.cj * cantCj, `${productNameBase} (${p.unidadesPorCaja} unds)`);
-            }
-            if (cantPaq > 0) {
-                total += (precios.paq || 0) * cantPaq;
-                 addProductLine(cantPaq, 'paq', precios.paq, precios.paq * cantPaq, `${productNameBase} (${p.unidadesPorPaquete} unds)`);
-            }
-            if (cantUnd > 0) {
-                total += (precios.und || 0) * cantUnd;
-                 addProductLine(cantUnd, 'und', precios.und, precios.und * cantUnd, productNameBase);
-            }
-        });
+            const header = ['Cant.'.padEnd(9), 'Producto'.padEnd(20), 'Precio'.padEnd(9), 'Subtotal'.padStart(10)].join('');
+            ticket += header + '\n';
+            ticket += '-'.repeat(LINE_WIDTH) + '\n';
+            
+            productosVendidos.forEach(p => {
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                const cant = p.cantidadVendida || p; 
+                const cantCj = cant.cantCj || cant.cj || 0;
+                const cantPaq = cant.cantPaq || cant.paq || 0;
+                const cantUnd = cant.cantUnd || cant.und || 0;
+
+                const addProductLine = (quantity, unitLabel, unitPrice, lineSubtotal, productNameInfo) => {
+                    const wrappedProductName = wordWrap(productNameInfo, 20);
+                    wrappedProductName.forEach((line, index) => {
+                        const qtyStr = index === 0 ? `${quantity} ${unitLabel}` : '';
+                        const priceStr = index === 0 ? `$${unitPrice.toFixed(2)}` : '';
+                        const subtotalStr = index === wrappedProductName.length - 1 ? `$${lineSubtotal.toFixed(2)}` : '';
+                        
+                        ticket += [
+                            qtyStr.padEnd(9),
+                            line.padEnd(20),
+                            priceStr.padEnd(9),
+                            subtotalStr.padStart(10)
+                        ].join('') + '\n';
+                    });
+                };
+
+                const productNameBase = toTitleCase(`${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`);
+                
+                if (cantCj > 0) {
+                    total += (precios.cj || 0) * cantCj;
+                    addProductLine(cantCj, 'cj', precios.cj, precios.cj * cantCj, `${productNameBase} (${p.unidadesPorCaja} unds)`);
+                }
+                if (cantPaq > 0) {
+                    total += (precios.paq || 0) * cantPaq;
+                    addProductLine(cantPaq, 'paq', precios.paq, precios.paq * cantPaq, `${productNameBase} (${p.unidadesPorPaquete} unds)`);
+                }
+                if (cantUnd > 0) {
+                    total += (precios.und || 0) * cantUnd;
+                    addProductLine(cantUnd, 'und', precios.und, precios.und * cantUnd, productNameBase);
+                }
+            });
+        }
+        
+        const productosConDevolucion = productos.filter(p => (p.vaciosDevueltos || 0) > 0);
+        if (productosConDevolucion.length > 0) {
+            ticket += '-'.repeat(LINE_WIDTH) + '\n';
+            ticket += center('ENVASES DEVUELTOS') + '\n';
+            productosConDevolucion.forEach(p => {
+                const productName = toTitleCase(p.presentacion);
+                const quantityText = `${p.vaciosDevueltos} CJ`;
+                const line = productName.padEnd(LINE_WIDTH - quantityText.length) + quantityText;
+                ticket += line + '\n';
+            });
+        }
+
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         const totalString = `TOTAL: $${total.toFixed(2)}`;
@@ -786,14 +831,14 @@
             _showModal('Error', 'Debe seleccionar un cliente para generar el ticket.');
             return;
         }
-        const productosVendidos = Object.values(_ventaActual.productos);
-        if (productosVendidos.length === 0) {
-            _showModal('Error', 'Debe agregar al menos un producto para vender.');
+        const productosEnTransaccion = Object.values(_ventaActual.productos);
+        if (productosEnTransaccion.length === 0) {
+            _showModal('Error', 'Debe agregar al menos un producto o registrar una devolución de vacíos.');
             return;
         }
 
-        _showModal('Confirmar Venta', '¿Deseas guardar esta venta?', async () => {
-            _showModal('Progreso', 'Procesando venta...');
+        _showModal('Confirmar Transacción', '¿Deseas guardar esta transacción?', async () => {
+            _showModal('Progreso', 'Procesando transacción...');
             try {
                 const batch = _writeBatch(_db);
                 const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
@@ -801,15 +846,20 @@
                 const itemsVenta = [];
                 const vaciosChanges = {};
 
-                for (const p of productosVendidos) {
+                for (const p of productosEnTransaccion) {
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
                     if (!productoEnCache) throw new Error(`Producto ${p.presentacion} no encontrado.`);
 
                     const stockUnidadesTotal = productoEnCache.cantidadUnidades || 0;
-                    const unidadesARestar = p.totalUnidadesVendidas;
+                    const unidadesARestar = p.totalUnidadesVendidas || 0;
                     
                     if (stockUnidadesTotal < unidadesARestar) {
                         throw new Error(`Stock insuficiente para ${p.presentacion}.`);
+                    }
+                    
+                    if (unidadesARestar > 0) {
+                        const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
+                        batch.update(productoRef, { cantidadUnidades: stockUnidadesTotal - unidadesARestar });
                     }
 
                     const precios = p.precios || { und: p.precioPorUnidad || 0 };
@@ -818,11 +868,6 @@
                         (precios.paq || 0) * (p.cantPaq || 0) +
                         (precios.und || 0) * (p.cantUnd || 0);
                     totalVenta += subtotal;
-
-                    const stockUnidadesRestante = stockUnidadesTotal - unidadesARestar;
-                    
-                    const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
-                    batch.update(productoRef, { cantidadUnidades: stockUnidadesRestante });
 
                     const vaciosDevueltos = p.vaciosDevueltos || 0;
                     if (p.manejaVacios) {
@@ -884,10 +929,10 @@
                 });
                 await batch.commit();
 
-                showSharingOptions(_ventaActual, productosVendidos, 'Nota de Entrega', showNuevaVentaView);
+                showSharingOptions(_ventaActual, productosEnTransaccion, 'Nota de Entrega', showNuevaVentaView);
 
             } catch (e) {
-                _showModal('Error', `Hubo un error al procesar la venta: ${e.message}`);
+                _showModal('Error', `Hubo un error al procesar la transacción: ${e.message}`);
             }
         }, 'Sí, Guardar');
     }
@@ -1247,7 +1292,7 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
 
         // --- Hoja 1: Reporte de Ventas ---
         const dataForSheet1 = [];
@@ -1820,7 +1865,7 @@
                         batch.update(productoRef, { cantidadUnidades: finalStockUnits });
                     }
                     
-                    if(originalProduct?.manejaVacios || newProduct?.manejaVacios){
+                    if(productoEnCache.manejaVacios){
                         const originalCajas = originalProduct?.cantidadVendida?.cj || 0;
                         const originalDevueltos = originalProduct?.vaciosDevueltos || 0;
                         const originalNetChange = originalCajas - originalDevueltos;
@@ -1922,3 +1967,4 @@
         }
     };
 })();
+
