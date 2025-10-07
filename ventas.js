@@ -659,7 +659,7 @@
         });
         ticket += `Fecha: ${fecha}\n`;
 
-        const productosVendidos = productos.filter(p => p.totalUnidadesVendidas > 0);
+        const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || 0) > 0);
         if (productosVendidos.length > 0) {
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             
@@ -1037,8 +1037,14 @@
             tableHTML += `</tbody></table>`;
             container.innerHTML = tableHTML;
         }, (error) => {
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de ventas detenido por cierre de sesión.");
+                return;
+            }
             console.error("Error cargando ventas: ", error);
-            container.innerHTML = `<p class="text-center text-red-500">Error al cargar las ventas.</p>`;
+            if(container) {
+                container.innerHTML = `<p class="text-center text-red-500">Error al cargar las ventas.</p>`;
+            }
         });
         _activeListeners.push(unsubscribe);
     }
