@@ -343,7 +343,7 @@
         const normComercial = nombreComercial.toLowerCase();
         const normPersonal = nombrePersonal.toLowerCase();
 
-        // Carga el caché más reciente antes de validar duplicados
+        // Carga el caché más recente antes de validar duplicados
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
         const snapshot = await _getDocs(clientesRef);
         _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -843,7 +843,12 @@
 
     function renderSaldosList() {
         const container = document.getElementById('saldosListContainer');
-        const searchTerm = document.getElementById('saldo-search-input').value.toLowerCase();
+        const searchInput = document.getElementById('saldo-search-input');
+        
+        // CORRECCIÓN: Verificar que los elementos existen antes de usarlos.
+        if (!container || !searchInput) return;
+
+        const searchTerm = searchInput.value.toLowerCase();
 
         const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm));
 
@@ -984,3 +989,4 @@
     };
 
 })();
+
