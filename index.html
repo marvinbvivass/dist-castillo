@@ -175,6 +175,7 @@
         let auth;
         let userId;
         let activeListeners = [];
+        window.isLoggingOut = false; // Bandera global para el estado de cierre de sesión
 
         // Referencias a los elementos del DOM
         const mainContent = document.getElementById('mainContent');
@@ -323,6 +324,7 @@
         }
 
         async function handleLogout() {
+            window.isLoggingOut = true; // Activar la bandera
             cleanupListeners();
             await signOut(auth);
         }
@@ -334,6 +336,7 @@
         }
 
         function showLoginView() {
+            window.isLoggingOut = false; // Resetear la bandera
             cleanupListeners();
             floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
@@ -371,8 +374,6 @@
                 showModal('Error de Sincronización', 'No se pudieron cargar todos los datos.');
             }
             
-            // CORRECCIÓN: El listener de conexión ahora es el único que se crea al iniciar.
-            // Los listeners de los módulos se crearán y destruirán al navegar.
             const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
                 const statusEl = document.getElementById('connectionStatus');
                 if (!statusEl) return;
@@ -415,27 +416,16 @@
                 </div>
             `;
 
-            // CORRECCIÓN: La limpieza ahora se hace antes de navegar a CADA módulo.
-            document.getElementById('inventarioBtn').addEventListener('click', () => {
+            const navigateTo = (viewFunction) => {
                 cleanupListeners();
-                window.showInventarioSubMenu();
-            });
-            document.getElementById('clientesBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showClientesSubMenu();
-            });
-            document.getElementById('ventasBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showVentasView();
-            });
-            document.getElementById('catalogoBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showCatalogoSubMenu();
-            });
-            document.getElementById('sincronizacionBtn').addEventListener('click', () => {
-                cleanupListeners();
-                window.showSincronizacionView();
-            });
+                viewFunction();
+            };
+
+            document.getElementById('inventarioBtn').addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
+            document.getElementById('clientesBtn').addEventListener('click', () => navigateTo(window.showClientesSubMenu));
+            document.getElementById('ventasBtn').addEventListener('click', () => navigateTo(window.showVentasView));
+            document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
+            document.getElementById('sincronizacionBtn').addEventListener('click', () => navigateTo(window.showSincronizacionView));
         }
 
         // --- INICIALIZACIÓN DE LA APP ---
@@ -471,3 +461,4 @@
     </script>
 </body>
 </html>
+
