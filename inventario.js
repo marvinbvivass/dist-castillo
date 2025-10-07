@@ -306,6 +306,10 @@
         document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
         
         const renderCallback = () => renderAjusteMasivoList();
+        
+        // CORRECCIÓN: Se usa _populateDropdown para el filtro de rubros.
+        _populateDropdown('rubros', 'ajuste-filter-rubro', 'Rubro');
+        
         setupFiltros('ajuste', renderCallback);
         startMainInventarioListener(renderCallback);
     }
@@ -819,8 +823,12 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
-
+        
         const renderCallback = () => renderProductosList('productosListContainer', false);
+
+        // CORRECCIÓN: Se usa _populateDropdown para el filtro de rubros.
+        _populateDropdown('rubros', 'modify-filter-rubro', 'Rubro');
+
         setupFiltros('modify', renderCallback);
         startMainInventarioListener(renderCallback);
     }
@@ -859,12 +867,7 @@
         const marcaFilter = document.getElementById(`${prefix}-filter-marca`);
         const clearBtn = document.getElementById(`${prefix}-clear-filters-btn`);
         
-        const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort();
-        rubroFilter.innerHTML = '<option value="">Todos</option>';
-        rubros.forEach(r => rubroFilter.innerHTML += `<option value="${r}">${r}</option>`);
-
         searchInput.value = _lastFilters.searchTerm;
-        rubroFilter.value = _lastFilters.rubro;
         
         function updateSegmentoFilter() {
             const selectedRubro = rubroFilter.value;
@@ -893,10 +896,15 @@
             }
         }
         
-        updateSegmentoFilter();
-        segmentoFilter.value = _lastFilters.segmento;
-        updateMarcaFilter();
-        marcaFilter.value = _lastFilters.marca;
+        // CORRECCIÓN: Se retrasa la asignación de valores hasta que los dropdowns se poblen.
+        setTimeout(() => {
+            rubroFilter.value = _lastFilters.rubro;
+            updateSegmentoFilter();
+            segmentoFilter.value = _lastFilters.segmento;
+            updateMarcaFilter();
+            marcaFilter.value = _lastFilters.marca;
+        }, 200); // Pequeño delay
+
 
         function applyAndSaveFilters() {
             _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
