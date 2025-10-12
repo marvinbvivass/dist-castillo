@@ -1,27 +1,41 @@
-// --- Lógica del módulo de Administración ---
+// --- Lógica del módulo de Administración y Perfil de Usuario ---
 
 (function() {
     // Variables locales del módulo
-    let _db, _mainContent, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc;
+    let _db, _userId, _userRole, _mainContent, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc, _getDoc;
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
      */
     window.initAdmin = function(dependencies) {
         _db = dependencies.db;
+        _userId = dependencies.userId;
+        _userRole = dependencies.userRole;
         _mainContent = dependencies.mainContent;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _collection = dependencies.collection;
         _getDocs = dependencies.getDocs;
         _doc = dependencies.doc;
+        _getDoc = dependencies.getDoc;
         _setDoc = dependencies.setDoc;
+    };
+    
+    /**
+     * Función principal que decide qué vista mostrar según el rol del usuario.
+     */
+    window.showAdminOrProfileView = function() {
+        if (_userRole === 'admin') {
+            showUserManagementView();
+        } else {
+            showUserProfileView();
+        }
     };
 
     /**
-     * Muestra la vista de gestión de usuarios.
+     * Muestra la vista de gestión de usuarios (solo para administradores).
      */
-    window.showUserManagementView = function() {
+    function showUserManagementView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -112,6 +126,87 @@
             'Sí, Cambiar Rol'
         );
     }
+    
+    /**
+     * Muestra la vista del perfil del usuario (para roles 'user').
+     */
+    async function showUserProfileView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Mi Perfil</h1>
+                        <form id="userProfileForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="profileNombre" class="block text-gray-700 font-medium mb-1">Nombre:</label>
+                                <input type="text" id="profileNombre" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="profileApellido" class="block text-gray-700 font-medium mb-1">Apellido:</label>
+                                <input type="text" id="profileApellido" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="profileCamion" class="block text-gray-700 font-medium mb-1">Datos del Camión:</label>
+                                <input type="text" id="profileCamion" class="w-full px-4 py-2 border rounded-lg" placeholder="Ej: Placa ABC-123, NPR Blanco">
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cambios</button>
+                        </form>
+                        <button id="backToMenuBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+        document.getElementById('userProfileForm').addEventListener('submit', handleSaveProfile);
+
+        // Cargar y mostrar los datos del perfil actual
+        try {
+            const userDocRef = _doc(_db, "users", _userId);
+            const userDoc = await _getDoc(userDocRef);
+            if (userDoc.exists()) {
+                const data = userDoc.data();
+                document.getElementById('profileNombre').value = data.nombre || '';
+                document.getElementById('profileApellido').value = data.apellido || '';
+                document.getElementById('profileCamion').value = data.camion || '';
+            }
+        } catch (error) {
+            console.error("Error al cargar el perfil del usuario:", error);
+            _showModal('Error', 'No se pudo cargar la información de tu perfil.');
+        }
+    }
+
+    /**
+     * Guarda los datos del perfil del usuario.
+     */
+    async function handleSaveProfile(e) {
+        e.preventDefault();
+        const nombre = document.getElementById('profileNombre').value.trim();
+        const apellido = document.getElementById('profileApellido').value.trim();
+        const camion = document.getElementById('profileCamion').value.trim();
+
+        if (!nombre || !apellido) {
+            _showModal('Error', 'El nombre y el apellido son obligatorios.');
+            return;
+        }
+
+        const profileData = {
+            nombre,
+            apellido,
+            camion
+        };
+
+        _showModal('Progreso', 'Guardando tu información...');
+        try {
+            const userDocRef = _doc(_db, "users", _userId);
+            await _setDoc(userDocRef, profileData, { merge: true });
+            _showModal('Éxito', 'Tu perfil ha sido actualizado correctamente.');
+        } catch (error) {
+            console.error("Error al guardar el perfil:", error);
+            _showModal('Error', 'Hubo un error al guardar tu perfil.');
+        }
+    }
+
 
     // Exponer funciones públicas al objeto window
     window.adminModule = {
