@@ -2,7 +2,7 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _userId, _userRole, _mainContent, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc, _getDoc;
+    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc, _getDoc, _writeBatch;
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
@@ -11,7 +11,9 @@
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole;
+        _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
+        _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _collection = dependencies.collection;
@@ -19,12 +21,14 @@
         _doc = dependencies.doc;
         _getDoc = dependencies.getDoc;
         _setDoc = dependencies.setDoc;
+        _writeBatch = dependencies.writeBatch;
     };
     
     /**
      * Función principal que decide qué vista mostrar según el rol del usuario.
      */
     window.showAdminOrProfileView = function() {
+        _floatingControls.classList.add('hidden');
         if (_userRole === 'admin') {
             showUserManagementView();
         } else {
@@ -44,13 +48,17 @@
                         <div id="user-list-container" class="overflow-x-auto max-h-96">
                             <p class="text-center text-gray-500">Cargando usuarios...</p>
                         </div>
-                        <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Datos</button>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
 
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+        document.getElementById('syncDataBtn').addEventListener('click', showSyncDataView);
         renderUserList();
     };
 
@@ -207,6 +215,152 @@
         }
     }
 
+    // --- Lógica de Sincronización de Admin ---
+
+    /**
+     * Muestra la vista para que el admin sincronice datos con otros usuarios.
+     */
+    async function showSyncDataView() {
+        const usersRef = _collection(_db, "users");
+        const snapshot = await _getDocs(usersRef);
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        let userCheckboxesHTML = users.map(user => `
+            <label class="flex items-center">
+                <input type="checkbox" name="targetUsers" value="${user.id}" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500">
+                <span class="ml-2 text-gray-700">${user.email} ${user.id === _userId ? '(Yo)' : ''}</span>
+            </label>
+        `).join('');
+
+        const modalContent = `
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Sincronizar Datos</h3>
+            <div class="text-left space-y-4">
+                <div>
+                    <label class="block text-gray-700 font-medium mb-2">1. Seleccione los datos a sincronizar (desde su cuenta):</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center"><input type="radio" name="dataType" value="inventario" class="h-4 w-4" checked><span class="ml-2">Inventario y Categorías</span></label>
+                        <label class="flex items-center"><input type="radio" name="dataType" value="clientes" class="h-4 w-4"><span class="ml-2">Clientes y Sectores</span></label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-medium mb-2">2. Seleccione los usuarios de destino:</label>
+                    <div class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
+                        ${userCheckboxesHTML}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        _showModal('Sincronizar Datos de Admin', modalContent, handleAdminSync, 'Sincronizar Ahora');
+    }
+
+    /**
+     * Ejecuta la lógica de sincronización del admin.
+     */
+    async function handleAdminSync() {
+        const dataType = document.querySelector('input[name="dataType"]:checked').value;
+        const targetUsersCheckboxes = document.querySelectorAll('input[name="targetUsers"]:checked');
+        const targetUserIds = Array.from(targetUsersCheckboxes).map(cb => cb.value);
+
+        if (targetUserIds.length === 0) {
+            _showModal('Error', 'Debe seleccionar al menos un usuario de destino.');
+            return;
+        }
+
+        const confirmationMessage = `
+            <p>Estás a punto de sincronizar tus <strong>${dataType}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
+            <p class="mt-2 font-bold text-red-600">¡Atención! Esto sobreescribirá los datos seleccionados en las cuentas de destino.</p>
+            <ul class="list-disc list-inside text-left text-sm mt-2">
+                <li>Al sincronizar <strong>Inventario</strong>, se conservarán las cantidades de stock de cada usuario.</li>
+                <li>Al sincronizar <strong>Clientes</strong>, se conservarán los saldos de vacíos de cada usuario.</li>
+            </ul>
+            <p class="mt-4 font-bold">¿Estás seguro de que quieres continuar?</p>
+        `;
+
+        _showModal('Confirmar Sincronización', confirmationMessage, async () => {
+            _showModal('Progreso', `Sincronizando ${dataType} con ${targetUserIds.length} usuario(s)...`);
+            
+            try {
+                // 1. Obtener los datos fuente del admin
+                const sourceData = {};
+                const collectionsToSync = dataType === 'inventario' ? ['inventario', 'rubros', 'segmentos', 'marcas'] : ['clientes', 'sectores'];
+                
+                for (const collectionName of collectionsToSync) {
+                    const sourcePath = `artifacts/${_appId}/users/${_userId}/${collectionName}`;
+                    const sourceColRef = _collection(_db, sourcePath);
+                    const snapshot = await _getDocs(sourceColRef);
+                    if (!snapshot.empty) {
+                        sourceData[collectionName] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    }
+                }
+
+                // 2. Iterar sobre cada usuario de destino y aplicar la sincronización
+                for (const targetId of targetUserIds) {
+                    if (dataType === 'inventario') {
+                        await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
+                        for(const cat of ['rubros', 'segmentos', 'marcas']) {
+                            await copyDataToUser(targetId, cat, sourceData[cat]);
+                        }
+                    } else { // clientes
+                        await mergeDataForUser(targetId, 'clientes', sourceData['clientes'], 'saldoVacios');
+                        await copyDataToUser(targetId, 'sectores', sourceData['sectores']);
+                    }
+                }
+
+                _showModal('Éxito', 'La sincronización se ha completado correctamente para todos los usuarios seleccionados.');
+
+            } catch (error) {
+                console.error("Error durante la sincronización de admin:", error);
+                _showModal('Error', `Ocurrió un error: ${error.message}`);
+            }
+        });
+    }
+
+    async function mergeDataForUser(targetUserId, collectionName, sourceItems, fieldToPreserve) {
+        if (!sourceItems || sourceItems.length === 0) return;
+
+        const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
+        const targetRef = _collection(_db, targetPath);
+        const targetSnapshot = await _getDocs(targetRef);
+        const targetMap = new Map(targetSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        const batch = _writeBatch(_db);
+
+        sourceItems.forEach(item => {
+            const { id, ...data } = item;
+            const targetDocRef = _doc(_db, targetPath, id);
+            
+            if (targetMap.has(id)) {
+                const preservedValue = targetMap.get(id)[fieldToPreserve] || (fieldToPreserve === 'saldoVacios' ? {} : 0);
+                data[fieldToPreserve] = preservedValue;
+            } else {
+                data[fieldToPreserve] = (fieldToPreserve === 'saldoVacios' ? {} : 0);
+            }
+            batch.set(targetDocRef, data);
+        });
+
+        await batch.commit();
+    }
+
+    async function copyDataToUser(targetUserId, collectionName, sourceItems) {
+        if (!sourceItems || sourceItems.length === 0) return;
+
+        const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
+        const batch = _writeBatch(_db);
+
+        // Borrar datos antiguos para asegurar una copia limpia
+        const oldSnapshot = await _getDocs(_collection(_db, targetPath));
+        oldSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+        // Escribir nuevos datos
+        sourceItems.forEach(item => {
+            const { id, ...data } = item;
+            const targetDocRef = _doc(_db, targetPath, id);
+            batch.set(targetDocRef, data);
+        });
+
+        await batch.commit();
+    }
 
     // Exponer funciones públicas al objeto window
     window.adminModule = {
