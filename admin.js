@@ -225,10 +225,14 @@
         const snapshot = await _getDocs(usersRef);
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        let userCheckboxesHTML = users.map(user => `
+        let sourceUserOptionsHTML = users.map(user => 
+            `<option value="${user.id}">${user.email} ${user.id === _userId ? '(Yo)' : ''}</option>`
+        ).join('');
+
+        let targetUserCheckboxesHTML = users.map(user => `
             <label class="flex items-center">
                 <input type="checkbox" name="targetUsers" value="${user.id}" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500">
-                <span class="ml-2 text-gray-700">${user.email} ${user.id === _userId ? '(Yo)' : ''}</span>
+                <span class="ml-2 text-gray-700">${user.email}</span>
             </label>
         `).join('');
 
@@ -236,72 +240,113 @@
             <h3 class="text-xl font-bold text-gray-800 mb-4">Sincronizar Datos</h3>
             <div class="text-left space-y-4">
                 <div>
-                    <label class="block text-gray-700 font-medium mb-2">1. Seleccione los datos a sincronizar (desde su cuenta):</label>
+                    <label class="block text-gray-700 font-medium mb-2">1. Seleccione los datos a sincronizar:</label>
                     <div class="space-y-2">
-                        <label class="flex items-center"><input type="radio" name="dataType" value="inventario" class="h-4 w-4" checked><span class="ml-2">Inventario y Categorías</span></label>
-                        <label class="flex items-center"><input type="radio" name="dataType" value="clientes" class="h-4 w-4"><span class="ml-2">Clientes y Sectores</span></label>
+                        <label class="flex items-center"><input type="checkbox" id="syncDataTypeInventario" value="inventario" class="h-4 w-4" checked><span class="ml-2">Inventario y Categorías</span></label>
+                        <label class="flex items-center"><input type="checkbox" id="syncDataTypeClientes" value="clientes" class="h-4 w-4"><span class="ml-2">Clientes y Sectores</span></label>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-gray-700 font-medium mb-2">2. Seleccione los usuarios de destino:</label>
-                    <div class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
-                        ${userCheckboxesHTML}
+                    <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">2. Seleccione la cuenta de origen:</label>
+                    <select id="sourceUserSelect" class="w-full p-2 border rounded-lg bg-gray-50">
+                        ${sourceUserOptionsHTML}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 font-medium mb-2">3. Seleccione los usuarios de destino:</label>
+                    <div id="targetUsersContainer" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
+                        ${targetUserCheckboxesHTML}
                     </div>
                 </div>
             </div>
         `;
         
         _showModal('Sincronizar Datos de Admin', modalContent, handleAdminSync, 'Sincronizar Ahora');
+
+        // Lógica para deshabilitar el usuario de origen en la lista de destino
+        const sourceSelect = document.getElementById('sourceUserSelect');
+        const targetContainer = document.getElementById('targetUsersContainer');
+        
+        const updateTargetUsers = () => {
+            const selectedSourceId = sourceSelect.value;
+            const targetCheckboxes = targetContainer.querySelectorAll('input[name="targetUsers"]');
+            targetCheckboxes.forEach(checkbox => {
+                if (checkbox.value === selectedSourceId) {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                } else {
+                    checkbox.disabled = false;
+                }
+            });
+        };
+
+        sourceSelect.addEventListener('change', updateTargetUsers);
+        sourceSelect.value = _userId; // Seleccionar al admin actual por defecto
+        updateTargetUsers(); // Ejecutar al inicio
     }
 
     /**
      * Ejecuta la lógica de sincronización del admin.
      */
     async function handleAdminSync() {
-        const dataType = document.querySelector('input[name="dataType"]:checked').value;
+        const syncInventario = document.getElementById('syncDataTypeInventario').checked;
+        const syncClientes = document.getElementById('syncDataTypeClientes').checked;
+        const sourceUserId = document.getElementById('sourceUserSelect').value;
         const targetUsersCheckboxes = document.querySelectorAll('input[name="targetUsers"]:checked');
         const targetUserIds = Array.from(targetUsersCheckboxes).map(cb => cb.value);
 
+        if (!syncInventario && !syncClientes) {
+            _showModal('Error', 'Debe seleccionar al menos un tipo de dato para sincronizar.');
+            return;
+        }
         if (targetUserIds.length === 0) {
             _showModal('Error', 'Debe seleccionar al menos un usuario de destino.');
             return;
         }
 
+        const sourceUserEmail = document.getElementById('sourceUserSelect').options[document.getElementById('sourceUserSelect').selectedIndex].text;
         const confirmationMessage = `
-            <p>Estás a punto de sincronizar tus <strong>${dataType}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
+            <p>Estás a punto de sincronizar datos desde <strong>${sourceUserEmail}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
             <p class="mt-2 font-bold text-red-600">¡Atención! Esto sobreescribirá los datos seleccionados en las cuentas de destino.</p>
             <ul class="list-disc list-inside text-left text-sm mt-2">
-                <li>Al sincronizar <strong>Inventario</strong>, se conservarán las cantidades de stock de cada usuario.</li>
-                <li>Al sincronizar <strong>Clientes</strong>, se conservarán los saldos de vacíos de cada usuario.</li>
+                ${syncInventario ? `<li>Al sincronizar <strong>Inventario</strong>, se conservarán las cantidades de stock de cada usuario.</li>` : ''}
+                ${syncClientes ? `<li>Al sincronizar <strong>Clientes</strong>, se conservarán los saldos de vacíos de cada usuario.</li>` : ''}
             </ul>
             <p class="mt-4 font-bold">¿Estás seguro de que quieres continuar?</p>
         `;
 
         _showModal('Confirmar Sincronización', confirmationMessage, async () => {
-            _showModal('Progreso', `Sincronizando ${dataType} con ${targetUserIds.length} usuario(s)...`);
+            _showModal('Progreso', `Sincronizando...`);
             
             try {
-                // 1. Obtener los datos fuente del admin
+                // 1. Obtener los datos fuente del usuario seleccionado
                 const sourceData = {};
-                const collectionsToSync = dataType === 'inventario' ? ['inventario', 'rubros', 'segmentos', 'marcas'] : ['clientes', 'sectores'];
-                
-                for (const collectionName of collectionsToSync) {
-                    const sourcePath = `artifacts/${_appId}/users/${_userId}/${collectionName}`;
-                    const sourceColRef = _collection(_db, sourcePath);
-                    const snapshot = await _getDocs(sourceColRef);
-                    if (!snapshot.empty) {
-                        sourceData[collectionName] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (syncInventario) {
+                    const collections = ['inventario', 'rubros', 'segmentos', 'marcas'];
+                    for (const col of collections) {
+                        const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
+                        const snapshot = await _getDocs(_collection(_db, sourcePath));
+                        if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    }
+                }
+                if (syncClientes) {
+                    const collections = ['clientes', 'sectores'];
+                    for (const col of collections) {
+                        const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
+                        const snapshot = await _getDocs(_collection(_db, sourcePath));
+                        if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     }
                 }
 
                 // 2. Iterar sobre cada usuario de destino y aplicar la sincronización
                 for (const targetId of targetUserIds) {
-                    if (dataType === 'inventario') {
+                    if (syncInventario) {
                         await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
                         for(const cat of ['rubros', 'segmentos', 'marcas']) {
                             await copyDataToUser(targetId, cat, sourceData[cat]);
                         }
-                    } else { // clientes
+                    }
+                    if (syncClientes) {
                         await mergeDataForUser(targetId, 'clientes', sourceData['clientes'], 'saldoVacios');
                         await copyDataToUser(targetId, 'sectores', sourceData['sectores']);
                     }
