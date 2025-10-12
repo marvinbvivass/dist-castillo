@@ -94,7 +94,6 @@
         document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('searchCierresBtn').addEventListener('click', handleSearchClosings);
         
-        // Set default dates
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('fechaDesde').value = today;
         document.getElementById('fechaHasta').value = today;
@@ -736,4 +735,3 @@
     };
 
 })();
-
