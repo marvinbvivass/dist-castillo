@@ -2,7 +2,7 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _userId, _appId, _mainContent, _floatingControls;
+    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
     let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
     
@@ -70,6 +70,7 @@
     window.initVentas = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
+        _userRole = dependencies.userRole;
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
@@ -521,7 +522,7 @@
         let total = 0;
         
         let productosHTML = '';
-        const productosVendidos = productos.filter(p => p.totalUnidadesVendidas > 0);
+        const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || 0) > 0);
         productosVendidos.forEach(p => {
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
             const cant = p.cantidadVendida || p;
@@ -1394,7 +1395,7 @@
     /**
      * Ejecuta el cierre de ventas: archiva y elimina.
      */
-    function ejecutarCierre() {
+    async function ejecutarCierre() {
         _showModal('Confirmar Cierre Definitivo', 
             'Esta acción generará un reporte en Excel, luego archivará y eliminará las ventas actuales. No se puede deshacer. ¿Continuar?', 
             async () => {
@@ -1408,12 +1409,34 @@
                 try {
                     await exportCierreToExcel(ventas);
                     _showModal('Progreso', 'Reporte Excel generado. Ahora procesando el cierre...');
-                    const cierreRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
-                    await _setDoc(cierreRef, {
-                        fecha: new Date(),
-                        ventas: ventas.map(({id, ...rest}) => rest),
-                        total: ventas.reduce((sum, v) => sum + v.total, 0)
-                    });
+
+                    if (_userRole === 'user') {
+                        const userDocRef = _doc(_db, "users", _userId);
+                        const userDoc = await _getDoc(userDocRef);
+                        const userData = userDoc.exists() ? userDoc.data() : {};
+
+                        const publicCierreRef = _doc(_collection(_db, `public_data/${_appId}/user_closings`));
+                        await _setDoc(publicCierreRef, {
+                            fecha: new Date(),
+                            ventas: ventas.map(({id, ...rest}) => rest),
+                            total: ventas.reduce((sum, v) => sum + v.total, 0),
+                            vendedorInfo: {
+                                userId: _userId,
+                                nombre: userData.nombre || '',
+                                apellido: userData.apellido || '',
+                                camion: userData.camion || '',
+                                email: userData.email || ''
+                            }
+                        });
+                    } else { // admin
+                        const cierreRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
+                        await _setDoc(cierreRef, {
+                            fecha: new Date(),
+                            ventas: ventas.map(({id, ...rest}) => rest),
+                            total: ventas.reduce((sum, v) => sum + v.total, 0)
+                        });
+                    }
+                    
                     const batch = _writeBatch(_db);
                     ventas.forEach(venta => batch.delete(_doc(ventasRef, venta.id)));
                     await batch.commit();
