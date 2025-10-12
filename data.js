@@ -2,8 +2,8 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _appId, _mainContent, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where;
+    let _db, _appId, _userId, _mainContent, _showMainMenu, _showModal;
+    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown;
 
     // Se duplican estas funciones para mantener el módulo independiente
     let _segmentoOrderCacheData = null;
@@ -16,6 +16,7 @@
     window.initData = function(dependencies) {
         _db = dependencies.db;
         _appId = dependencies.appId;
+        _userId = dependencies.userId; // El ID del admin actual
         _mainContent = dependencies.mainContent;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
@@ -23,12 +24,37 @@
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
+        _orderBy = dependencies.orderBy;
+        _populateDropdown = dependencies.populateDropdown;
     };
     
     /**
-     * Muestra la vista principal de Data para buscar y ver cierres de vendedores.
+     * Muestra el submenú de opciones del módulo de Data.
      */
     window.showDataView = function() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Módulo de Datos</h1>
+                        <div class="space-y-4">
+                            <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
+                            <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
+        document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
+        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+    };
+
+    /**
+     * Muestra la vista para buscar y ver cierres de vendedores.
+     */
+    function showClosingDataView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -50,13 +76,13 @@
                         <div id="cierres-list-container" class="overflow-x-auto max-h-96">
                             <p class="text-center text-gray-500">Seleccione un rango de fechas para buscar.</p>
                         </div>
-                        <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
+                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
 
-        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('searchCierresBtn').addEventListener('click', handleSearchClosings);
         
         // Set default dates
@@ -401,6 +427,178 @@
         _showModal(`Detalle del Cierre`, reporteHTML);
     }
 
+    // --- Lógica de Estadísticas de Productos ---
+
+    function showProductStatsView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Estadística de Productos Vendidos</h1>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end">
+                            <div>
+                                <label for="stats-type" class="block text-sm font-medium text-gray-700">Tipo de Estadística:</label>
+                                <select id="stats-type" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    <option value="semanal">Semanal</option>
+                                    <option value="mensual">Mensual</option>
+                                    <option value="general">General (Promedio Semanal)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="stats-rubro-filter" class="block text-sm font-medium text-gray-700">Rubro:</label>
+                                <select id="stats-rubro-filter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></select>
+                            </div>
+                            <button id="searchStatsBtn" class="w-full px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Generar Estadística</button>
+                        </div>
+
+                        <div id="stats-list-container" class="overflow-x-auto max-h-96">
+                            <p class="text-center text-gray-500">Seleccione las opciones y genere la estadística.</p>
+                        </div>
+                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        _populateDropdown('rubros', 'stats-rubro-filter', 'Rubro');
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
+        document.getElementById('searchStatsBtn').addEventListener('click', handleSearchStats);
+    }
+
+    async function handleSearchStats() {
+        const container = document.getElementById('stats-list-container');
+        container.innerHTML = `<p class="text-center text-gray-500">Calculando estadísticas...</p>`;
+        
+        const statsType = document.getElementById('stats-type').value;
+        const rubroFilter = document.getElementById('stats-rubro-filter').value;
+        
+        if (!rubroFilter) {
+            _showModal('Error', 'Por favor, seleccione un rubro.');
+            container.innerHTML = `<p class="text-center text-gray-500">Seleccione un rubro para continuar.</p>`;
+            return;
+        }
+
+        const now = new Date();
+        let fechaDesde;
+        let fechaHasta = new Date();
+
+        if (statsType === 'semanal') {
+            const dayOfWeek = now.getDay(); // 0 = Domingo, 1 = Lunes, ...
+            fechaDesde = new Date(now);
+            const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Ajusta para que la semana empiece en Lunes
+            fechaDesde.setDate(diff);
+            fechaDesde.setHours(0, 0, 0, 0);
+        } else if (statsType === 'mensual') {
+            fechaDesde = new Date(now.getFullYear(), now.getMonth(), 1);
+            fechaDesde.setHours(0, 0, 0, 0);
+        } else { // general
+            fechaDesde = new Date(0); // El inicio de los tiempos
+        }
+
+        try {
+            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            const q = _query(closingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+            
+            const snapshot = await _getDocs(q);
+            const closings = snapshot.docs.map(doc => doc.data());
+            
+            if (closings.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">No hay datos de ventas en el período seleccionado.</p>`;
+                return;
+            }
+
+            const productSales = {};
+            // El inventario del admin se usa como referencia maestra para los detalles del producto
+            const adminInventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const inventarioSnapshot = await _getDocs(adminInventarioRef);
+            const adminInventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+            
+            closings.forEach(cierre => {
+                cierre.ventas.forEach(venta => {
+                    venta.productos.forEach(p => {
+                        const adminProductInfo = adminInventarioMap.get(p.id) || p;
+                        if (adminProductInfo.rubro === rubroFilter) {
+                            if (!productSales[p.id]) {
+                                productSales[p.id] = {
+                                    presentacion: p.presentacion,
+                                    totalUnidades: 0,
+                                    ventaPor: adminProductInfo.ventaPor,
+                                    unidadesPorCaja: adminProductInfo.unidadesPorCaja || 1,
+                                    unidadesPorPaquete: adminProductInfo.unidadesPorPaquete || 1
+                                };
+                            }
+                            productSales[p.id].totalUnidades += p.totalUnidadesVendidas;
+                        }
+                    });
+                });
+            });
+
+            const productArray = Object.values(productSales);
+            
+            let numWeeks = 1;
+            if (statsType === 'general') {
+                const oneDay = 24 * 60 * 60 * 1000;
+                const firstDate = closings.reduce((min, c) => c.fecha.toDate() < min ? c.fecha.toDate() : min, new Date());
+                numWeeks = Math.ceil(Math.abs((now - firstDate) / (oneDay * 7))) || 1;
+            }
+
+            renderStatsList(productArray, statsType, numWeeks);
+
+        } catch (error) {
+            console.error("Error al calcular estadísticas:", error);
+            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al calcular las estadísticas.</p>`;
+        }
+    }
+
+    function renderStatsList(productArray, statsType, numWeeks = 1) {
+        const container = document.getElementById('stats-list-container');
+        if (productArray.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron ventas para este rubro en el período seleccionado.</p>`;
+            return;
+        }
+
+        const headerTitle = statsType === 'general' ? 'Promedio Semanal' : 'Total Vendido';
+
+        let tableHTML = `
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200">
+                    <tr>
+                        <th class="py-2 px-3 border-b text-left">Producto</th>
+                        <th class="py-2 px-3 border-b text-center">${headerTitle}</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        
+        productArray.sort((a, b) => a.presentacion.localeCompare(b.presentacion));
+        
+        productArray.forEach(p => {
+            let displayQuantity = 0;
+            let displayUnit = 'Unds';
+            const total = p.totalUnidades / numWeeks;
+
+            if (p.ventaPor?.cj) {
+                displayQuantity = (total / p.unidadesPorCaja).toFixed(1);
+                displayUnit = 'Cajas';
+            } else if (p.ventaPor?.paq) {
+                displayQuantity = (total / p.unidadesPorPaquete).toFixed(1);
+                displayUnit = 'Paq.';
+            } else {
+                displayQuantity = total.toFixed(0);
+            }
+            
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-3 border-b">${p.presentacion}</td>
+                    <td class="py-2 px-3 border-b text-center font-bold">${displayQuantity} <span class="font-normal text-xs">${displayUnit}</span></td>
+                </tr>
+            `;
+        });
+        
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
+    }
+
 
     // Exponer funciones públicas al objeto window
     window.dataModule = {
@@ -408,4 +606,5 @@
     };
 
 })();
+
 
