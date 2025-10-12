@@ -2,8 +2,11 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _appId, _userId, _mainContent, _showMainMenu, _showModal;
+    let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
     let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown;
+
+    let _lastStatsData = []; // Caché para los datos de la última estadística generada
+    let _lastNumWeeks = 1;   // Caché para el número de semanas del último cálculo
 
     // Se duplican estas funciones para mantener el módulo independiente
     let _segmentoOrderCacheData = null;
@@ -18,6 +21,7 @@
         _appId = dependencies.appId;
         _userId = dependencies.userId; // El ID del admin actual
         _mainContent = dependencies.mainContent;
+        _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _collection = dependencies.collection;
@@ -32,6 +36,7 @@
      * Muestra el submenú de opciones del módulo de Data.
      */
     window.showDataView = function() {
+        _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -40,6 +45,7 @@
                         <div class="space-y-4">
                             <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
                             <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
+                            <button id="downloadClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Descargar Datos de Clientes</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -48,6 +54,7 @@
         `;
         document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
+        document.getElementById('downloadClientsBtn').addEventListener('click', handleDownloadAllClients);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
@@ -449,7 +456,7 @@
                                 <label for="stats-rubro-filter" class="block text-sm font-medium text-gray-700">Rubro:</label>
                                 <select id="stats-rubro-filter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></select>
                             </div>
-                            <button id="searchStatsBtn" class="w-full px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Generar Estadística</button>
+                            <button id="searchStatsBtn" class="w-full px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Mostrar Estadísticas</button>
                         </div>
 
                         <div id="stats-list-container" class="overflow-x-auto max-h-96">
@@ -542,6 +549,9 @@
                 const firstDate = closings.reduce((min, c) => c.fecha.toDate() < min ? c.fecha.toDate() : min, new Date());
                 numWeeks = Math.ceil(Math.abs((now - firstDate) / (oneDay * 7))) || 1;
             }
+            
+            _lastStatsData = productArray; // Guardar datos para descarga
+            _lastNumWeeks = numWeeks; // Guardar número de semanas para descarga
 
             renderStatsList(productArray, statsType, numWeeks);
 
@@ -596,7 +606,125 @@
         });
         
         tableHTML += `</tbody></table>`;
-        container.innerHTML = tableHTML;
+        container.innerHTML = `
+            ${tableHTML}
+            <div class="mt-6 text-center">
+                <button id="downloadStatsBtn" class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Descargar como Excel</button>
+            </div>
+        `;
+
+        document.getElementById('downloadStatsBtn').addEventListener('click', handleDownloadStats);
+    }
+
+    function handleDownloadStats() {
+        if (_lastStatsData.length === 0) {
+            _showModal('Aviso', 'No hay datos de estadísticas para descargar.');
+            return;
+        }
+    
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+    
+        const statsType = document.getElementById('stats-type').value;
+        const headerTitle = statsType === 'general' ? 'Promedio Semanal' : 'Total Vendido';
+        
+        const dataToExport = _lastStatsData.map(p => {
+            let displayQuantity = 0;
+            let displayUnit = 'Unds';
+            const total = p.totalUnidades / _lastNumWeeks;
+    
+            if (p.ventaPor?.cj) {
+                displayQuantity = (total / p.unidadesPorCaja).toFixed(1);
+                displayUnit = 'Cajas';
+            } else if (p.ventaPor?.paq) {
+                displayQuantity = (total / p.unidadesPorPaquete).toFixed(1);
+                displayUnit = 'Paq.';
+            } else {
+                displayQuantity = total.toFixed(0);
+            }
+    
+            return {
+                'Producto': p.presentacion,
+                [headerTitle]: `${displayQuantity} ${displayUnit}`
+            };
+        });
+    
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
+        
+        const rubro = document.getElementById('stats-rubro-filter').value;
+        const today = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Estadisticas_${rubro}_${statsType}_${today}.xlsx`);
+    }
+
+
+    // --- NUEVA FUNCIÓN PARA DESCARGAR CLIENTES CONSOLIDADOS ---
+
+    async function handleDownloadAllClients() {
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+        _showModal('Progreso', 'Recopilando y consolidando datos de todos los clientes...');
+
+        try {
+            // 1. Obtener todos los usuarios
+            const usersRef = _collection(_db, "users");
+            const usersSnapshot = await _getDocs(usersRef);
+            const userIds = usersSnapshot.docs.map(doc => doc.id);
+
+            // 2. Obtener la lista de clientes de cada usuario en paralelo
+            const allClientPromises = userIds.map(uid => {
+                const clientsRef = _collection(_db, `artifacts/${_appId}/users/${uid}/clientes`);
+                return _getDocs(clientsRef);
+            });
+            
+            const allClientSnapshots = await Promise.all(allClientPromises);
+
+            // 3. Consolidar y deduplicar
+            const consolidatedClients = new Map();
+            allClientSnapshots.forEach(snapshot => {
+                snapshot.docs.forEach(doc => {
+                    const client = doc.data();
+                    const key = client.nombreComercial.trim().toLowerCase(); // Usar nombre comercial como clave
+                    if (!consolidatedClients.has(key)) {
+                        consolidatedClients.set(key, client);
+                    }
+                });
+            });
+
+            const uniqueClients = Array.from(consolidatedClients.values());
+
+            if (uniqueClients.length === 0) {
+                _showModal('Aviso', 'No se encontraron clientes para descargar.');
+                return;
+            }
+
+            // 4. Formatear para Excel
+            const dataToExport = uniqueClients.map(c => ({
+                'Sector': c.sector,
+                'Nombre Comercial': c.nombreComercial,
+                'Nombre Personal': c.nombrePersonal,
+                'telefono': c.telefono,
+                'CEP': c.codigoCEP
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+            
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+
+            _showModal('Éxito', `Se han consolidado ${uniqueClients.length} clientes únicos. La descarga ha comenzado.`);
+
+        } catch (error) {
+            console.error("Error al descargar datos de clientes consolidados:", error);
+            _showModal('Error', `Ocurrió un error: ${error.message}`);
+        }
     }
 
 
@@ -606,5 +734,4 @@
     };
 
 })();
-
 
