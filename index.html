@@ -148,6 +148,7 @@
     </div>
 
     <!-- Cargar los scripts de los módulos -->
+    <script src="data.js"></script>
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
     <script src="catalogo.js"></script>
@@ -158,7 +159,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Configuración de Firebase
         const firebaseConfig = {
@@ -400,8 +401,9 @@
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners, userRole,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy
             };
+            window.initData(dependencies);
             window.initAdmin(dependencies);
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
@@ -429,7 +431,7 @@
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
-                            <div class="space-y-4">
+                            <div id="main-menu-buttons" class="space-y-4">
                                 <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Inventario</button>
                                 <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
                                 <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
@@ -440,7 +442,20 @@
                         </div>
                     </div>
                 </div>
-            `;
+            </div>
+        `;
+            
+            if (userRole === 'admin') {
+                const menuContainer = document.getElementById('main-menu-buttons');
+                const dataButton = document.createElement('button');
+                dataButton.id = 'dataBtn';
+                dataButton.className = 'w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800';
+                dataButton.textContent = 'Data';
+                // Insertar el botón de Data antes del de Sincronización para un mejor orden
+                const syncButton = document.getElementById('sincronizacionBtn');
+                menuContainer.insertBefore(dataButton, syncButton);
+            }
+
 
             const navigateTo = (viewFunction) => {
                 cleanupListeners();
@@ -453,6 +468,10 @@
             document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
             document.getElementById('sincronizacionBtn').addEventListener('click', () => navigateTo(window.showSincronizacionView));
             document.getElementById('profileAdminBtn').addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
+            
+            if(userRole === 'admin') {
+                document.getElementById('dataBtn').addEventListener('click', () => navigateTo(window.showDataView));
+            }
         }
 
         // --- INICIALIZACIÓN DE LA APP ---
