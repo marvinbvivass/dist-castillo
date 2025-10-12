@@ -3,7 +3,12 @@
 (function() {
     // Variables locales del módulo
     let _db, _appId, _mainContent, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy;
+    let _collection, _getDocs, _query, _where;
+
+    // Se duplican estas funciones para mantener el módulo independiente
+    let _segmentoOrderCacheData = null;
+    let _rubroOrderCacheData = null;
+
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
@@ -18,7 +23,6 @@
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
-        _orderBy = dependencies.orderBy;
     };
     
     /**
@@ -92,7 +96,6 @@
             const snapshot = await _getDocs(q);
             const closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // Guardar en una variable global temporal para el detalle
             window.tempClosingsData = closings;
 
             renderClosingsList(closings);
@@ -147,8 +150,122 @@
         container.innerHTML = tableHTML;
     }
 
+    // --- Lógica de Reporte (duplicada de ventas.js para independencia) ---
+
+    async function getRubroOrderMapData(userIdForData) {
+        if (_rubroOrderCacheData) return _rubroOrderCacheData;
+        const map = {};
+        const rubrosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/rubros`);
+        try {
+            const snapshot = await _getDocs(rubrosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _rubroOrderCacheData = map;
+            return map;
+        } catch (e) { console.warn("No se pudo obtener el orden de los rubros en data.js", e); return null; }
+    }
+
+    async function getSegmentoOrderMapData(userIdForData) {
+        if (_segmentoOrderCacheData) return _segmentoOrderCacheData;
+        const map = {};
+        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/segmentos`);
+        try {
+            const snapshot = await _getDocs(segmentosRef);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+            });
+            _segmentoOrderCacheData = map;
+            return map;
+        } catch (e) { console.warn("No se pudo obtener el orden de los segmentos en data.js", e); return null; }
+    }
+
+    async function processSalesDataForReport(ventas, userIdForInventario) {
+        const clientData = {};
+        let grandTotalValue = 0;
+        const allProductsMap = new Map();
+        const vaciosMovements = {};
+        
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+        const inventarioSnapshot = await _getDocs(inventarioRef);
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        ventas.forEach(venta => {
+            const clientName = venta.clienteNombre;
+            if (!clientData[clientName]) {
+                clientData[clientName] = { products: {}, totalValue: 0 };
+            }
+             if(!vaciosMovements[clientName]) {
+                vaciosMovements[clientName] = {};
+            }
+            clientData[clientName].totalValue += venta.total;
+            grandTotalValue += venta.total;
+            
+            (venta.productos || []).forEach(p => {
+                if (p.manejaVacios) {
+                    if (!vaciosMovements[clientName][p.id]) {
+                        vaciosMovements[clientName][p.id] = { entregados: 0, devueltos: 0 };
+                    }
+                    vaciosMovements[clientName][p.id].entregados += p.cantidadVendida?.cj || 0;
+                    vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
+                }
+
+                const productoCompleto = inventarioMap.get(p.id);
+                const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
+                const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
+                const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
+                
+                if (!allProductsMap.has(p.id)) {
+                    allProductsMap.set(p.id, {
+                        id: p.id,
+                        rubro: rubro,
+                        segmento: segmento,
+                        marca: marca,
+                        presentacion: p.presentacion
+                    });
+                }
+
+                if (!clientData[clientName].products[p.id]) {
+                    clientData[clientName].products[p.id] = 0;
+                }
+                clientData[clientName].products[p.id] += p.totalUnidadesVendidas;
+            });
+        });
+
+        const sortedClients = Object.keys(clientData).sort();
+
+        const groupedProducts = {};
+        for (const product of allProductsMap.values()) {
+            if (!groupedProducts[product.rubro]) groupedProducts[product.rubro] = {};
+            if (!groupedProducts[product.rubro][product.segmento]) groupedProducts[product.rubro][product.segmento] = {};
+            if (!groupedProducts[product.rubro][product.segmento][product.marca]) groupedProducts[product.rubro][product.segmento][product.marca] = [];
+            groupedProducts[product.rubro][product.segmento][product.marca].push(product);
+        }
+
+        const rubroOrderMap = await getRubroOrderMapData(userIdForInventario);
+        const segmentoOrderMap = await getSegmentoOrderMapData(userIdForInventario);
+
+        const sortedRubros = Object.keys(groupedProducts).sort((a, b) => (rubroOrderMap[a] ?? 999) - (rubroOrderMap[b] ?? 999));
+
+        const finalProductOrder = [];
+        sortedRubros.forEach(rubro => {
+            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            sortedSegmentos.forEach(segmento => {
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
+                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
+                    finalProductOrder.push(...sortedPresentaciones);
+                });
+            });
+        });
+
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
+    }
+
     /**
-     * Muestra el detalle de un cierre en un modal (reutilizando la lógica de ventas.js)
+     * Muestra el detalle de un cierre en un modal
      */
     async function showClosingDetail(closingId) {
         const closingData = window.tempClosingsData.find(c => c.id === closingId);
@@ -156,140 +273,132 @@
             _showModal('Error', 'No se pudieron cargar los detalles del cierre.');
             return;
         }
+        
+        _showModal('Progreso', 'Generando reporte detallado...');
+        
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+        
+        let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
+        let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
+        let headerRow3 = `<tr class="sticky z-20" style="top: 50px;">`;
+        let headerRow4 = `<tr class="sticky z-20" style="top: 75px;">`;
 
-        // Se reutiliza la misma función de procesamiento de 'ventas.js'
-        // Esto requiere que la función global esté disponible
-        if (window.ventasModule && typeof window.ventasModule.processSalesDataForReport === 'function') {
-            _showModal('Progreso', 'Generando reporte detallado...');
-            const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await window.ventasModule.processSalesDataForReport(closingData.ventas);
-            
-            // La lógica para renderizar las tablas es la misma que en `showVerCierreView` de `ventas.js`
-            // Se duplica aquí para mantener el módulo independiente.
-            let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
-            let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
-            let headerRow3 = `<tr class="sticky z-20" style="top: 50px;">`;
-            let headerRow4 = `<tr class="sticky z-20" style="top: 75px;">`;
-
-            sortedRubros.forEach(rubro => {
-                let rubroColspan = 0;
-                const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
-                sortedSegmentos.forEach(segmento => {
-                    const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                    sortedMarcas.forEach(marca => {
-                        rubroColspan += groupedProducts[rubro][segmento][marca].length;
-                    });
+        sortedRubros.forEach(rubro => {
+            let rubroColspan = 0;
+            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            sortedSegmentos.forEach(segmento => {
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
+                    rubroColspan += groupedProducts[rubro][segmento][marca].length;
                 });
-                headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
+            });
+            headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
 
-                sortedSegmentos.forEach(segmento => {
-                    let segmentoColspan = 0;
-                    const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                    sortedMarcas.forEach(marca => {
-                        segmentoColspan += groupedProducts[rubro][segmento][marca].length;
-                    });
-                    headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
+            sortedSegmentos.forEach(segmento => {
+                let segmentoColspan = 0;
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
+                    segmentoColspan += groupedProducts[rubro][segmento][marca].length;
+                });
+                headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
 
-                    sortedMarcas.forEach(marca => {
-                        const marcaColspan = groupedProducts[rubro][segmento][marca].length;
-                        headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
-                        
-                        const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
-                        sortedPresentaciones.forEach(producto => {
-                            headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
-                        });
+                sortedMarcas.forEach(marca => {
+                    const marcaColspan = groupedProducts[rubro][segmento][marca].length;
+                    headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
+                    
+                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
+                    sortedPresentaciones.forEach(producto => {
+                        headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
                     });
                 });
             });
-            headerRow1 += `<th rowspan="4" class="p-1 border bg-gray-200 sticky right-0 z-30">Total Cliente</th></tr>`;
-            headerRow2 += `</tr>`;
-            headerRow3 += `</tr>`;
-            headerRow4 += `</tr>`;
+        });
+        headerRow1 += `<th rowspan="4" class="p-1 border bg-gray-200 sticky right-0 z-30">Total Cliente</th></tr>`;
+        headerRow2 += `</tr>`;
+        headerRow3 += `</tr>`;
+        headerRow4 += `</tr>`;
 
-            let bodyHTML = '';
-            sortedClients.forEach(clientName => {
-                bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
-                const currentClient = clientData[clientName];
-                finalProductOrder.forEach(product => {
-                    const quantity = currentClient.products[product.id] || 0;
-                    bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
-                });
-                bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
-            });
-            
-            let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
+        let bodyHTML = '';
+        sortedClients.forEach(clientName => {
+            bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
+            const currentClient = clientData[clientName];
             finalProductOrder.forEach(product => {
-                let totalQty = 0;
-                sortedClients.forEach(clientName => {
-                    totalQty += clientData[clientName].products[product.id] || 0;
-                });
-                footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
+                const quantity = currentClient.products[product.id] || 0;
+                bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
             });
-            footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
-            
-            let vaciosReportHTML = '';
-            const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
-            
-            if (clientesConMovimientoVacios.length > 0) {
-                vaciosReportHTML = `
-                    <h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos)</h3>
-                    <div class="overflow-auto border">
-                        <table class="min-w-full bg-white text-xs">
-                            <thead class="bg-gray-200">
-                                <tr>
-                                    <th class="p-1 border text-left">Cliente</th>
-                                    <th class="p-1 border text-left">Producto</th>
-                                    <th class="p-1 border text-center">Entregados (Cajas)</th>
-                                    <th class="p-1 border text-center">Devueltos (Cajas)</th>
-                                    <th class="p-1 border text-center">Neto</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
+            bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
+        });
+        
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
+        finalProductOrder.forEach(product => {
+            let totalQty = 0;
+            sortedClients.forEach(clientName => {
+                totalQty += clientData[clientName].products[product.id] || 0;
+            });
+            footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
+        });
+        footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+        
+        let vaciosReportHTML = '';
+        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        
+        if (clientesConMovimientoVacios.length > 0) {
+            vaciosReportHTML = `
+                <h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos)</h3>
+                <div class="overflow-auto border">
+                    <table class="min-w-full bg-white text-xs">
+                        <thead class="bg-gray-200">
+                            <tr>
+                                <th class="p-1 border text-left">Cliente</th>
+                                <th class="p-1 border text-left">Producto</th>
+                                <th class="p-1 border text-center">Entregados (Cajas)</th>
+                                <th class="p-1 border text-center">Devueltos (Cajas)</th>
+                                <th class="p-1 border text-center">Neto</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
 
-                clientesConMovimientoVacios.forEach(cliente => {
-                    const movimientos = vaciosMovements[cliente];
-                    for(const productoId in movimientos) {
-                        const mov = movimientos[productoId];
-                        const producto = allProductsMap.get(productoId);
-                        const neto = mov.entregados - mov.devueltos;
-                        if(mov.entregados > 0 || mov.devueltos > 0) {
-                            vaciosReportHTML += `
-                                <tr class="hover:bg-blue-50">
-                                    <td class="p-1 border">${cliente}</td>
-                                    <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
-                                    <td class="p-1 border text-center">${mov.entregados}</td>
-                                    <td class="p-1 border text-center">${mov.devueltos}</td>
-                                    <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
-                                </tr>
-                            `;
-                        }
+            clientesConMovimientoVacios.forEach(cliente => {
+                const movimientos = vaciosMovements[cliente];
+                for(const productoId in movimientos) {
+                    const mov = movimientos[productoId];
+                    const producto = allProductsMap.get(productoId);
+                    const neto = mov.entregados - mov.devueltos;
+                    if(mov.entregados > 0 || mov.devueltos > 0) {
+                         vaciosReportHTML += `
+                            <tr class="hover:bg-blue-50">
+                                <td class="p-1 border">${cliente}</td>
+                                <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
+                                <td class="p-1 border text-center">${mov.entregados}</td>
+                                <td class="p-1 border text-center">${mov.devueltos}</td>
+                                <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
+                            </tr>
+                        `;
                     }
-                });
-                vaciosReportHTML += '</tbody></table></div>';
-            }
-
-            const vendedor = closingData.vendedorInfo || {};
-            const reporteHTML = `
-                <div class="text-left max-h-[80vh] overflow-auto">
-                    <div class="mb-4">
-                        <p><strong>Vendedor:</strong> ${vendedor.nombre || ''} ${vendedor.apellido || ''}</p>
-                        <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
-                        <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
-                    <div class="overflow-auto border">
-                        <table class="min-w-full bg-white text-xs">
-                            <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
-                            <tbody>${bodyHTML}</tbody>
-                            <tfoot>${footerHTML}</tfoot>
-                        </table>
-                    </div>
-                    ${vaciosReportHTML}
-                </div>`;
-            _showModal(`Detalle del Cierre`, reporteHTML);
-
-        } else {
-            _showModal('Error', 'No se pudo cargar la función para procesar el reporte de ventas.');
+                }
+            });
+            vaciosReportHTML += '</tbody></table></div>';
         }
+
+        const vendedor = closingData.vendedorInfo || {};
+        const reporteHTML = `
+            <div class="text-left max-h-[80vh] overflow-auto">
+                <div class="mb-4">
+                    <p><strong>Vendedor:</strong> ${vendedor.nombre || ''} ${vendedor.apellido || ''}</p>
+                    <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
+                    <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
+                <div class="overflow-auto border">
+                    <table class="min-w-full bg-white text-xs">
+                        <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
+                        <tbody>${bodyHTML}</tbody>
+                        <tfoot>${footerHTML}</tfoot>
+                    </table>
+                </div>
+                ${vaciosReportHTML}
+            </div>`;
+        _showModal(`Detalle del Cierre`, reporteHTML);
     }
 
 
@@ -299,3 +408,4 @@
     };
 
 })();
+
