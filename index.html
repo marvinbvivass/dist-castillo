@@ -429,28 +429,18 @@
                     <div class="container mx-auto">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
-                            <div id="main-menu-buttons" class="space-y-4">
+                            <div class="space-y-4">
                                 <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Inventario</button>
                                 <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
                                 <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
                                 <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Catálogo</button>
                                 <button id="sincronizacionBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronización</button>
+                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">${userRole === 'admin' ? 'Gestión de Usuarios' : 'Mi Perfil'}</button>
                             </div>
                         </div>
                     </div>
                 </div>
             `;
-            
-            if (userRole === 'admin') {
-                const menuContainer = document.getElementById('main-menu-buttons');
-                const adminButton = document.createElement('button');
-                adminButton.id = 'adminBtn';
-                adminButton.className = 'w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900';
-                adminButton.textContent = 'Gestión de Usuarios';
-                menuContainer.appendChild(adminButton);
-                adminButton.addEventListener('click', () => navigateTo(window.showUserManagementView));
-            }
-
 
             const navigateTo = (viewFunction) => {
                 cleanupListeners();
@@ -462,6 +452,7 @@
             document.getElementById('ventasBtn').addEventListener('click', () => navigateTo(window.showVentasView));
             document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
             document.getElementById('sincronizacionBtn').addEventListener('click', () => navigateTo(window.showSincronizacionView));
+            document.getElementById('profileAdminBtn').addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
         }
 
         // --- INICIALIZACIÓN DE LA APP ---
