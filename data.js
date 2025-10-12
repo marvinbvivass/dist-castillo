@@ -7,6 +7,8 @@
 
     let _lastStatsData = []; // Caché para los datos de la última estadística generada
     let _lastNumWeeks = 1;   // Caché para el número de semanas del último cálculo
+    let _consolidatedClientsCache = []; // Caché para la lista de clientes consolidados
+    let _filteredClientsCache = []; // Caché para la lista filtrada de clientes a descargar
 
     // Se duplican estas funciones para mantener el módulo independiente
     let _segmentoOrderCacheData = null;
@@ -45,7 +47,7 @@
                         <div class="space-y-4">
                             <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
                             <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
-                            <button id="downloadClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Descargar Datos de Clientes</button>
+                            <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -54,7 +56,7 @@
         `;
         document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
-        document.getElementById('downloadClientsBtn').addEventListener('click', handleDownloadAllClients);
+        document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
