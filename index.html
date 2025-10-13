@@ -11,14 +11,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- CAMBIO: Se añade el CSS de Leaflet para los mapas -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
-    <!-- PWA Manifest and Theme Color -->
     <meta name="theme-color" content="#ffffff"/>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
-
 
     <style>
         body {
@@ -51,7 +48,6 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
-        /* Estilo para el dropdown de búsqueda */
         .autocomplete-list {
             position: absolute;
             background-color: white;
@@ -82,14 +78,9 @@
 </head>
 <body class="min-h-screen flex flex-col">
     <div id="app" class="flex flex-col min-h-screen">
-        <!-- El header ha sido eliminado -->
 
-        <!-- Contenido principal para el menú y otras vistas, visible solo cuando el usuario está autenticado -->
-        <main id="mainContent" class="flex-grow hidden">
-            <!-- El contenido de la página se inserta aquí dinámicamente -->
-        </main>
+        <main id="mainContent" class="flex-grow hidden"></main>
 
-        <!-- Contenido para la vista de login, visible solo cuando el usuario no está autenticado -->
         <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -110,7 +101,6 @@
             </div>
         </main>
         
-        <!-- Contenido para la vista de registro -->
         <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
@@ -133,13 +123,10 @@
             </div>
         </main>
 
-
-        <!-- Modal para mensajes y formularios -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
             <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-lg w-full mx-4"></div>
         </div>
 
-        <!-- Controles Flotantes -->
         <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-20 hidden">
              <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg"></span>
             <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center">
@@ -150,10 +137,8 @@
         </div>
     </div>
     
-    <!-- CAMBIO: Se añade el JS de Leaflet para los mapas -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Cargar los scripts de los módulos -->
     <script src="data.js"></script>
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
@@ -166,7 +151,6 @@
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Configuración de Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
             authDomain: "ventas-9a210.firebaseapp.com",
@@ -176,17 +160,18 @@
             appId: "1:815890981146:web:938fe5e09babe511e98ca3",
             measurementId: "G-N0QXG70WM1"
         };
-        // CORRECCIÓN: Usar el projectId para las rutas de la base de datos, no el appId.
-        const appId = firebaseConfig.projectId;
+        
+        // CORRECCIÓN: Definir y usar tanto appId como projectId para evitar conflictos de rutas.
+        const firebaseAppId = firebaseConfig.appId;
+        const firebaseProjectId = firebaseConfig.projectId;
 
         let db;
         let auth;
         let userId;
-        let userRole = 'user'; // Default role
+        let userRole = 'user';
         let activeListeners = [];
-        window.isLoggingOut = false; // Bandera global para el estado de cierre de sesión
+        window.isLoggingOut = false;
 
-        // Referencias a los elementos del DOM
         const mainContent = document.getElementById('mainContent');
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
@@ -197,8 +182,6 @@
         const registerForm = document.getElementById('registerForm');
         const registerMessage = document.getElementById('registerMessage');
         const floatingControls = document.getElementById('floating-controls');
-        
-        // --- FUNCIONES DE UTILIDAD (Compartidas con los módulos) ---
         
         function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
             modalContent.innerHTML = `
@@ -248,25 +231,20 @@
 
                 if (!newItemName) return;
 
-                // Resetear mensaje y deshabilitar botón mientras se procesa
                 addItemMessage.textContent = '';
                 submitButton.disabled = true;
                 submitButton.textContent = 'Verificando...';
 
                 try {
-                    const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
-                    
-                    // Obtener todos los documentos para verificar duplicados sin distinción de mayúsculas/minúsculas
+                    const collectionRef = collection(db, `artifacts/${firebaseAppId}/users/${userId}/${collectionName}`);
                     const snapshot = await getDocs(collectionRef);
                     const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
 
-                    // Verificar si el nuevo ítem (en minúsculas) ya existe
                     if (existingItems.includes(newItemName.toLowerCase())) {
                         addItemMessage.textContent = `"${itemName}" ya existe.`;
                         addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                         setTimeout(() => { addItemMessage.textContent = ''; }, 3000);
                     } else {
-                        // Si no es un duplicado, agregarlo
                         await addDoc(collectionRef, { name: newItemName });
                         addItemMessage.textContent = `¡"${newItemName}" agregado!`;
                         addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
@@ -279,38 +257,38 @@
                     addItemMessage.textContent = `Error al guardar.`;
                     addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                 } finally {
-                    // Volver a habilitar el botón
                     submitButton.disabled = false;
                     submitButton.textContent = 'Agregar';
                 }
             });
         }
         
-        function populateDropdown(collectionName, elementId, itemName, selectedValue = null) {
+        function populateDropdown(collectionPathOrName, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
 
-            // CORRECCIÓN: Manejar tanto rutas completas (públicas) como nombres de colección (privadas del usuario)
-            const isFullPath = typeof collectionName === 'string' && collectionName.startsWith('artifacts/');
-            const collectionRef = isFullPath 
-                ? collection(db, collectionName)
-                : collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            const isFullPath = collectionPathOrName.includes('/');
+            const collectionRef = isFullPath
+                ? collection(db, collectionPathOrName)
+                : collection(db, `artifacts/${firebaseAppId}/users/${userId}/${collectionPathOrName}`);
 
             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const items = snapshot.docs.map(doc => doc.data().name).sort((a, b) => a.localeCompare(b));
-                const currentValue = selectElement.value; // Guardar valor actual si existe
+                const currentSelection = selectElement.value;
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
                 selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
                 items.forEach(item => {
-                    // Mantener el valor seleccionado si coincide con el valor nuevo, el valor pasado, o el valor actual
-                    const isSelected = item === selectedValue || item === currentValue;
-                    selectElement.innerHTML += `<option value="${item}" ${isSelected ? 'selected' : ''}>${item}</option>`;
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
+                
+                if (selectedValue && items.includes(selectedValue)) {
+                    selectElement.value = selectedValue;
+                } else if (items.includes(currentSelection)) {
+                    selectElement.value = currentSelection;
+                }
             });
             activeListeners.push(unsubscribe);
         }
         
-        // --- LÓGICA DE AUTENTICACIÓN Y VISTAS PRINCIPALES ---
-
         async function handleRegister(e) {
             e.preventDefault();
             const email = document.getElementById('registerEmailInput').value;
@@ -324,11 +302,10 @@
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                // Create a user profile document in the 'users' collection
                 const userDocRef = doc(db, "users", user.uid);
                 await setDoc(userDocRef, {
                     email: user.email,
-                    role: 'user', // Default role for new users
+                    role: 'user',
                     createdAt: new Date()
                 });
             } catch (error) {
@@ -349,19 +326,18 @@
         }
 
         async function handleLogout() {
-            window.isLoggingOut = true; // Activar la bandera
+            window.isLoggingOut = true;
             cleanupListeners();
             await signOut(auth);
         }
         
         function cleanupListeners() {
-            console.log(`Limpiando ${activeListeners.length} listener(s) activo(s)...`); // Log para depuración
             activeListeners.forEach(unsubscribe => unsubscribe());
             activeListeners = [];
         }
 
         function showLoginView() {
-            window.isLoggingOut = false; // Resetear la bandera al mostrar la vista de login
+            window.isLoggingOut = false;
             cleanupListeners();
             floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
@@ -381,27 +357,24 @@
         }
 
         async function preloadAllData() {
-            const collectionsToPreload = ['inventario', 'clientes', 'ventas', 'rubros', 'segmentos', 'marcas', 'sectores'];
-            const preloadPromises = collectionsToPreload.map(colName => {
-                // Ajustar para colecciones públicas y privadas
-                const path = (colName === 'clientes' || colName === 'sectores')
-                    ? `artifacts/${appId}/public/data/${colName}`
-                    : `artifacts/${appId}/users/${userId}/${colName}`;
-                return getDocs(collection(db, path));
-            });
+            const collectionsToPreload = ['inventario', 'rubros', 'segmentos', 'marcas'];
+            const preloadPromises = collectionsToPreload.map(colName => getDocs(collection(db, `artifacts/${firebaseAppId}/users/${userId}/${colName}`)));
+            
+            // También precargar datos públicos
+            preloadPromises.push(getDocs(collection(db, `artifacts/${firebaseProjectId}/public/data/clientes`)));
+            preloadPromises.push(getDocs(collection(db, `artifacts/${firebaseProjectId}/public/data/sectores`)));
+            
             await Promise.all(preloadPromises);
         }
 
         async function showMainView(currentUser) {
             userId = currentUser.uid;
 
-            // Fetch user role
             const userDocRef = doc(db, "users", userId);
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
                 userRole = userDoc.data().role || 'user';
             } else {
-                // If user exists in Auth but not in 'users' collection (e.g., legacy users)
                 await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() });
                 userRole = 'user';
             }
@@ -414,12 +387,16 @@
             try {
                 await preloadAllData();
             } catch (error) {
+                console.error("Error en precarga: ", error);
                 showModal('Error de Sincronización', 'No se pudieron cargar todos los datos.');
             }
             
-            // Inicializar los módulos externos
+            // CORRECCIÓN: Pasar tanto appId como projectId a los módulos.
             const dependencies = {
-                db, userId, appId, mainContent, floatingControls, activeListeners, userRole,
+                db, userId, userRole, 
+                appId: firebaseAppId, 
+                projectId: firebaseProjectId, 
+                mainContent, floatingControls, activeListeners,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy
             };
@@ -434,9 +411,9 @@
         }
 
         window.showMainMenu = function() {
-            cleanupListeners(); // Limpia listeners de cualquier módulo anterior
+            cleanupListeners();
 
-            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
+            const unsubscribe = onSnapshot(collection(db, `artifacts/${firebaseAppId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
                 const statusEl = document.getElementById('connectionStatus');
                 if (!statusEl) return;
                 statusEl.textContent = snapshot.metadata.fromCache ? "SIN CONEXIÓN" : "EN LÍNEA";
@@ -490,7 +467,6 @@
             }
         }
 
-        // --- INICIALIZACIÓN DE LA APP ---
         async function initializeAppAndListeners() {
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
