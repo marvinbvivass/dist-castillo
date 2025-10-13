@@ -152,6 +152,7 @@
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
     <script src="catalogo.js"></script>
+    <!-- PASO 1: Elimina la siguiente línea -->
     <script src="sincronizacion.js"></script>
     <script src="clientes.js"></script>
     <script src="ventas.js"></script>
@@ -407,6 +408,7 @@
             window.initAdmin(dependencies);
             window.initInventario(dependencies);
             window.initCatalogo(dependencies);
+            // PASO 1: Elimina la siguiente línea
             window.initSincronizacion(dependencies);
             window.initClientes(dependencies);
             window.initVentas(dependencies);
@@ -436,6 +438,7 @@
                                 <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
                                 <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
                                 <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Catálogo</button>
+                                <!-- PASO 1: Elimina el siguiente botón -->
                                 <button id="sincronizacionBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronización</button>
                                 <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">${userRole === 'admin' ? 'Gestión de Usuarios' : 'Mi Perfil'}</button>
                             </div>
@@ -451,9 +454,9 @@
                 dataButton.id = 'dataBtn';
                 dataButton.className = 'w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800';
                 dataButton.textContent = 'Data';
-                // Insertar el botón de Data antes del de Sincronización para un mejor orden
-                const syncButton = document.getElementById('sincronizacionBtn');
-                menuContainer.insertBefore(dataButton, syncButton);
+                // Insertar el botón de Data después del de Catálogo
+                const catalogoButton = document.getElementById('catalogoBtn');
+                catalogoButton.parentNode.insertBefore(dataButton, catalogoButton.nextSibling);
             }
 
 
@@ -466,6 +469,7 @@
             document.getElementById('clientesBtn').addEventListener('click', () => navigateTo(window.showClientesSubMenu));
             document.getElementById('ventasBtn').addEventListener('click', () => navigateTo(window.showVentasView));
             document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
+            // PASO 1: Elimina la siguiente línea
             document.getElementById('sincronizacionBtn').addEventListener('click', () => navigateTo(window.showSincronizacionView));
             document.getElementById('profileAdminBtn').addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
             
@@ -513,3 +517,4 @@
     </script>
 </body>
 </html>
+
