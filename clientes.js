@@ -1,1022 +1,1105 @@
-// --- Lógica del módulo de Data (solo para Admins) ---
+// --- Lógica del módulo de Clientes ---
 
 (function() {
-    // Variables locales del módulo
-    let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown;
+    // Variables locales del módulo que se inicializarán desde index.html
+    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
+    let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction;
+    
+    let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
+    let _clientesParaImportar = []; // Caché para la data del Excel a importar
 
-    let _lastStatsData = []; // Caché para los datos de la última estadística generada
-    let _lastNumWeeks = 1;   // Caché para el número de semanas del último cálculo
-    let _consolidatedClientsCache = []; // Caché para la lista de clientes consolidados
-    let _filteredClientsCache = []; // Caché para la lista filtrada de clientes a descargar
-
-    // Se duplican estas funciones para mantener el módulo independiente
-    let _segmentoOrderCacheData = null;
-    let _rubroOrderCacheData = null;
-
-    // Variables para el mapa
-    let mapInstance = null;
-    let mapMarkers = new Map();
+    // CAMBIO: Definir la ruta de la base de datos de clientes como una constante compartida
+    const CLIENTES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/clientes`;
+    const SECTORES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/sectores`;
 
 
     /**
-     * Inicializa el módulo con las dependencias necesarias.
+     * Inicializa el módulo con las dependencias necesarias desde la app principal.
      */
-    window.initData = function(dependencies) {
+    window.initClientes = function(dependencies) {
         _db = dependencies.db;
+        _userId = dependencies.userId;
+        _userRole = dependencies.userRole; 
         _appId = dependencies.appId;
-        _userId = dependencies.userId; // El ID del admin actual
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
+        _activeListeners = dependencies.activeListeners;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
+        _showAddItemModal = dependencies.showAddItemModal;
+        _populateDropdown = dependencies.populateDropdown;
         _collection = dependencies.collection;
+        _onSnapshot = dependencies.onSnapshot;
+        _doc = dependencies.doc;
+        _getDoc = dependencies.getDoc;
+        _addDoc = dependencies.addDoc;
+        _setDoc = dependencies.setDoc;
+        _deleteDoc = dependencies.deleteDoc;
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
-        _orderBy = dependencies.orderBy;
-        _populateDropdown = dependencies.populateDropdown;
+        _writeBatch = dependencies.writeBatch;
+        _runTransaction = dependencies.runTransaction;
     };
-    
+
     /**
-     * Muestra el submenú de opciones del módulo de Data.
+     * Renderiza el menú de subopciones de clientes.
      */
-    window.showDataView = function() {
-        if (mapInstance) {
-            mapInstance.remove();
-            mapInstance = null;
-        }
-        _floatingControls.classList.add('hidden');
+    window.showClientesSubMenu = function() {
+         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Módulo de Datos</h1>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                         <div class="space-y-4">
-                            <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
-                            <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
-                            <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
-                            <button id="clientMapBtn" class="w-full px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-700">Mapa de Clientes</button>
+                            <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
+                            <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
+                            <button id="saldosVaciosBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600">Consultar Saldos de Vacíos</button>
+                            ${_userRole === 'admin' ? `
+                            <button id="funcionesAvanzadasBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Funciones Avanzadas</button>
+                            ` : ''}
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
-        document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
-        document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
-        document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
+        document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
+        document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
+        document.getElementById('saldosVaciosBtn').addEventListener('click', showSaldosVaciosView);
+        if (_userRole === 'admin') {
+            document.getElementById('funcionesAvanzadasBtn').addEventListener('click', showFuncionesAvanzadasView);
+        }
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
-    };
+    }
 
     /**
-     * Muestra la vista para buscar y ver cierres de vendedores.
+     * Muestra la vista de funciones avanzadas.
      */
-    function showClosingDataView() {
+    function showFuncionesAvanzadasView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Datos de Cierres de Vendedores</h1>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end">
-                            <div>
-                                <label for="fechaDesde" class="block text-sm font-medium text-gray-700">Desde:</label>
-                                <input type="date" id="fechaDesde" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            </div>
-                            <div>
-                                <label for="fechaHasta" class="block text-sm font-medium text-gray-700">Hasta:</label>
-                                <input type="date" id="fechaHasta" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            </div>
-                            <button id="searchCierresBtn" class="w-full px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Buscar Cierres</button>
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Funciones Avanzadas de Clientes</h1>
+                        <div class="space-y-4">
+                            <button id="importarClientesBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Importar Clientes desde Excel</button>
+                            <button id="datosMaestrosSectoresBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Gestionar Sectores</button>
+                            <button id="deleteAllClientesBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Clientes</button>
+                            <button id="backToClientesMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver a Clientes</button>
                         </div>
-
-                        <div id="cierres-list-container" class="overflow-x-auto max-h-96">
-                            <p class="text-center text-gray-500">Seleccione un rango de fechas para buscar.</p>
-                        </div>
-                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
-
-        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
-        document.getElementById('searchCierresBtn').addEventListener('click', handleSearchClosings);
-        
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('fechaDesde').value = today;
-        document.getElementById('fechaHasta').value = today;
-    };
-
-    /**
-     * Maneja la búsqueda de cierres de vendedores por rango de fecha.
-     */
-    async function handleSearchClosings() {
-        const container = document.getElementById('cierres-list-container');
-        container.innerHTML = `<p class="text-center text-gray-500">Buscando...</p>`;
-
-        const fechaDesdeStr = document.getElementById('fechaDesde').value;
-        const fechaHastaStr = document.getElementById('fechaHasta').value;
-
-        if (!fechaDesdeStr || !fechaHastaStr) {
-            _showModal('Error', 'Por favor, seleccione ambas fechas.');
-            return;
-        }
-
-        const fechaDesde = new Date(fechaDesdeStr);
-        fechaDesde.setHours(0, 0, 0, 0); 
-        
-        const fechaHasta = new Date(fechaHastaStr);
-        fechaHasta.setHours(23, 59, 59, 999);
-
-        try {
-            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            const q = _query(closingsRef, 
-                _where("fecha", ">=", fechaDesde),
-                _where("fecha", "<=", fechaHasta)
-            );
-
-            const snapshot = await _getDocs(q);
-            const closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            window.tempClosingsData = closings;
-
-            renderClosingsList(closings);
-
-        } catch (error) {
-            console.error("Error al buscar cierres:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al buscar los cierres.</p>`;
-        }
+        document.getElementById('importarClientesBtn').addEventListener('click', showImportarClientesView);
+        document.getElementById('datosMaestrosSectoresBtn').addEventListener('click', showDatosMaestrosSectoresView);
+        document.getElementById('deleteAllClientesBtn').addEventListener('click', handleDeleteAllClientes);
+        document.getElementById('backToClientesMenuBtn').addEventListener('click', showClientesSubMenu);
     }
 
     /**
-     * Renderiza la lista de cierres encontrados.
+     * Muestra la vista para importar clientes desde un archivo Excel.
      */
-    function renderClosingsList(closings) {
-        const container = document.getElementById('cierres-list-container');
-        if (closings.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron cierres en el rango de fechas seleccionado.</p>`;
-            return;
-        }
-        
-        closings.sort((a, b) => b.fecha.toDate() - a.fecha.toDate());
-
-        let tableHTML = `
-            <table class="min-w-full bg-white text-sm">
-                <thead class="bg-gray-200">
-                    <tr>
-                        <th class="py-2 px-3 border-b text-left">Fecha</th>
-                        <th class="py-2 px-3 border-b text-left">Vendedor</th>
-                        <th class="py-2 px-3 border-b text-left">Camión</th>
-                        <th class="py-2 px-3 border-b text-right">Total Cierre</th>
-                        <th class="py-2 px-3 border-b text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-        
-        closings.forEach(cierre => {
-            const vendedor = cierre.vendedorInfo || {};
-            tableHTML += `
-                <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${cierre.fecha.toDate().toLocaleDateString('es-ES')}</td>
-                    <td class="py-2 px-3 border-b">${vendedor.nombre || ''} ${vendedor.apellido || ''}</td>
-                    <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
-                    <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
-                    <td class="py-2 px-3 border-b text-center">
-                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver Detalle</button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        tableHTML += '</tbody></table>';
-        container.innerHTML = tableHTML;
-    }
-
-    // --- Lógica de Reporte (duplicada de ventas.js para independencia) ---
-
-    async function getRubroOrderMapData(userIdForData) {
-        if (_rubroOrderCacheData) return _rubroOrderCacheData;
-        const map = {};
-        const rubrosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/rubros`);
-        try {
-            const snapshot = await _getDocs(rubrosRef);
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
-            });
-            _rubroOrderCacheData = map;
-            return map;
-        } catch (e) { console.warn("No se pudo obtener el orden de los rubros en data.js", e); return null; }
-    }
-
-    async function getSegmentoOrderMapData(userIdForData) {
-        if (_segmentoOrderCacheData) return _segmentoOrderCacheData;
-        const map = {};
-        const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/segmentos`);
-        try {
-            const snapshot = await _getDocs(segmentosRef);
-            snapshot.docs.forEach(doc => {
-                const data = doc.data();
-                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
-            });
-            _segmentoOrderCacheData = map;
-            return map;
-        } catch (e) { console.warn("No se pudo obtener el orden de los segmentos en data.js", e); return null; }
-    }
-
-    async function processSalesDataForReport(ventas, userIdForInventario) {
-        const clientData = {};
-        let grandTotalValue = 0;
-        const allProductsMap = new Map();
-        const vaciosMovements = {};
-        
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-        const inventarioSnapshot = await _getDocs(inventarioRef);
-        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-
-        ventas.forEach(venta => {
-            const clientName = venta.clienteNombre;
-            if (!clientData[clientName]) {
-                clientData[clientName] = { products: {}, totalValue: 0 };
-            }
-             if(!vaciosMovements[clientName]) {
-                vaciosMovements[clientName] = {};
-            }
-            clientData[clientName].totalValue += venta.total;
-            grandTotalValue += venta.total;
-            
-            (venta.productos || []).forEach(p => {
-                if (p.manejaVacios) {
-                    if (!vaciosMovements[clientName][p.id]) {
-                        vaciosMovements[clientName][p.id] = { entregados: 0, devueltos: 0 };
-                    }
-                    vaciosMovements[clientName][p.id].entregados += p.cantidadVendida?.cj || 0;
-                    vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
-                }
-
-                const productoCompleto = inventarioMap.get(p.id);
-                const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
-                const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
-                const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
-                
-                if (!allProductsMap.has(p.id)) {
-                    allProductsMap.set(p.id, {
-                        id: p.id,
-                        rubro: rubro,
-                        segmento: segmento,
-                        marca: marca,
-                        presentacion: p.presentacion
-                    });
-                }
-
-                if (!clientData[clientName].products[p.id]) {
-                    clientData[clientName].products[p.id] = 0;
-                }
-                clientData[clientName].products[p.id] += p.totalUnidadesVendidas;
-            });
-        });
-
-        const sortedClients = Object.keys(clientData).sort();
-
-        const groupedProducts = {};
-        for (const product of allProductsMap.values()) {
-            if (!groupedProducts[product.rubro]) groupedProducts[product.rubro] = {};
-            if (!groupedProducts[product.rubro][product.segmento]) groupedProducts[product.rubro][product.segmento] = {};
-            if (!groupedProducts[product.rubro][product.segmento][product.marca]) groupedProducts[product.rubro][product.segmento][product.marca] = [];
-            groupedProducts[product.rubro][product.segmento][product.marca].push(product);
-        }
-
-        const rubroOrderMap = await getRubroOrderMapData(userIdForInventario);
-        const segmentoOrderMap = await getSegmentoOrderMapData(userIdForInventario);
-
-        const sortedRubros = Object.keys(groupedProducts).sort((a, b) => (rubroOrderMap[a] ?? 999) - (rubroOrderMap[b] ?? 999));
-
-        const finalProductOrder = [];
-        sortedRubros.forEach(rubro => {
-            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
-            sortedSegmentos.forEach(segmento => {
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                sortedMarcas.forEach(marca => {
-                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
-                    finalProductOrder.push(...sortedPresentaciones);
-                });
-            });
-        });
-
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
-    }
-
-    /**
-     * Muestra el detalle de un cierre en un modal
-     */
-    async function showClosingDetail(closingId) {
-        const closingData = window.tempClosingsData.find(c => c.id === closingId);
-        if (!closingData) {
-            _showModal('Error', 'No se pudieron cargar los detalles del cierre.');
-            return;
-        }
-        
-        _showModal('Progreso', 'Generando reporte detallado...');
-        
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
-        
-        let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
-        let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
-        let headerRow3 = `<tr class="sticky z-20" style="top: 50px;">`;
-        let headerRow4 = `<tr class="sticky z-20" style="top: 75px;">`;
-
-        sortedRubros.forEach(rubro => {
-            let rubroColspan = 0;
-            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
-            sortedSegmentos.forEach(segmento => {
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                sortedMarcas.forEach(marca => {
-                    rubroColspan += groupedProducts[rubro][segmento][marca].length;
-                });
-            });
-            headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
-
-            sortedSegmentos.forEach(segmento => {
-                let segmentoColspan = 0;
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                sortedMarcas.forEach(marca => {
-                    segmentoColspan += groupedProducts[rubro][segmento][marca].length;
-                });
-                headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
-
-                sortedMarcas.forEach(marca => {
-                    const marcaColspan = groupedProducts[rubro][segmento][marca].length;
-                    headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
-                    
-                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
-                    sortedPresentaciones.forEach(producto => {
-                        headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
-                    });
-                });
-            });
-        });
-        headerRow1 += `<th rowspan="4" class="p-1 border bg-gray-200 sticky right-0 z-30">Total Cliente</th></tr>`;
-        headerRow2 += `</tr>`;
-        headerRow3 += `</tr>`;
-        headerRow4 += `</tr>`;
-
-        let bodyHTML = '';
-        sortedClients.forEach(clientName => {
-            bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
-            const currentClient = clientData[clientName];
-            finalProductOrder.forEach(product => {
-                const quantity = currentClient.products[product.id] || 0;
-                bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
-            });
-            bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
-        });
-        
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
-        finalProductOrder.forEach(product => {
-            let totalQty = 0;
-            sortedClients.forEach(clientName => {
-                totalQty += clientData[clientName].products[product.id] || 0;
-            });
-            footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
-        });
-        footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
-        
-        let vaciosReportHTML = '';
-        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
-        
-        if (clientesConMovimientoVacios.length > 0) {
-            vaciosReportHTML = `
-                <h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos)</h3>
-                <div class="overflow-auto border">
-                    <table class="min-w-full bg-white text-xs">
-                        <thead class="bg-gray-200">
-                            <tr>
-                                <th class="p-1 border text-left">Cliente</th>
-                                <th class="p-1 border text-left">Producto</th>
-                                <th class="p-1 border text-center">Entregados (Cajas)</th>
-                                <th class="p-1 border text-center">Devueltos (Cajas)</th>
-                                <th class="p-1 border text-center">Neto</th>
-                            </tr>
-                        </thead>
-                        <tbody>`;
-
-            clientesConMovimientoVacios.forEach(cliente => {
-                const movimientos = vaciosMovements[cliente];
-                for(const productoId in movimientos) {
-                    const mov = movimientos[productoId];
-                    const producto = allProductsMap.get(productoId);
-                    const neto = mov.entregados - mov.devueltos;
-                    if(mov.entregados > 0 || mov.devueltos > 0) {
-                         vaciosReportHTML += `
-                            <tr class="hover:bg-blue-50">
-                                <td class="p-1 border">${cliente}</td>
-                                <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
-                                <td class="p-1 border text-center">${mov.entregados}</td>
-                                <td class="p-1 border text-center">${mov.devueltos}</td>
-                                <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
-                            </tr>
-                        `;
-                    }
-                }
-            });
-            vaciosReportHTML += '</tbody></table></div>';
-        }
-
-        const vendedor = closingData.vendedorInfo || {};
-        const reporteHTML = `
-            <div class="text-left max-h-[80vh] overflow-auto">
-                <div class="mb-4">
-                    <p><strong>Vendedor:</strong> ${vendedor.nombre || ''} ${vendedor.apellido || ''}</p>
-                    <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
-                    <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p>
-                </div>
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
-                <div class="overflow-auto border">
-                    <table class="min-w-full bg-white text-xs">
-                        <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
-                        <tbody>${bodyHTML}</tbody>
-                        <tfoot>${footerHTML}</tfoot>
-                    </table>
-                </div>
-                ${vaciosReportHTML}
-            </div>`;
-        _showModal(`Detalle del Cierre`, reporteHTML);
-    }
-
-    // --- Lógica de Estadísticas de Productos ---
-
-    function showProductStatsView() {
+    function showImportarClientesView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
-                <div class="container mx-auto">
+                <div class="container mx-auto max-w-4xl">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Estadística de Productos Vendidos</h1>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end">
-                            <div>
-                                <label for="stats-type" class="block text-sm font-medium text-gray-700">Tipo de Estadística:</label>
-                                <select id="stats-type" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
-                                    <option value="semanal">Semanal</option>
-                                    <option value="mensual">Mensual</option>
-                                    <option value="general">General (Promedio Semanal)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="stats-rubro-filter" class="block text-sm font-medium text-gray-700">Rubro:</label>
-                                <select id="stats-rubro-filter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></select>
-                            </div>
-                            <button id="searchStatsBtn" class="w-full px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Mostrar Estadísticas</button>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Importar Clientes desde Excel</h2>
+                        <p class="text-center text-gray-600 mb-6">Selecciona un archivo .xlsx o .csv. La primera fila debe contener los encabezados: Sector, Nombre Comercial, Nombre Personal, telefono, CEP, y opcionalmente: Coordenadas (o X, Y).</p>
+                        <input type="file" id="excel-uploader" accept=".xlsx, .xls, .csv" class="w-full p-4 border-2 border-dashed rounded-lg">
+                        <div id="preview-container" class="mt-6 overflow-auto max-h-96"></div>
+                        <div id="import-actions" class="mt-6 flex flex-col sm:flex-row gap-4 hidden">
+                             <button id="confirmImportBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Confirmar e Importar</button>
+                             <button id="cancelImportBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Cancelar</button>
                         </div>
-
-                        <div id="stats-list-container" class="overflow-x-auto max-h-96">
-                            <p class="text-center text-gray-500">Seleccione las opciones y genere la estadística.</p>
-                        </div>
-                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                         <button id="backToAdvancedFunctionsBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
-        
-        _populateDropdown('rubros', 'stats-rubro-filter', 'Rubro');
-        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
-        document.getElementById('searchStatsBtn').addEventListener('click', handleSearchStats);
+        document.getElementById('excel-uploader').addEventListener('change', handleFileUpload);
+        document.getElementById('backToAdvancedFunctionsBtn').addEventListener('click', showFuncionesAvanzadasView);
     }
 
-    async function handleSearchStats() {
-        const container = document.getElementById('stats-list-container');
-        container.innerHTML = `<p class="text-center text-gray-500">Calculando estadísticas...</p>`;
-        
-        const statsType = document.getElementById('stats-type').value;
-        const rubroFilter = document.getElementById('stats-rubro-filter').value;
-        
-        if (!rubroFilter) {
-            _showModal('Error', 'Por favor, seleccione un rubro.');
-            container.innerHTML = `<p class="text-center text-gray-500">Seleccione un rubro para continuar.</p>`;
-            return;
-        }
+    /**
+     * Maneja la carga y parseo del archivo Excel.
+     */
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
 
-        const now = new Date();
-        let fechaDesde;
-        let fechaHasta = new Date();
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = e.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        if (statsType === 'semanal') {
-            const dayOfWeek = now.getDay(); // 0 = Domingo, 1 = Lunes, ...
-            fechaDesde = new Date(now);
-            const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Ajusta para que la semana empiece en Lunes
-            fechaDesde.setHours(0, 0, 0, 0);
-        } else if (statsType === 'mensual') {
-            fechaDesde = new Date(now.getFullYear(), now.getMonth(), 1);
-            fechaDesde.setHours(0, 0, 0, 0);
-        } else { // general
-            fechaDesde = new Date(0); // El inicio de los tiempos
-        }
-
-        try {
-            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            const q = _query(closingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
-            
-            const snapshot = await _getDocs(q);
-            const closings = snapshot.docs.map(doc => doc.data());
-            
-            if (closings.length === 0) {
-                container.innerHTML = `<p class="text-center text-gray-500">No hay datos de ventas en el período seleccionado.</p>`;
+            if (jsonData.length < 2) {
+                _showModal('Error', 'El archivo está vacío o no tiene datos después de la fila de encabezado.');
                 return;
             }
 
-            const productSales = {};
-            // El inventario del admin se usa como referencia maestra para los detalles del producto
-            const adminInventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const inventarioSnapshot = await _getDocs(adminInventarioRef);
-            const adminInventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+            const headers = jsonData[0].map(h => h.toString().toLowerCase().trim());
+            const requiredHeaders = ['sector', 'nombre comercial', 'nombre personal', 'telefono', 'cep'];
+            const optionalHeaders = ['coordenadas', 'x', 'y'];
             
-            closings.forEach(cierre => {
-                cierre.ventas.forEach(venta => {
-                    venta.productos.forEach(p => {
-                        const adminProductInfo = adminInventarioMap.get(p.id) || p;
-                        if (adminProductInfo.rubro === rubroFilter) {
-                            if (!productSales[p.id]) {
-                                productSales[p.id] = {
-                                    presentacion: p.presentacion,
-                                    totalUnidades: 0,
-                                    ventaPor: adminProductInfo.ventaPor,
-                                    unidadesPorCaja: adminProductInfo.unidadesPorCaja || 1,
-                                    unidadesPorPaquete: adminProductInfo.unidadesPorPaquete || 1
-                                };
-                            }
-                            productSales[p.id].totalUnidades += p.totalUnidadesVendidas;
-                        }
-                    });
-                });
+            const headerMap = {};
+            let missingHeader = false;
+            requiredHeaders.forEach(rh => {
+                const fileHeader = headers.find(h => h.replace(/\s+/g, '') === rh.replace(/\s+/g, ''));
+                if (fileHeader) {
+                    headerMap[rh] = headers.indexOf(fileHeader);
+                } else {
+                     _showModal('Error', `Falta la columna requerida: "${rh}" en el archivo.`);
+                     missingHeader = true;
+                }
+            });
+            if (missingHeader) return;
+
+            optionalHeaders.forEach(oh => {
+                const fileHeader = headers.find(h => h.replace(/\s+/g, '') === oh.replace(/\s+/g, ''));
+                if (fileHeader) {
+                    headerMap[oh] = headers.indexOf(fileHeader);
+                }
             });
 
-            const productArray = Object.values(productSales);
-            
-            let numWeeks = 1;
-            if (statsType === 'general') {
-                const oneDay = 24 * 60 * 60 * 1000;
-                const firstDate = closings.reduce((min, c) => c.fecha.toDate() < min ? c.fecha.toDate() : min, new Date());
-                numWeeks = Math.ceil(Math.abs((now - firstDate) / (oneDay * 7))) || 1;
-            }
-            
-            _lastStatsData = productArray; // Guardar datos para descarga
-            _lastNumWeeks = numWeeks; // Guardar número de semanas para descarga
+            _clientesParaImportar = jsonData.slice(1).map(row => {
+                let coordenadas = '';
+                if (headerMap['coordenadas'] !== undefined) {
+                    coordenadas = (row[headerMap['coordenadas']] || '').toString().trim();
+                } else if (headerMap['x'] !== undefined && headerMap['y'] !== undefined) {
+                    const x = (row[headerMap['x']] || '').toString().trim();
+                    const y = (row[headerMap['y']] || '').toString().trim();
+                    if (x && y) {
+                        coordenadas = `${y}, ${x}`; // Formato standard es Lat, Lon
+                    }
+                }
 
-            renderStatsList(productArray, statsType, numWeeks);
+                const cliente = {
+                    sector: (row[headerMap['sector']] || '').toString().trim().toUpperCase(),
+                    nombreComercial: (row[headerMap['nombre comercial']] || '').toString().trim().toUpperCase(),
+                    nombrePersonal: (row[headerMap['nombre personal']] || '').toString().trim().toUpperCase(),
+                    telefono: (row[headerMap['telefono']] || '').toString().trim(),
+                    codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim(),
+                    coordenadas: coordenadas,
+                    saldoVacios: {} 
+                };
+                if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
+                return cliente;
+            }).filter(c => c.nombreComercial && c.nombrePersonal);
+
+            renderPreviewTable(_clientesParaImportar);
+        };
+        reader.readAsBinaryString(file);
+    }
+
+    /**
+     * Muestra una tabla de vista previa con los datos del Excel.
+     */
+    function renderPreviewTable(clientes) {
+        const container = document.getElementById('preview-container');
+        const actionsContainer = document.getElementById('import-actions');
+        const backButton = document.getElementById('backToAdvancedFunctionsBtn');
+        
+        if (clientes.length === 0) {
+            container.innerHTML = `<p class="text-center text-red-500">No se encontraron clientes válidos para importar.</p>`;
+            actionsContainer.classList.add('hidden');
+            return;
+        }
+
+        let tableHTML = `<h3 class="font-bold text-lg mb-2">Vista Previa (${clientes.length} clientes a importar)</h3>
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200"><tr>
+                    <th class="py-2 px-3 text-left">Sector</th>
+                    <th class="py-2 px-3 text-left">N. Comercial</th>
+                    <th class="py-2 px-3 text-left">N. Personal</th>
+                    <th class="py-2 px-3 text-left">Teléfono</th>
+                    <th class="py-2 px-3 text-left">CEP</th>
+                    <th class="py-2 px-3 text-left">Coordenadas</th>
+                </tr></thead><tbody>`;
+        
+        clientes.forEach(c => {
+            tableHTML += `<tr class="border-b">
+                <td class="py-2 px-3">${c.sector}</td>
+                <td class="py-2 px-3">${c.nombreComercial}</td>
+                <td class="py-2 px-3">${c.nombrePersonal}</td>
+                <td class="py-2 px-3">${c.telefono}</td>
+                <td class="py-2 px-3">${c.codigoCEP}</td>
+                <td class="py-2 px-3">${c.coordenadas || 'N/A'}</td>
+            </tr>`;
+        });
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+
+        actionsContainer.classList.remove('hidden');
+        backButton.classList.add('hidden');
+        document.getElementById('confirmImportBtn').onclick = handleConfirmImport;
+        document.getElementById('cancelImportBtn').onclick = () => {
+             _clientesParaImportar = [];
+             renderPreviewTable([]);
+             document.getElementById('excel-uploader').value = '';
+             actionsContainer.classList.add('hidden');
+             backButton.classList.remove('hidden');
+             container.innerHTML = '';
+        };
+    }
+
+    /**
+     * Confirma y guarda los clientes y sectores importados en Firestore.
+     */
+    async function handleConfirmImport() {
+        if (_clientesParaImportar.length === 0) {
+            _showModal('Error', 'No hay clientes para importar.');
+            return;
+        }
+        
+        _showModal('Progreso', `Importando ${_clientesParaImportar.length} clientes...`);
+
+        try {
+            const sectoresRef = _collection(_db, SECTORES_COLLECTION_PATH);
+            const sectoresSnapshot = await _getDocs(sectoresRef);
+            const existingSectores = new Set(sectoresSnapshot.docs.map(doc => doc.data().name.toUpperCase()));
+            
+            const newSectores = new Set(
+                _clientesParaImportar
+                    .map(c => c.sector)
+                    .filter(s => s && !existingSectores.has(s))
+            );
+
+            const batch = _writeBatch(_db);
+
+            newSectores.forEach(sectorName => {
+                const newSectorRef = _doc(sectoresRef);
+                batch.set(newSectorRef, { name: sectorName });
+            });
+            
+            const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+            _clientesParaImportar.forEach(cliente => {
+                const newClienteRef = _doc(clientesRef);
+                batch.set(newClienteRef, cliente);
+            });
+
+            await batch.commit();
+
+            _showModal('Éxito', `Se han importado ${_clientesParaImportar.length} clientes y ${newSectores.size} nuevos sectores.`);
+            showFuncionesAvanzadasView();
 
         } catch (error) {
-            console.error("Error al calcular estadísticas:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al calcular las estadísticas.</p>`;
+            _showModal('Error', `Ocurrió un error durante la importación: ${error.message}`);
+        } finally {
+            _clientesParaImportar = [];
+        }
+    }
+    
+    function getCurrentCoordinates(inputId) {
+        const coordsInput = document.getElementById(inputId);
+        if (!coordsInput) return;
+
+        if (navigator.geolocation) {
+            const originalPlaceholder = coordsInput.placeholder;
+            coordsInput.placeholder = 'Obteniendo...';
+            coordsInput.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(position => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                coordsInput.value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+                coordsInput.placeholder = originalPlaceholder;
+                coordsInput.disabled = false;
+            }, error => {
+                _showModal('Error de Geolocalización', `No se pudo obtener la ubicación: ${error.message}`);
+                coordsInput.placeholder = originalPlaceholder;
+                coordsInput.disabled = false;
+            });
+        } else {
+            _showModal('No Soportado', 'La geolocalización no es soportada por este navegador.');
         }
     }
 
-    function renderStatsList(productArray, statsType, numWeeks = 1) {
-        const container = document.getElementById('stats-list-container');
-        if (productArray.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron ventas para este rubro en el período seleccionado.</p>`;
-            return;
-        }
 
-        const headerTitle = statsType === 'general' ? 'Promedio Semanal' : 'Total Vendido';
-
-        let tableHTML = `
-            <table class="min-w-full bg-white text-sm">
-                <thead class="bg-gray-200">
-                    <tr>
-                        <th class="py-2 px-3 border-b text-left">Producto</th>
-                        <th class="py-2 px-3 border-b text-center">${headerTitle}</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-        
-        productArray.sort((a, b) => a.presentacion.localeCompare(b.presentacion));
-        
-        productArray.forEach(p => {
-            let displayQuantity = 0;
-            let displayUnit = 'Unds';
-            const total = p.totalUnidades / numWeeks;
-
-            if (p.ventaPor?.cj) {
-                displayQuantity = (total / p.unidadesPorCaja).toFixed(1);
-                displayUnit = 'Cajas';
-            } else if (p.ventaPor?.paq) {
-                displayQuantity = (total / p.unidadesPorPaquete).toFixed(1);
-                displayUnit = 'Paq.';
-            } else {
-                displayQuantity = total.toFixed(0);
-            }
-            
-            tableHTML += `
-                <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${p.presentacion}</td>
-                    <td class="py-2 px-3 border-b text-center font-bold">${displayQuantity} <span class="font-normal text-xs">${displayUnit}</span></td>
-                </tr>
-            `;
-        });
-        
-        tableHTML += `</tbody></table>`;
-        container.innerHTML = `
-            ${tableHTML}
-            <div class="mt-6 text-center">
-                <button id="downloadStatsBtn" class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Descargar como Excel</button>
+    /**
+     * Muestra la vista de agregar cliente.
+     */
+    function showAgregarClienteView() {
+         _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Agregar Cliente</h2>
+                        <form id="clienteForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="sector" class="block text-gray-700 font-medium mb-2">Sector:</label>
+                                <div class="flex items-center space-x-2">
+                                    <select id="sector" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required></select>
+                                    <button type="button" id="addSectorBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Agregar</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="nombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
+                                <input type="text" id="nombreComercial" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="nombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
+                                <input type="text" id="nombrePersonal" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="telefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
+                                <input type="tel" id="telefono" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="codigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
+                                <div class="flex items-center">
+                                    <input type="text" id="codigoCEP" class="w-full px-4 py-2 border rounded-lg">
+                                    <input type="checkbox" id="cepNA" class="ml-4 h-5 w-5">
+                                    <label for="cepNA" class="ml-2 text-gray-700">No Aplica</label>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="coordenadas" class="block text-gray-700 font-medium mb-2">Coordenadas:</label>
+                                <div class="flex items-center space-x-2">
+                                    <input type="text" id="coordenadas" class="w-full px-4 py-2 border rounded-lg" placeholder="Ej: 8.29, -71.98">
+                                    <button type="button" id="getCoordsBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">GPS</button>
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Cliente</button>
+                        </form>
+                        <button id="backToClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
             </div>
         `;
+        // CAMBIO: _populateDropdown ahora usa la ruta compartida
+        _populateDropdown(SECTORES_COLLECTION_PATH, 'sector', 'sector');
 
-        document.getElementById('downloadStatsBtn').addEventListener('click', handleDownloadStats);
-    }
-
-    function handleDownloadStats() {
-        if (_lastStatsData.length === 0) {
-            _showModal('Aviso', 'No hay datos de estadísticas para descargar.');
-            return;
-        }
-    
-        if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
-            return;
-        }
-    
-        const statsType = document.getElementById('stats-type').value;
-        const headerTitle = statsType === 'general' ? 'Promedio Semanal' : 'Total Vendido';
-        
-        const dataToExport = _lastStatsData.map(p => {
-            let displayQuantity = 0;
-            let displayUnit = 'Unds';
-            const total = p.totalUnidades / _lastNumWeeks;
-    
-            if (p.ventaPor?.cj) {
-                displayQuantity = (total / p.unidadesPorCaja).toFixed(1);
-                displayUnit = 'Cajas';
-            } else if (p.ventaPor?.paq) {
-                displayQuantity = (total / p.unidadesPorPaquete).toFixed(1);
-                displayUnit = 'Paq.';
+        const cepInput = document.getElementById('codigoCEP');
+        const cepNACheckbox = document.getElementById('cepNA');
+        cepNACheckbox.addEventListener('change', () => {
+            if (cepNACheckbox.checked) {
+                cepInput.value = 'N/A';
+                cepInput.disabled = true;
             } else {
-                displayQuantity = total.toFixed(0);
+                cepInput.value = '';
+                cepInput.disabled = false;
+                cepInput.focus();
             }
-    
-            return {
-                'Producto': p.presentacion,
-                [headerTitle]: `${displayQuantity} ${displayUnit}`
-            };
         });
-    
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
-        
-        const rubro = document.getElementById('stats-rubro-filter').value;
-        const today = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, `Estadisticas_${rubro}_${statsType}_${today}.xlsx`);
+
+        document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
+        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
+        document.getElementById('getCoordsBtn').addEventListener('click', () => getCurrentCoordinates('coordenadas'));
     }
 
+    async function agregarCliente(e) {
+        e.preventDefault();
+        const form = e.target;
+        
+        const nombreComercial = form.nombreComercial.value.trim().toUpperCase();
+        const nombrePersonal = form.nombrePersonal.value.trim().toUpperCase();
+        const sector = form.sector.value.toUpperCase();
+        const telefono = form.telefono.value.trim();
+        const codigoCEP = form.codigoCEP.value.trim();
+        const coordenadas = form.coordenadas.value.trim();
 
-    // --- Lógica de Clientes Consolidados ---
+        const normComercial = nombreComercial.toLowerCase();
+        const normPersonal = nombrePersonal.toLowerCase();
 
-    async function showConsolidatedClientsView() {
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const snapshot = await _getDocs(clientesRef);
+        _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        let duplicado = null;
+        let motivo = "";
+
+        for (const c of _clientesCache) {
+            if (c.nombreComercial.toLowerCase() === normComercial) {
+                duplicado = c;
+                motivo = "nombre comercial";
+                break;
+            }
+            if (c.nombrePersonal.toLowerCase() === normPersonal) {
+                duplicado = c;
+                motivo = "nombre personal";
+                break;
+            }
+            if (c.telefono === telefono) {
+                duplicado = c;
+                motivo = "teléfono";
+                break;
+            }
+            if (codigoCEP && codigoCEP.toLowerCase() !== 'n/a' && c.codigoCEP === codigoCEP) {
+                duplicado = c;
+                motivo = "código CEP";
+                break;
+            }
+        }
+
+        const guardar = async () => {
+            const clienteData = {
+                sector: sector,
+                nombreComercial: nombreComercial,
+                nombrePersonal: nombrePersonal,
+                telefono: telefono,
+                codigoCEP: codigoCEP,
+                coordenadas: coordenadas,
+                saldoVacios: {} 
+            };
+            try {
+                await _addDoc(_collection(_db, CLIENTES_COLLECTION_PATH), clienteData);
+                _showModal('Éxito', 'Cliente agregado correctamente.');
+                form.reset();
+                const cepNACheckbox = document.getElementById('cepNA');
+                if (cepNACheckbox) {
+                    cepNACheckbox.checked = false;
+                    document.getElementById('codigoCEP').disabled = false;
+                }
+            } catch (error) {
+                console.error("Error al agregar cliente:", error);
+                _showModal('Error', 'Hubo un error al guardar el cliente.');
+            }
+        };
+
+        if (duplicado) {
+            _showModal(
+                'Posible Duplicado',
+                `Ya existe un cliente con el mismo ${motivo}: "${duplicado.nombreComercial}". ¿Deseas agregarlo de todas formas?`,
+                guardar,
+                'Sí, agregar'
+            );
+        } else {
+            await guardar();
+        }
+    }
+
+    function showVerClientesView() {
+         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Clientes Consolidados</h1>
-                        <div id="consolidated-clients-filters"></div>
-                        <div id="consolidated-clients-container" class="overflow-x-auto max-h-96">
-                             <p class="text-center text-gray-500">Cargando clientes de todos los vendedores...</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Lista de Clientes</h2>
+                        ${getFiltrosHTML()}
+                        <div class="text-sm text-gray-600 mb-2 p-2 bg-yellow-100 border border-yellow-300 rounded-lg">
+                            <span class="font-bold">Nota:</span> Las filas resaltadas en amarillo y marcadas con '⚠️' indican que faltan datos del cliente (nombre, teléfono o coordenadas).
                         </div>
+                        <div id="clientesListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando clientes...</p>
+                        </div>
+                        <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        setupFiltros('clientesListContainer');
+
+        const container = document.getElementById('clientesListContainer');
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
+            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderClientesList('clientesListContainer', false); 
+        }, (error) => {
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de clientes detenido por cierre de sesión.");
+                return;
+            }
+            console.error("Error al cargar clientes:", error);
+            container.innerHTML = `<p class="text-red-500 text-center">Error al cargar la lista de clientes.</p>`;
+        });
+
+        _activeListeners.push(unsubscribe);
+    }
+
+
+    function getFiltrosHTML() {
+        return `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 border rounded-lg">
+                <input type="text" id="search-input" placeholder="Buscar por Nombre o Código..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg">
+                <div>
+                    <label for="filter-sector" class="text-sm font-medium">Sector</label>
+                    <select id="filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                </div>
+                <div>
+                    <button id="clear-filters-btn" class="w-full bg-gray-300 text-sm font-semibold rounded-lg self-end py-2 px-4 mt-5">Limpiar Filtros</button>
+                </div>
+                <div class="md:col-span-2 flex items-center">
+                    <input type="checkbox" id="filter-incompletos" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <label for="filter-incompletos" class="ml-2 block text-sm text-gray-900">Mostrar solo clientes con datos incompletos</label>
+                </div>
+            </div>
+        `;
+    }
+
+    function setupFiltros(containerId) {
+        _populateDropdown(SECTORES_COLLECTION_PATH, 'filter-sector', 'Sector');
+
+        const searchInput = document.getElementById('search-input');
+        const sectorFilter = document.getElementById('filter-sector');
+        const clearBtn = document.getElementById('clear-filters-btn');
+        const incompletosFilter = document.getElementById('filter-incompletos'); 
+
+        const applyFilters = () => renderClientesList(containerId, false);
+
+        searchInput.addEventListener('input', applyFilters);
+        sectorFilter.addEventListener('change', applyFilters);
+        incompletosFilter.addEventListener('change', applyFilters); 
+        
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            sectorFilter.value = '';
+            incompletosFilter.checked = false; 
+            applyFilters();
+        });
+    }
+
+    function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
+        const container = document.getElementById(elementId);
+        if (!container) return;
+        
+        const searchTerm = externalSearchTerm !== null ? externalSearchTerm.toLowerCase() : (document.getElementById('search-input')?.value.toLowerCase() || '');
+        const sectorFilter = document.getElementById('filter-sector')?.value || '';
+        const incompletosFilter = document.getElementById('filter-incompletos')?.checked; 
+
+        const filteredClients = _clientesCache.filter(cliente => {
+            const searchMatch = !searchTerm ||
+                cliente.nombreComercial.toLowerCase().includes(searchTerm) ||
+                cliente.nombrePersonal.toLowerCase().includes(searchTerm) ||
+                (cliente.codigoCEP && cliente.codigoCEP.toLowerCase().includes(searchTerm));
+            
+            const sectorMatch = !sectorFilter || cliente.sector === sectorFilter;
+
+            const isComplete = cliente.nombreComercial && cliente.nombrePersonal && cliente.telefono && cliente.coordenadas;
+            const incompletosMatch = !incompletosFilter || (incompletosFilter && !isComplete);
+            
+            return searchMatch && sectorMatch && incompletosMatch;
+        });
+        
+        if (filteredClients.length === 0) {
+            if (_clientesCache.length > 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay clientes que coincidan con la búsqueda.</p>`;
+            } else {
+                container.innerHTML = `<p class="text-gray-500 text-center">Cargando clientes...</p>`;
+            }
+            return;
+        }
+
+        let tableHTML = `
+            <table class="min-w-full bg-white border border-gray-200">
+                <thead class="bg-gray-200 sticky top-0">
+                    <tr>
+                        <th class="py-2 px-4 border-b text-left text-sm">N. Comercial</th>
+                        <th class="py-2 px-4 border-b text-left text-sm">N. Personal</th>
+                        <th class="py-2 px-4 border-b text-left text-sm">Teléfono</th>
+                        ${!readOnly ? `<th class="py-2 px-4 border-b text-center text-sm">Acciones</th>` : ''}
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        filteredClients.forEach(cliente => {
+            const isComplete = cliente.nombreComercial && cliente.nombrePersonal && cliente.telefono && cliente.coordenadas;
+            const rowClass = isComplete ? 'hover:bg-gray-50' : 'bg-yellow-100 hover:bg-yellow-200';
+            const completenessIcon = isComplete 
+                ? '' 
+                : '<span title="Datos incompletos" class="text-yellow-500 ml-2">⚠️</span>';
+
+            let mapButtonHTML = '';
+            if (cliente.coordenadas) {
+                 const urlCoords = encodeURIComponent(cliente.coordenadas);
+                 mapButtonHTML = `<a href="https://www.google.com/maps?q=${urlCoords}" target="_blank" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Mapa</a>`;
+            }
+            
+            tableHTML += `
+                <tr class="${rowClass}">
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}${completenessIcon}</td>
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
+                    <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
+                    ${!readOnly ? `
+                    <td class="py-2 px-4 border-b text-center space-x-1">
+                        ${mapButtonHTML}
+                        <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
+                        <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
+                    </td>` : ''}
+                </tr>
+            `;
+        });
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
+    }
+    
+    function editCliente(clienteId) {
+        _floatingControls.classList.add('hidden');
+        const cliente = _clientesCache.find(c => c.id === clienteId);
+        if (!cliente) return;
+
+        _mainContent.innerHTML = `
+            <div class="p-4">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6">Editar Cliente</h2>
+                        <form id="editClienteForm" class="space-y-4 text-left">
+                            <div>
+                                <label for="editSector" class="block text-gray-700 font-medium mb-2">Sector:</label>
+                                <select id="editSector" class="w-full px-4 py-2 border rounded-lg" required>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="editNombreComercial" class="block text-gray-700 font-medium mb-2">Nombre Comercial:</label>
+                                <input type="text" id="editNombreComercial" value="${cliente.nombreComercial}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editNombrePersonal" class="block text-gray-700 font-medium mb-2">Nombre Personal:</label>
+                                <input type="text" id="editNombrePersonal" value="${cliente.nombrePersonal}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editTelefono" class="block text-gray-700 font-medium mb-2">Teléfono:</label>
+                                <input type="tel" id="editTelefono" value="${cliente.telefono}" class="w-full px-4 py-2 border rounded-lg" required>
+                            </div>
+                            <div>
+                                <label for="editCodigoCEP" class="block text-gray-700 font-medium mb-2">Código CEP:</label>
+                                <div class="flex items-center">
+                                    <input type="text" id="editCodigoCEP" value="${cliente.codigoCEP || ''}" class="w-full px-4 py-2 border rounded-lg">
+                                    <input type="checkbox" id="editCepNA" class="ml-4 h-5 w-5">
+                                    <label for="editCepNA" class="ml-2 text-gray-700">No Aplica</label>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="editCoordenadas" class="block text-gray-700 font-medium mb-2">Coordenadas:</label>
+                                <div class="flex items-center space-x-2">
+                                    <input type="text" id="editCoordenadas" value="${cliente.coordenadas || ''}" class="w-full px-4 py-2 border rounded-lg">
+                                    <button type="button" id="getEditCoordsBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">GPS</button>
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button>
+                        </form>
+                        <button id="backToVerClientesBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        _populateDropdown(SECTORES_COLLECTION_PATH, 'editSector', 'sector', cliente.sector);
+
+        const editCepInput = document.getElementById('editCodigoCEP');
+        const editCepNACheckbox = document.getElementById('editCepNA');
+        
+        const syncEditCepState = () => {
+            if (editCepInput.value.toLowerCase() === 'n/a') {
+                editCepNACheckbox.checked = true;
+                editCepInput.disabled = true;
+            } else {
+                editCepNACheckbox.checked = false;
+                editCepInput.disabled = false;
+            }
+        };
+
+        editCepNACheckbox.addEventListener('change', () => {
+            if (editCepNACheckbox.checked) {
+                editCepInput.value = 'N/A';
+                editCepInput.disabled = true;
+            } else {
+                editCepInput.value = '';
+                editCepInput.disabled = false;
+                editCepInput.focus();
+            }
+        });
+        syncEditCepState();
+        
+        document.getElementById('getEditCoordsBtn').addEventListener('click', () => getCurrentCoordinates('editCoordenadas'));
+
+        document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const updatedData = {
+                sector: document.getElementById('editSector').value.toUpperCase(),
+                nombreComercial: document.getElementById('editNombreComercial').value.toUpperCase(),
+                nombrePersonal: document.getElementById('editNombrePersonal').value.toUpperCase(),
+                telefono: document.getElementById('editTelefono').value,
+                codigoCEP: document.getElementById('editCodigoCEP').value,
+                coordenadas: document.getElementById('editCoordenadas').value.trim(),
+                saldoVacios: cliente.saldoVacios || {} 
+            };
+            try {
+                await _setDoc(_doc(_db, CLIENTES_COLLECTION_PATH, clienteId), updatedData, { merge: true });
+                _showModal('Éxito', 'Cliente modificado exitosamente.');
+                showVerClientesView();
+            } catch (error) {
+                console.error("Error al modificar el cliente:", error);
+                _showModal('Error', 'Hubo un error al modificar el cliente.');
+            }
+        });
+        document.getElementById('backToVerClientesBtn').addEventListener('click', showVerClientesView);
+    };
+
+    function deleteCliente(clienteId) {
+        _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
+            try {
+                await _deleteDoc(_doc(_db, CLIENTES_COLLECTION_PATH, clienteId));
+                _showModal('Éxito', 'Cliente eliminado correctamente.');
+                showVerClientesView();
+            } catch (error) {
+                console.error("Error al eliminar el cliente:", error);
+                _showModal('Error', 'Hubo un error al eliminar el cliente.');
+            }
+        });
+    };
+
+    function showValidatedAddItemModal(collectionPath, itemName) {
+        const modalContainer = document.getElementById('modalContainer');
+        const modalContent = document.getElementById('modalContent');
+        
+        modalContent.innerHTML = `
+            <div class="text-center">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                <form id="addItemForm" class="space-y-4">
+                    <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
+                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
+                </form>
+                <p id="addItemMessage" class="text-sm mt-2 h-4"></p>
+                <div class="mt-4">
+                     <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
+                </div>
+            </div>
+        `;
+        modalContainer.classList.remove('hidden');
+
+        const newItemInput = document.getElementById('newItemInput');
+        const addItemMessage = document.getElementById('addItemMessage');
+
+        document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+
+        document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newItemName = newItemInput.value.trim().toUpperCase();
+            if (!newItemName) return;
+            
+            addItemMessage.textContent = '';
+            addItemMessage.classList.remove('text-green-600', 'text-red-600');
+
+            try {
+                const collectionRef = _collection(_db, collectionPath);
+                const snapshot = await _getDocs(collectionRef);
+                const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
+                
+                if (existingItems.includes(newItemName.toLowerCase())) {
+                    addItemMessage.classList.add('text-red-600');
+                    addItemMessage.textContent = `"${newItemName}" ya existe.`;
+                    return;
+                }
+                
+                await _addDoc(collectionRef, { name: newItemName });
+                addItemMessage.classList.add('text-green-600');
+                addItemMessage.textContent = `¡"${newItemName}" agregado!`;
+                newItemInput.value = '';
+                newItemInput.focus();
+                setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+            } catch (err) {
+                addItemMessage.classList.add('text-red-600');
+                addItemMessage.textContent = `Error al guardar o validar.`;
+            }
+        });
+    }
+
+    function showDatosMaestrosSectoresView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-2xl">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Gestionar Sectores</h2>
+                        <div id="sectores-list" class="space-y-2 max-h-96 overflow-y-auto border p-4 rounded-lg"></div>
                         <div class="mt-6 flex flex-col sm:flex-row gap-4">
-                            <button id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                            <button id="downloadClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 hidden">Descargar Lista Actual</button>
+                            <button id="addSectorMaestroBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Nuevo Sector</button>
+                            <button id="backToClientesBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
-        document.getElementById('downloadClientsBtn').addEventListener('click', handleDownloadFilteredClients);
-
-        await loadAndRenderConsolidatedClients();
+        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
+        document.getElementById('backToClientesBtn').addEventListener('click', showFuncionesAvanzadasView);
+        renderSectoresParaGestion();
     }
     
-    async function loadAndRenderConsolidatedClients() {
-        const container = document.getElementById('consolidated-clients-container');
-        try {
-            const usersRef = _collection(_db, "users");
-            const usersSnapshot = await _getDocs(usersRef);
-            const userIds = usersSnapshot.docs.map(doc => doc.id);
+    function renderSectoresParaGestion() {
+        const container = document.getElementById('sectores-list');
+        if (!container) return;
 
-            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
-            const allClientSnapshots = await Promise.all(allClientPromises);
-
-            const consolidatedClientsMap = new Map();
-            allClientSnapshots.forEach(snapshot => {
-                snapshot.docs.forEach(doc => {
-                    const client = doc.data();
-                    const key = client.nombreComercial.trim().toLowerCase();
-                    if (!consolidatedClientsMap.has(key)) {
-                        consolidatedClientsMap.set(key, client);
-                    }
-                });
-            });
-
-            _consolidatedClientsCache = Array.from(consolidatedClientsMap.values());
-            
-            const filtersContainer = document.getElementById('consolidated-clients-filters');
-            filtersContainer.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
-                    <input type="text" id="client-search-input" placeholder="Buscar por Nombre..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg">
-                    <div>
-                        <label for="client-filter-sector" class="text-sm font-medium">Sector</label>
-                        <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
-                    </div>
+        const collectionRef = _collection(_db, SECTORES_COLLECTION_PATH);
+        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
+            if (items.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay sectores definidos.</p>`;
+                return;
+            }
+            container.innerHTML = items.map(item => `
+                <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                    <span class="text-gray-800 flex-grow">${item.name}</span>
+                    <button onclick="window.clientesModule.editSector('${item.id}', '${item.name}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600 mr-2">Editar</button>
+                    <button onclick="window.clientesModule.deleteSector('${item.id}', '${item.name}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
                 </div>
-            `;
+            `).join('');
+        });
+        _activeListeners.push(unsubscribe);
+    }
+    
+    async function editSector(sectorId, currentName) {
+        const newName = prompt('Introduce el nuevo nombre para el sector:', currentName);
+        if (newName && newName.trim() !== '' && newName.trim().toUpperCase() !== currentName.toUpperCase()) {
+            const nuevoNombreMayus = newName.trim().toUpperCase();
+            const q = _query(_collection(_db, SECTORES_COLLECTION_PATH), _where("name", "==", nuevoNombreMayus));
+            const querySnapshot = await _getDocs(q);
+            if (!querySnapshot.empty) {
+                _showModal('Error', `El sector "${nuevoNombreMayus}" ya existe.`);
+                return;
+            }
 
-            const uniqueSectors = [...new Set(_consolidatedClientsCache.map(c => c.sector))].sort();
-            const sectorFilter = document.getElementById('client-filter-sector');
-            uniqueSectors.forEach(sector => {
-                sectorFilter.innerHTML += `<option value="${sector}">${sector}</option>`;
+            try {
+                await _setDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId), { name: nuevoNombreMayus });
+
+                const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+                const clientesQuery = _query(clientesRef, _where("sector", "==", currentName));
+                const clientesSnapshot = await _getDocs(clientesQuery);
+
+                if (!clientesSnapshot.empty) {
+                    const batch = _writeBatch(_db);
+                    clientesSnapshot.docs.forEach(doc => {
+                        batch.update(doc.ref, { sector: nuevoNombreMayus });
+                    });
+                    await batch.commit();
+                }
+
+                _showModal('Éxito', `Sector renombrado a "${nuevoNombreMayus}" y actualizado en ${clientesSnapshot.size} cliente(s).`);
+            } catch (error) {
+                _showModal('Error', `Ocurrió un error al renombrar el sector: ${error.message}`);
+            }
+        }
+    }
+
+    async function deleteSector(sectorId, sectorName) {
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const q = _query(clientesRef, _where("sector", "==", sectorName));
+        
+        try {
+            const usageSnapshot = await _getDocs(q);
+            if (!usageSnapshot.empty) {
+                _showModal('Error al Eliminar', `No se puede eliminar el sector "${sectorName}" porque está siendo utilizado por ${usageSnapshot.size} cliente(s).`);
+                return;
+            }
+            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el sector "${sectorName}"?`, async () => {
+                await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId));
+                _showModal('Éxito', `El sector "${sectorName}" ha sido eliminado.`);
             });
-            
-            document.getElementById('client-search-input').addEventListener('input', renderConsolidatedClientsList);
-            sectorFilter.addEventListener('change', renderConsolidatedClientsList);
-
-            renderConsolidatedClientsList();
-            document.getElementById('downloadClientsBtn').classList.remove('hidden');
-
         } catch (error) {
-            console.error("Error al cargar clientes consolidados:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error: ${error.message}</p>`;
+            _showModal('Error', `Ocurrió un error al intentar eliminar el sector: ${error.message}`);
         }
     }
 
-    function renderConsolidatedClientsList() {
-        const container = document.getElementById('consolidated-clients-container');
-        const searchInput = document.getElementById('client-search-input');
-        const sectorFilter = document.getElementById('client-filter-sector');
-
-        if (!container || !searchInput || !sectorFilter) return;
-
-        const searchTerm = searchInput.value.toLowerCase();
-        const selectedSector = sectorFilter.value;
-
-        _filteredClientsCache = _consolidatedClientsCache.filter(client => {
-            const searchMatch = !searchTerm || client.nombreComercial.toLowerCase().includes(searchTerm) || client.nombrePersonal.toLowerCase().includes(searchTerm);
-            const sectorMatch = !selectedSector || client.sector === selectedSector;
-            return searchMatch && sectorMatch;
+    async function handleDeleteAllClientes() {
+        _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los clientes? Esta acción es irreversible.', async () => {
+            _showModal('Progreso', 'Eliminando todos los clientes...');
+            try {
+                const collectionRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+                const snapshot = await _getDocs(collectionRef);
+                if (snapshot.empty) {
+                    _showModal('Aviso', 'No hay clientes para eliminar.');
+                    return;
+                }
+                const batch = _writeBatch(_db);
+                snapshot.docs.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                await batch.commit();
+                _showModal('Éxito', 'Todos los clientes han sido eliminados.');
+            } catch (error) {
+                console.error("Error al eliminar todos los clientes:", error);
+                _showModal('Error', 'Hubo un error al eliminar los clientes.');
+            }
         });
-
-        if (_filteredClientsCache.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron clientes que coincidan con los filtros.</p>`;
-            return;
-        }
-
-        let tableHTML = `
-            <table class="min-w-full bg-white text-sm">
-                <thead class="bg-gray-200">
-                    <tr>
-                        <th class="py-2 px-3 border-b text-left">Sector</th>
-                        <th class="py-2 px-3 border-b text-left">Nombre Comercial</th>
-                        <th class="py-2 px-3 border-b text-left">Nombre Personal</th>
-                        <th class="py-2 px-3 border-b text-left">Teléfono</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-        _filteredClientsCache.sort((a,b) => a.nombreComercial.localeCompare(b.nombreComercial)).forEach(c => {
-            tableHTML += `
-                <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${c.sector}</td>
-                    <td class="py-2 px-3 border-b font-semibold">${c.nombreComercial}</td>
-                    <td class="py-2 px-3 border-b">${c.nombrePersonal}</td>
-                    <td class="py-2 px-3 border-b">${c.telefono}</td>
-                </tr>
-            `;
-        });
-        tableHTML += '</tbody></table>';
-        container.innerHTML = tableHTML;
     }
 
-    function handleDownloadFilteredClients() {
-         if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
-            return;
-        }
-        if (_filteredClientsCache.length === 0) {
-            _showModal('Aviso', 'No hay clientes en la lista actual para descargar.');
-            return;
-        }
-        
-        const dataToExport = _filteredClientsCache.map(c => ({
-            'Sector': c.sector,
-            'Nombre Comercial': c.nombreComercial,
-            'Nombre Personal': c.nombrePersonal,
-            'telefono': c.telefono,
-            'CEP': c.codigoCEP
-        }));
+    // --- Lógica de Saldos de Vacíos ---
 
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
-        
-        const today = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
-    }
-
-    // --- Lógica del Mapa de Clientes ---
-
-    /**
-     * Muestra la vista del mapa con los clientes.
-     */
-    function showClientMapView() {
-        if (mapInstance) {
-            mapInstance.remove();
-            mapInstance = null;
-        }
+    function showSaldosVaciosView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">Mapa de Clientes Consolidados</h1>
-                        <div class="relative mb-4">
-                            <input type="text" id="map-search-input" placeholder="Buscar cliente por nombre o CEP..." class="w-full px-4 py-2 border rounded-lg">
-                            <div id="map-search-results" class="absolute z-[1000] w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Saldos de Envases Retornables (Vacíos)</h2>
+                        <input type="text" id="saldo-search-input" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg mb-4">
+                        <div id="saldosListContainer" class="overflow-x-auto max-h-96">
+                            <p class="text-gray-500 text-center">Cargando saldos de clientes...</p>
                         </div>
-                        <div class="mb-4 p-2 bg-gray-100 border rounded-lg text-sm flex justify-center items-center gap-4">
-                           <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="height: 25px; display: inline;"> Cliente Regular</span>
-                           <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" style="height: 25px; display: inline;"> Cliente con CEP</span>
-                        </div>
-                        <div id="client-map" class="w-full rounded-lg shadow-inner" style="height: 65vh; border: 1px solid #ccc;">
-                            <p class="text-center text-gray-500 pt-10">Cargando mapa...</p>
-                        </div>
-                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                        <button id="backToClientesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
                 </div>
             </div>
         `;
-        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
-        loadAndDisplayMap();
+        document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
+        document.getElementById('saldo-search-input').addEventListener('input', renderSaldosList);
+        
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
+            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            renderSaldosList();
+        }, (error) => {
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de saldos detenido por cierre de sesión.");
+                return;
+            }
+            console.error("Error al cargar saldos:", error);
+        });
+        _activeListeners.push(unsubscribe);
     }
 
-    /**
-     * Carga los datos de los clientes y los muestra en el mapa.
-     */
-    async function loadAndDisplayMap() {
-        const mapContainer = document.getElementById('client-map');
-        if (!mapContainer || typeof L === 'undefined') {
-            mapContainer.innerHTML = '<p class="text-center text-red-500 pt-10">Error: La librería de mapas (Leaflet) no está cargada.</p>';
+    function renderSaldosList() {
+        const container = document.getElementById('saldosListContainer');
+        const searchInput = document.getElementById('saldo-search-input');
+        
+        if (!container || !searchInput) return;
+
+        const searchTerm = searchInput.value.toLowerCase();
+
+        const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm));
+
+        if (filteredClients.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron clientes.</p>`;
             return;
         }
 
-        try {
-            const usersRef = _collection(_db, "users");
-            const usersSnapshot = await _getDocs(usersRef);
-            const userIds = usersSnapshot.docs.map(doc => doc.id);
+        let tableHTML = `<table class="min-w-full bg-white text-sm">
+            <thead class="bg-gray-200 sticky top-0"><tr>
+                <th class="py-2 px-4 border-b text-left">Cliente</th>
+                <th class="py-2 px-4 border-b text-center">Total Vacíos Pendientes</th>
+                <th class="py-2 px-4 border-b text-center">Acciones</th>
+            </tr></thead><tbody>`;
 
-            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
-            const allClientSnapshots = await Promise.all(allClientPromises);
-
-            const consolidatedClientsMap = new Map();
-            allClientSnapshots.forEach(snapshot => {
-                snapshot.docs.forEach(doc => {
-                    const client = doc.data();
-                    const key = client.nombreComercial.trim().toLowerCase();
-                    if (!consolidatedClientsMap.has(key)) {
-                        consolidatedClientsMap.set(key, client);
-                    }
-                });
-            });
-            const allClients = Array.from(consolidatedClientsMap.values());
-
-            const clientsWithCoords = allClients.filter(c => {
-                if (!c.coordenadas) return false;
-                const parts = c.coordenadas.split(',').map(p => parseFloat(p.trim()));
-                return parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]);
-            });
-
-            if (clientsWithCoords.length === 0) {
-                mapContainer.innerHTML = '<p class="text-center text-gray-500 pt-10">No se encontraron clientes con coordenadas válidas.</p>';
-                return;
-            }
-            
-            mapInstance = L.map('client-map').setView([7.77, -72.22], 13); // Centrado en San Cristóbal
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(mapInstance);
-
-            const redIcon = new L.Icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            });
-
-            const blueIcon = new L.Icon({
-                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            });
-            
-            mapMarkers.clear();
-            const markerGroup = [];
-            clientsWithCoords.forEach(client => {
-                const coords = client.coordenadas.split(',').map(p => parseFloat(p.trim()));
-                const hasCEP = client.codigoCEP && client.codigoCEP.toLowerCase() !== 'n/a';
-                const icon = hasCEP ? blueIcon : redIcon;
-
-                const popupContent = `
-                    <b>${client.nombreComercial}</b><br>
-                    ${client.nombrePersonal}<br>
-                    Tel: ${client.telefono || 'N/A'}<br>
-                    Sector: ${client.sector}
-                    ${hasCEP ? `<br><b>CEP: ${client.codigoCEP}</b>` : ''}
-                `;
-
-                const marker = L.marker(coords, {icon: icon}).addTo(mapInstance).bindPopup(popupContent);
-                mapMarkers.set(client.nombreComercial, marker);
-                markerGroup.push(marker);
-            });
-
-            if(markerGroup.length > 0) {
-                const group = new L.featureGroup(markerGroup);
-                mapInstance.fitBounds(group.getBounds().pad(0.1));
-            }
-
-            setupMapSearch(clientsWithCoords);
-
-        } catch (error) {
-            console.error("Error al cargar el mapa de clientes:", error);
-            mapContainer.innerHTML = `<p class="text-center text-red-500 pt-10">Ocurrió un error al cargar los datos de los clientes.</p>`;
-        }
+        filteredClients.forEach(cliente => {
+            const saldoVacios = cliente.saldoVacios || {};
+            const totalVacios = Object.values(saldoVacios).reduce((sum, count) => sum + count, 0);
+            tableHTML += `<tr class="hover:bg-gray-50">
+                <td class="py-2 px-4 border-b">${cliente.nombreComercial}</td>
+                <td class="py-2 px-4 border-b text-center font-bold">${totalVacios}</td>
+                <td class="py-2 px-4 border-b text-center">
+                    <button onclick="window.clientesModule.showSaldoDetalleModal('${cliente.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver Detalle / Ajustar</button>
+                </td>
+            </tr>`;
+        });
+        tableHTML += `</tbody></table>`;
+        container.innerHTML = tableHTML;
     }
-    
-    function setupMapSearch(clients) {
-        const searchInput = document.getElementById('map-search-input');
-        const resultsContainer = document.getElementById('map-search-results');
-        if (!searchInput || !resultsContainer) return;
 
-        searchInput.addEventListener('input', () => {
-            const searchTerm = searchInput.value.toLowerCase();
-            if (searchTerm.length < 2) {
-                resultsContainer.innerHTML = '';
-                resultsContainer.classList.add('hidden');
-                return;
-            }
+    async function showSaldoDetalleModal(clienteId) {
+        const cliente = _clientesCache.find(c => c.id === clienteId);
+        if (!cliente) return;
 
-            const filteredClients = clients.filter(client => 
-                client.nombreComercial.toLowerCase().includes(searchTerm) ||
-                client.nombrePersonal.toLowerCase().includes(searchTerm) ||
-                (client.codigoCEP && client.codigoCEP.toLowerCase().includes(searchTerm))
-            );
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const q = _query(inventarioRef, _where("manejaVacios", "==", true));
+        const inventarioSnapshot = await _getDocs(q);
+        const productosConVacios = inventarioSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            if (filteredClients.length === 0) {
-                resultsContainer.innerHTML = '<div class="p-2 text-gray-500">No se encontraron clientes.</div>';
-                resultsContainer.classList.remove('hidden');
-                return;
-            }
-
-            resultsContainer.innerHTML = filteredClients.map(client => `
-                <div class="p-2 hover:bg-gray-100 cursor-pointer" data-client-name="${client.nombreComercial}">
-                    <p class="font-semibold">${client.nombreComercial}</p>
-                    <p class="text-sm text-gray-600">${client.nombrePersonal}</p>
-                </div>
-            `).join('');
-            resultsContainer.classList.remove('hidden');
+        let optionsHTML = '<option value="">Seleccione un producto...</option>';
+        productosConVacios.sort((a,b) => `${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`)).forEach(p => {
+            optionsHTML += `<option value="${p.id}">${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;
         });
 
-        resultsContainer.addEventListener('click', (e) => {
-            const target = e.target.closest('[data-client-name]');
-            if (target && mapInstance) {
-                const clientName = target.dataset.clientName;
-                const marker = mapMarkers.get(clientName);
-                if (marker) {
-                    mapInstance.flyTo(marker.getLatLng(), 17); // Zoom más cercano
-                    marker.openPopup();
+        const saldoVacios = cliente.saldoVacios || {};
+        let detalleHTML = '<p class="text-center text-gray-500">Este cliente no tiene saldos pendientes.</p>';
+        if (Object.keys(saldoVacios).some(key => saldoVacios[key] !== 0)) {
+            detalleHTML = '<ul class="space-y-2">';
+            for (const productoId in saldoVacios) {
+                if (saldoVacios[productoId] !== 0) {
+                    const producto = productosConVacios.find(p => p.id === productoId) || { presentacion: 'Producto Desconocido', marca: 'N/A', segmento: 'N/A' };
+                    detalleHTML += `<li class="flex justify-between"><span>${producto.marca} - ${producto.segmento} - ${producto.presentacion}:</span><span class="font-bold">${saldoVacios[productoId]}</span></li>`;
                 }
-                searchInput.value = '';
-                resultsContainer.innerHTML = '';
-                resultsContainer.classList.add('hidden');
             }
-        });
+            detalleHTML += '</ul>';
+        }
 
-        // Ocultar resultados si se hace clic fuera
-        document.addEventListener('click', function(event) {
-            if (!resultsContainer.contains(event.target) && event.target !== searchInput) {
-                resultsContainer.classList.add('hidden');
+        const modalContent = `
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Detalle de Saldo: ${cliente.nombreComercial}</h3>
+            <div class="mb-6 border-b pb-4">${detalleHTML}</div>
+            <h4 class="text-lg font-semibold mb-2">Ajuste Manual</h4>
+            <div class="space-y-4">
+                <div>
+                    <label for="ajusteProducto" class="block text-sm font-medium mb-1">Producto:</label>
+                    <select id="ajusteProducto" class="w-full px-2 py-1 border rounded-lg">${optionsHTML}</select>
+                </div>
+                <div>
+                    <label for="ajusteCantidad" class="block text-sm font-medium mb-1">Cantidad de Cajas:</label>
+                    <input type="number" id="ajusteCantidad" min="1" class="w-full px-2 py-1 border rounded-lg">
+                </div>
+                <div class="flex gap-4">
+                    <button id="ajusteDevolucionBtn" class="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">Registrar Devolución (-)</button>
+                    <button id="ajustePrestamoBtn" class="w-full px-4 py-2 bg-yellow-500 text-gray-800 rounded-lg hover:bg-yellow-600">Registrar Préstamo (+)</button>
+                </div>
+            </div>
+        `;
+        _showModal('Detalle de Saldo', modalContent);
+
+        document.getElementById('ajusteDevolucionBtn').addEventListener('click', () => {
+            const productoId = document.getElementById('ajusteProducto').value;
+            const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
+            if(productoId && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, productoId, cantidad, 'devolucion');
+            } else {
+                alert('Por favor, seleccione un producto y una cantidad válida.');
             }
         });
+        document.getElementById('ajustePrestamoBtn').addEventListener('click', () => {
+            const productoId = document.getElementById('ajusteProducto').value;
+            const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
+             if(productoId && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, productoId, cantidad, 'prestamo');
+            } else {
+                alert('Por favor, seleccione un producto y una cantidad válida.');
+            }
+        });
+    }
+
+    async function handleAjusteManualVacios(clienteId, productoId, cantidad, tipoAjuste) {
+        const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH, clienteId);
+        _showModal('Progreso', 'Actualizando saldo...');
+        try {
+            await _runTransaction(_db, async (transaction) => {
+                const clienteDoc = await transaction.get(clienteRef);
+                if (!clienteDoc.exists()) {
+                    throw "El cliente no existe.";
+                }
+
+                const data = clienteDoc.data();
+                const saldoVacios = data.saldoVacios || {};
+                const saldoActual = saldoVacios[productoId] || 0;
+
+                let nuevoSaldo = saldoActual;
+                if (tipoAjuste === 'devolucion') {
+                    nuevoSaldo -= cantidad;
+                } else { // prestamo
+                    nuevoSaldo += cantidad;
+                }
+                
+                saldoVacios[productoId] = nuevoSaldo;
+                transaction.update(clienteRef, { saldoVacios: saldoVacios });
+            });
+            _showModal('Éxito', 'El saldo de vacíos se ha actualizado correctamente.');
+        } catch (error) {
+            console.error("Error en el ajuste manual de vacíos:", error);
+            _showModal('Error', `No se pudo actualizar el saldo: ${error}`);
+        }
     }
 
 
     // Exponer funciones públicas al objeto window
-    window.dataModule = {
-        showClosingDetail
+    window.clientesModule = {
+        editCliente,
+        deleteCliente,
+        editSector,
+        deleteSector,
+        showSaldoDetalleModal
     };
 
 })();
-
