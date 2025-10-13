@@ -475,6 +475,9 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Lista de Clientes</h2>
                         ${getFiltrosHTML()}
+                        <div class="text-sm text-gray-600 mb-2 p-2 bg-yellow-100 border border-yellow-300 rounded-lg">
+                            <span class="font-bold">Nota:</span> Las filas resaltadas en amarillo y marcadas con '⚠️' indican que faltan datos del cliente (nombre, teléfono o coordenadas).
+                        </div>
                         <div id="clientesListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando clientes...</p>
                         </div>
@@ -578,6 +581,12 @@
                 <tbody>
         `;
         filteredClients.forEach(cliente => {
+            const isComplete = cliente.nombreComercial && cliente.nombrePersonal && cliente.telefono && cliente.coordenadas;
+            const rowClass = isComplete ? 'hover:bg-gray-50' : 'bg-yellow-100 hover:bg-yellow-200';
+            const completenessIcon = isComplete 
+                ? '' 
+                : '<span title="Datos incompletos" class="text-yellow-500 ml-2">⚠️</span>';
+
             let mapButtonHTML = '';
             if (cliente.coordenadas) {
                  const urlCoords = encodeURIComponent(cliente.coordenadas);
@@ -585,8 +594,8 @@
             }
             
             tableHTML += `
-                <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
+                <tr class="${rowClass}">
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}${completenessIcon}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
                     ${!readOnly ? `
@@ -1072,4 +1081,3 @@
     };
 
 })();
-
