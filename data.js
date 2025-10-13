@@ -662,72 +662,155 @@
     }
 
 
-    // --- NUEVA FUNCIÓN PARA DESCARGAR CLIENTES CONSOLIDADOS ---
+    // --- Lógica de Clientes Consolidados ---
 
-    async function handleDownloadAllClients() {
-        if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
-            return;
-        }
-        _showModal('Progreso', 'Recopilando y consolidando datos de todos los clientes...');
+    async function showConsolidatedClientsView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Clientes Consolidados</h1>
+                        <div id="consolidated-clients-filters"></div>
+                        <div id="consolidated-clients-container" class="overflow-x-auto max-h-96">
+                             <p class="text-center text-gray-500">Cargando clientes de todos los vendedores...</p>
+                        </div>
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <button id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <button id="downloadClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 hidden">Descargar Lista Actual</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
+        document.getElementById('downloadClientsBtn').addEventListener('click', handleDownloadFilteredClients);
 
+        await loadAndRenderConsolidatedClients();
+    }
+    
+    async function loadAndRenderConsolidatedClients() {
+        const container = document.getElementById('consolidated-clients-container');
         try {
-            // 1. Obtener todos los usuarios
             const usersRef = _collection(_db, "users");
             const usersSnapshot = await _getDocs(usersRef);
             const userIds = usersSnapshot.docs.map(doc => doc.id);
 
-            // 2. Obtener la lista de clientes de cada usuario en paralelo
-            const allClientPromises = userIds.map(uid => {
-                const clientsRef = _collection(_db, `artifacts/${_appId}/users/${uid}/clientes`);
-                return _getDocs(clientsRef);
-            });
-            
+            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
             const allClientSnapshots = await Promise.all(allClientPromises);
 
-            // 3. Consolidar y deduplicar
-            const consolidatedClients = new Map();
+            const consolidatedClientsMap = new Map();
             allClientSnapshots.forEach(snapshot => {
                 snapshot.docs.forEach(doc => {
                     const client = doc.data();
-                    const key = client.nombreComercial.trim().toLowerCase(); // Usar nombre comercial como clave
-                    if (!consolidatedClients.has(key)) {
-                        consolidatedClients.set(key, client);
+                    const key = client.nombreComercial.trim().toLowerCase();
+                    if (!consolidatedClientsMap.has(key)) {
+                        consolidatedClientsMap.set(key, client);
                     }
                 });
             });
 
-            const uniqueClients = Array.from(consolidatedClients.values());
-
-            if (uniqueClients.length === 0) {
-                _showModal('Aviso', 'No se encontraron clientes para descargar.');
-                return;
-            }
-
-            // 4. Formatear para Excel
-            const dataToExport = uniqueClients.map(c => ({
-                'Sector': c.sector,
-                'Nombre Comercial': c.nombreComercial,
-                'Nombre Personal': c.nombrePersonal,
-                'telefono': c.telefono,
-                'CEP': c.codigoCEP
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(dataToExport);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+            _consolidatedClientsCache = Array.from(consolidatedClientsMap.values());
             
-            const today = new Date().toISOString().slice(0, 10);
-            XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+            const filtersContainer = document.getElementById('consolidated-clients-filters');
+            filtersContainer.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
+                    <input type="text" id="client-search-input" placeholder="Buscar por Nombre..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg">
+                    <div>
+                        <label for="client-filter-sector" class="text-sm font-medium">Sector</label>
+                        <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                    </div>
+                </div>
+            `;
 
-            _showModal('Éxito', `Se han consolidado ${uniqueClients.length} clientes únicos. La descarga ha comenzado.`);
+            const uniqueSectors = [...new Set(_consolidatedClientsCache.map(c => c.sector))].sort();
+            const sectorFilter = document.getElementById('client-filter-sector');
+            uniqueSectors.forEach(sector => {
+                sectorFilter.innerHTML += `<option value="${sector}">${sector}</option>`;
+            });
+            
+            document.getElementById('client-search-input').addEventListener('input', renderConsolidatedClientsList);
+            sectorFilter.addEventListener('change', renderConsolidatedClientsList);
+
+            renderConsolidatedClientsList();
+            document.getElementById('downloadClientsBtn').classList.remove('hidden');
 
         } catch (error) {
-            console.error("Error al descargar datos de clientes consolidados:", error);
-            _showModal('Error', `Ocurrió un error: ${error.message}`);
+            console.error("Error al cargar clientes consolidados:", error);
+            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error: ${error.message}</p>`;
         }
     }
 
+    function renderConsolidatedClientsList() {
+        const container = document.getElementById('consolidated-clients-container');
+        const searchInput = document.getElementById('client-search-input');
+        const sectorFilter = document.getElementById('client-filter-sector');
+
+        if (!container || !searchInput || !sectorFilter) return;
+
+        const searchTerm = searchInput.value.toLowerCase();
+        const selectedSector = sectorFilter.value;
+
+        _filteredClientsCache = _consolidatedClientsCache.filter(client => {
+            const searchMatch = !searchTerm || client.nombreComercial.toLowerCase().includes(searchTerm) || client.nombrePersonal.toLowerCase().includes(searchTerm);
+            const sectorMatch = !selectedSector || client.sector === selectedSector;
+            return searchMatch && sectorMatch;
+        });
+
+        if (_filteredClientsCache.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron clientes que coincidan con los filtros.</p>`;
+            return;
+        }
+
+        let tableHTML = `
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200">
+                    <tr>
+                        <th class="py-2 px-3 border-b text-left">Sector</th>
+                        <th class="py-2 px-3 border-b text-left">Nombre Comercial</th>
+                        <th class="py-2 px-3 border-b text-left">Nombre Personal</th>
+                        <th class="py-2 px-3 border-b text-left">Teléfono</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        _filteredClientsCache.sort((a,b) => a.nombreComercial.localeCompare(b.nombreComercial)).forEach(c => {
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-3 border-b">${c.sector}</td>
+                    <td class="py-2 px-3 border-b font-semibold">${c.nombreComercial}</td>
+                    <td class="py-2 px-3 border-b">${c.nombrePersonal}</td>
+                    <td class="py-2 px-3 border-b">${c.telefono}</td>
+                </tr>
+            `;
+        });
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+    }
+
+    function handleDownloadFilteredClients() {
+         if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+        if (_filteredClientsCache.length === 0) {
+            _showModal('Aviso', 'No hay clientes en la lista actual para descargar.');
+            return;
+        }
+        
+        const dataToExport = _filteredClientsCache.map(c => ({
+            'Sector': c.sector,
+            'Nombre Comercial': c.nombreComercial,
+            'Nombre Personal': c.nombrePersonal,
+            'telefono': c.telefono,
+            'CEP': c.codigoCEP
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+        
+        const today = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+    }
 
     // Exponer funciones públicas al objeto window
     window.dataModule = {
