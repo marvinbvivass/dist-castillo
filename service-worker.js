@@ -1,15 +1,15 @@
 // --- Service Worker Mejorado para Funcionalidad Offline Robusta ---
 
-const CACHE_NAME = 'ventas-app-cache-v5'; // Versión actualizada para forzar la recarga
+const CACHE_NAME = 'ventas-app-cache-v6'; // Versión actualizada para forzar la recarga
 
 // Lista de archivos locales esenciales para el funcionamiento de la aplicación (App Shell)
-// Se han removido las URLs externas para evitar errores de CORS durante la instalación.
 const urlsToCache = [
     './', // Alias para index.html
     './index.html',
+    './admin.js',
+    './data.js',
     './inventario.js',
     './catalogo.js',
-    './sincronizacion.js',
     './clientes.js',
     './ventas.js',
     './manifest.json',
@@ -20,7 +20,7 @@ const urlsToCache = [
     './images/maltinypepsi.png',
     './images/alimentospolar.png',
     './images/p&g.png'
-    // Las URLs de terceros (Tailwind, Firebase, etc.) se cachearán dinámicamente con la estrategia de fetch.
+    // Las URLs de terceros (Tailwind, Firebase, etc.) se cachearán dinámicamente.
 ];
 
 // Evento 'install': Se dispara cuando el Service Worker se instala por primera vez.
@@ -66,8 +66,7 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Para las solicitudes de Firebase, siempre vamos a la red primero,
-    // ya que necesitan estar actualizadas. No las servimos desde la caché si la red falla.
+    // Para las solicitudes de Firebase, siempre vamos a la red.
     if (event.request.url.includes('firestore.googleapis.com')) {
         return;
     }
