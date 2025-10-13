@@ -1,15 +1,15 @@
 // --- Lógica del módulo de Inventario ---
 
 (function() {
-    // Variables locales del módulo que se inicializarán desde index.html
-    let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
+    // CORRECCIÓN: Añadir projectId para diferenciar datos públicos/privados
+    let _db, _userId, _appId, _projectId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch;
     
-    let _inventarioCache = []; // Caché local para búsquedas y ediciones rápidas
-    let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' }; // Objeto para persistir los filtros
-    let _segmentoOrderCache = null; // Caché para el orden de los segmentos
-    let _inventarioListenerUnsubscribe = null; // Referencia al listener principal de inventario
+    let _inventarioCache = [];
+    let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
+    let _segmentoOrderCache = null;
+    let _inventarioListenerUnsubscribe = null;
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -17,7 +17,8 @@
     window.initInventario = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
-        _appId = dependencies.appId;
+        _appId = dependencies.appId; // Para datos privados del usuario
+        _projectId = dependencies.projectId; // Para datos públicos (si se necesitaran en el futuro)
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _activeListeners = dependencies.activeListeners;
@@ -39,7 +40,6 @@
 
     /**
      * Inicia el listener principal para la colección de inventario.
-     * Este listener mantendrá _inventarioCache siempre actualizada.
      */
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
@@ -48,15 +48,11 @@
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            if (callback) callback(); // Llama al callback para re-renderizar la vista actual
+            if (callback) callback();
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
 
-
-    /**
-     * Invalida la caché de orden de segmentos para forzar una recarga.
-     */
     function invalidateSegmentOrderCache() {
         _segmentoOrderCache = null;
         if (window.ventasModule && typeof window.ventasModule.invalidateCache === 'function') {
@@ -156,7 +152,7 @@
     }
 
     /**
-     * Renderiza la lista de segmentos para que se puedan ordenar, opcionalmente filtrada por rubro.
+     * Renderiza la lista de segmentos para que se puedan ordenar.
      */
     async function renderSortableSegmentList(rubro = '') {
         const container = document.getElementById('segmentos-sortable-list');
@@ -223,9 +219,6 @@
         }
     }
     
-    /**
-     * Añade los manejadores de eventos para la funcionalidad de arrastrar y soltar.
-     */
     function addDragAndDropHandlers(container) {
         let draggedItem = null;
         container.addEventListener('dragstart', e => {
@@ -255,9 +248,6 @@
         }
     }
 
-    /**
-     * Guarda el nuevo orden de los segmentos.
-     */
     async function handleGuardarOrdenSegmentos() {
         const listItems = document.querySelectorAll('#segmentos-sortable-list li');
         if (listItems.length === 0) {
@@ -280,9 +270,6 @@
         }
     }
 
-    /**
-     * Muestra la vista para el ajuste masivo de cantidades.
-     */
     function showAjusteMasivoView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -307,23 +294,18 @@
         
         const renderCallback = () => renderAjusteMasivoList();
         
-        // CORRECCIÓN: Se usa _populateDropdown para el filtro de rubros.
         _populateDropdown('rubros', 'ajuste-filter-rubro', 'Rubro');
         
         setupFiltros('ajuste', renderCallback);
         startMainInventarioListener(renderCallback);
     }
 
-    /**
-     * Renderiza la lista de productos para el ajuste masivo, agrupada por marca.
-     */
     async function renderAjusteMasivoList() {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
         
         let productos = [..._inventarioCache];
         
-        // Aplicar filtros
         productos = productos.filter(p => {
             return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
                    (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
@@ -356,7 +338,7 @@
 
             if (segmento !== currentSegmento) {
                 currentSegmento = segmento;
-                currentMarca = null; // Reset marca when segment changes
+                currentMarca = null;
                 tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
             }
             if (marca !== currentMarca) {
@@ -400,9 +382,6 @@
         container.innerHTML = tableHTML;
     }
     
-    /**
-     * Guarda los cambios de cantidad realizados masivamente.
-     */
     async function handleGuardarAjusteMasivo() {
         const inputs = document.querySelectorAll('#ajusteListContainer input[data-doc-id]');
         if (inputs.length === 0) {
@@ -444,9 +423,6 @@
         });
     }
 
-    /**
-     * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
-     */
     function showModificarDatosView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -483,9 +459,6 @@
         renderDataListForEditing('marcas', 'marcas-list', 'Marca');
     }
 
-    /**
-     * Renderiza una lista de datos (rubros, etc.) con botones para eliminar.
-     */
     function renderDataListForEditing(collectionName, containerId, itemName) {
         const container = document.getElementById(containerId);
         if (!container) return;
@@ -506,9 +479,6 @@
         _activeListeners.push(unsubscribe);
     }
 
-    /**
-     * Maneja la eliminación de un item de datos maestros, con validación de uso.
-     */
     async function handleDeleteDataItem(collectionName, itemName, itemType) {
         const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' };
         const fieldName = fieldMap[collectionName];
@@ -533,9 +503,6 @@
         }
     }
 
-    /**
-     * Muestra la vista para agregar un nuevo producto.
-     */
     function showAgregarProductoView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -589,9 +556,7 @@
                                         <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja envases retornables (vacíos)</span></label>
                                     </div>
                                 </div>
-                                <!-- Contenedor para Unidades por empaque -->
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
-                                <!-- Contenedor para Precios -->
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
                             </div>
 
@@ -622,7 +587,6 @@
             </div>
         `;
         
-        // --- INICIO LÓGICA DINÁMICA DEL FORMULARIO ---
         _populateDropdown('rubros', 'rubro', 'Rubro');
         _populateDropdown('segmentos', 'segmento', 'Segmento');
         _populateDropdown('marcas', 'marca', 'Marca');
@@ -660,11 +624,10 @@
             empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
 
-            // Lógica para actualizar el dropdown de "Cantidad cargada en"
             const unidadCargadaSelect = document.getElementById('unidadCargada');
             if (unidadCargadaSelect) {
                 const currentValue = unidadCargadaSelect.value;
-                unidadCargadaSelect.innerHTML = ''; // Clear options
+                unidadCargadaSelect.innerHTML = '';
 
                 if (ventaPorUnd) unidadCargadaSelect.innerHTML += `<option value="und">Und.</option>`;
                 if (ventaPorPaq) unidadCargadaSelect.innerHTML += `<option value="paq">Paq.</option>`;
@@ -687,7 +650,6 @@
 
         const handlePrecioChange = (e) => {
             if (!e || !e.target) return;
-            // No hacer nada aquí, el cálculo se hará al guardar.
         };
         
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
@@ -698,12 +660,9 @@
         document.getElementById('addSegmentoBtn').addEventListener('click', () => _showAddItemModal('segmentos', 'Segmento'));
         document.getElementById('addMarcaBtn').addEventListener('click', () => _showAddItemModal('marcas', 'Marca'));
         
-        updateDynamicInputs(); // Initial call to set up the form correctly
+        updateDynamicInputs();
     }
 
-    /**
-     * Recolecta y calcula los datos del formulario de producto.
-     */
     function getProductoDataFromForm() {
         const unidadesPorPaqueteInput = document.getElementById('unidadesPorPaquete');
         const unidadesPorCajaInput = document.getElementById('unidadesPorCaja');
@@ -761,9 +720,6 @@
         };
     }
 
-    /**
-     * Agrega un nuevo producto al inventario con la nueva lógica.
-     */
     async function agregarProducto(e) {
         e.preventDefault();
         const producto = getProductoDataFromForm();
@@ -799,9 +755,6 @@
         }
     }
 
-    /**
-     * Muestra la vista para modificar o eliminar un producto.
-     */
     function showModifyDeleteView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -826,16 +779,12 @@
         
         const renderCallback = () => renderProductosList('productosListContainer', false);
 
-        // CORRECCIÓN: Se usa _populateDropdown para el filtro de rubros.
         _populateDropdown('rubros', 'modify-filter-rubro', 'Rubro');
 
         setupFiltros('modify', renderCallback);
         startMainInventarioListener(renderCallback);
     }
 
-    /**
-     * Genera el HTML para los controles de filtro.
-     */
     function getFiltrosHTML(prefix) {
         return `
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
@@ -857,9 +806,6 @@
         `;
     }
 
-    /**
-     * Configura los listeners y la lógica para los filtros.
-     */
     function setupFiltros(prefix, renderCallback) {
         const searchInput = document.getElementById(`${prefix}-search-input`);
         const rubroFilter = document.getElementById(`${prefix}-filter-rubro`);
@@ -896,14 +842,13 @@
             }
         }
         
-        // CORRECCIÓN: Se retrasa la asignación de valores hasta que los dropdowns se poblen.
         setTimeout(() => {
             rubroFilter.value = _lastFilters.rubro;
             updateSegmentoFilter();
             segmentoFilter.value = _lastFilters.segmento;
             updateMarcaFilter();
             marcaFilter.value = _lastFilters.marca;
-        }, 200); // Pequeño delay
+        }, 200);
 
 
         function applyAndSaveFilters() {
@@ -937,9 +882,6 @@
     }
 
 
-    /**
-     * Renderiza la lista de productos en una tabla.
-     */
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
@@ -985,7 +927,7 @@
 
             if(segmento !== currentSegmento) {
                 currentSegmento = segmento;
-                currentMarca = null; // Reset marca
+                currentMarca = null;
                 tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
             }
             if (marca !== currentMarca) {
@@ -1028,9 +970,6 @@
         container.innerHTML = tableHTML;
     }
     
-    /**
-     * Muestra el formulario para editar un producto.
-     */
     function editProducto(productId) {
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
@@ -1068,7 +1007,6 @@
                             <div class="border-t pt-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div id="stock-edit-container">
-                                        <!-- Stock input will be dynamically inserted here -->
                                     </div>
                                     <div><label for="ivaTipo" class="block text-gray-700 font-medium mb-1">Tipo de IVA:</label><select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required><option value="16">IVA 16%</option><option value="0">Exento</option></select></div>
                                 </div>
@@ -1081,7 +1019,6 @@
             </div>
         `;
         
-        // --- LÓGICA DINÁMICA DEL FORMULARIO DE EDICIÓN ---
         _populateDropdown('rubros', 'rubro', 'Rubro');
         _populateDropdown('segmentos', 'segmento', 'Segmento');
         _populateDropdown('marcas', 'marca', 'Marca');
@@ -1117,17 +1054,14 @@
         };
 
         const handlePrecioChange = (e) => {
-             // No hacer nada aquí, el cálculo se hará al guardar.
         };
 
-        // --- POBLAR EL FORMULARIO CON DATOS EXISTENTES ---
-        setTimeout(() => { // Timeout to allow dropdowns to populate
+        setTimeout(() => {
             document.getElementById('rubro').value = producto.rubro;
             document.getElementById('segmento').value = producto.segmento;
             document.getElementById('marca').value = producto.marca;
             document.getElementById('presentacion').value = producto.presentacion;
             
-            // CORRECCIÓN: Lógica de stock inteligente
             const stockContainer = document.getElementById('stock-edit-container');
             const ventaPor = producto.ventaPor || {};
             
@@ -1167,9 +1101,8 @@
             if (producto.manejaVacios) {
                 document.getElementById('manejaVacios').checked = true;
             }
-            updateDynamicInputs(); // Generate dynamic fields
+            updateDynamicInputs();
 
-            // Populate dynamic fields with data
             if (producto.ventaPor.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
             if (producto.ventaPor.cj) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
             
@@ -1178,7 +1111,6 @@
                  if (document.getElementById('precioPaq')) document.getElementById('precioPaq').value = producto.precios.paq || 0;
                  if (document.getElementById('precioCj')) document.getElementById('precioCj').value = producto.precios.cj || 0;
             } else if (producto.precioPorUnidad) {
-                // Compatibilidad con datos antiguos
                  if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = producto.precioPorUnidad;
             }
             
@@ -1189,9 +1121,6 @@
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     };
 
-    /**
-     * Maneja el guardado del producto editado.
-     */
     async function handleUpdateProducto(e, productId) {
         e.preventDefault();
         const updatedData = getProductoDataFromForm();
@@ -1207,9 +1136,6 @@
     }
 
 
-    /**
-     * Elimina un producto.
-     */
     function deleteProducto(productId) {
         _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
             try {
@@ -1221,9 +1147,6 @@
         });
     };
 
-    /**
-     * Maneja la eliminación de TODOS los productos del inventario.
-     */
     async function handleDeleteAllProductos() {
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los productos del inventario? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando todos los productos...');
@@ -1245,9 +1168,6 @@
         });
     }
 
-    /**
-     * Maneja la eliminación de TODOS los datos maestros (Rubros, Segmentos, Marcas).
-     */
     async function handleDeleteAllDatosMaestros() {
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando datos maestros...');
