@@ -375,8 +375,7 @@
                 </div>
             </div>
         `;
-        // CAMBIO: _populateDropdown ahora usa la ruta compartida
-        _populateDropdown(SECTORES_COLLECTION_PATH, 'sector', 'sector');
+        _populateDropdown(SECTORES_COLLECTION_PATH, 'sector', 'Sector');
 
         const cepInput = document.getElementById('codigoCEP');
         const cepNACheckbox = document.getElementById('cepNA');
@@ -538,7 +537,21 @@
     }
 
     function setupFiltros(containerId) {
-        _populateDropdown(SECTORES_COLLECTION_PATH, 'filter-sector', 'Sector');
+        // CORRECCIÓN: Se reemplaza la llamada a _populateDropdown con una implementación directa.
+        const selectElement = document.getElementById('filter-sector');
+        if (selectElement) {
+            const collectionRef = _collection(_db, SECTORES_COLLECTION_PATH);
+            const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
+                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                const currentValue = selectElement.value; // Guardar valor actual
+                selectElement.innerHTML = `<option value="">Todos</option>`;
+                items.forEach(item => {
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                });
+                selectElement.value = currentValue; // Restaurar valor si es posible
+            });
+            _activeListeners.push(unsubscribe);
+        }
 
         const searchInput = document.getElementById('search-input');
         const sectorFilter = document.getElementById('filter-sector');
