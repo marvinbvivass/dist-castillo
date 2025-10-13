@@ -285,16 +285,24 @@
             });
         }
         
-        function populateDropdown(collectionName, elementId, itemName) {
+        function populateDropdown(collectionName, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
 
-            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            // CORRECCIÓN: Manejar tanto rutas completas (públicas) como nombres de colección (privadas del usuario)
+            const isFullPath = typeof collectionName === 'string' && collectionName.startsWith('artifacts/');
+            const collectionRef = isFullPath 
+                ? collection(db, collectionName)
+                : collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+
             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const items = snapshot.docs.map(doc => doc.data().name).sort();
+                const items = snapshot.docs.map(doc => doc.data().name).sort((a, b) => a.localeCompare(b));
+                const currentValue = selectElement.value; // Guardar valor actual si existe
                 selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
                 items.forEach(item => {
-                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                    // Mantener el valor seleccionado si coincide con el valor nuevo, el valor pasado, o el valor actual
+                    const isSelected = item === selectedValue || item === currentValue;
+                    selectElement.innerHTML += `<option value="${item}" ${isSelected ? 'selected' : ''}>${item}</option>`;
                 });
             });
             activeListeners.push(unsubscribe);
@@ -373,7 +381,13 @@
 
         async function preloadAllData() {
             const collectionsToPreload = ['inventario', 'clientes', 'ventas', 'rubros', 'segmentos', 'marcas', 'sectores'];
-            const preloadPromises = collectionsToPreload.map(colName => getDocs(collection(db, `artifacts/${appId}/users/${userId}/${colName}`)));
+            const preloadPromises = collectionsToPreload.map(colName => {
+                // Ajustar para colecciones públicas y privadas
+                const path = (colName === 'clientes' || colName === 'sectores')
+                    ? `artifacts/${appId}/public/data/${colName}`
+                    : `artifacts/${appId}/users/${userId}/${colName}`;
+                return getDocs(collection(db, path));
+            });
             await Promise.all(preloadPromises);
         }
 
@@ -514,3 +528,4 @@
     </script>
 </body>
 </html>
+
