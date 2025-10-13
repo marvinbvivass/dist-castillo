@@ -176,7 +176,8 @@
             appId: "1:815890981146:web:938fe5e09babe511e98ca3",
             measurementId: "G-N0QXG70WM1"
         };
-        const appId = firebaseConfig.appId;
+        // CORRECCIÓN: Usar el projectId para las rutas de la base de datos, no el appId.
+        const appId = firebaseConfig.projectId;
 
         let db;
         let auth;
