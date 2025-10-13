@@ -42,6 +42,10 @@
      * Muestra el submenú de opciones del módulo de Data.
      */
     window.showDataView = function() {
+        if (mapInstance) {
+            mapInstance.remove();
+            mapInstance = null;
+        }
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -823,6 +827,10 @@
      * Muestra la vista del mapa con los clientes.
      */
     function showClientMapView() {
+        if (mapInstance) {
+            mapInstance.remove();
+            mapInstance = null;
+        }
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1011,3 +1019,4 @@
     };
 
 })();
+
