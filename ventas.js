@@ -18,6 +18,11 @@
     let _tasaBs = 0;
     let _monedaActual = 'USD';
 
+    // CORRECCIÓN: Estandarizar la obtención de rutas de colección
+    const CLIENTES_COLLECTION_PATH = () => `artifacts/${_appId}/public/data/clientes`;
+    const INVENTARIO_COLLECTION_PATH = () => `artifacts/${_appId}/users/${_userId}/inventario`;
+    const VENTAS_COLLECTION_PATH = () => `artifacts/${_appId}/users/${_userId}/ventas`;
+
     /**
      * Obtiene y cachea el mapa de orden de los rubros.
      */
@@ -213,13 +218,12 @@
      * Carga los datos de clientes e inventario y popula el filtro de rubros.
      */
     function loadDataForNewSale() {
-        // CORRECCIÓN: Apuntar a la colección pública de clientes.
-        const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
         const unsubClientes = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         });
 
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+        const inventarioRef = _collection(_db, INVENTARIO_COLLECTION_PATH());
         const unsubInventario = _onSnapshot(inventarioRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             populateRubroFilter();
@@ -843,7 +847,7 @@
             _showModal('Progreso', 'Procesando transacción...');
             try {
                 const batch = _writeBatch(_db);
-                const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
+                const ventaRef = _doc(_collection(_db, VENTAS_COLLECTION_PATH()));
                 let totalVenta = 0;
                 const itemsVenta = [];
                 const vaciosChanges = {};
@@ -860,7 +864,7 @@
                     }
                     
                     if (unidadesARestar > 0) {
-                        const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
+                        const productoRef = _doc(_db, INVENTARIO_COLLECTION_PATH(), p.id);
                         batch.update(productoRef, { cantidadUnidades: stockUnidadesTotal - unidadesARestar });
                     }
 
@@ -903,7 +907,7 @@
                 }
 
                 if (Object.keys(vaciosChanges).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, _ventaActual.cliente.id);
+                    const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH(), _ventaActual.cliente.id);
                     await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) throw "El cliente no existe.";
@@ -997,7 +1001,7 @@
         const container = document.getElementById('ventasListContainer');
         if (!container) return;
 
-        const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+        const ventasRef = _collection(_db, VENTAS_COLLECTION_PATH());
         const q = _query(ventasRef);
         const unsubscribe = _onSnapshot(q, (snapshot) => {
             _ventasGlobal = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -1083,7 +1087,7 @@
         const allProductsMap = new Map();
         const vaciosMovements = {};
         
-        const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
+        const inventarioSnapshot = await _getDocs(_collection(_db, INVENTARIO_COLLECTION_PATH()));
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
 
         ventas.forEach(venta => {
@@ -1164,7 +1168,7 @@
      */
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte de cierre...');
-        const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
+        const ventasSnapshot = await _getDocs(_collection(_db, VENTAS_COLLECTION_PATH()));
         const ventas = ventasSnapshot.docs.map(doc => doc.data());
 
         if (ventas.length === 0) {
@@ -1400,7 +1404,7 @@
         _showModal('Confirmar Cierre Definitivo', 
             'Esta acción generará un reporte en Excel, luego archivará y eliminará las ventas actuales. No se puede deshacer. ¿Continuar?', 
             async () => {
-                const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+                const ventasRef = _collection(_db, VENTAS_COLLECTION_PATH());
                 const ventasSnapshot = await _getDocs(ventasRef);
                 const ventas = ventasSnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
                 if (ventas.length === 0) {
@@ -1416,7 +1420,8 @@
                         const userDoc = await _getDoc(userDocRef);
                         const userData = userDoc.exists() ? userDoc.data() : {};
 
-                        const publicCierreRef = _doc(_collection(_db, `public_data/${_appId}/user_closings`));
+                        // CORRECCIÓN: Usar la ruta pública correcta
+                        const publicCierreRef = _doc(_collection(_db, `artifacts/${_appId}/public/data/user_closings`));
                         await _setDoc(publicCierreRef, {
                             fecha: new Date(),
                             ventas: ventas.map(({id, ...rest}) => rest),
@@ -1571,7 +1576,7 @@
 
         try {
             // 1. Encontrar qué segmentos se usan en este rubro
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const inventarioRef = _collection(_db, INVENTARIO_COLLECTION_PATH());
             const q = _query(inventarioRef, _where("rubro", "==", rubroName));
             const inventarioSnapshot = await _getDocs(q);
             const usedSegmentNames = new Set(inventarioSnapshot.docs.map(doc => doc.data().segmento));
@@ -1725,12 +1730,13 @@
                     const vaciosAdjustments = {};
 
                     for (const productoVendido of venta.productos) {
-                        const productoEnCache = await _getDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id));
+                        const productoDocRef = _doc(_db, INVENTARIO_COLLECTION_PATH(), productoVendido.id);
+                        const productoEnCache = await _getDoc(productoDocRef);
                         
                         if (productoEnCache.exists()) {
                             const unidadesADevolver = productoVendido.totalUnidadesVendidas || 0;
                             const nuevoStockUnidades = (productoEnCache.data().cantidadUnidades || 0) + unidadesADevolver;
-                            batch.update(productoEnCache.ref, { cantidadUnidades: nuevoStockUnidades });
+                            batch.update(productoDocRef, { cantidadUnidades: nuevoStockUnidades });
                         }
 
                         if (productoVendido.manejaVacios) {
@@ -1744,7 +1750,7 @@
                     }
 
                     if (Object.keys(vaciosAdjustments).length > 0) {
-                         const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, venta.clienteId);
+                         const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH(), venta.clienteId);
                          await _runTransaction(_db, async (transaction) => {
                             const clienteDoc = await transaction.get(clienteRef);
                             if (!clienteDoc.exists()) return;
@@ -1762,7 +1768,7 @@
                         });
                     }
 
-                    const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
+                    const ventaRef = _doc(_db, VENTAS_COLLECTION_PATH(), ventaId);
                     batch.delete(ventaRef);
                     await batch.commit();
                     _showModal('Éxito', 'La venta ha sido eliminada y los datos restaurados.');
@@ -1821,7 +1827,7 @@
 
         _showModal('Progreso', 'Cargando datos para edición...');
         try {
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const inventarioRef = _collection(_db, INVENTARIO_COLLECTION_PATH());
             const snapshot = await _getDocs(inventarioRef);
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -1891,7 +1897,7 @@
                         const currentStockUnits = productoEnCache.cantidadUnidades || 0;
                         const finalStockUnits = currentStockUnits + unitDelta;
                         if (finalStockUnits < 0) throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
-                        const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
+                        const productoRef = _doc(_db, INVENTARIO_COLLECTION_PATH(), productId);
                         batch.update(productoRef, { cantidadUnidades: finalStockUnits });
                     }
                     
@@ -1912,7 +1918,7 @@
                 }
 
                 if (Object.keys(vaciosAdjustments).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, _originalVentaForEdit.clienteId);
+                    const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH(), _originalVentaForEdit.clienteId);
                      await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) return;
@@ -1963,7 +1969,7 @@
                     };
                 });
 
-                const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, _originalVentaForEdit.id);
+                const ventaRef = _doc(_db, VENTAS_COLLECTION_PATH(), _originalVentaForEdit.id);
                 batch.update(ventaRef, {
                     productos: nuevosItemsVenta,
                     total: nuevoTotal,
@@ -1997,3 +2003,5 @@
         }
     };
 })();
+
+
