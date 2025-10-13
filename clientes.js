@@ -9,9 +9,9 @@
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
     let _clientesParaImportar = []; // Caché para la data del Excel a importar
 
-    // CAMBIO: Definir la ruta de la base de datos de clientes como una constante compartida
-    const CLIENTES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/clientes`;
-    const SECTORES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/sectores`;
+    // CAMBIO: Se convierten las rutas en funciones para que usen el _appId dinámicamente
+    const CLIENTES_COLLECTION_PATH = () => `artifacts/${_appId}/public/data/clientes`;
+    const SECTORES_COLLECTION_PATH = () => `artifacts/${_appId}/public/data/sectores`;
 
 
     /**
@@ -262,7 +262,7 @@
         _showModal('Progreso', `Importando ${_clientesParaImportar.length} clientes...`);
 
         try {
-            const sectoresRef = _collection(_db, SECTORES_COLLECTION_PATH);
+            const sectoresRef = _collection(_db, SECTORES_COLLECTION_PATH());
             const sectoresSnapshot = await _getDocs(sectoresRef);
             const existingSectores = new Set(sectoresSnapshot.docs.map(doc => doc.data().name.toUpperCase()));
             
@@ -279,7 +279,7 @@
                 batch.set(newSectorRef, { name: sectorName });
             });
             
-            const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+            const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
             _clientesParaImportar.forEach(cliente => {
                 const newClienteRef = _doc(clientesRef);
                 batch.set(newClienteRef, cliente);
@@ -375,8 +375,8 @@
                 </div>
             </div>
         `;
-        // CAMBIO: _populateDropdown ahora usa la ruta compartida
-        _populateDropdown(SECTORES_COLLECTION_PATH, 'sector', 'sector');
+        // CAMBIO: Se llama a la función de ruta para obtener el path correcto
+        _populateDropdown(SECTORES_COLLECTION_PATH(), 'sector', 'Sector');
 
         const cepInput = document.getElementById('codigoCEP');
         const cepNACheckbox = document.getElementById('cepNA');
@@ -393,7 +393,7 @@
 
         document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
+        document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH(), 'Sector'));
         document.getElementById('getCoordsBtn').addEventListener('click', () => getCurrentCoordinates('coordenadas'));
     }
 
@@ -411,7 +411,7 @@
         const normComercial = nombreComercial.toLowerCase();
         const normPersonal = nombrePersonal.toLowerCase();
 
-        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
         const snapshot = await _getDocs(clientesRef);
         _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -452,7 +452,7 @@
                 saldoVacios: {} 
             };
             try {
-                await _addDoc(_collection(_db, CLIENTES_COLLECTION_PATH), clienteData);
+                await _addDoc(_collection(_db, CLIENTES_COLLECTION_PATH()), clienteData);
                 _showModal('Éxito', 'Cliente agregado correctamente.');
                 form.reset();
                 const cepNACheckbox = document.getElementById('cepNA');
@@ -501,7 +501,7 @@
         setupFiltros('clientesListContainer');
 
         const container = document.getElementById('clientesListContainer');
-        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
         const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderClientesList('clientesListContainer', false); 
@@ -538,7 +538,7 @@
     }
 
     function setupFiltros(containerId) {
-        _populateDropdown(SECTORES_COLLECTION_PATH, 'filter-sector', 'Sector');
+        _populateDropdown(SECTORES_COLLECTION_PATH(), 'filter-sector', 'Sector');
 
         const searchInput = document.getElementById('search-input');
         const sectorFilter = document.getElementById('filter-sector');
@@ -683,7 +683,7 @@
                 </div>
             </div>
         `;
-        _populateDropdown(SECTORES_COLLECTION_PATH, 'editSector', 'sector', cliente.sector);
+        _populateDropdown(SECTORES_COLLECTION_PATH(), 'editSector', 'sector', cliente.sector);
 
         const editCepInput = document.getElementById('editCodigoCEP');
         const editCepNACheckbox = document.getElementById('editCepNA');
@@ -724,7 +724,7 @@
                 saldoVacios: cliente.saldoVacios || {} 
             };
             try {
-                await _setDoc(_doc(_db, CLIENTES_COLLECTION_PATH, clienteId), updatedData, { merge: true });
+                await _setDoc(_doc(_db, CLIENTES_COLLECTION_PATH(), clienteId), updatedData, { merge: true });
                 _showModal('Éxito', 'Cliente modificado exitosamente.');
                 showVerClientesView();
             } catch (error) {
@@ -738,7 +738,7 @@
     function deleteCliente(clienteId) {
         _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este cliente?', async () => {
             try {
-                await _deleteDoc(_doc(_db, CLIENTES_COLLECTION_PATH, clienteId));
+                await _deleteDoc(_doc(_db, CLIENTES_COLLECTION_PATH(), clienteId));
                 _showModal('Éxito', 'Cliente eliminado correctamente.');
                 showVerClientesView();
             } catch (error) {
@@ -819,7 +819,7 @@
                 </div>
             </div>
         `;
-        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
+        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH(), 'Sector'));
         document.getElementById('backToClientesBtn').addEventListener('click', showFuncionesAvanzadasView);
         renderSectoresParaGestion();
     }
@@ -828,7 +828,7 @@
         const container = document.getElementById('sectores-list');
         if (!container) return;
 
-        const collectionRef = _collection(_db, SECTORES_COLLECTION_PATH);
+        const collectionRef = _collection(_db, SECTORES_COLLECTION_PATH());
         const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.name.localeCompare(b.name));
             if (items.length === 0) {
@@ -850,7 +850,7 @@
         const newName = prompt('Introduce el nuevo nombre para el sector:', currentName);
         if (newName && newName.trim() !== '' && newName.trim().toUpperCase() !== currentName.toUpperCase()) {
             const nuevoNombreMayus = newName.trim().toUpperCase();
-            const q = _query(_collection(_db, SECTORES_COLLECTION_PATH), _where("name", "==", nuevoNombreMayus));
+            const q = _query(_collection(_db, SECTORES_COLLECTION_PATH()), _where("name", "==", nuevoNombreMayus));
             const querySnapshot = await _getDocs(q);
             if (!querySnapshot.empty) {
                 _showModal('Error', `El sector "${nuevoNombreMayus}" ya existe.`);
@@ -858,9 +858,9 @@
             }
 
             try {
-                await _setDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId), { name: nuevoNombreMayus });
+                await _setDoc(_doc(_db, SECTORES_COLLECTION_PATH(), sectorId), { name: nuevoNombreMayus });
 
-                const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+                const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
                 const clientesQuery = _query(clientesRef, _where("sector", "==", currentName));
                 const clientesSnapshot = await _getDocs(clientesQuery);
 
@@ -880,7 +880,7 @@
     }
 
     async function deleteSector(sectorId, sectorName) {
-        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
         const q = _query(clientesRef, _where("sector", "==", sectorName));
         
         try {
@@ -890,7 +890,7 @@
                 return;
             }
             _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el sector "${sectorName}"?`, async () => {
-                await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId));
+                await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH(), sectorId));
                 _showModal('Éxito', `El sector "${sectorName}" ha sido eliminado.`);
             });
         } catch (error) {
@@ -902,7 +902,7 @@
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los clientes? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando todos los clientes...');
             try {
-                const collectionRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+                const collectionRef = _collection(_db, CLIENTES_COLLECTION_PATH());
                 const snapshot = await _getDocs(collectionRef);
                 if (snapshot.empty) {
                     _showModal('Aviso', 'No hay clientes para eliminar.');
@@ -942,7 +942,7 @@
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         document.getElementById('saldo-search-input').addEventListener('input', renderSaldosList);
         
-        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
+        const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH());
         const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderSaldosList();
@@ -1062,7 +1062,7 @@
     }
 
     async function handleAjusteManualVacios(clienteId, productoId, cantidad, tipoAjuste) {
-        const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH, clienteId);
+        const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH(), clienteId);
         _showModal('Progreso', 'Actualizando saldo...');
         try {
             await _runTransaction(_db, async (transaction) => {
@@ -1103,3 +1103,4 @@
     };
 
 })();
+
