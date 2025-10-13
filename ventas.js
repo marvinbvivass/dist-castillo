@@ -213,7 +213,8 @@
      * Carga los datos de clientes e inventario y popula el filtro de rubros.
      */
     function loadDataForNewSale() {
-        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        // CORRECCIÓN: Apuntar a la colección pública de clientes.
+        const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
         const unsubClientes = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         });
@@ -1996,4 +1997,3 @@
         }
     };
 })();
-
