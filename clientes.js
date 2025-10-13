@@ -522,20 +522,13 @@
                 <tbody>
         `;
         filteredClients.forEach(cliente => {
-            // NUEVO: Añadimos un ícono de mapa si el cliente tiene coordenadas
-            const mapIcon = cliente.latitud && cliente.longitud ? 
-                `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block ml-2 text-green-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" /></svg>` : 
-                '';
-
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}${mapIcon}</td>
+                    <td class="py-2 px-4 border-b text-sm">${cliente.nombreComercial}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
                     ${!readOnly ? `
-                    <td class="py-2 px-4 border-b text-center space-x-1">
-                        <!-- NUEVO: Botón de Mapear -->
-                        <button onclick="window.clientesModule.mapearCliente('${cliente.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Mapear</button>
+                    <td class="py-2 px-4 border-b text-center space-x-2">
                         <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
                         <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
                     </td>` : ''}
@@ -546,63 +539,6 @@
         container.innerHTML = tableHTML;
     }
     
-    // NUEVO: Lógica completa para la función de mapear
-    async function mapearCliente(clienteId) {
-        const cliente = _clientesCache.find(c => c.id === clienteId);
-        if (!cliente) {
-            _showModal('Error', 'Cliente no encontrado.');
-            return;
-        }
-
-        // Si el cliente ya tiene coordenadas, abre Google Maps
-        if (cliente.latitud && cliente.longitud) {
-            const url = `https://www.google.com/maps?q=${cliente.latitud},${cliente.longitud}`;
-            window.open(url, '_blank');
-            return;
-        }
-
-        // Si no tiene coordenadas, pregunta si quiere guardar la ubicación actual
-        _showModal(
-            'Guardar Ubicación',
-            `El cliente "${cliente.nombreComercial}" no tiene una ubicación guardada. ¿Deseas guardar tu posición actual como la ubicación de este cliente?`,
-            () => {
-                _showModal('Progreso', 'Obteniendo tu ubicación... Por favor, acepta los permisos del navegador.');
-                
-                if (!navigator.geolocation) {
-                    _showModal('Error', 'La geolocalización no es compatible con tu navegador.');
-                    return;
-                }
-
-                navigator.geolocation.getCurrentPosition(
-                    async (position) => {
-                        const latitud = position.coords.latitude;
-                        const longitud = position.coords.longitude;
-
-                        try {
-                            const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId);
-                            await _setDoc(clienteRef, { latitud, longitud }, { merge: true });
-                            _showModal('Éxito', `Ubicación guardada para ${cliente.nombreComercial}. La próxima vez que presiones "Mapear", se abrirá Google Maps.`);
-                        } catch (error) {
-                            _showModal('Error', `No se pudo guardar la ubicación en la base de datos: ${error.message}`);
-                        }
-                    },
-                    (error) => {
-                        let errorMessage = 'No se pudo obtener la ubicación.';
-                        if (error.code === error.PERMISSION_DENIED) {
-                            errorMessage = 'Permiso de ubicación denegado. Debes habilitarlo en la configuración de tu navegador.';
-                        } else if (error.code === error.POSITION_UNAVAILABLE) {
-                            errorMessage = 'La información de ubicación no está disponible.';
-                        } else if (error.code === error.TIMEOUT) {
-                            errorMessage = 'La solicitud para obtener la ubicación ha caducado.';
-                        }
-                        _showModal('Error de Ubicación', errorMessage);
-                    }
-                );
-            },
-            'Sí, Guardar Ubicación'
-        );
-    }
-
     function editCliente(clienteId) {
         _floatingControls.classList.add('hidden');
         const cliente = _clientesCache.find(c => c.id === clienteId);
@@ -1059,8 +995,7 @@
         deleteCliente,
         editSector,
         deleteSector,
-        showSaldoDetalleModal,
-        mapearCliente // NUEVO: Exponemos la nueva función
+        showSaldoDetalleModal
     };
 
 })();
