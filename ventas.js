@@ -903,7 +903,7 @@
                 }
 
                 if (Object.keys(vaciosChanges).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _ventaActual.cliente.id);
+                    const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _ventaActual.cliente.id);
                     await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) throw "El cliente no existe.";
@@ -1415,8 +1415,9 @@
                         const userDocRef = _doc(_db, "users", _userId);
                         const userDoc = await _getDoc(userDocRef);
                         const userData = userDoc.exists() ? userDoc.data() : {};
-
-                        const publicCierreRef = _doc(_collection(_db, `public_data/${_appId}/user_closings`));
+                        
+                        // CORRECCIÓN: Usar una ruta válida para la colección pública.
+                        const publicCierreRef = _doc(_collection(_db, `public_data/ventas-9a210/user_closings`));
                         await _setDoc(publicCierreRef, {
                             fecha: new Date(),
                             ventas: ventas.map(({id, ...rest}) => rest),
