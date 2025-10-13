@@ -557,7 +557,6 @@
         }
 
         try {
-            // CAMBIO: Obtener cierres de usuarios y del admin
             // CORRECCIÓN: Se ajusta la ruta a la estructura estándar del proyecto.
             const publicClosingsRef = _collection(_db, `artifacts/${_appId}/public/data/user_closings`);
             const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
