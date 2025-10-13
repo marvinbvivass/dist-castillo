@@ -14,6 +14,10 @@
     let _segmentoOrderCacheData = null;
     let _rubroOrderCacheData = null;
 
+    // Variables para el mapa
+    let mapInstance = null;
+    let mapMarkers = new Map();
+
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
@@ -48,7 +52,6 @@
                             <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
                             <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
                             <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
-                            <!-- CAMBIO: Se añade el botón para el mapa de clientes -->
                             <button id="clientMapBtn" class="w-full px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-700">Mapa de Clientes</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
@@ -59,7 +62,6 @@
         document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
         document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
-        // CAMBIO: Se añade el listener para el nuevo botón
         document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
@@ -815,7 +817,7 @@
         XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
     }
 
-    // --- [NUEVO] Lógica del Mapa de Clientes ---
+    // --- Lógica del Mapa de Clientes ---
 
     /**
      * Muestra la vista del mapa con los clientes.
@@ -827,11 +829,15 @@
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">Mapa de Clientes Consolidados</h1>
+                        <div class="relative mb-4">
+                            <input type="text" id="map-search-input" placeholder="Buscar cliente por nombre o CEP..." class="w-full px-4 py-2 border rounded-lg">
+                            <div id="map-search-results" class="absolute z-[1000] w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+                        </div>
                         <div class="mb-4 p-2 bg-gray-100 border rounded-lg text-sm flex justify-center items-center gap-4">
                            <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="height: 25px; display: inline;"> Cliente Regular</span>
                            <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" style="height: 25px; display: inline;"> Cliente con CEP</span>
                         </div>
-                        <div id="client-map" class="w-full rounded-lg shadow-inner" style="height: 70vh; border: 1px solid #ccc;">
+                        <div id="client-map" class="w-full rounded-lg shadow-inner" style="height: 65vh; border: 1px solid #ccc;">
                             <p class="text-center text-gray-500 pt-10">Cargando mapa...</p>
                         </div>
                         <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -854,7 +860,6 @@
         }
 
         try {
-            // 1. Cargar todos los clientes
             const usersRef = _collection(_db, "users");
             const usersSnapshot = await _getDocs(usersRef);
             const userIds = usersSnapshot.docs.map(doc => doc.id);
@@ -874,7 +879,6 @@
             });
             const allClients = Array.from(consolidatedClientsMap.values());
 
-            // 2. Filtrar clientes con coordenadas válidas
             const clientsWithCoords = allClients.filter(c => {
                 if (!c.coordenadas) return false;
                 const parts = c.coordenadas.split(',').map(p => parseFloat(p.trim()));
@@ -886,15 +890,12 @@
                 return;
             }
             
-            // 3. Inicializar mapa
-            const initialCoords = clientsWithCoords[0].coordenadas.split(',').map(p => parseFloat(p.trim()));
-            const map = L.map('client-map').setView(initialCoords, 13);
+            mapInstance = L.map('client-map').setView([7.77, -72.22], 13); // Centrado en San Cristóbal
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            }).addTo(map);
+            }).addTo(mapInstance);
 
-            // 4. Crear íconos personalizados
             const redIcon = new L.Icon({
                 iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                 shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -913,8 +914,8 @@
                 shadowSize: [41, 41]
             });
             
-            // 5. Añadir marcadores al mapa
-            const markers = [];
+            mapMarkers.clear();
+            const markerGroup = [];
             clientsWithCoords.forEach(client => {
                 const coords = client.coordenadas.split(',').map(p => parseFloat(p.trim()));
                 const hasCEP = client.codigoCEP && client.codigoCEP.toLowerCase() !== 'n/a';
@@ -925,24 +926,82 @@
                     ${client.nombrePersonal}<br>
                     Tel: ${client.telefono || 'N/A'}<br>
                     Sector: ${client.sector}
+                    ${hasCEP ? `<br><b>CEP: ${client.codigoCEP}</b>` : ''}
                 `;
 
-                const marker = L.marker(coords, {icon: icon}).addTo(map)
-                    .bindPopup(popupContent);
-                markers.push(marker);
+                const marker = L.marker(coords, {icon: icon}).addTo(mapInstance).bindPopup(popupContent);
+                mapMarkers.set(client.nombreComercial, marker);
+                markerGroup.push(marker);
             });
 
-            // Ajustar el zoom para que todos los marcadores sean visibles
-            if(markers.length > 0) {
-                const group = new L.featureGroup(markers);
-                map.fitBounds(group.getBounds().pad(0.1));
+            if(markerGroup.length > 0) {
+                const group = new L.featureGroup(markerGroup);
+                mapInstance.fitBounds(group.getBounds().pad(0.1));
             }
 
+            setupMapSearch(clientsWithCoords);
 
         } catch (error) {
             console.error("Error al cargar el mapa de clientes:", error);
             mapContainer.innerHTML = `<p class="text-center text-red-500 pt-10">Ocurrió un error al cargar los datos de los clientes.</p>`;
         }
+    }
+    
+    function setupMapSearch(clients) {
+        const searchInput = document.getElementById('map-search-input');
+        const resultsContainer = document.getElementById('map-search-results');
+        if (!searchInput || !resultsContainer) return;
+
+        searchInput.addEventListener('input', () => {
+            const searchTerm = searchInput.value.toLowerCase();
+            if (searchTerm.length < 2) {
+                resultsContainer.innerHTML = '';
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+
+            const filteredClients = clients.filter(client => 
+                client.nombreComercial.toLowerCase().includes(searchTerm) ||
+                client.nombrePersonal.toLowerCase().includes(searchTerm) ||
+                (client.codigoCEP && client.codigoCEP.toLowerCase().includes(searchTerm))
+            );
+
+            if (filteredClients.length === 0) {
+                resultsContainer.innerHTML = '<div class="p-2 text-gray-500">No se encontraron clientes.</div>';
+                resultsContainer.classList.remove('hidden');
+                return;
+            }
+
+            resultsContainer.innerHTML = filteredClients.map(client => `
+                <div class="p-2 hover:bg-gray-100 cursor-pointer" data-client-name="${client.nombreComercial}">
+                    <p class="font-semibold">${client.nombreComercial}</p>
+                    <p class="text-sm text-gray-600">${client.nombrePersonal}</p>
+                </div>
+            `).join('');
+            resultsContainer.classList.remove('hidden');
+        });
+
+        resultsContainer.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-client-name]');
+            if (target && mapInstance) {
+                const clientName = target.dataset.clientName;
+                const marker = mapMarkers.get(clientName);
+                if (marker) {
+                    mapInstance.flyTo(marker.getLatLng(), 17); // Zoom más cercano
+                    marker.openPopup();
+                }
+                searchInput.value = '';
+                resultsContainer.innerHTML = '';
+                resultsContainer.classList.add('hidden');
+            }
+        });
+
+        // Ocultar resultados si se hace clic fuera
+        document.addEventListener('click', function(event) {
+            if (!resultsContainer.contains(event.target) && event.target !== searchInput) {
+                resultsContainer.classList.add('hidden');
+            }
+        });
     }
 
 
