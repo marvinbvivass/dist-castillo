@@ -163,26 +163,53 @@
         fechaHasta.setHours(23, 59, 59, 999);
 
         try {
-            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            
-            // CORRECCIÓN: Simplificar la consulta a Firebase para evitar errores de índice.
-            // Siempre se consulta por el rango de fechas.
-            let q = _query(closingsRef, 
+            // CORRECCIÓN: Buscar en ambas colecciones (pública de usuarios y privada del admin).
+            const publicClosingsRef = _collection(_db, `public_data/ventas-9a210/user_closings`);
+            const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
+
+            const publicQuery = _query(publicClosingsRef, 
+                _where("fecha", ">=", fechaDesde),
+                _where("fecha", "<=", fechaHasta)
+            );
+            const adminQuery = _query(adminClosingsRef, 
                 _where("fecha", ">=", fechaDesde),
                 _where("fecha", "<=", fechaHasta)
             );
 
-            const snapshot = await _getDocs(q);
-            let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const [publicSnapshot, adminSnapshot] = await Promise.all([
+                _getDocs(publicQuery),
+                _getDocs(adminQuery)
+            ]);
+
+            const publicClosings = publicSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // CORRECCIÓN: Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
+            // Añadir información de vendedor simulada para los cierres del admin
+            const adminClosings = adminSnapshot.docs.map(doc => {
+                 const adminUserOption = Array.from(document.getElementById('userFilter').options).find(opt => opt.value === _userId);
+                 const adminName = adminUserOption ? adminUserOption.textContent.split('(')[0].trim() : 'Admin';
+
+                return { 
+                    id: doc.id, 
+                    ...doc.data(),
+                    vendedorInfo: { // Simular la estructura para consistencia
+                        userId: _userId,
+                        nombre: adminName,
+                        apellido: '',
+                        camion: ''
+                    }
+                };
+            });
+            
+            let allClosings = [...publicClosings, ...adminClosings];
+            
+            // Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
             if (selectedUserId) {
-                closings = closings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
+                allClosings = allClosings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
             }
             
-            window.tempClosingsData = closings;
+            window.tempClosingsData = allClosings;
 
-            renderClosingsList(closings);
+            renderClosingsList(allClosings);
 
         } catch (error) {
             console.error("Error al buscar cierres:", error);
@@ -554,8 +581,8 @@
         }
 
         try {
-            // CAMBIO: Obtener cierres de usuarios y del admin
-            const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            // CORRECCIÓN: Usar ruta pública válida y combinar con cierres del admin.
+            const publicClosingsRef = _collection(_db, `public_data/ventas-9a210/user_closings`);
             const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
 
             const publicQuery = _query(publicClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
