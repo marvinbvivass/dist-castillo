@@ -50,7 +50,7 @@
                         </div>
                         <div class="mt-6 flex flex-col sm:flex-row gap-4">
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Datos</button>
+                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Datos de Inventario</button>
                         </div>
                     </div>
                 </div>
@@ -237,23 +237,19 @@
         `).join('');
 
         const modalContent = `
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Sincronizar Datos</h3>
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Sincronizar Datos de Inventario</h3>
             <div class="text-left space-y-4">
-                <div>
-                    <label class="block text-gray-700 font-medium mb-2">1. Seleccione los datos a sincronizar:</label>
-                    <div class="space-y-2">
-                        <label class="flex items-center"><input type="checkbox" id="syncDataTypeInventario" value="inventario" class="h-4 w-4" checked><span class="ml-2">Inventario y Categorías</span></label>
-                        <label class="flex items-center"><input type="checkbox" id="syncDataTypeClientes" value="clientes" class="h-4 w-4"><span class="ml-2">Clientes y Sectores</span></label>
-                    </div>
+                 <div>
+                    <p class="text-sm text-gray-600">Esta herramienta copiará el <strong>inventario y sus categorías (rubros, segmentos, marcas)</strong> desde una cuenta de origen a una o más cuentas de destino. Las cantidades de stock de los usuarios de destino se conservarán.</p>
                 </div>
                 <div>
-                    <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">2. Seleccione la cuenta de origen:</label>
+                    <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">1. Seleccione la cuenta de origen:</label>
                     <select id="sourceUserSelect" class="w-full p-2 border rounded-lg bg-gray-50">
                         ${sourceUserOptionsHTML}
                     </select>
                 </div>
                 <div>
-                    <label class="block text-gray-700 font-medium mb-2">3. Seleccione los usuarios de destino:</label>
+                    <label class="block text-gray-700 font-medium mb-2">2. Seleccione los usuarios de destino:</label>
                     <div id="targetUsersContainer" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
                         ${targetUserCheckboxesHTML}
                     </div>
@@ -289,16 +285,10 @@
      * Ejecuta la lógica de sincronización del admin.
      */
     async function handleAdminSync() {
-        const syncInventario = document.getElementById('syncDataTypeInventario').checked;
-        const syncClientes = document.getElementById('syncDataTypeClientes').checked;
         const sourceUserId = document.getElementById('sourceUserSelect').value;
         const targetUsersCheckboxes = document.querySelectorAll('input[name="targetUsers"]:checked');
         const targetUserIds = Array.from(targetUsersCheckboxes).map(cb => cb.value);
 
-        if (!syncInventario && !syncClientes) {
-            _showModal('Error', 'Debe seleccionar al menos un tipo de dato para sincronizar.');
-            return;
-        }
         if (targetUserIds.length === 0) {
             _showModal('Error', 'Debe seleccionar al menos un usuario de destino.');
             return;
@@ -306,12 +296,8 @@
 
         const sourceUserEmail = document.getElementById('sourceUserSelect').options[document.getElementById('sourceUserSelect').selectedIndex].text;
         const confirmationMessage = `
-            <p>Estás a punto de sincronizar datos desde <strong>${sourceUserEmail}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
-            <p class="mt-2 font-bold text-red-600">¡Atención! Esto sobreescribirá los datos seleccionados en las cuentas de destino.</p>
-            <ul class="list-disc list-inside text-left text-sm mt-2">
-                ${syncInventario ? `<li>Al sincronizar <strong>Inventario</strong>, se conservarán las cantidades de stock de cada usuario.</li>` : ''}
-                ${syncClientes ? `<li>Al sincronizar <strong>Clientes</strong>, se conservarán los saldos de vacíos de cada usuario.</li>` : ''}
-            </ul>
+            <p>Estás a punto de sincronizar el inventario desde <strong>${sourceUserEmail}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
+            <p class="mt-2 font-bold text-red-600">¡Atención! Esto sobreescribirá la estructura del inventario en las cuentas de destino, pero se conservarán las cantidades de stock existentes.</p>
             <p class="mt-4 font-bold">¿Estás seguro de que quieres continuar?</p>
         `;
 
@@ -321,34 +307,18 @@
             try {
                 // 1. Obtener los datos fuente del usuario seleccionado
                 const sourceData = {};
-                if (syncInventario) {
-                    const collections = ['inventario', 'rubros', 'segmentos', 'marcas'];
-                    for (const col of collections) {
-                        const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
-                        const snapshot = await _getDocs(_collection(_db, sourcePath));
-                        if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    }
+                const collections = ['inventario', 'rubros', 'segmentos', 'marcas'];
+                for (const col of collections) {
+                    const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
+                    const snapshot = await _getDocs(_collection(_db, sourcePath));
+                    if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 }
-                if (syncClientes) {
-                    const collections = ['clientes', 'sectores'];
-                    for (const col of collections) {
-                        const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
-                        const snapshot = await _getDocs(_collection(_db, sourcePath));
-                        if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    }
-                }
-
+                
                 // 2. Iterar sobre cada usuario de destino y aplicar la sincronización
                 for (const targetId of targetUserIds) {
-                    if (syncInventario) {
-                        await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
-                        for(const cat of ['rubros', 'segmentos', 'marcas']) {
-                            await copyDataToUser(targetId, cat, sourceData[cat]);
-                        }
-                    }
-                    if (syncClientes) {
-                        await mergeDataForUser(targetId, 'clientes', sourceData['clientes'], 'saldoVacios');
-                        await copyDataToUser(targetId, 'sectores', sourceData['sectores']);
+                    await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
+                    for(const cat of ['rubros', 'segmentos', 'marcas']) {
+                        await copyDataToUser(targetId, cat, sourceData[cat]);
                     }
                 }
 
