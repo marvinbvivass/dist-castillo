@@ -48,6 +48,8 @@
                             <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Datos de Cierres de Ventas</button>
                             <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Estadística de Productos</button>
                             <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
+                            <!-- CAMBIO: Se añade el botón para el mapa de clientes -->
+                            <button id="clientMapBtn" class="w-full px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-700">Mapa de Clientes</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -57,6 +59,8 @@
         document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
         document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
+        // CAMBIO: Se añade el listener para el nuevo botón
+        document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
@@ -495,7 +499,6 @@
             const dayOfWeek = now.getDay(); // 0 = Domingo, 1 = Lunes, ...
             fechaDesde = new Date(now);
             const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Ajusta para que la semana empiece en Lunes
-            fechaDesde.setDate(diff);
             fechaDesde.setHours(0, 0, 0, 0);
         } else if (statsType === 'mensual') {
             fechaDesde = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -811,6 +814,137 @@
         const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
     }
+
+    // --- [NUEVO] Lógica del Mapa de Clientes ---
+
+    /**
+     * Muestra la vista del mapa con los clientes.
+     */
+    function showClientMapView() {
+        _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">Mapa de Clientes Consolidados</h1>
+                        <div class="mb-4 p-2 bg-gray-100 border rounded-lg text-sm flex justify-center items-center gap-4">
+                           <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="height: 25px; display: inline;"> Cliente Regular</span>
+                           <span><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" style="height: 25px; display: inline;"> Cliente con CEP</span>
+                        </div>
+                        <div id="client-map" class="w-full rounded-lg shadow-inner" style="height: 70vh; border: 1px solid #ccc;">
+                            <p class="text-center text-gray-500 pt-10">Cargando mapa...</p>
+                        </div>
+                        <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
+        loadAndDisplayMap();
+    }
+
+    /**
+     * Carga los datos de los clientes y los muestra en el mapa.
+     */
+    async function loadAndDisplayMap() {
+        const mapContainer = document.getElementById('client-map');
+        if (!mapContainer || typeof L === 'undefined') {
+            mapContainer.innerHTML = '<p class="text-center text-red-500 pt-10">Error: La librería de mapas (Leaflet) no está cargada.</p>';
+            return;
+        }
+
+        try {
+            // 1. Cargar todos los clientes
+            const usersRef = _collection(_db, "users");
+            const usersSnapshot = await _getDocs(usersRef);
+            const userIds = usersSnapshot.docs.map(doc => doc.id);
+
+            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
+            const allClientSnapshots = await Promise.all(allClientPromises);
+
+            const consolidatedClientsMap = new Map();
+            allClientSnapshots.forEach(snapshot => {
+                snapshot.docs.forEach(doc => {
+                    const client = doc.data();
+                    const key = client.nombreComercial.trim().toLowerCase();
+                    if (!consolidatedClientsMap.has(key)) {
+                        consolidatedClientsMap.set(key, client);
+                    }
+                });
+            });
+            const allClients = Array.from(consolidatedClientsMap.values());
+
+            // 2. Filtrar clientes con coordenadas válidas
+            const clientsWithCoords = allClients.filter(c => {
+                if (!c.coordenadas) return false;
+                const parts = c.coordenadas.split(',').map(p => parseFloat(p.trim()));
+                return parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]);
+            });
+
+            if (clientsWithCoords.length === 0) {
+                mapContainer.innerHTML = '<p class="text-center text-gray-500 pt-10">No se encontraron clientes con coordenadas válidas.</p>';
+                return;
+            }
+            
+            // 3. Inicializar mapa
+            const initialCoords = clientsWithCoords[0].coordenadas.split(',').map(p => parseFloat(p.trim()));
+            const map = L.map('client-map').setView(initialCoords, 13);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // 4. Crear íconos personalizados
+            const redIcon = new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            });
+
+            const blueIcon = new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            });
+            
+            // 5. Añadir marcadores al mapa
+            const markers = [];
+            clientsWithCoords.forEach(client => {
+                const coords = client.coordenadas.split(',').map(p => parseFloat(p.trim()));
+                const hasCEP = client.codigoCEP && client.codigoCEP.toLowerCase() !== 'n/a';
+                const icon = hasCEP ? blueIcon : redIcon;
+
+                const popupContent = `
+                    <b>${client.nombreComercial}</b><br>
+                    ${client.nombrePersonal}<br>
+                    Tel: ${client.telefono || 'N/A'}<br>
+                    Sector: ${client.sector}
+                `;
+
+                const marker = L.marker(coords, {icon: icon}).addTo(map)
+                    .bindPopup(popupContent);
+                markers.push(marker);
+            });
+
+            // Ajustar el zoom para que todos los marcadores sean visibles
+            if(markers.length > 0) {
+                const group = new L.featureGroup(markers);
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+
+
+        } catch (error) {
+            console.error("Error al cargar el mapa de clientes:", error);
+            mapContainer.innerHTML = `<p class="text-center text-red-500 pt-10">Ocurrió un error al cargar los datos de los clientes.</p>`;
+        }
+    }
+
 
     // Exponer funciones públicas al objeto window
     window.dataModule = {
