@@ -99,7 +99,7 @@
                 <div class="container mx-auto max-w-4xl">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Importar Clientes desde Excel</h2>
-                        <p class="text-center text-gray-600 mb-6">Selecciona un archivo .xlsx o .csv. La primera fila debe contener los encabezados: Sector, Nombre Comercial, Nombre Personal, telefono, CEP, y opcionalmente: Coordenadas.</p>
+                        <p class="text-center text-gray-600 mb-6">Selecciona un archivo .xlsx o .csv. La primera fila debe contener los encabezados: Sector, Nombre Comercial, Nombre Personal, telefono, CEP, y opcionalmente: Coordenadas (o X, Y).</p>
                         <input type="file" id="excel-uploader" accept=".xlsx, .xls, .csv" class="w-full p-4 border-2 border-dashed rounded-lg">
                         <div id="preview-container" class="mt-6 overflow-auto max-h-96"></div>
                         <div id="import-actions" class="mt-6 flex flex-col sm:flex-row gap-4 hidden">
@@ -137,7 +137,7 @@
 
             const headers = jsonData[0].map(h => h.toString().toLowerCase().trim());
             const requiredHeaders = ['sector', 'nombre comercial', 'nombre personal', 'telefono', 'cep'];
-            const optionalHeaders = ['coordenadas'];
+            const optionalHeaders = ['coordenadas', 'x', 'y'];
             
             const headerMap = {};
             let missingHeader = false;
@@ -160,14 +160,25 @@
             });
 
             _clientesParaImportar = jsonData.slice(1).map(row => {
+                let coordenadas = '';
+                if (headerMap['coordenadas'] !== undefined) {
+                    coordenadas = (row[headerMap['coordenadas']] || '').toString().trim();
+                } else if (headerMap['x'] !== undefined && headerMap['y'] !== undefined) {
+                    const x = (row[headerMap['x']] || '').toString().trim();
+                    const y = (row[headerMap['y']] || '').toString().trim();
+                    if (x && y) {
+                        coordenadas = `${y}, ${x}`; // Formato standard es Lat, Lon
+                    }
+                }
+
                 const cliente = {
                     sector: (row[headerMap['sector']] || '').toString().trim().toUpperCase(),
                     nombreComercial: (row[headerMap['nombre comercial']] || '').toString().trim().toUpperCase(),
                     nombrePersonal: (row[headerMap['nombre personal']] || '').toString().trim().toUpperCase(),
                     telefono: (row[headerMap['telefono']] || '').toString().trim(),
                     codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim(),
-                    coordenadas: headerMap['coordenadas'] !== undefined ? (row[headerMap['coordenadas']] || '').toString().trim() : '',
-                    saldoVacios: {} // Initialize empty returns object
+                    coordenadas: coordenadas,
+                    saldoVacios: {} 
                 };
                 if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
                 return cliente;
@@ -276,10 +287,6 @@
         }
     }
     
-    /**
-     * NUEVA FUNCIÓN: Obtiene las coordenadas GPS del navegador y las inserta en un campo de texto.
-     * @param {string} inputId - El ID del elemento input donde se insertarán las coordenadas.
-     */
     function getCurrentCoordinates(inputId) {
         const coordsInput = document.getElementById(inputId);
         if (!coordsInput) return;
@@ -344,7 +351,6 @@
                                     <label for="cepNA" class="ml-2 text-gray-700">No Aplica</label>
                                 </div>
                             </div>
-                            <!-- CAMBIO: Se añade el campo de coordenadas -->
                             <div>
                                 <label for="coordenadas" class="block text-gray-700 font-medium mb-2">Coordenadas:</label>
                                 <div class="flex items-center space-x-2">
@@ -377,7 +383,6 @@
         document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
         document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal('sectores', 'Sector'));
-        // CAMBIO: Se añade el listener para el botón de obtener coordenadas
         document.getElementById('getCoordsBtn').addEventListener('click', () => getCurrentCoordinates('coordenadas'));
     }
 
@@ -390,13 +395,11 @@
         const sector = form.sector.value.toUpperCase();
         const telefono = form.telefono.value.trim();
         const codigoCEP = form.codigoCEP.value.trim();
-        // CAMBIO: Se obtiene el valor de las coordenadas
         const coordenadas = form.coordenadas.value.trim();
 
         const normComercial = nombreComercial.toLowerCase();
         const normPersonal = nombrePersonal.toLowerCase();
 
-        // Carga el caché más recente antes de validar duplicados
         const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
         const snapshot = await _getDocs(clientesRef);
         _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -434,9 +437,8 @@
                 nombrePersonal: nombrePersonal,
                 telefono: telefono,
                 codigoCEP: codigoCEP,
-                // CAMBIO: Se añade el campo coordenadas al objeto a guardar
                 coordenadas: coordenadas,
-                saldoVacios: {} // Initialize empty returns object
+                saldoVacios: {} 
             };
             try {
                 await _addDoc(_collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`), clienteData);
@@ -490,7 +492,6 @@
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderClientesList('clientesListContainer', false); 
         }, (error) => {
-            // CORRECCIÓN: Ignorar el error de permisos al cerrar sesión.
             if (window.isLoggingOut && error.code === 'permission-denied') {
                 console.log("Listener de clientes detenido por cierre de sesión.");
                 return;
@@ -579,7 +580,8 @@
         filteredClients.forEach(cliente => {
             let mapButtonHTML = '';
             if (cliente.coordenadas) {
-                 mapButtonHTML = `<a href="https://www.google.com/maps?q=${cliente.coordenadas}" target="_blank" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Mapa</a>`;
+                 const urlCoords = encodeURIComponent(cliente.coordenadas);
+                 mapButtonHTML = `<a href="https://www.google.com/maps?q=${urlCoords}" target="_blank" class="px-3 py-1 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600">Mapa</a>`;
             }
             
             tableHTML += `
@@ -588,7 +590,7 @@
                     <td class="py-2 px-4 border-b text-sm">${cliente.nombrePersonal}</td>
                     <td class="py-2 px-4 border-b text-sm">${cliente.telefono}</td>
                     ${!readOnly ? `
-                    <td class="py-2 px-4 border-b text-center space-x-2">
+                    <td class="py-2 px-4 border-b text-center space-x-1">
                         ${mapButtonHTML}
                         <button onclick="window.clientesModule.editCliente('${cliente.id}')" class="px-3 py-1 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button>
                         <button onclick="window.clientesModule.deleteCliente('${cliente.id}')" class="px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button>
@@ -636,7 +638,6 @@
                                     <label for="editCepNA" class="ml-2 text-gray-700">No Aplica</label>
                                 </div>
                             </div>
-                             <!-- CAMBIO: Se añade el campo para editar coordenadas -->
                             <div>
                                 <label for="editCoordenadas" class="block text-gray-700 font-medium mb-2">Coordenadas:</label>
                                 <div class="flex items-center space-x-2">
@@ -678,7 +679,6 @@
         });
         syncEditCepState();
         
-        // CAMBIO: Se añade el listener para el botón de obtener coordenadas en la vista de edición
         document.getElementById('getEditCoordsBtn').addEventListener('click', () => getCurrentCoordinates('editCoordenadas'));
 
         document.getElementById('editClienteForm').addEventListener('submit', async (e) => {
@@ -689,9 +689,8 @@
                 nombrePersonal: document.getElementById('editNombrePersonal').value.toUpperCase(),
                 telefono: document.getElementById('editTelefono').value,
                 codigoCEP: document.getElementById('editCodigoCEP').value,
-                // CAMBIO: Se incluye el campo de coordenadas al actualizar
                 coordenadas: document.getElementById('editCoordenadas').value.trim(),
-                saldoVacios: cliente.saldoVacios || {} // Preserve existing returns data
+                saldoVacios: cliente.saldoVacios || {} 
             };
             try {
                 await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, clienteId), updatedData, { merge: true });
@@ -1073,3 +1072,4 @@
     };
 
 })();
+
