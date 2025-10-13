@@ -1,27 +1,27 @@
 // --- Lógica del módulo de Clientes ---
 
 (function() {
-    // Variables locales del módulo que se inicializarán desde index.html
-    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
+    // CORRECCIÓN: Añadir projectId para diferenciar datos públicos/privados
+    let _db, _userId, _userRole, _appId, _projectId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction;
     
-    let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
-    let _clientesParaImportar = []; // Caché para la data del Excel a importar
+    let _clientesCache = [];
+    let _clientesParaImportar = [];
 
-    // CAMBIO: Se convierten las rutas en funciones para que usen el _appId dinámicamente
-    const CLIENTES_COLLECTION_PATH = () => `artifacts/${_appId}/public/data/clientes`;
-    const SECTORES_COLLECTION_PATH = () => `artifacts/${_appId}/public/data/sectores`;
-
+    // CORRECCIÓN: Usar projectId para las rutas de datos públicos
+    const CLIENTES_COLLECTION_PATH = () => `artifacts/${_projectId}/public/data/clientes`;
+    const SECTORES_COLLECTION_PATH = () => `artifacts/${_projectId}/public/data/sectores`;
 
     /**
-     * Inicializa el módulo con las dependencias necesarias desde la app principal.
+     * Inicializa el módulo con las dependencias necesarias.
      */
     window.initClientes = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole; 
-        _appId = dependencies.appId;
+        _appId = dependencies.appId; // Para datos privados
+        _projectId = dependencies.projectId; // Para datos públicos
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _activeListeners = dependencies.activeListeners;
@@ -375,7 +375,6 @@
                 </div>
             </div>
         `;
-        // CAMBIO: Se llama a la función de ruta para obtener el path correcto
         _populateDropdown(SECTORES_COLLECTION_PATH(), 'sector', 'Sector');
 
         const cepInput = document.getElementById('codigoCEP');
@@ -1103,4 +1102,3 @@
     };
 
 })();
-
