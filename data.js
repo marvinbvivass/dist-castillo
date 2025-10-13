@@ -165,22 +165,20 @@
         try {
             const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
             
-            let q;
-            if (selectedUserId) {
-                q = _query(closingsRef, 
-                    _where("vendedorInfo.userId", "==", selectedUserId),
-                    _where("fecha", ">=", fechaDesde),
-                    _where("fecha", "<=", fechaHasta)
-                );
-            } else {
-                q = _query(closingsRef, 
-                    _where("fecha", ">=", fechaDesde),
-                    _where("fecha", "<=", fechaHasta)
-                );
-            }
+            // CORRECCIÓN: Simplificar la consulta a Firebase para evitar errores de índice.
+            // Siempre se consulta por el rango de fechas.
+            let q = _query(closingsRef, 
+                _where("fecha", ">=", fechaDesde),
+                _where("fecha", "<=", fechaHasta)
+            );
 
             const snapshot = await _getDocs(q);
-            const closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // CORRECCIÓN: Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
+            if (selectedUserId) {
+                closings = closings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
+            }
             
             window.tempClosingsData = closings;
 
@@ -748,7 +746,6 @@
     async function loadAndRenderConsolidatedClients() {
         const container = document.getElementById('consolidated-clients-container');
         try {
-            // CORRECCIÓN: Usar el Project ID en lugar del App ID.
             const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const allClientSnapshots = await _getDocs(clientesRef);
 
@@ -902,7 +899,6 @@
         }
 
         try {
-            // CORRECCIÓN: Usar el Project ID en lugar del App ID.
             const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const allClientSnapshots = await _getDocs(clientesRef);
             const allClients = allClientSnapshots.docs.map(doc => doc.data());
