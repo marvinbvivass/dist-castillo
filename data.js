@@ -73,14 +73,20 @@
     /**
      * Muestra la vista para buscar y ver cierres de vendedores.
      */
-    function showClosingDataView() {
+    async function showClosingDataView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Datos de Cierres de Vendedores</h1>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg items-end">
+                            <div>
+                                <label for="userFilter" class="block text-sm font-medium text-gray-700">Vendedor:</label>
+                                <select id="userFilter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                    <option value="">Todos los Vendedores</option>
+                                </select>
+                            </div>
                             <div>
                                 <label for="fechaDesde" class="block text-sm font-medium text-gray-700">Desde:</label>
                                 <input type="date" id="fechaDesde" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
@@ -93,7 +99,7 @@
                         </div>
 
                         <div id="cierres-list-container" class="overflow-x-auto max-h-96">
-                            <p class="text-center text-gray-500">Seleccione un rango de fechas para buscar.</p>
+                            <p class="text-center text-gray-500">Seleccione las opciones para buscar.</p>
                         </div>
                         <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                     </div>
@@ -107,15 +113,41 @@
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('fechaDesde').value = today;
         document.getElementById('fechaHasta').value = today;
+
+        await populateUserFilter();
     };
 
     /**
-     * Maneja la búsqueda de cierres de vendedores por rango de fecha.
+     * Popula el desplegable de filtro de usuarios.
+     */
+    async function populateUserFilter() {
+        const userFilterSelect = document.getElementById('userFilter');
+        if (!userFilterSelect) return;
+
+        try {
+            const usersRef = _collection(_db, "users");
+            const snapshot = await _getDocs(usersRef);
+            snapshot.docs.forEach(doc => {
+                const user = doc.data();
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = `${user.nombre || ''} ${user.apellido || user.email} (${user.camion || 'N/A'})`;
+                userFilterSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error("Error al cargar usuarios para el filtro:", error);
+        }
+    }
+
+
+    /**
+     * Maneja la búsqueda de cierres de vendedores por rango de fecha y usuario.
      */
     async function handleSearchClosings() {
         const container = document.getElementById('cierres-list-container');
         container.innerHTML = `<p class="text-center text-gray-500">Buscando...</p>`;
 
+        const selectedUserId = document.getElementById('userFilter').value;
         const fechaDesdeStr = document.getElementById('fechaDesde').value;
         const fechaHastaStr = document.getElementById('fechaHasta').value;
 
@@ -132,10 +164,20 @@
 
         try {
             const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            const q = _query(closingsRef, 
-                _where("fecha", ">=", fechaDesde),
-                _where("fecha", "<=", fechaHasta)
-            );
+            
+            let q;
+            if (selectedUserId) {
+                q = _query(closingsRef, 
+                    _where("vendedorInfo.userId", "==", selectedUserId),
+                    _where("fecha", ">=", fechaDesde),
+                    _where("fecha", "<=", fechaHasta)
+                );
+            } else {
+                q = _query(closingsRef, 
+                    _where("fecha", ">=", fechaDesde),
+                    _where("fecha", "<=", fechaHasta)
+                );
+            }
 
             const snapshot = await _getDocs(q);
             const closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -156,7 +198,7 @@
     function renderClosingsList(closings) {
         const container = document.getElementById('cierres-list-container');
         if (closings.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron cierres en el rango de fechas seleccionado.</p>`;
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron cierres para los filtros seleccionados.</p>`;
             return;
         }
         
@@ -514,24 +556,30 @@
         }
 
         try {
-            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            const q = _query(closingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+            // CAMBIO: Obtener cierres de usuarios y del admin
+            const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
+
+            const publicQuery = _query(publicClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+            const adminQuery = _query(adminClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+
+            const [publicSnapshot, adminSnapshot] = await Promise.all([_getDocs(publicQuery), _getDocs(adminQuery)]);
             
-            const snapshot = await _getDocs(q);
-            const closings = snapshot.docs.map(doc => doc.data());
+            const publicClosings = publicSnapshot.docs.map(doc => doc.data());
+            const adminClosings = adminSnapshot.docs.map(doc => doc.data());
+            const allClosings = [...publicClosings, ...adminClosings];
             
-            if (closings.length === 0) {
+            if (allClosings.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500">No hay datos de ventas en el período seleccionado.</p>`;
                 return;
             }
 
             const productSales = {};
-            // El inventario del admin se usa como referencia maestra para los detalles del producto
             const adminInventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const inventarioSnapshot = await _getDocs(adminInventarioRef);
             const adminInventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
             
-            closings.forEach(cierre => {
+            allClosings.forEach(cierre => {
                 cierre.ventas.forEach(venta => {
                     venta.productos.forEach(p => {
                         const adminProductInfo = adminInventarioMap.get(p.id) || p;
@@ -556,12 +604,12 @@
             let numWeeks = 1;
             if (statsType === 'general') {
                 const oneDay = 24 * 60 * 60 * 1000;
-                const firstDate = closings.reduce((min, c) => c.fecha.toDate() < min ? c.fecha.toDate() : min, new Date());
+                const firstDate = allClosings.reduce((min, c) => c.fecha.toDate() < min ? c.fecha.toDate() : min, new Date());
                 numWeeks = Math.ceil(Math.abs((now - firstDate) / (oneDay * 7))) || 1;
             }
             
-            _lastStatsData = productArray; // Guardar datos para descarga
-            _lastNumWeeks = numWeeks; // Guardar número de semanas para descarga
+            _lastStatsData = productArray;
+            _lastNumWeeks = numWeeks;
 
             renderStatsList(productArray, statsType, numWeeks);
 
@@ -681,7 +729,7 @@
                         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Clientes Consolidados</h1>
                         <div id="consolidated-clients-filters"></div>
                         <div id="consolidated-clients-container" class="overflow-x-auto max-h-96">
-                             <p class="text-center text-gray-500">Cargando clientes de todos los vendedores...</p>
+                             <p class="text-center text-gray-500">Cargando clientes...</p>
                         </div>
                         <div class="mt-6 flex flex-col sm:flex-row gap-4">
                             <button id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -700,25 +748,10 @@
     async function loadAndRenderConsolidatedClients() {
         const container = document.getElementById('consolidated-clients-container');
         try {
-            const usersRef = _collection(_db, "users");
-            const usersSnapshot = await _getDocs(usersRef);
-            const userIds = usersSnapshot.docs.map(doc => doc.id);
+            const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
+            const allClientSnapshots = await _getDocs(clientesRef);
 
-            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
-            const allClientSnapshots = await Promise.all(allClientPromises);
-
-            const consolidatedClientsMap = new Map();
-            allClientSnapshots.forEach(snapshot => {
-                snapshot.docs.forEach(doc => {
-                    const client = doc.data();
-                    const key = client.nombreComercial.trim().toLowerCase();
-                    if (!consolidatedClientsMap.has(key)) {
-                        consolidatedClientsMap.set(key, client);
-                    }
-                });
-            });
-
-            _consolidatedClientsCache = Array.from(consolidatedClientsMap.values());
+            _consolidatedClientsCache = allClientSnapshots.docs.map(doc => doc.data());
             
             const filtersContainer = document.getElementById('consolidated-clients-filters');
             filtersContainer.innerHTML = `
@@ -868,24 +901,9 @@
         }
 
         try {
-            const usersRef = _collection(_db, "users");
-            const usersSnapshot = await _getDocs(usersRef);
-            const userIds = usersSnapshot.docs.map(doc => doc.id);
-
-            const allClientPromises = userIds.map(uid => _getDocs(_collection(_db, `artifacts/${_appId}/users/${uid}/clientes`)));
-            const allClientSnapshots = await Promise.all(allClientPromises);
-
-            const consolidatedClientsMap = new Map();
-            allClientSnapshots.forEach(snapshot => {
-                snapshot.docs.forEach(doc => {
-                    const client = doc.data();
-                    const key = client.nombreComercial.trim().toLowerCase();
-                    if (!consolidatedClientsMap.has(key)) {
-                        consolidatedClientsMap.set(key, client);
-                    }
-                });
-            });
-            const allClients = Array.from(consolidatedClientsMap.values());
+            const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
+            const allClientSnapshots = await _getDocs(clientesRef);
+            const allClients = allClientSnapshots.docs.map(doc => doc.data());
 
             const clientsWithCoords = allClients.filter(c => {
                 if (!c.coordenadas) return false;
@@ -1019,4 +1037,3 @@
     };
 
 })();
-
