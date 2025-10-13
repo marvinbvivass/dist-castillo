@@ -163,7 +163,8 @@
         fechaHasta.setHours(23, 59, 59, 999);
 
         try {
-            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            // CORRECCIÓN: Se ajusta la ruta a la estructura estándar del proyecto.
+            const closingsRef = _collection(_db, `artifacts/${_appId}/public/data/user_closings`);
             
             let q;
             if (selectedUserId) {
@@ -557,7 +558,8 @@
 
         try {
             // CAMBIO: Obtener cierres de usuarios y del admin
-            const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            // CORRECCIÓN: Se ajusta la ruta a la estructura estándar del proyecto.
+            const publicClosingsRef = _collection(_db, `artifacts/${_appId}/public/data/user_closings`);
             const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
 
             const publicQuery = _query(publicClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
