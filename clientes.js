@@ -435,6 +435,11 @@
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderClientesList('clientesListContainer', false); 
         }, (error) => {
+            // CORRECCIÓN: Ignorar el error de permisos al cerrar sesión.
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de clientes detenido por cierre de sesión.");
+                return;
+            }
             console.error("Error al cargar clientes:", error);
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar la lista de clientes.</p>`;
         });
@@ -837,6 +842,12 @@
         const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderSaldosList();
+        }, (error) => {
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de saldos detenido por cierre de sesión.");
+                return;
+            }
+            console.error("Error al cargar saldos:", error);
         });
         _activeListeners.push(unsubscribe);
     }
@@ -845,7 +856,6 @@
         const container = document.getElementById('saldosListContainer');
         const searchInput = document.getElementById('saldo-search-input');
         
-        // CORRECCIÓN: Verificar que los elementos existen antes de usarlos.
         if (!container || !searchInput) return;
 
         const searchTerm = searchInput.value.toLowerCase();
@@ -853,7 +863,7 @@
         const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm));
 
         if (filteredClients.length === 0) {
-            container.innerHTML = `<p class="text-gray-500 text-center">No se encontraron clientes.</p>`;
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron clientes.</p>`;
             return;
         }
 
@@ -889,18 +899,18 @@
         const productosConVacios = inventarioSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         let optionsHTML = '<option value="">Seleccione un producto...</option>';
-        productosConVacios.forEach(p => {
-            optionsHTML += `<option value="${p.id}">${p.presentacion}</option>`;
+        productosConVacios.sort((a,b) => `${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`)).forEach(p => {
+            optionsHTML += `<option value="${p.id}">${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;
         });
 
         const saldoVacios = cliente.saldoVacios || {};
         let detalleHTML = '<p class="text-center text-gray-500">Este cliente no tiene saldos pendientes.</p>';
-        if (Object.keys(saldoVacios).length > 0) {
+        if (Object.keys(saldoVacios).some(key => saldoVacios[key] !== 0)) {
             detalleHTML = '<ul class="space-y-2">';
             for (const productoId in saldoVacios) {
                 if (saldoVacios[productoId] !== 0) {
-                    const producto = productosConVacios.find(p => p.id === productoId) || { presentacion: 'Producto Desconocido' };
-                    detalleHTML += `<li class="flex justify-between"><span>${producto.presentacion}:</span><span class="font-bold">${saldoVacios[productoId]}</span></li>`;
+                    const producto = productosConVacios.find(p => p.id === productoId) || { presentacion: 'Producto Desconocido', marca: 'N/A', segmento: 'N/A' };
+                    detalleHTML += `<li class="flex justify-between"><span>${producto.marca} - ${producto.segmento} - ${producto.presentacion}:</span><span class="font-bold">${saldoVacios[productoId]}</span></li>`;
                 }
             }
             detalleHTML += '</ul>';
@@ -989,4 +999,3 @@
     };
 
 })();
-
