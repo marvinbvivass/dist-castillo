@@ -213,7 +213,8 @@
      * Carga los datos de clientes e inventario y popula el filtro de rubros.
      */
     function loadDataForNewSale() {
-        const clientesRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/clientes`);
+        // CORRECCIÓN: Apuntar a la colección pública de clientes.
+        const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
         const unsubClientes = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         });
@@ -902,7 +903,7 @@
                 }
 
                 if (Object.keys(vaciosChanges).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _ventaActual.cliente.id);
+                    const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, _ventaActual.cliente.id);
                     await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) throw "El cliente no existe.";
@@ -1743,7 +1744,7 @@
                     }
 
                     if (Object.keys(vaciosAdjustments).length > 0) {
-                         const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, venta.clienteId);
+                         const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, venta.clienteId);
                          await _runTransaction(_db, async (transaction) => {
                             const clienteDoc = await transaction.get(clienteRef);
                             if (!clienteDoc.exists()) return;
@@ -1911,7 +1912,7 @@
                 }
 
                 if (Object.keys(vaciosAdjustments).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _originalVentaForEdit.clienteId);
+                    const clienteRef = _doc(_db, `artifacts/${_appId}/public/data/clientes`, _originalVentaForEdit.clienteId);
                      await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) return;
@@ -1996,4 +1997,3 @@
         }
     };
 })();
-
