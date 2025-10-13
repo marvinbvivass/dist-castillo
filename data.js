@@ -748,7 +748,8 @@
     async function loadAndRenderConsolidatedClients() {
         const container = document.getElementById('consolidated-clients-container');
         try {
-            const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
+            // CORRECCIÓN: Usar el Project ID en lugar del App ID.
+            const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const allClientSnapshots = await _getDocs(clientesRef);
 
             _consolidatedClientsCache = allClientSnapshots.docs.map(doc => doc.data());
@@ -901,7 +902,8 @@
         }
 
         try {
-            const clientesRef = _collection(_db, `artifacts/${_appId}/public/data/clientes`);
+            // CORRECCIÓN: Usar el Project ID en lugar del App ID.
+            const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const allClientSnapshots = await _getDocs(clientesRef);
             const allClients = allClientSnapshots.docs.map(doc => doc.data());
 
