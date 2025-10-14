@@ -1106,13 +1106,14 @@
                     vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
                 }
 
-                const productoCompleto = inventarioMap.get(p.id);
-                const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
-                const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
-                const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
+                const productoCompleto = inventarioMap.get(p.id) || p;
+                const rubro = productoCompleto.rubro || 'Sin Rubro';
+                const segmento = productoCompleto.segmento || 'Sin Segmento';
+                const marca = productoCompleto.marca || 'Sin Marca';
                 
                 if (!allProductsMap.has(p.id)) {
                     allProductsMap.set(p.id, {
+                        ...productoCompleto, // Copiar todos los datos del inventario
                         id: p.id,
                         rubro: rubro,
                         segmento: segmento,
@@ -1219,19 +1220,54 @@
             bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
             const currentClient = clientData[clientName];
             finalProductOrder.forEach(product => {
-                const quantity = currentClient.products[product.id] || 0;
-                bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
+                const quantityInUnits = currentClient.products[product.id] || 0;
+                let displayQuantity = '';
+
+                if (quantityInUnits > 0) {
+                    displayQuantity = `${quantityInUnits} Unds`;
+                    const ventaPor = product.ventaPor || {};
+                    const unidadesPorCaja = product.unidadesPorCaja || 1;
+                    const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                    if (isExclusiveCj && unidadesPorCaja > 0) {
+                        const totalBoxes = quantityInUnits / unidadesPorCaja;
+                        displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                        const totalPackages = quantityInUnits / unidadesPorPaquete;
+                        displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                    }
+                }
+                bodyHTML += `<td class="p-1 border text-center">${displayQuantity}</td>`;
             });
             bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>';
         finalProductOrder.forEach(product => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
                 totalQty += clientData[clientName].products[product.id] || 0;
             });
-            footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
+
+            let displayTotal = '';
+            if (totalQty > 0) {
+                displayTotal = `${totalQty} Unds`;
+                const ventaPor = product.ventaPor || {};
+                const unidadesPorCaja = product.unidadesPorCaja || 1;
+                const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+
+                if (isExclusiveCj && unidadesPorCaja > 0) {
+                    const totalBoxes = totalQty / unidadesPorCaja;
+                    displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                    const totalPackages = totalQty / unidadesPorPaquete;
+                    displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                }
+            }
+            footerHTML += `<td class="p-1 border text-center">${displayTotal}</td>`;
         });
         footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
@@ -1278,7 +1314,7 @@
 
         const reporteHTML = `
             <div class="text-left max-h-[80vh] overflow-auto">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
                 <div class="overflow-auto border">
                     <table class="min-w-full bg-white text-xs">
                         <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
@@ -1344,16 +1380,53 @@
         sortedClients.forEach(clientName => {
             const row = [clientName];
             const currentClient = clientData[clientName];
-            finalProductOrder.forEach(product => row.push(currentClient.products[product.id] || 0));
+            finalProductOrder.forEach(product => {
+                const quantityInUnits = currentClient.products[product.id] || 0;
+                let displayQuantity = '';
+    
+                if (quantityInUnits > 0) {
+                    displayQuantity = `${quantityInUnits} Unds`;
+                    const ventaPor = product.ventaPor || {};
+                    const unidadesPorCaja = product.unidadesPorCaja || 1;
+                    const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                    if (isExclusiveCj && unidadesPorCaja > 0) {
+                        const totalBoxes = quantityInUnits / unidadesPorCaja;
+                        displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                        const totalPackages = quantityInUnits / unidadesPorPaquete;
+                        displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                    }
+                }
+                row.push(displayQuantity);
+            });
             row.push(currentClient.totalValue);
             dataForSheet1.push(row);
         });
 
-        const footerRow = ["TOTALES (Uds)"];
+        const footerRow = ["TOTALES"];
         finalProductOrder.forEach(product => {
             let totalQty = 0;
             sortedClients.forEach(clientName => totalQty += clientData[clientName].products[product.id] || 0);
-            footerRow.push(totalQty);
+            
+            let displayTotal = '';
+            if (totalQty > 0) {
+                displayTotal = `${totalQty} Unds`;
+                const ventaPor = product.ventaPor || {};
+                const unidadesPorCaja = product.unidadesPorCaja || 1;
+                const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                if (isExclusiveCj && unidadesPorCaja > 0) {
+                    const totalBoxes = totalQty / unidadesPorCaja;
+                    displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                    const totalPackages = totalQty / unidadesPorPaquete;
+                    displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                }
+            }
+            footerRow.push(displayTotal);
         });
         footerRow.push(grandTotalValue);
         dataForSheet1.push(footerRow);
@@ -1415,9 +1488,8 @@
                         const userDocRef = _doc(_db, "users", _userId);
                         const userDoc = await _getDoc(userDocRef);
                         const userData = userDoc.exists() ? userDoc.data() : {};
-                        
-                        // CORRECCIÓN: Usar una ruta válida para la colección pública.
-                        const publicCierreRef = _doc(_collection(_db, `public_data/ventas-9a210/user_closings`));
+
+                        const publicCierreRef = _doc(_collection(_db, `public_data/${_appId}/user_closings`));
                         await _setDoc(publicCierreRef, {
                             fecha: new Date(),
                             ventas: ventas.map(({id, ...rest}) => rest),
@@ -1745,7 +1817,7 @@
                     }
 
                     if (Object.keys(vaciosAdjustments).length > 0) {
-                         const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, venta.clienteId);
+                         const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
                          await _runTransaction(_db, async (transaction) => {
                             const clienteDoc = await transaction.get(clienteRef);
                             if (!clienteDoc.exists()) return;
@@ -1913,7 +1985,7 @@
                 }
 
                 if (Object.keys(vaciosAdjustments).length > 0) {
-                    const clienteRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/clientes`, _originalVentaForEdit.clienteId);
+                    const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _originalVentaForEdit.clienteId);
                      await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
                         if (!clienteDoc.exists()) return;
