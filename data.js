@@ -165,8 +165,6 @@
         try {
             const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
             
-            // CORRECCIÓN: Simplificar la consulta a Firebase para evitar errores de índice.
-            // Siempre se consulta por el rango de fechas.
             let q = _query(closingsRef, 
                 _where("fecha", ">=", fechaDesde),
                 _where("fecha", "<=", fechaHasta)
@@ -175,7 +173,6 @@
             const snapshot = await _getDocs(q);
             let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // CORRECCIÓN: Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
             if (selectedUserId) {
                 closings = closings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
             }
@@ -223,8 +220,13 @@
                     <td class="py-2 px-3 border-b">${vendedor.nombre || ''} ${vendedor.apellido || ''}</td>
                     <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
-                    <td class="py-2 px-3 border-b text-center">
-                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver Detalle</button>
+                    <td class="py-2 px-3 border-b text-center space-x-2">
+                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
+                        <button onclick="window.dataModule.handleDownloadSingleClosing('${cierre.id}')" title="Descargar Reporte" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                        </button>
                     </td>
                 </tr>
             `;
@@ -520,6 +522,169 @@
             </div>`;
         _showModal(`Detalle del Cierre`, reporteHTML);
     }
+
+    /**
+     * Genera y descarga un archivo Excel para un único cierre.
+     */
+    async function exportSingleClosingToExcel(closingData) {
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            return;
+        }
+
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+
+        const dataForSheet1 = [];
+        const merges1 = [];
+        const headerRow1 = [""]; const headerRow2 = [""]; const headerRow3 = [""]; const headerRow4 = ["Cliente"];
+        
+        let currentColumn = 1;
+        sortedRubros.forEach(rubro => {
+            const rubroStartCol = currentColumn;
+            let rubroColspan = 0;
+            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            sortedSegmentos.forEach(segmento => {
+                const segmentoStartCol = currentColumn;
+                let segmentoColspan = 0;
+                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                sortedMarcas.forEach(marca => {
+                    const marcaStartCol = currentColumn;
+                    const presentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
+                    rubroColspan += presentaciones.length;
+                    segmentoColspan += presentaciones.length;
+                    headerRow3.push(marca);
+                    for (let i = 1; i < presentaciones.length; i++) headerRow3.push("");
+                    if (presentaciones.length > 1) merges1.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + presentaciones.length - 1 } });
+                    presentaciones.forEach(p => headerRow4.push(p.presentacion));
+                    currentColumn += presentaciones.length;
+                });
+                headerRow2.push(segmento);
+                for (let i = 1; i < segmentoColspan; i++) headerRow2.push("");
+                if (segmentoColspan > 1) merges1.push({ s: { r: 1, c: segmentoStartCol }, e: { r: 1, c: segmentoStartCol + segmentoColspan - 1 } });
+            });
+            headerRow1.push(rubro);
+            for (let i = 1; i < rubroColspan; i++) headerRow1.push("");
+            if (rubroColspan > 1) merges1.push({ s: { r: 0, c: rubroStartCol }, e: { r: 0, c: rubroStartCol + rubroColspan - 1 } });
+        });
+        
+        headerRow1.push(""); headerRow2.push(""); headerRow3.push(""); headerRow4.push("Total Cliente");
+        dataForSheet1.push(headerRow1, headerRow2, headerRow3, headerRow4);
+        merges1.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
+        merges1.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 3, c: finalProductOrder.length + 1 } });
+
+        sortedClients.forEach(clientName => {
+            const row = [clientName];
+            const currentClient = clientData[clientName];
+            finalProductOrder.forEach(product => {
+                const quantityInUnits = currentClient.products[product.id] || 0;
+                let displayQuantity = '';
+    
+                if (quantityInUnits > 0) {
+                    displayQuantity = `${quantityInUnits} Unds`;
+                    const ventaPor = product.ventaPor || {};
+                    const unidadesPorCaja = product.unidadesPorCaja || 1;
+                    const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                    if (isExclusiveCj && unidadesPorCaja > 0) {
+                        const totalBoxes = quantityInUnits / unidadesPorCaja;
+                        displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                        const totalPackages = quantityInUnits / unidadesPorPaquete;
+                        displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                    }
+                }
+                row.push(displayQuantity);
+            });
+            row.push(currentClient.totalValue);
+            dataForSheet1.push(row);
+        });
+
+        const footerRow = ["TOTALES"];
+        finalProductOrder.forEach(product => {
+            let totalQty = 0;
+            sortedClients.forEach(clientName => totalQty += clientData[clientName].products[product.id] || 0);
+            
+            let displayTotal = '';
+            if (totalQty > 0) {
+                displayTotal = `${totalQty} Unds`;
+                const ventaPor = product.ventaPor || {};
+                const unidadesPorCaja = product.unidadesPorCaja || 1;
+                const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                if (isExclusiveCj && unidadesPorCaja > 0) {
+                    const totalBoxes = totalQty / unidadesPorCaja;
+                    displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                    const totalPackages = totalQty / unidadesPorPaquete;
+                    displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                }
+            }
+            footerRow.push(displayTotal);
+        });
+        footerRow.push(grandTotalValue);
+        dataForSheet1.push(footerRow);
+
+        const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet1);
+        ws1['!merges'] = merges1;
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws1, 'Reporte de Cierre');
+
+        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        if (clientesConMovimientoVacios.length > 0) {
+            const dataForSheet2 = [['Cliente', 'Producto', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
+            clientesConMovimientoVacios.forEach(cliente => {
+                 const movimientos = vaciosMovements[cliente];
+                for(const productoId in movimientos) {
+                    const mov = movimientos[productoId];
+                    const producto = allProductsMap.get(productoId);
+                    const neto = mov.entregados - mov.devueltos;
+                     if(mov.entregados > 0 || mov.devueltos > 0) {
+                        dataForSheet2.push([
+                            cliente,
+                            producto ? producto.presentacion : 'Producto Desconocido',
+                            mov.entregados,
+                            mov.devueltos,
+                            neto
+                        ]);
+                    }
+                }
+            });
+            const ws2 = XLSX.utils.aoa_to_sheet(dataForSheet2);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Reporte de Vacíos');
+        }
+        
+        const vendedor = closingData.vendedorInfo || {};
+        const fecha = closingData.fecha.toDate().toISOString().slice(0, 10);
+        const vendedorNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
+        XLSX.writeFile(wb, `Cierre_${vendedorNombre}_${fecha}.xlsx`);
+    }
+
+    /**
+     * Maneja la descarga de un único cierre.
+     */
+    async function handleDownloadSingleClosing(closingId) {
+        const closingData = window.tempClosingsData.find(c => c.id === closingId);
+        if (!closingData) {
+            _showModal('Error', 'No se pudieron encontrar los datos del cierre para descargar.');
+            return;
+        }
+
+        _showModal('Progreso', 'Generando archivo Excel...');
+
+        try {
+            await exportSingleClosingToExcel(closingData);
+            // Cierra el modal de "progreso"
+            const modalContainer = document.getElementById('modalContainer');
+            if(modalContainer) modalContainer.classList.add('hidden');
+        } catch (error) {
+            console.error("Error al exportar cierre individual:", error);
+            _showModal('Error', `Ocurrió un error al generar el archivo: ${error.message}`);
+        }
+    }
+
 
     // --- Lógica de Estadísticas de Productos ---
 
@@ -1067,7 +1232,9 @@
 
     // Exponer funciones públicas al objeto window
     window.dataModule = {
-        showClosingDetail
+        showClosingDetail,
+        handleDownloadSingleClosing
     };
 
 })();
+
