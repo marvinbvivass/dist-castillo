@@ -285,16 +285,22 @@
             });
         }
         
-        function populateDropdown(collectionName, elementId, itemName) {
+        function populateDropdown(collectionName, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
 
-            const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+            // **CORRECCIÓN:** Determinar si la ruta es pública o privada
+            const path = collectionName.includes('/')
+                ? collectionName
+                : `artifacts/${appId}/users/${userId}/${collectionName}`;
+
+            const collectionRef = collection(db, path);
             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                 const items = snapshot.docs.map(doc => doc.data().name).sort();
                 selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
                 items.forEach(item => {
-                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
+                    const selected = item === selectedValue ? ' selected' : '';
+                    selectElement.innerHTML += `<option value="${item}"${selected}>${item}</option>`;
                 });
             });
             activeListeners.push(unsubscribe);
