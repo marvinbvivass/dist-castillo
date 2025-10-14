@@ -163,53 +163,26 @@
         fechaHasta.setHours(23, 59, 59, 999);
 
         try {
-            // CORRECCIÓN: Buscar en ambas colecciones (pública de usuarios y privada del admin).
-            const publicClosingsRef = _collection(_db, `public_data/ventas-9a210/user_closings`);
-            const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
-
-            const publicQuery = _query(publicClosingsRef, 
-                _where("fecha", ">=", fechaDesde),
-                _where("fecha", "<=", fechaHasta)
-            );
-            const adminQuery = _query(adminClosingsRef, 
+            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            
+            // CORRECCIÓN: Simplificar la consulta a Firebase para evitar errores de índice.
+            // Siempre se consulta por el rango de fechas.
+            let q = _query(closingsRef, 
                 _where("fecha", ">=", fechaDesde),
                 _where("fecha", "<=", fechaHasta)
             );
 
-            const [publicSnapshot, adminSnapshot] = await Promise.all([
-                _getDocs(publicQuery),
-                _getDocs(adminQuery)
-            ]);
-
-            const publicClosings = publicSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const snapshot = await _getDocs(q);
+            let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             
-            // Añadir información de vendedor simulada para los cierres del admin
-            const adminClosings = adminSnapshot.docs.map(doc => {
-                 const adminUserOption = Array.from(document.getElementById('userFilter').options).find(opt => opt.value === _userId);
-                 const adminName = adminUserOption ? adminUserOption.textContent.split('(')[0].trim() : 'Admin';
-
-                return { 
-                    id: doc.id, 
-                    ...doc.data(),
-                    vendedorInfo: { // Simular la estructura para consistencia
-                        userId: _userId,
-                        nombre: adminName,
-                        apellido: '',
-                        camion: ''
-                    }
-                };
-            });
-            
-            let allClosings = [...publicClosings, ...adminClosings];
-            
-            // Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
+            // CORRECCIÓN: Filtrar por vendedor en el lado del cliente (en la app) si es necesario.
             if (selectedUserId) {
-                allClosings = allClosings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
+                closings = closings.filter(cierre => cierre.vendedorInfo && cierre.vendedorInfo.userId === selectedUserId);
             }
             
-            window.tempClosingsData = allClosings;
+            window.tempClosingsData = closings;
 
-            renderClosingsList(allClosings);
+            renderClosingsList(closings);
 
         } catch (error) {
             console.error("Error al buscar cierres:", error);
@@ -323,13 +296,14 @@
                     vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
                 }
 
-                const productoCompleto = inventarioMap.get(p.id);
-                const rubro = productoCompleto ? productoCompleto.rubro : p.rubro || 'Sin Rubro';
-                const segmento = productoCompleto ? productoCompleto.segmento : p.segmento || 'Sin Segmento';
-                const marca = productoCompleto ? productoCompleto.marca : p.marca || 'Sin Marca';
+                const productoCompleto = inventarioMap.get(p.id) || p;
+                const rubro = productoCompleto.rubro || 'Sin Rubro';
+                const segmento = productoCompleto.segmento || 'Sin Segmento';
+                const marca = productoCompleto.marca || 'Sin Marca';
                 
                 if (!allProductsMap.has(p.id)) {
                     allProductsMap.set(p.id, {
+                        ...productoCompleto, // Copiar todos los datos del inventario
                         id: p.id,
                         rubro: rubro,
                         segmento: segmento,
@@ -434,19 +408,54 @@
             bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
             const currentClient = clientData[clientName];
             finalProductOrder.forEach(product => {
-                const quantity = currentClient.products[product.id] || 0;
-                bodyHTML += `<td class="p-1 border text-center">${quantity > 0 ? quantity : ''}</td>`;
+                const quantityInUnits = currentClient.products[product.id] || 0;
+                let displayQuantity = '';
+
+                if (quantityInUnits > 0) {
+                    displayQuantity = `${quantityInUnits} Unds`;
+                    const ventaPor = product.ventaPor || {};
+                    const unidadesPorCaja = product.unidadesPorCaja || 1;
+                    const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+                    if (isExclusiveCj && unidadesPorCaja > 0) {
+                        const totalBoxes = quantityInUnits / unidadesPorCaja;
+                        displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                        const totalPackages = quantityInUnits / unidadesPorPaquete;
+                        displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                    }
+                }
+                bodyHTML += `<td class="p-1 border text-center">${displayQuantity}</td>`;
             });
             bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
         });
         
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES (Uds)</td>';
+        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>';
         finalProductOrder.forEach(product => {
             let totalQty = 0;
             sortedClients.forEach(clientName => {
                 totalQty += clientData[clientName].products[product.id] || 0;
             });
-            footerHTML += `<td class="p-1 border text-center">${totalQty}</td>`;
+            
+            let displayTotal = '';
+            if (totalQty > 0) {
+                displayTotal = `${totalQty} Unds`;
+                const ventaPor = product.ventaPor || {};
+                const unidadesPorCaja = product.unidadesPorCaja || 1;
+                const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
+                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
+
+                if (isExclusiveCj && unidadesPorCaja > 0) {
+                    const totalBoxes = totalQty / unidadesPorCaja;
+                    displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                    const totalPackages = totalQty / unidadesPorPaquete;
+                    displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                }
+            }
+            footerHTML += `<td class="p-1 border text-center">${displayTotal}</td>`;
         });
         footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
@@ -499,7 +508,7 @@
                     <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
                     <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p>
                 </div>
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas (Unidades)</h3>
+                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
                 <div class="overflow-auto border">
                     <table class="min-w-full bg-white text-xs">
                         <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
@@ -581,8 +590,8 @@
         }
 
         try {
-            // CORRECCIÓN: Usar ruta pública válida y combinar con cierres del admin.
-            const publicClosingsRef = _collection(_db, `public_data/ventas-9a210/user_closings`);
+            // CAMBIO: Obtener cierres de usuarios y del admin
+            const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
             const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
 
             const publicQuery = _query(publicClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
