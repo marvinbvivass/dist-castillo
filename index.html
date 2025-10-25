@@ -10,8 +10,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- CAMBIO: Se añade el CSS de Leaflet para los mapas -->
+
+    <!-- Leaflet CSS for maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
     <!-- PWA Manifest and Theme Color -->
@@ -32,7 +32,7 @@
             width: 100vw;
             height: 100vh;
             z-index: -1;
-            background-image: url('images/fondo.png'); 
+            background-image: url('images/fondo.png');
             background-size: cover;
             background-position: center;
             filter: blur(3px) brightness(0.6);
@@ -51,7 +51,7 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
-        /* Estilo para el dropdown de búsqueda */
+        /* Style for search dropdown */
         .autocomplete-list {
             position: absolute;
             background-color: white;
@@ -62,13 +62,15 @@
             z-index: 10;
             width: 100%;
             border-radius: 0 0 0.5rem 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Add shadow */
         }
         .autocomplete-item {
             padding: 0.5rem 1rem;
             cursor: pointer;
             transition: background-color 0.2s;
+            font-size: 0.875rem; /* Slightly smaller font */
         }
-        .autocomplete-item:hover {
+        .autocomplete-item:hover, .autocomplete-item.selected { /* Style for selected/hovered */
             background-color: #f1f5f9;
         }
         .uppercase-ticket {
@@ -76,20 +78,26 @@
         }
         .price-toggle:hover {
             cursor: pointer;
-            background-color: #f0f0f0;
+            background-color: #f0f0f0; /* Slight background on hover */
+            border-radius: 4px; /* Rounded corners */
+        }
+         /* Style for drag indicator */
+        .drag-over {
+             border-top: 3px dashed #3b82f6; /* Blue dashed line */
+             background-color: #eff6ff; /* Light blue background */
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col bg-gray-100"> {/* Default background */}
     <div id="app" class="flex flex-col min-h-screen">
-        <!-- El header ha sido eliminado -->
+        {/* Header removed */}
 
-        <!-- Contenido principal para el menú y otras vistas, visible solo cuando el usuario está autenticado -->
+        {/* Main content for menu and other views, visible only when authenticated */}
         <main id="mainContent" class="flex-grow hidden">
-            <!-- El contenido de la página se inserta aquí dinámicamente -->
+            {/* Page content inserted dynamically */}
         </main>
 
-        <!-- Contenido para la vista de login, visible solo cuando el usuario no está autenticado -->
+        {/* Login view content, visible only when unauthenticated */}
         <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -101,95 +109,100 @@
                     <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                         Ingresar
                     </button>
-                    <p id="authMessage" class="text-sm text-red-500 mt-2"></p>
+                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> {/* Fixed height */}
                 </form>
                  <p class="mt-6 text-sm text-gray-800">
-                    ¿No tienes una cuenta? 
+                    ¿No tienes una cuenta?
                     <button id="goToRegisterBtn" class="font-semibold text-blue-600 hover:underline">Regístrate aquí</button>
                 </p>
             </div>
         </main>
-        
-        <!-- Contenido para la vista de registro -->
+
+        {/* Registration view content */}
         <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
                 <form id="registerForm" class="space-y-4">
                     <input type="email" id="registerEmailInput" placeholder="Email" required
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <input type="password" id="registerPasswordInput" placeholder="Contraseña" required
+                    <input type="password" id="registerPasswordInput" placeholder="Contraseña (mín. 6 caracteres)" required minlength="6"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <input type="password" id="confirmPasswordInput" placeholder="Confirmar Contraseña" required
+                    <input type="password" id="confirmPasswordInput" placeholder="Confirmar Contraseña" required minlength="6"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
                         Registrar
                     </button>
-                    <p id="registerMessage" class="text-sm text-red-500 mt-2"></p>
+                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> {/* Fixed height */}
                 </form>
                 <p class="mt-6 text-sm text-gray-800">
-                    ¿Ya tienes una cuenta? 
+                    ¿Ya tienes una cuenta?
                     <button id="goToLoginBtn" class="font-semibold text-blue-600 hover:underline">Inicia sesión</button>
                 </p>
             </div>
         </main>
 
 
-        <!-- Modal para mensajes y formularios -->
-        <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 hidden animate-fade-in">
-            <div id="modalContent" class="bg-white p-8 rounded-lg shadow-xl max-w-lg w-full mx-4"></div>
+        {/* Modal container for messages and forms */}
+        <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden animate-fade-in p-4"> {/* Added padding */}
+            {/* Modal content adjusted for better responsiveness */}
+            <div id="modalContent" class="bg-white p-6 md:p-8 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"> {/* Max height and scroll */}
+                {/* Content injected dynamically */}
+            </div>
         </div>
 
-        <!-- Controles Flotantes -->
-        <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-20 hidden">
-             <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg"></span>
-            <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center">
+
+        {/* Floating Controls */}
+        <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-40 hidden"> {/* Lower z-index than modal */}
+             <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300"></span>
+            <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center transform hover:scale-110" title="Cerrar Sesión"> {/* Added tooltip */}
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
             </button>
         </div>
     </div>
-    
-    <!-- CAMBIO: Se añade el JS de Leaflet para los mapas -->
+
+    <!-- Leaflet JS for maps -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Cargar los scripts de los módulos -->
+    <!-- Load module scripts -->
     <script src="data.js"></script>
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
     <script src="catalogo.js"></script>
     <script src="clientes.js"></script>
     <script src="ventas.js"></script>
-    <!-- NUEVO: Incluir script de obsequios -->
-    <script src="obsequios.js"></script>
-    <!-- FIN NUEVO -->
+    <script src="obsequios.js"></script> {/* <-- NUEVO SCRIPT */}
 
 
     <script type="module">
+        // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Added limit
 
-        // Configuración de Firebase
+        // Firebase configuration (consider moving to a separate config file or environment variables)
         const firebaseConfig = {
-            apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
+            apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU", // Replace with your actual API key
             authDomain: "ventas-9a210.firebaseapp.com",
             projectId: "ventas-9a210",
-            storageBucket: "ventas-9a210.firebasestorage.app",
+            storageBucket: "ventas-9a210.appspot.com", // Corrected storage bucket
             messagingSenderId: "815890981146",
             appId: "1:815890981146:web:938fe5e09babe511e98ca3",
             measurementId: "G-N0QXG70WM1"
         };
-        const appId = firebaseConfig.appId;
+         // Use __app_id if available (for Canvas environment)
+         const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
 
+        // Global variables
         let db;
         let auth;
         let userId;
         let userRole = 'user'; // Default role
-        let activeListeners = [];
-        window.isLoggingOut = false; // Bandera global para el estado de cierre de sesión
+        let activeListeners = []; // Store active Firestore listeners for cleanup
+        window.isLoggingOut = false; // Global flag for logout state
 
-        // Referencias a los elementos del DOM
+        // DOM element references
         const mainContent = document.getElementById('mainContent');
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
@@ -200,394 +213,595 @@
         const registerForm = document.getElementById('registerForm');
         const registerMessage = document.getElementById('registerMessage');
         const floatingControls = document.getElementById('floating-controls');
-        
-        // --- FUNCIONES DE UTILIDAD (Compartidas con los módulos) ---
-        
-        function showModal(title, message, onConfirm = null, confirmText = 'Confirmar') {
-            modalContent.innerHTML = `
-                <div class="text-center">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
-                    <div class="text-gray-600 mb-6">${message}</div>
-                    <div class="space-x-4">
-                        <button id="closeModalBtn" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cerrar</button>
-                        ${onConfirm ? `<button id="confirmBtn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">${confirmText}</button>` : ''}
+        const connectionStatusEl = document.getElementById('connectionStatus');
+
+
+        // --- UTILITY FUNCTIONS (Shared with modules) ---
+
+        /**
+         * Displays a modal dialog.
+         * @param {string} title - The modal title.
+         * @param {string} message - The modal message content (can be HTML).
+         * @param {function|null} onConfirm - Callback function if confirm button is clicked. If null, no confirm button shown.
+         * @param {string} confirmText - Text for the confirm button.
+         * @param {function|null} onCancel - Callback function if close/cancel button is clicked.
+         * @param {boolean} triggerConfirmLogic - If true, the onConfirm function itself handles closing and progress. If false (default), modal closes before calling onConfirm.
+         */
+         function showModal(title, message, onConfirm = null, confirmText = 'Confirmar', onCancel = null, triggerConfirmLogic = false) {
+             modalContent.innerHTML = `
+                 <div class="text-center">
+                     <h3 class="text-xl font-bold text-gray-800 mb-4">${title}</h3>
+                     <div class="text-gray-600 mb-6 text-sm md:text-base">${message}</div> {/* Responsive text size */}
+                     <div class="flex flex-col sm:flex-row justify-center gap-3 mt-6"> {/* Flex layout for buttons */}
+                         <button id="closeModalBtn" class="w-full sm:w-auto px-5 py-2.5 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition duration-200">Cerrar</button>
+                         ${onConfirm ? `<button id="confirmBtn" class="w-full sm:w-auto px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200">${confirmText}</button>` : ''}
+                     </div>
+                 </div>
+             `;
+
+             const closeModal = () => {
+                 modalContainer.classList.add('hidden');
+                 if (onCancel) {
+                     try { onCancel(); } catch (e) { console.error("Error in modal onCancel:", e); }
+                 }
+                 // Remove event listener after closing to prevent multiple triggers
+                 modalContainer.removeEventListener('click', handleOutsideClick);
+             };
+
+             const handleOutsideClick = (event) => {
+                 if (event.target === modalContainer) {
+                     closeModal();
+                 }
+             };
+
+             document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+
+             if (onConfirm) {
+                 const confirmBtn = document.getElementById('confirmBtn');
+                 confirmBtn.addEventListener('click', async () => {
+                      if (triggerConfirmLogic) {
+                          // Disable buttons while logic runs
+                          confirmBtn.disabled = true;
+                          confirmBtn.textContent = 'Procesando...';
+                          document.getElementById('closeModalBtn').disabled = true;
+                          try {
+                               // Execute the confirm logic. It should return true to close, false to keep open.
+                               const shouldClose = await onConfirm();
+                               if (shouldClose !== false) { // Close unless explicitly told not to
+                                   closeModal(); // Use closeModal to ensure cleanup
+                               }
+                          } catch(e) {
+                              console.error("Error in modal onConfirm (triggerConfirmLogic):", e);
+                               // Show a new error modal instead of modifying the current one
+                               showModal("Error", `Ocurrió un error: ${e.message}`); // Show a new error modal
+                          } finally {
+                               // Re-enable buttons ONLY if modal didn't close (e.g., validation failed)
+                              if (!modalContainer.classList.contains('hidden')) {
+                                   confirmBtn.disabled = false;
+                                   confirmBtn.textContent = confirmText;
+                                   document.getElementById('closeModalBtn').disabled = false;
+                              }
+                          }
+                      } else {
+                          closeModal(); // Close modal first, then execute logic
+                          try { onConfirm(); } catch (e) { console.error("Error in modal onConfirm:", e); }
+                      }
+                 });
+             }
+
+             // Add listener for outside click
+             modalContainer.addEventListener('click', handleOutsideClick);
+
+             modalContainer.classList.remove('hidden'); // Show the modal
+         }
+
+
+        /**
+         * Shows a modal specifically for adding simple named items (like Rubro, Segmento, Marca).
+         * Includes validation for duplicates (case-insensitive) and calls propagation if added by admin.
+         * @param {string} collectionName - Firestore collection name (e.g., 'rubros').
+         * @param {string} itemName - Display name (e.g., 'Rubro').
+         */
+        async function showAddItemModal(collectionName, itemName) {
+            // Check if the specific function exists in inventarioModule first
+            if (userRole === 'admin' && window.inventarioModule && typeof window.inventarioModule.showAddCategoryModal === 'function') {
+                // Delegate to the specialized function in inventarioModule for admins
+                window.inventarioModule.showAddCategoryModal(collectionName, itemName);
+            } else {
+                // Fallback to the original simple modal for non-admins or if function doesn't exist
+                modalContent.innerHTML = `
+                    <div class="text-center">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
+                        <form id="addItemForm" class="space-y-4">
+                            <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
+                            <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
+                        </form>
+                        <p id="addItemMessage" class="text-sm mt-2 h-4"></p> {/* Fixed height for messages */}
+                        <div class="mt-4">
+                             <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
+                        </div>
                     </div>
-                </div>
-            `;
-            document.getElementById('closeModalBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
-            if (onConfirm) {
-                document.getElementById('confirmBtn').addEventListener('click', () => {
-                    modalContainer.classList.add('hidden');
-                    onConfirm();
+                `;
+                modalContainer.classList.remove('hidden');
+                setTimeout(() => document.getElementById('newItemInput')?.focus(), 50);
+
+                document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
+
+                document.getElementById('addItemForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const newItemInput = document.getElementById('newItemInput');
+                    const newItemName = newItemInput.value.trim();
+                    const addItemMessage = document.getElementById('addItemMessage');
+                    const submitButton = e.target.querySelector('button[type="submit"]');
+
+                    if (!newItemName) {
+                        addItemMessage.textContent = 'El nombre no puede estar vacío.';
+                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                        return;
+                    }
+                    const newItemNameUpper = newItemName.toUpperCase();
+
+                    addItemMessage.textContent = '';
+                    submitButton.disabled = true;
+                    submitButton.textContent = 'Verificando...';
+
+                    try {
+                        const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+                        const q = query(collectionRef, where("name", "==", newItemNameUpper), limit(1));
+                        const snapshot = await getDocs(q);
+
+                        if (!snapshot.empty) {
+                            addItemMessage.textContent = `"${newItemName}" ya existe.`;
+                            addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                            newItemInput.select();
+                        } else {
+                            const newItemData = { name: newItemNameUpper };
+                            await addDoc(collectionRef, newItemData);
+                            // NO propagation needed here as it's handled by inventarioModule or not applicable for non-admins
+                            addItemMessage.textContent = `¡"${newItemNameUpper}" agregado!`;
+                            addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
+                            newItemInput.value = '';
+                            newItemInput.focus();
+                            setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
+                        }
+                    } catch (err) {
+                        console.error(`Error al agregar ${itemName}:`, err);
+                        addItemMessage.textContent = `Error al guardar. Intenta de nuevo.`;
+                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                    } finally {
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Agregar';
+                    }
                 });
             }
-            modalContainer.classList.remove('hidden');
         }
 
-        function showAddItemModal(collectionName, itemName) {
-            modalContent.innerHTML = `
-                <div class="text-center">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
-                    <form id="addItemForm" class="space-y-4">
-                        <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
-                        <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg">Agregar</button>
-                    </form>
-                    <p id="addItemMessage" class="text-sm text-green-600 mt-2 h-4"></p>
-                    <div class="mt-4">
-                         <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg">Cerrar</button>
-                    </div>
-                </div>
-            `;
-            modalContainer.classList.remove('hidden');
 
-            document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
-
-            document.getElementById('addItemForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const newItemInput = document.getElementById('newItemInput');
-                const newItemName = newItemInput.value.trim();
-                const addItemMessage = document.getElementById('addItemMessage');
-                const submitButton = e.target.querySelector('button[type="submit"]');
-
-                if (!newItemName) return;
-
-                // Resetear mensaje y deshabilitar botón mientras se procesa
-                addItemMessage.textContent = '';
-                submitButton.disabled = true;
-                submitButton.textContent = 'Verificando...';
-
-                try {
-                    // Determinar si la ruta es pública o privada basada en el nombre
-                    const path = collectionName.includes('/') ? collectionName : `artifacts/${appId}/users/${userId}/${collectionName}`;
-                    const collectionRef = collection(db, path);
-                    
-                    // Obtener todos los documentos para verificar duplicados sin distinción de mayúsculas/minúsculas
-                    const snapshot = await getDocs(collectionRef);
-                    const existingItems = snapshot.docs.map(doc => doc.data().name.toLowerCase());
-
-                    // Verificar si el nuevo ítem (en minúsculas) ya existe
-                    if (existingItems.includes(newItemName.toLowerCase())) {
-                        addItemMessage.textContent = `"${itemName}" ya existe.`;
-                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
-                        setTimeout(() => { addItemMessage.textContent = ''; }, 3000);
-                    } else {
-                        // Si no es un duplicado, agregarlo
-                        await addDoc(collectionRef, { name: newItemName });
-                        addItemMessage.textContent = `¡"${newItemName}" agregado!`;
-                        addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
-                        newItemInput.value = '';
-                        newItemInput.focus();
-                        setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
-                    }
-                } catch (err) {
-                    console.error(`Error al agregar ${itemName}:`, err);
-                    addItemMessage.textContent = `Error al guardar.`;
-                    addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
-                } finally {
-                    // Volver a habilitar el botón
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Agregar';
-                }
-            });
-        }
-        
-        function populateDropdown(collectionPathOrName, elementId, itemName, selectedValue = null) {
+        /**
+         * Populates a dropdown select element with data from a Firestore collection.
+         * Handles potential errors during snapshot listening.
+         */
+        function populateDropdown(collectionPath, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
-            if (!selectElement) return;
+            if (!selectElement) {
+                console.warn(`Dropdown element not found: ${elementId}`);
+                return;
+            }
 
-            // **CORRECCIÓN:** Determinar si la ruta es pública o privada
-            const path = collectionPathOrName.includes('/')
-                ? collectionPathOrName // Ya es una ruta completa
-                : `artifacts/${appId}/users/${userId}/${collectionPathOrName}`; // Es solo el nombre, construir ruta privada
+            const placeholderText = `Seleccione un ${itemName}`;
+             // Ensure placeholder exists and set text
+             let placeholder = selectElement.querySelector('option[value=""]');
+             if (!placeholder) {
+                 placeholder = document.createElement('option');
+                 placeholder.value = "";
+                 selectElement.prepend(placeholder); // Add at the beginning
+             }
+             placeholder.textContent = placeholderText;
+             // Clear only non-placeholder options
+             Array.from(selectElement.options).forEach(option => {
+                 if (option.value !== "") selectElement.removeChild(option);
+             });
 
-            const collectionRef = collection(db, path);
-            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const items = snapshot.docs.map(doc => doc.data().name).sort();
-                const currentValue = selectElement.value; // Guardar valor actual si existe
-                selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
-                items.forEach(item => {
-                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
-                });
-                // Intentar restaurar el valor seleccionado
-                if ([...selectElement.options].some(opt => opt.value === selectedValue)) {
-                     selectElement.value = selectedValue;
-                } else if ([...selectElement.options].some(opt => opt.value === currentValue)) {
-                     selectElement.value = currentValue; // Restaurar valor previo si el nuevo seleccionado no está
-                }
-            });
-            activeListeners.push(unsubscribe);
+
+             const collectionRef = collection(db, collectionPath);
+             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+                 const currentSelection = selectedValue || selectElement.value; // Use provided selectedValue or current dropdown value
+                 // Clear only non-placeholder options before repopulating
+                 Array.from(selectElement.options).forEach(option => {
+                      if (option.value !== "") selectElement.removeChild(option);
+                 });
+
+                 // Sort items alphabetically
+                 const items = snapshot.docs
+                                    .map(doc => ({ id: doc.id, name: doc.data().name }))
+                                     // Filter out items without a name before sorting
+                                    .filter(item => item.name)
+                                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                 let foundSelected = false;
+                 items.forEach(item => {
+                      const option = document.createElement('option');
+                      option.value = item.name;
+                      option.textContent = item.name;
+                      if (item.name === currentSelection) {
+                          option.selected = true;
+                          foundSelected = true;
+                      }
+                      selectElement.appendChild(option);
+                 });
+
+                 // If the previously selected value no longer exists, reset to placeholder
+                 if (!foundSelected && currentSelection !== "") {
+                      selectElement.value = "";
+                 }
+                  selectElement.disabled = false; // Enable dropdown after loading
+
+             }, (error) => {
+                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
+                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
+                  selectElement.disabled = true;
+                  // Stop listening on error? Maybe retry later? For now, just log and disable.
+                  unsubscribe(); // Stop listening if there's an error
+                  activeListeners = activeListeners.filter(l => l !== unsubscribe); // Remove from active list
+             });
+
+             activeListeners.push(unsubscribe);
         }
-        
-        // --- LÓGICA DE AUTENTICACIÓN Y VISTAS PRINCIPALES ---
 
+
+        // --- AUTHENTICATION AND VIEW LOGIC ---
+
+        /** Handles user registration */
         async function handleRegister(e) {
             e.preventDefault();
             const email = document.getElementById('registerEmailInput').value;
             const password = document.getElementById('registerPasswordInput').value;
             const confirmPassword = document.getElementById('confirmPasswordInput').value;
-            registerMessage.textContent = '';
+            registerMessage.textContent = ''; // Clear previous messages
+
             if (password !== confirmPassword) {
                 registerMessage.textContent = 'Las contraseñas no coinciden.';
                 return;
             }
+            if (password.length < 6) {
+                 registerMessage.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+                 return;
+            }
+
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                // Create a user profile document in the 'users' collection
+                // Create a user profile document in the 'users' collection upon registration
                 const userDocRef = doc(db, "users", user.uid);
                 await setDoc(userDocRef, {
                     email: user.email,
                     role: 'user', // Default role for new users
-                    createdAt: new Date()
+                    createdAt: new Date() // Store creation timestamp
                 });
+                // onAuthStateChanged will handle showing the main view
             } catch (error) {
-                registerMessage.textContent = `Error al registrar: ${error.message}`;
+                console.error("Registration error:", error);
+                // Provide more specific error messages
+                if (error.code === 'auth/email-already-in-use') {
+                    registerMessage.textContent = 'Este correo electrónico ya está registrado.';
+                } else if (error.code === 'auth/weak-password') {
+                     registerMessage.textContent = 'La contraseña es demasiado débil (mínimo 6 caracteres).';
+                } else {
+                    registerMessage.textContent = 'Error al registrar. Verifica el correo e inténtalo de nuevo.';
+                }
             }
         }
 
+        /** Handles user login */
         async function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('emailInput').value;
             const password = document.getElementById('passwordInput').value;
-            authMessage.textContent = '';
+            authMessage.textContent = ''; // Clear previous messages
+            const loginButton = e.target.querySelector('button[type="submit"]');
+            loginButton.disabled = true; // Disable button during login attempt
+            loginButton.textContent = 'Ingresando...';
+
             try {
                 await signInWithEmailAndPassword(auth, email, password);
+                // onAuthStateChanged will handle showing the main view
             } catch (error) {
-                authMessage.textContent = 'Error al iniciar sesión. Verifique sus credenciales.';
+                console.error("Login error:", error);
+                 // More specific error messages
+                 if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                     authMessage.textContent = 'Correo electrónico o contraseña incorrectos.';
+                 } else if (error.code === 'auth/too-many-requests') {
+                      authMessage.textContent = 'Demasiados intentos fallidos. Intenta más tarde.';
+                 } else {
+                     authMessage.textContent = 'Error al iniciar sesión. Verifica tus credenciales e inténtalo de nuevo.';
+                 }
+                 loginButton.disabled = false; // Re-enable button on error
+                 loginButton.textContent = 'Ingresar';
+            }
+            // No need to re-enable button on success, as the view will change
+        }
+
+        /** Handles user logout */
+        async function handleLogout() {
+            window.isLoggingOut = true;
+            cleanupListeners();
+            try {
+                await signOut(auth);
+                console.log("User signed out successfully.");
+                // onAuthStateChanged handles showing the login view
+            } catch (error) {
+                 console.error("Logout error:", error);
+                 window.isLoggingOut = false; // Reset flag on error
+                 _showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
             }
         }
 
-        async function handleLogout() {
-            window.isLoggingOut = true; // Activar la bandera
-            cleanupListeners();
-            await signOut(auth);
-            // Asegurarse de que el usuario vea la pantalla de login
-             showLoginView();
-             // Recargar la página para una limpieza completa (opcional pero recomendado)
-             // window.location.reload();
-        }
-        
+        /** Detaches all active Firestore listeners */
         function cleanupListeners() {
-            console.log(`Limpiando ${activeListeners.length} listener(s) activo(s)...`); // Log para depuración
+            console.log(`Cleaning up ${activeListeners.length} active listener(s)...`);
             activeListeners.forEach(unsubscribe => {
-                try { unsubscribe(); } catch (e) { console.warn("Error al desuscribir listener:", e); }
+                try {
+                    unsubscribe();
+                } catch (e) {
+                    // Log warning but continue cleanup
+                    console.warn("Error unsubscribing listener (might already be inactive):", e);
+                }
             });
-            activeListeners = [];
+            activeListeners = []; // Reset the array
         }
 
+        /** Displays the login view */
         function showLoginView() {
-            window.isLoggingOut = false; // Resetear la bandera al mostrar la vista de login
-            cleanupListeners();
+            window.isLoggingOut = false;
+            cleanupListeners(); // Ensure listeners are clean
             floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             loginContent.classList.remove('hidden');
             loginForm.reset();
             authMessage.textContent = '';
+            document.body.classList.remove('catalogo-active');
+            document.body.style.removeProperty('--catalogo-bg-image');
+            console.log("Showing Login View");
         }
 
+        /** Displays the registration view */
         function showRegisterView() {
+            // No need to cleanup listeners here, happens when navigating away or logging out
             floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.remove('hidden');
             registerForm.reset();
             registerMessage.textContent = '';
+            console.log("Showing Register View");
         }
 
+        /** Preloads essential data collections for offline use */
         async function preloadAllData() {
-             if (!userId) return; // Asegurarse de que userId esté definido
-            const collectionsToPreload = ['inventario', 'clientes', 'ventas', 'rubros', 'segmentos', 'marcas', 'sectores'];
-            const preloadPromises = collectionsToPreload.map(colName => {
-                let path;
-                // Determinar ruta correcta (pública o privada)
-                if (['clientes', 'sectores'].includes(colName)) {
-                    // Usar el Project ID directamente aquí es más robusto que appId si difieren
-                     path = `artifacts/ventas-9a210/public/data/${colName}`;
-                } else {
-                     path = `artifacts/${appId}/users/${userId}/${colName}`;
-                }
-                 console.log(`Preloading ${path}`); // Debug
-                 return getDocs(collection(db, path)).catch(err => {
-                     console.warn(`Failed to preload ${colName}:`, err.message); // Log de advertencia
-                     return null; // Continuar incluso si una colección falla
-                 });
-            });
-            await Promise.all(preloadPromises);
-             console.log("Preload complete (or attempted)."); // Debug
+            const startTime = performance.now(); // Start timing
+            // Define collections with user-specific and public paths
+            const collectionsToPreload = [
+                { path: `artifacts/${appId}/users/${userId}/inventario`, name: 'Inventario' },
+                { path: `artifacts/${appId}/users/${userId}/rubros`, name: 'Rubros' },
+                { path: `artifacts/${appId}/users/${userId}/segmentos`, name: 'Segmentos' },
+                { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
+                { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
+                { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
+                // Consider adding config if needed offline immediately
+                { path: `artifacts/${appId}/users/${userId}/config/obsequio`, name: 'Config Obsequio' }
+            ];
+             console.log("Preloading data for offline use...");
+             const results = await Promise.allSettled(
+                 collectionsToPreload.map(col => getDocs(collection(db, col.path)))
+             );
+             results.forEach((result, index) => {
+                 const colInfo = collectionsToPreload[index];
+                 if (result.status === 'fulfilled') {
+                     console.log(` - Preloaded ${colInfo.name} (${colInfo.path}): ${result.value.size} docs`);
+                 } else {
+                     // Log warning but don't block app initialization
+                      console.warn(` - Failed to preload ${colInfo.name} (${colInfo.path}): ${result.reason?.code || result.reason}`);
+                 }
+             });
+             const endTime = performance.now();
+             console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
         }
 
 
+        /** Displays the main application view after authentication */
         async function showMainView(currentUser) {
             userId = currentUser.uid;
+            console.log("Showing Main View for user:", userId);
 
             // Fetch user role
             const userDocRef = doc(db, "users", userId);
-            const userDoc = await getDoc(userDocRef);
-            if (userDoc.exists()) {
-                userRole = userDoc.data().role || 'user';
-            } else {
-                // Si el usuario existe en Auth pero no en 'users' (puede pasar si se borra manual), crearlo.
-                console.warn(`User document for ${userId} not found. Creating with default 'user' role.`);
-                await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() });
-                userRole = 'user';
+            try {
+                const userDoc = await getDoc(userDocRef);
+                if (userDoc.exists()) {
+                    userRole = userDoc.data().role || 'user';
+                    console.log("User role:", userRole);
+                } else {
+                    console.warn(`User document for ${userId} not found. Creating default.`);
+                    await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true });
+                    userRole = 'user';
+                }
+            } catch (error) {
+                 console.error("Error fetching user role:", error);
+                 _showModal("Error", "No se pudo verificar tu rol. Usando rol 'user'.");
+                 userRole = 'user'; // Fallback
             }
 
+            // Show loading state
             loginContent.classList.add('hidden');
             registerContent.classList.add('hidden');
-            mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold">Sincronizando datos...</h2></div></div>`;
+            mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando datos iniciales...</h2></div></div>`;
             mainContent.classList.remove('hidden');
 
-            try {
-                await preloadAllData();
-            } catch (error) {
-                console.error("Critical error during preload:", error);
-                showModal('Error Crítico', 'No se pudieron cargar los datos iniciales. Intenta recargar la página.');
-                // Podríamos intentar mostrar un menú básico o simplemente dejar el mensaje de error.
-                return; // Detener la ejecución si el preload falla críticamente
-            }
-            
-            // Inicializar los módulos externos
+            // Preload data (allow app to continue even if preloading fails)
+            preloadAllData().catch(err => {
+                 console.error("Background preloading failed after initial load:", err);
+                 // Maybe show a non-blocking notification?
+            });
+
+
+            // Prepare dependencies
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners, userRole,
                 showMainMenu, showModal, showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit
             };
-            window.initData(dependencies);
-            window.initAdmin(dependencies);
-            window.initInventario(dependencies);
-            window.initCatalogo(dependencies);
-            window.initClientes(dependencies);
-            window.initVentas(dependencies);
-            // --- NUEVO: Inicializar módulo de obsequios ---
-             if (typeof window.initObsequios === 'function') {
-                 window.initObsequios(dependencies);
-             } else {
-                 console.warn("initObsequios no está definido. Asegúrate de que obsequios.js esté cargado.");
-             }
-            // --- FIN NUEVO ---
 
-            showMainMenu();
+            // Initialize modules
+            try {
+                // Wrap init calls in try...catch to isolate errors
+                try { window.initData(dependencies); } catch(e) { console.error("Error initData:", e); }
+                try { window.initAdmin(dependencies); } catch(e) { console.error("Error initAdmin:", e); }
+                try { window.initInventario(dependencies); } catch(e) { console.error("Error initInventario:", e); }
+                try { window.initCatalogo(dependencies); } catch(e) { console.error("Error initCatalogo:", e); }
+                try { window.initClientes(dependencies); } catch(e) { console.error("Error initClientes:", e); }
+                try { window.initVentas(dependencies); } catch(e) { console.error("Error initVentas:", e); }
+                try { window.initObsequios(dependencies); } catch(e) { console.error("Error initObsequios:", e); }
+            } catch (initError) {
+                 console.error("CRITICAL: Error during module initialization:", initError);
+                 _showModal("Error Crítico", "No se pudieron inicializar los componentes de la aplicación. Intenta recargar la página.");
+                 return; // Stop further execution
+            }
+
+            showMainMenu(); // Display the main menu
         }
 
+        /** Displays the main menu buttons */
         window.showMainMenu = function() {
-            cleanupListeners(); // Limpia listeners de cualquier módulo anterior
+            console.log("Showing Main Menu");
+            cleanupListeners(); // Clean up listeners from previous view FIRST
 
-            const unsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/rubros`), { includeMetadataChanges: true }, (snapshot) => {
-                const statusEl = document.getElementById('connectionStatus');
-                if (!statusEl) return;
-                statusEl.textContent = snapshot.metadata.fromCache ? "SIN CONEXIÓN" : "EN LÍNEA";
-                statusEl.className = `text-xs font-bold px-3 py-2 rounded-full shadow-lg ${snapshot.metadata.fromCache ? 'bg-yellow-400 text-yellow-900' : 'bg-green-400 text-green-900'}`;
+            // Connection Status Listener
+            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
+            const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
+                 if (!connectionStatusEl) return;
+                 const isOffline = snapshot.metadata.fromCache;
+                 connectionStatusEl.textContent = isOffline ? "SIN CONEXIÓN" : "EN LÍNEA";
+                 connectionStatusEl.className = `block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300 ${isOffline ? 'bg-yellow-400 text-yellow-900 animate-pulse' : 'bg-green-400 text-green-900'}`;
             }, (error) => {
-                 // Manejar error del listener de estado de conexión
-                 console.warn("Error en listener de estado de conexión:", error.message);
-                 const statusEl = document.getElementById('connectionStatus');
-                 if (statusEl) {
-                     statusEl.textContent = "ERROR CONEX.";
-                     statusEl.className = 'text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-500 text-white';
+                 console.warn("Connection status listener error:", error.code);
+                 if (connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) { // Avoid error on logout
+                      connectionStatusEl.textContent = "Error Conexión";
+                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                  }
             });
-            activeListeners.push(unsubscribe);
-            
+            activeListeners.push(unsubscribeStatus); // Register for cleanup
+
             floatingControls.classList.remove('hidden');
+            mainContent.classList.remove('hidden');
+
+            const isAdmin = userRole === 'admin';
             mainContent.innerHTML = `
                 <div class="p-4 pt-8">
-                    <div class="container mx-auto">
+                    <div class="container mx-auto max-w-lg">
                         <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                             <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
                             <div id="main-menu-buttons" class="space-y-4">
-                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Inventario</button>
-                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
-                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
-                                <!-- NUEVO: Botón de Obsequios (condicional) -->
-                                ${userRole === 'user' ? `
-                                <button id="obsequiosBtn" class="w-full px-6 py-3 bg-pink-500 text-white font-semibold rounded-lg shadow-md hover:bg-pink-600">Gestión de Obsequios</button>
-                                ` : ''}
-                                <!-- FIN NUEVO -->
-                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Catálogo</button>
-                                <!-- Botón Data solo para admin -->
-                                ${userRole === 'admin' ? `
-                                <button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800">Data</button>
-                                ` : ''}
-                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">${userRole === 'admin' ? 'Administración' : 'Mi Perfil'}</button>
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-200">Inventario</button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-200">Clientes</button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-200">Ventas</button>
+                                ${!isAdmin ? `<button id="obsequiosBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600 transition duration-200">Gestión de Obsequios</button>` : ''}
+                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition duration-200">Catálogo</button>
+                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition duration-200">${isAdmin ? 'Admin Panel' : 'Mi Perfil'}</button>
+                                ${isAdmin ? `<button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800 transition duration-200">Data</button>` : ''}
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
 
+            // Navigation function (no cleanup needed here)
             const navigateTo = (viewFunction) => {
-                 if (typeof viewFunction !== 'function') {
-                     console.error("Error: La función de vista no está definida.");
-                     _showModal("Error", "No se puede navegar a la vista solicitada.");
-                     return;
-                 }
-                cleanupListeners();
-                viewFunction();
+                if (typeof viewFunction === 'function') {
+                    viewFunction();
+                } else {
+                    console.error("Navigation target is not a function:", viewFunction);
+                    _showModal("Error", "No se pudo navegar a la sección solicitada.");
+                }
             };
 
-            document.getElementById('inventarioBtn').addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
-            document.getElementById('clientesBtn').addEventListener('click', () => navigateTo(window.showClientesSubMenu));
-            document.getElementById('ventasBtn').addEventListener('click', () => navigateTo(window.showVentasView));
-            document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
-            document.getElementById('profileAdminBtn').addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
-            
-            // --- NUEVO: Event listeners condicionales ---
-            if(userRole === 'admin') {
-                document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
-            }
-             if(userRole === 'user') {
-                 document.getElementById('obsequiosBtn')?.addEventListener('click', () => {
-                     // Asegurarse de que la función exista antes de llamarla
-                     if (typeof window.showGestionObsequiosView === 'function') {
-                         navigateTo(window.showGestionObsequiosView);
-                     } else {
-                          console.error("showGestionObsequiosView no está definida.");
-                         _showModal("Error", "La función de gestión de obsequios no está disponible.");
-                     }
-                 });
-             }
-            // --- FIN NUEVO ---
+            // Add event listeners for menu buttons
+            document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
+            document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
+            document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
+            document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView));
+            document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
+            document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
+            document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
         }
 
-        // --- INICIALIZACIÓN DE LA APP ---
+        // --- APP INITIALIZATION ---
         async function initializeAppAndListeners() {
+            console.log("Initializing Firebase app...");
             const app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            setLogLevel('debug');
+            setLogLevel('warn'); // Set log level ('debug', 'warn', 'error', 'silent') - 'warn' is less verbose
+
+            // Attempt to enable offline persistence
             try {
                 await enableIndexedDbPersistence(db);
-                console.log("Persistencia habilitada.");
+                console.log("Offline persistence enabled.");
             } catch (err) {
-                console.warn("Error al habilitar la persistencia:", err.code);
+                 // Handle specific errors gracefully
+                 if (err.code == 'failed-precondition') {
+                     console.warn("Persistence failed: Multiple tabs open or unsupported environment.");
+                 } else if (err.code == 'unimplemented') {
+                      console.warn("Persistence failed: Browser does not support IndexedDB required for offline persistence.");
+                 } else {
+                      console.warn("Error enabling persistence:", err.code);
+                 }
+                 // App can still function online even if persistence fails
             }
+
+            // Central Authentication State Observer
             onAuthStateChanged(auth, (user) => {
-                if(user) {
-                    showMainView(user);
-                } else if (!window.isLoggingOut) { // Evitar mostrar login si se está cerrando sesión
-                    showLoginView();
+                console.log("Auth state changed. User:", user ? user.uid : 'null');
+                cleanupListeners(); // Clean up listeners from the previous state
+                if (user) {
+                    showMainView(user); // User is signed in
+                } else {
+                    showLoginView(); // User is signed out
                 }
             });
+            console.log("Auth listener attached.");
         }
 
+        // --- Load event listener ---
         window.addEventListener('load', async () => {
-            await initializeAppAndListeners();
+            console.log("Window loaded. Initializing app...");
+            await initializeAppAndListeners(); // Initialize Firebase and attach auth listener
+
+            // Setup static listeners (login, register, logout, etc.)
             loginForm.addEventListener('submit', handleLogin);
             registerForm.addEventListener('submit', handleRegister);
             document.getElementById('logoutBtn').addEventListener('click', () => {
-                showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Confirmar');
+                showModal('Confirmar Cierre de Sesión', '¿Estás seguro de que deseas cerrar sesión?', handleLogout, 'Sí, Cerrar Sesión');
             });
             document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
             document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
 
+            // Register service worker
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('ServiceWorker registrado'))
-                    .catch(err => console.log('ServiceWorker falló', err));
+                console.log("Registering Service Worker...");
+                try {
+                    // --- CORRECTION: Use './' for relative path ---
+                    const registration = await navigator.serviceWorker.register('./service-worker.js');
+                    console.log('ServiceWorker registered successfully. Scope:', registration.scope);
+                } catch (err) {
+                     // Log error specifically for SW registration
+                     console.error('ServiceWorker registration failed:', err);
+                }
+            } else {
+                 console.log("Service Worker not supported in this browser.");
             }
         });
     </script>
 </body>
 </html>
+
