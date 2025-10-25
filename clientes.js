@@ -13,6 +13,9 @@
     const CLIENTES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/clientes`;
     const SECTORES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/sectores`;
 
+    // --- CAMBIO: Tipos de Vacío ---
+    const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    // --- FIN CAMBIO ---
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -181,6 +184,11 @@
                     }
                 }
 
+                // --- CAMBIO: Inicializar saldoVacios por tipo ---
+                const saldoVaciosInicial = {};
+                TIPOS_VACIO.forEach(tipo => saldoVaciosInicial[tipo] = 0);
+                // --- FIN CAMBIO ---
+
                 const cliente = {
                     sector: (row[headerMap['sector']] || '').toString().trim().toUpperCase(),
                     nombreComercial: (row[headerMap['nombre comercial']] || '').toString().trim().toUpperCase(),
@@ -188,7 +196,7 @@
                     telefono: (row[headerMap['telefono']] || '').toString().trim(),
                     codigoCEP: (row[headerMap['cep']] || 'N/A').toString().trim(),
                     coordenadas: coordenadas,
-                    saldoVacios: {} 
+                    saldoVacios: saldoVaciosInicial // <-- CAMBIO
                 };
                 if (!cliente.codigoCEP) cliente.codigoCEP = 'N/A';
                 return cliente;
@@ -441,6 +449,11 @@
         }
 
         const guardar = async () => {
+            // --- CAMBIO: Inicializar saldoVacios por tipo ---
+            const saldoVaciosInicial = {};
+            TIPOS_VACIO.forEach(tipo => saldoVaciosInicial[tipo] = 0);
+            // --- FIN CAMBIO ---
+
             const clienteData = {
                 sector: sector,
                 nombreComercial: nombreComercial,
@@ -448,7 +461,7 @@
                 telefono: telefono,
                 codigoCEP: codigoCEP,
                 coordenadas: coordenadas,
-                saldoVacios: {} 
+                saldoVacios: saldoVaciosInicial // <-- CAMBIO
             };
             try {
                 await _addDoc(_collection(_db, CLIENTES_COLLECTION_PATH), clienteData);
@@ -993,7 +1006,9 @@
 
         filteredClients.forEach(cliente => {
             const saldoVacios = cliente.saldoVacios || {};
-            const totalVacios = Object.values(saldoVacios).reduce((sum, count) => sum + count, 0);
+            // --- CAMBIO: Sumar saldos por tipo ---
+            const totalVacios = Object.values(saldoVacios).reduce((sum, count) => sum + (count || 0), 0);
+            // --- FIN CAMBIO ---
             tableHTML += `<tr class="hover:bg-gray-50">
                 <td class="py-2 px-4 border-b">${cliente.nombreComercial}</td>
                 <td class="py-2 px-4 border-b text-center font-bold">${totalVacios}</td>
@@ -1010,28 +1025,26 @@
         const cliente = _clientesCache.find(c => c.id === clienteId);
         if (!cliente) return;
 
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        const q = _query(inventarioRef, _where("manejaVacios", "==", true));
-        const inventarioSnapshot = await _getDocs(q);
-        const productosConVacios = inventarioSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        let optionsHTML = '<option value="">Seleccione un producto...</option>';
-        productosConVacios.sort((a,b) => `${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`)).forEach(p => {
-            optionsHTML += `<option value="${p.id}">${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;
-        });
-
+        // --- CAMBIO: Mostrar saldos por tipo y ajustar por tipo ---
         const saldoVacios = cliente.saldoVacios || {};
         let detalleHTML = '<p class="text-center text-gray-500">Este cliente no tiene saldos pendientes.</p>';
-        if (Object.keys(saldoVacios).some(key => saldoVacios[key] !== 0)) {
+        
+        const tieneSaldos = TIPOS_VACIO.some(tipo => (saldoVacios[tipo] || 0) !== 0);
+
+        if (tieneSaldos) {
             detalleHTML = '<ul class="space-y-2">';
-            for (const productoId in saldoVacios) {
-                if (saldoVacios[productoId] !== 0) {
-                    const producto = productosConVacios.find(p => p.id === productoId) || { presentacion: 'Producto Desconocido', marca: 'N/A', segmento: 'N/A' };
-                    detalleHTML += `<li class="flex justify-between"><span>${producto.marca} - ${producto.segmento} - ${producto.presentacion}:</span><span class="font-bold">${saldoVacios[productoId]}</span></li>`;
-                }
-            }
+            TIPOS_VACIO.forEach(tipo => {
+                 if (saldoVacios[tipo] || saldoVacios[tipo] === 0) { // Mostrar incluso si es 0 si existe
+                    detalleHTML += `<li class="flex justify-between"><span>${tipo}:</span><span class="font-bold">${saldoVacios[tipo] || 0}</span></li>`;
+                 }
+            });
             detalleHTML += '</ul>';
         }
+
+        let optionsHTML = '<option value="">Seleccione un tipo...</option>';
+        TIPOS_VACIO.forEach(tipo => {
+            optionsHTML += `<option value="${tipo}">${tipo}</option>`;
+        });
 
         const modalContent = `
             <h3 class="text-xl font-bold text-gray-800 mb-4">Detalle de Saldo: ${cliente.nombreComercial}</h3>
@@ -1039,8 +1052,8 @@
             <h4 class="text-lg font-semibold mb-2">Ajuste Manual</h4>
             <div class="space-y-4">
                 <div>
-                    <label for="ajusteProducto" class="block text-sm font-medium mb-1">Producto:</label>
-                    <select id="ajusteProducto" class="w-full px-2 py-1 border rounded-lg">${optionsHTML}</select>
+                    <label for="ajusteTipoVacio" class="block text-sm font-medium mb-1">Tipo de Vacío:</label>
+                    <select id="ajusteTipoVacio" class="w-full px-2 py-1 border rounded-lg">${optionsHTML}</select>
                 </div>
                 <div>
                     <label for="ajusteCantidad" class="block text-sm font-medium mb-1">Cantidad de Cajas:</label>
@@ -1052,29 +1065,30 @@
                 </div>
             </div>
         `;
+        // --- FIN CAMBIO ---
         _showModal('Detalle de Saldo', modalContent);
 
         document.getElementById('ajusteDevolucionBtn').addEventListener('click', () => {
-            const productoId = document.getElementById('ajusteProducto').value;
+            const tipoVacio = document.getElementById('ajusteTipoVacio').value;
             const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
-            if(productoId && cantidad > 0) {
-                handleAjusteManualVacios(clienteId, productoId, cantidad, 'devolucion');
+            if(tipoVacio && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, tipoVacio, cantidad, 'devolucion');
             } else {
-                alert('Por favor, seleccione un producto y una cantidad válida.');
+                alert('Por favor, seleccione un tipo de vacío y una cantidad válida.');
             }
         });
         document.getElementById('ajustePrestamoBtn').addEventListener('click', () => {
-            const productoId = document.getElementById('ajusteProducto').value;
+            const tipoVacio = document.getElementById('ajusteTipoVacio').value;
             const cantidad = parseInt(document.getElementById('ajusteCantidad').value, 10);
-             if(productoId && cantidad > 0) {
-                handleAjusteManualVacios(clienteId, productoId, cantidad, 'prestamo');
+             if(tipoVacio && cantidad > 0) {
+                handleAjusteManualVacios(clienteId, tipoVacio, cantidad, 'prestamo');
             } else {
-                alert('Por favor, seleccione un producto y una cantidad válida.');
+                alert('Por favor, seleccione un tipo de vacío y una cantidad válida.');
             }
         });
     }
 
-    async function handleAjusteManualVacios(clienteId, productoId, cantidad, tipoAjuste) {
+    async function handleAjusteManualVacios(clienteId, tipoVacio, cantidad, tipoAjuste) {
         const clienteRef = _doc(_db, CLIENTES_COLLECTION_PATH, clienteId);
         _showModal('Progreso', 'Actualizando saldo...');
         try {
@@ -1086,7 +1100,8 @@
 
                 const data = clienteDoc.data();
                 const saldoVacios = data.saldoVacios || {};
-                const saldoActual = saldoVacios[productoId] || 0;
+                // --- CAMBIO: Usar tipoVacio como clave ---
+                const saldoActual = saldoVacios[tipoVacio] || 0;
 
                 let nuevoSaldo = saldoActual;
                 if (tipoAjuste === 'devolucion') {
@@ -1095,10 +1110,13 @@
                     nuevoSaldo += cantidad;
                 }
                 
-                saldoVacios[productoId] = nuevoSaldo;
+                saldoVacios[tipoVacio] = nuevoSaldo;
+                // --- FIN CAMBIO ---
                 transaction.update(clienteRef, { saldoVacios: saldoVacios });
             });
             _showModal('Éxito', 'El saldo de vacíos se ha actualizado correctamente.');
+            // Opcional: recargar el modal para mostrar el saldo actualizado
+            showSaldoDetalleModal(clienteId); 
         } catch (error) {
             console.error("Error en el ajuste manual de vacíos:", error);
             _showModal('Error', `No se pudo actualizar el saldo: ${error}`);
