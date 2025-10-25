@@ -90,11 +90,10 @@
         document.body.style.removeProperty('--catalogo-bg-image');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
-                <div class="container mx-auto max-w-lg"> {/* Consistent width */}
+                <div class="container mx-auto max-w-lg">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Simplified buttons */}
                             <button data-rubros='["CERVECERIA Y VINOS"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200">Cerveza y Vinos</button>
                             <button data-rubros='["MALTIN & PEPSI"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800 transition duration-200">Maltin y Pepsicola</button>
                             <button data-rubros='["ALIMENTOS"]' data-bg="images/alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200">Alimentos Polar</button>
