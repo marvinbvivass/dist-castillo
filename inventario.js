@@ -2,7 +2,9 @@
 
 (function() {
     // Variables locales del módulo que se inicializarán desde index.html
-    let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners;
+    // --- NUEVO: Añadir _userRole ---
+    let _db, _userId, _appId, _mainContent, _floatingControls, _activeListeners, _userRole;
+    // --- FIN NUEVO ---
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch;
     
@@ -10,6 +12,10 @@
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' }; // Objeto para persistir los filtros
     let _segmentoOrderCache = null; // Caché para el orden de los segmentos
     let _inventarioListenerUnsubscribe = null; // Referencia al listener principal de inventario
+
+    // --- CAMBIO: Añadir tipos de vacío ---
+    const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    // --- FIN CAMBIO ---
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -35,6 +41,9 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
+        // --- NUEVO: Guardar rol ---
+        _userRole = dependencies.userRole;
+        // --- FIN NUEVO ---
     };
 
     /**
@@ -49,6 +58,15 @@
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             if (callback) callback(); // Llama al callback para re-renderizar la vista actual
+        }, (error) => {
+             // Manejar errores, especialmente permisos denegados durante el cierre de sesión
+            if (window.isLoggingOut && error.code === 'permission-denied') {
+                console.log("Listener de inventario detenido por cierre de sesión.");
+                return; // No mostrar error modal si es por cierre de sesión
+            }
+            console.error("Error en listener de inventario:", error);
+             _showModal('Error de Conexión', 'No se pudo actualizar el inventario. Verifica tu conexión e intenta recargar.');
+             // Opcionalmente, intentar reconectar o limpiar la caché local si es necesario.
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
@@ -70,31 +88,42 @@
     window.showInventarioSubMenu = function() {
         invalidateSegmentOrderCache();
         _floatingControls.classList.add('hidden');
+        // --- CAMBIO: Condicional para botones de admin ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver / Modificar Productos</button>
+                            <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Productos / Ajustar Cantidades</button>
+                            ${_userRole === 'admin' ? `
                             <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
+                            ` : ''}
                             <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
+                            ${_userRole === 'admin' ? `
                              <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos</button>
                              <button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar Datos Maestros</button>
+                             ` : ''}
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
+        // --- FIN CAMBIO ---
+
         document.getElementById('verModificarBtn').addEventListener('click', () => {
             _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
             showModifyDeleteView();
         });
-        document.getElementById('agregarProductoBtn').addEventListener('click', showAgregarProductoView);
         document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
-        document.getElementById('ordenarSegmentosBtn').addEventListener('click', showOrdenarSegmentosView);
-        document.getElementById('modificarDatosBtn').addEventListener('click', showModificarDatosView);
+        // --- CAMBIO: Event listeners solo si los botones existen ---
+        if (_userRole === 'admin') {
+            document.getElementById('agregarProductoBtn')?.addEventListener('click', showAgregarProductoView);
+            document.getElementById('ordenarSegmentosBtn')?.addEventListener('click', showOrdenarSegmentosView);
+            document.getElementById('modificarDatosBtn')?.addEventListener('click', showModificarDatosView);
+        }
+        // --- FIN CAMBIO ---
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
     
@@ -123,6 +152,13 @@
      * Muestra la vista para ordenar los segmentos.
      */
     function showOrdenarSegmentosView() {
+        // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+            _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+            showInventarioSubMenu(); // Volver al menú anterior
+            return;
+        }
+        // --- FIN NUEVO ---
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -229,6 +265,11 @@
     function addDragAndDropHandlers(container) {
         let draggedItem = null;
         container.addEventListener('dragstart', e => {
+             // Solo permitir arrastrar LIs
+            if (e.target.tagName !== 'LI') {
+                e.preventDefault();
+                return;
+            }
             draggedItem = e.target;
             setTimeout(() => { if(draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
         });
@@ -259,6 +300,12 @@
      * Guarda el nuevo orden de los segmentos.
      */
     async function handleGuardarOrdenSegmentos() {
+        // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         const listItems = document.querySelectorAll('#segmentos-sortable-list li');
         if (listItems.length === 0) {
             _showModal('Aviso', 'No hay segmentos para ordenar.');
@@ -325,7 +372,9 @@
         
         // Aplicar filtros
         productos = productos.filter(p => {
-            return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
+            const searchTermLower = _lastFilters.searchTerm.toLowerCase();
+            const presentacionLower = (p.presentacion || '').toLowerCase();
+            return (!searchTermLower || presentacionLower.includes(searchTermLower)) &&
                    (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
                    (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
                    (!_lastFilters.marca || p.marca === _lastFilters.marca);
@@ -337,8 +386,12 @@
                 const orderA = segmentoOrderMap[a.segmento] ?? 9999;
                 const orderB = segmentoOrderMap[b.segmento] ?? 9999;
                 if (orderA !== orderB) return orderA - orderB;
-                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
-                return a.presentacion.localeCompare(b.presentacion);
+                 const marcaA = a.marca || '';
+                 const marcaB = b.marca || '';
+                if (marcaA.localeCompare(marcaB) !== 0) return marcaA.localeCompare(marcaB);
+                 const presentacionA = a.presentacion || '';
+                 const presentacionB = b.presentacion || '';
+                return presentacionA.localeCompare(presentacionB);
             });
         }
 
@@ -377,12 +430,15 @@
                 conversionFactor = p.unidadesPorPaquete || 1;
             }
             
+            // Asegurar que el factor de conversión no sea 0 para evitar división por cero
+             if (conversionFactor <= 0) conversionFactor = 1;
+            
             const currentStockInDisplayUnits = Math.floor(currentStockInUnits / conversionFactor);
 
             tableHTML += `
                 <tr class="hover:bg-gray-50">
                     <td class="py-2 px-4 border-b text-sm pl-12">
-                        <p class="font-semibold">${p.presentacion}</p>
+                        <p class="font-semibold">${p.presentacion || 'N/A'}</p>
                         <p class="text-xs text-gray-600">Actual: ${currentStockInDisplayUnits} ${unitType}.</p>
                     </td>
                     <td class="py-2 px-4 border-b text-center">
@@ -414,22 +470,32 @@
         
         inputs.forEach(input => {
             const docId = input.dataset.docId;
-            const conversionFactor = parseInt(input.dataset.conversionFactor, 10);
+            let conversionFactor = parseInt(input.dataset.conversionFactor, 10);
             const newValueInDisplayUnits = parseInt(input.value, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
 
-            if (productoOriginal && !isNaN(newValueInDisplayUnits)) {
+            // Asegurar que el factor de conversión no sea 0
+            if (conversionFactor <= 0) conversionFactor = 1;
+
+            if (productoOriginal && !isNaN(newValueInDisplayUnits) && newValueInDisplayUnits >= 0) { // Validar >= 0
                 const nuevaCantidadUnidades = newValueInDisplayUnits * conversionFactor;
                 if ((productoOriginal.cantidadUnidades || 0) !== nuevaCantidadUnidades) {
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
                     batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
                     changesCount++;
                 }
+            } else if (productoOriginal && isNaN(newValueInDisplayUnits)) {
+                 console.warn(`Valor inválido para ${productoOriginal.presentacion}: ${input.value}`);
+                 // Opcional: mostrar un aviso al usuario
+            } else if (productoOriginal && newValueInDisplayUnits < 0) {
+                 console.warn(`Valor negativo no permitido para ${productoOriginal.presentacion}: ${input.value}`);
+                 _showModal('Error', `La cantidad para "${productoOriginal.presentacion}" no puede ser negativa.`);
+                 // Podríamos detener el guardado aquí o simplemente ignorar este cambio
             }
         });
 
         if (changesCount === 0) {
-            _showModal('Aviso', 'No se detectaron cambios en las cantidades.');
+            _showModal('Aviso', 'No se detectaron cambios válidos en las cantidades.');
             return;
         }
         _showModal('Confirmar Cambios', `Estás a punto de actualizar ${changesCount} producto(s). ¿Deseas continuar?`, async () => {
@@ -448,6 +514,13 @@
      * Muestra la vista para modificar los datos maestros (Rubros, Segmentos, Marcas).
      */
     function showModificarDatosView() {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+            _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+            showInventarioSubMenu();
+            return;
+        }
+        // --- FIN NUEVO ---
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -510,26 +583,38 @@
      * Maneja la eliminación de un item de datos maestros, con validación de uso.
      */
     async function handleDeleteDataItem(collectionName, itemName, itemType) {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' };
         const fieldName = fieldMap[collectionName];
+        if (!fieldName) {
+             _showModal('Error Interno', 'Tipo de dato maestro no reconocido.');
+             return;
+        }
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const q = _query(inventarioRef, _where(fieldName, "==", itemName));
         try {
             const usageSnapshot = await _getDocs(q);
             if (!usageSnapshot.empty) {
-                _showModal('Error al Eliminar', `No se puede eliminar el ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s).`);
+                _showModal('Error al Eliminar', `No se puede eliminar ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s).`);
                 return;
             }
-            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el ${itemType.toLowerCase()} "${itemName}"?`, async () => {
+            _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar ${itemType.toLowerCase()} "${itemName}"?`, async () => {
                 const itemQuery = _query(_collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`), _where("name", "==", itemName));
                 const itemSnapshot = await _getDocs(itemQuery);
                 if (!itemSnapshot.empty) {
                     await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemSnapshot.docs[0].id));
                     _showModal('Éxito', `${itemType} "${itemName}" ha sido eliminado.`);
-                } else _showModal('Error', `No se pudo encontrar el ${itemType.toLowerCase()} para eliminar.`);
+                    // Invalidar caché si es segmento para actualizar orden en otros módulos
+                    if (collectionName === 'segmentos') invalidateSegmentOrderCache();
+                } else _showModal('Error', `No se pudo encontrar ${itemType.toLowerCase()} para eliminar.`);
             });
         } catch (error) {
-            _showModal('Error', 'Ocurrió un error al intentar eliminar el item.');
+            _showModal('Error', `Ocurrió un error al intentar eliminar el item: ${error.message}`);
         }
     }
 
@@ -537,6 +622,13 @@
      * Muestra la vista para agregar un nuevo producto.
      */
     function showAgregarProductoView() {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+            _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+            showInventarioSubMenu();
+            return;
+        }
+        // --- FIN NUEVO ---
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -576,27 +668,27 @@
 
                             <!-- Precios y Venta -->
                             <div class="border-t pt-4">
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
-                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                <div class="flex justify-between items-center flex-wrap">
+                                    <div>
+                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 flex items-center space-x-4">
+                                        <label class="flex items-center"><input type="checkbox" id="manejaVaciosCheck" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
+                                        <select id="tipoVacioSelect" class="px-2 py-1 border rounded-lg text-sm hidden">
+                                            <option value="">Seleccione tipo...</option>
+                                            ${TIPOS_VACIO.map(tipo => `<option value="${tipo}">${tipo}</option>`).join('')}
+                                        </select>
                                     </div>
                                 </div>
                                 <!-- Contenedor para Unidades por empaque -->
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
                                 <!-- Contenedor para Precios -->
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
-                                
-                                <!-- CAMBIO: Manejo de Vacíos -->
-                                <div class="mt-4">
-                                    <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
-                                </div>
-                                <div id="vaciosOpcionesContainer" class="mt-4 pl-6 hidden">
-                                    <!-- Opciones de vacío se insertarán aquí dinámicamente -->
-                                </div>
-                                <!-- FIN CAMBIO -->
                             </div>
 
                             <!-- Stock e IVA -->
@@ -634,8 +726,17 @@
         const ventaPorContainer = document.getElementById('ventaPorContainer');
         const preciosContainer = document.getElementById('preciosContainer');
         const empaquesContainer = document.getElementById('empaquesContainer');
-        const manejaVaciosCheckbox = document.getElementById('manejaVacios');
-        const vaciosOpcionesContainer = document.getElementById('vaciosOpcionesContainer');
+        // --- CAMBIO: Referencias para vacíos ---
+        const manejaVaciosCheck = document.getElementById('manejaVaciosCheck');
+        const tipoVacioSelect = document.getElementById('tipoVacioSelect');
+        // --- FIN CAMBIO ---
+
+        // --- CAMBIO: Mostrar/ocultar select de tipo de vacío ---
+        manejaVaciosCheck.addEventListener('change', () => {
+             tipoVacioSelect.classList.toggle('hidden', !manejaVaciosCheck.checked);
+             if (!manejaVaciosCheck.checked) tipoVacioSelect.value = ""; // Resetear si se desmarca
+        });
+        // --- FIN CAMBIO ---
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
@@ -663,26 +764,6 @@
             }
             preciosContainer.innerHTML = preciosHTML;
             
-            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
-            preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
-
-            // --- CAMBIO: Lógica dinámica para Vacíos ---
-            if (manejaVaciosCheckbox.checked) {
-                vaciosOpcionesContainer.innerHTML = `
-                    <label class="block text-sm font-medium text-gray-700">Tipo de Vacío:</label>
-                    <div class="flex flex-col sm:flex-row sm:space-x-4">
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="1/4 - 1/3" class="h-4 w-4" required> <span class="ml-2">1/4 - 1/3</span></label>
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 350 ml" class="h-4 w-4"> <span class="ml-2">ret 350 ml</span></label>
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 1.25 Lts" class="h-4 w-4"> <span class="ml-2">ret 1.25 Lts</span></label>
-                    </div>
-                `;
-                vaciosOpcionesContainer.classList.remove('hidden');
-            } else {
-                vaciosOpcionesContainer.innerHTML = '';
-                vaciosOpcionesContainer.classList.add('hidden');
-            }
-            // --- FIN CAMBIO ---
-
             // Lógica para actualizar el dropdown de "Cantidad cargada en"
             const unidadCargadaSelect = document.getElementById('unidadCargada');
             if (unidadCargadaSelect) {
@@ -707,14 +788,8 @@
                 }
             }
         };
-
-        const handlePrecioChange = (e) => {
-            if (!e || !e.target) return;
-            // No hacer nada aquí, el cálculo se hará al guardar.
-        };
         
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
-        manejaVaciosCheckbox.addEventListener('change', updateDynamicInputs); // <-- CAMBIO: Añadido listener
         
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
@@ -748,32 +823,33 @@
         if (precios.und > 0) {
             precioFinalPorUnidad = precios.und;
         } else if (precios.paq > 0) {
-            precioFinalPorUnidad = unidadesPorPaquete > 0 ? precios.paq / unidadesPorPaquete : 0;
+             const factorPaq = unidadesPorPaquete > 0 ? unidadesPorPaquete : 1;
+            precioFinalPorUnidad = precios.paq / factorPaq;
         } else if (precios.cj > 0) {
-            precioFinalPorUnidad = unidadesPorCaja > 0 ? precios.cj / unidadesPorCaja : 0;
+             const factorCaja = unidadesPorCaja > 0 ? unidadesPorCaja : 1;
+            precioFinalPorUnidad = precios.cj / factorCaja;
         }
         
         let cantidadTotalUnidades = 0;
         const cantidadCargadaInput = document.getElementById('cantidadCargada');
-        if (cantidadCargadaInput) {
+        if (cantidadCargadaInput && !cantidadCargadaInput.disabled) { // Check if not disabled
             const cantidadCargada = parseInt(cantidadCargadaInput.value, 10) || 0;
             const unidadCargada = document.getElementById('unidadCargada').value;
+             const factorPaq = unidadesPorPaquete > 0 ? unidadesPorPaquete : 1;
+             const factorCaja = unidadesPorCaja > 0 ? unidadesPorCaja : 1;
             if (unidadCargada === 'und') cantidadTotalUnidades = cantidadCargada;
-            else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
-            else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
+            else if (unidadCargada === 'paq') cantidadTotalUnidades = cantidadCargada * factorPaq;
+            else if (unidadCargada === 'cj') cantidadTotalUnidades = cantidadCargada * factorCaja;
         } else {
+             // Si el input de cantidad está deshabilitado (p.ej. al editar) o no existe,
+             // intentar obtenerlo de un campo oculto o del estado actual si es una edición.
+             // Para agregar, si está deshabilitado, debería ser 0.
              cantidadTotalUnidades = parseInt(document.getElementById('cantidadUnidades')?.value, 10) || 0;
         }
-
-        // --- CAMBIO: Leer el tipo de vacío ---
-        const manejaVaciosChecked = document.getElementById('manejaVacios').checked;
-        let tipoVacio = null;
-        if (manejaVaciosChecked) {
-            const tipoVacioRadio = document.querySelector('input[name="tipoVacio"]:checked');
-            if (tipoVacioRadio) {
-                tipoVacio = tipoVacioRadio.value;
-            }
-        }
+        
+        // --- CAMBIO: Obtener datos de vacíos ---
+        const manejaVacios = document.getElementById('manejaVaciosCheck').checked;
+        const tipoVacio = manejaVacios ? (document.getElementById('tipoVacioSelect').value || null) : null;
         // --- FIN CAMBIO ---
 
         return {
@@ -788,8 +864,8 @@
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
-            manejaVacios: manejaVaciosChecked, // <-- CAMBIO
-            tipoVacio: tipoVacio, // <-- NUEVO
+            manejaVacios: manejaVacios, // <-- CAMBIO
+            tipoVacio: tipoVacio,       // <-- CAMBIO
             precios: precios,
             precioPorUnidad: precioFinalPorUnidad,
             cantidadUnidades: cantidadTotalUnidades,
@@ -802,20 +878,26 @@
      */
     async function agregarProducto(e) {
         e.preventDefault();
+        // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         const producto = getProductoDataFromForm();
 
         if (!producto.rubro || !producto.segmento || !producto.marca || !producto.presentacion) {
-            _showModal('Error', 'Los campos de texto principales son obligatorios.');
+            _showModal('Error', 'Los campos Rubro, Segmento, Marca y Presentación son obligatorios.');
             return;
         }
         if (!producto.ventaPor.und && !producto.ventaPor.paq && !producto.ventaPor.cj) {
             _showModal('Error', 'Debes seleccionar al menos una forma de venta (Und, Paq, o Cj).');
             return;
         }
-        // --- CAMBIO: Validación de tipo de vacío ---
+        // --- CAMBIO: Validar tipo de vacío si manejaVacios está marcado ---
         if (producto.manejaVacios && !producto.tipoVacio) {
-            _showModal('Error', 'Si "Maneja vacío" está seleccionado, debes elegir un tipo de vacío.');
-            return;
+             _showModal('Error', 'Si el producto maneja vacío, debes seleccionar un tipo de vacío.');
+             return;
         }
         // --- FIN CAMBIO ---
 
@@ -834,7 +916,13 @@
             }
             await _addDoc(inventarioRef, producto);
             _showModal('Éxito', 'Producto agregado correctamente.');
-            showAgregarProductoView();
+            // Resetear el formulario completamente
+            document.getElementById('productoForm').reset();
+             // Resetear visibilidad del select de tipo de vacío
+             document.getElementById('tipoVacioSelect').classList.add('hidden');
+             document.getElementById('unidadCargada').disabled = false; // Asegurar habilitado
+             document.getElementById('cantidadCargada').disabled = false; // Asegurar habilitado
+            updateDynamicInputs(); // Re-renderizar inputs dinámicos (precios, empaques)
         } catch (err) {
             console.error("Error al agregar producto:", err);
             _showModal('Error', 'Hubo un error al guardar el producto.');
@@ -846,29 +934,36 @@
      */
     function showModifyDeleteView() {
         _floatingControls.classList.add('hidden');
+        // --- CAMBIO: Modificar título si no es admin ---
+         const viewTitle = _userRole === 'admin' ? 'Ver / Modificar Productos' : 'Ver Productos y Cantidades';
+         const deleteButtonHTML = _userRole === 'admin' ? 
+             `<button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Productos</button>` 
+             : '';
+        // --- FIN CAMBIO ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Ver / Modificar Productos</h2>
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">${viewTitle}</h2>
                         ${getFiltrosHTML('modify')}
                         <div id="productosListContainer" class="overflow-x-auto max-h-96">
                             <p class="text-gray-500 text-center">Cargando productos...</p>
                         </div>
                         <div class="mt-6 flex flex-col sm:flex-row gap-4">
                             <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                            <button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Productos</button>
+                            ${deleteButtonHTML}
                         </div>
                     </div>
                 </div>
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        document.getElementById('deleteAllProductosBtn').addEventListener('click', handleDeleteAllProductos);
+        // --- CAMBIO: Listener solo si el botón existe ---
+        document.getElementById('deleteAllProductosBtn')?.addEventListener('click', handleDeleteAllProductos);
+        // --- FIN CAMBIO ---
         
         const renderCallback = () => renderProductosList('productosListContainer', false);
 
-        // CORRECCIÓN: Se usa _populateDropdown para el filtro de rubros.
         _populateDropdown('rubros', 'modify-filter-rubro', 'Rubro');
 
         setupFiltros('modify', renderCallback);
@@ -879,6 +974,7 @@
      * Genera el HTML para los controles de filtro.
      */
     function getFiltrosHTML(prefix) {
+        // No necesita cambios relacionados con roles
         return `
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg">
                 <input type="text" id="${prefix}-search-input" placeholder="Buscar por presentación..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg">
@@ -903,6 +999,7 @@
      * Configura los listeners y la lógica para los filtros.
      */
     function setupFiltros(prefix, renderCallback) {
+        // No necesita cambios relacionados con roles
         const searchInput = document.getElementById(`${prefix}-search-input`);
         const rubroFilter = document.getElementById(`${prefix}-filter-rubro`);
         const segmentoFilter = document.getElementById(`${prefix}-filter-segmento`);
@@ -915,13 +1012,15 @@
             const selectedRubro = rubroFilter.value;
             segmentoFilter.innerHTML = '<option value="">Todos</option>';
             if (selectedRubro) {
-                const segmentos = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro).map(p => p.segmento))].sort();
+                // Filtrar segmentos únicos del caché de inventario para el rubro seleccionado
+                const segmentos = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro).map(p => p.segmento))].filter(Boolean).sort(); // Filtrar nulos/vacíos
                 segmentos.forEach(s => segmentoFilter.innerHTML += `<option value="${s}">${s}</option>`);
-                segmentoFilter.disabled = false;
+                segmentoFilter.disabled = segmentos.length === 0; // Deshabilitar si no hay segmentos
             } else {
                 segmentoFilter.disabled = true;
-                segmentoFilter.value = '';
             }
+             segmentoFilter.value = ''; // Resetear selección
+             updateMarcaFilter(); // Actualizar marcas también
         }
 
         function updateMarcaFilter() {
@@ -929,27 +1028,34 @@
             const selectedSegmento = segmentoFilter.value;
             marcaFilter.innerHTML = '<option value="">Todos</option>';
             if (selectedRubro && selectedSegmento) {
-                const marcas = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento).map(p => p.marca))].sort();
+                // Filtrar marcas únicas del caché para rubro y segmento
+                const marcas = [...new Set(_inventarioCache.filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento).map(p => p.marca))].filter(Boolean).sort(); // Filtrar nulos/vacíos
                 marcas.forEach(m => marcaFilter.innerHTML += `<option value="${m}">${m}</option>`);
-                marcaFilter.disabled = false;
+                marcaFilter.disabled = marcas.length === 0; // Deshabilitar si no hay marcas
             } else {
                 marcaFilter.disabled = true;
-                marcaFilter.value = '';
             }
+             marcaFilter.value = ''; // Resetear selección
         }
         
         // CORRECCIÓN: Se retrasa la asignación de valores hasta que los dropdowns se poblen.
         setTimeout(() => {
             rubroFilter.value = _lastFilters.rubro;
             updateSegmentoFilter();
-            segmentoFilter.value = _lastFilters.segmento;
-            updateMarcaFilter();
-            marcaFilter.value = _lastFilters.marca;
+            // Esperar un poco más para los filtros dependientes
+            setTimeout(() => {
+                segmentoFilter.value = _lastFilters.segmento;
+                updateMarcaFilter();
+                 setTimeout(() => {
+                     marcaFilter.value = _lastFilters.marca;
+                      applyAndSaveFilters(); // Renderizar con filtros cargados
+                 }, 50);
+            }, 50);
         }, 200); // Pequeño delay
 
 
         function applyAndSaveFilters() {
-            _lastFilters.searchTerm = searchInput.value.toLowerCase() || '';
+            _lastFilters.searchTerm = searchInput.value || '';
             _lastFilters.rubro = rubroFilter.value || '';
             _lastFilters.segmento = segmentoFilter.value || '';
             _lastFilters.marca = marcaFilter.value || '';
@@ -958,11 +1064,15 @@
 
         searchInput.addEventListener('input', applyAndSaveFilters);
         rubroFilter.addEventListener('change', () => {
-            updateSegmentoFilter();
-            updateMarcaFilter();
+             // Resetear filtros dependientes antes de actualizar
+             segmentoFilter.value = '';
+             marcaFilter.value = '';
+            updateSegmentoFilter(); // Esto también llama a updateMarcaFilter
             applyAndSaveFilters();
         });
         segmentoFilter.addEventListener('change', () => {
+             // Resetear filtro dependiente
+             marcaFilter.value = '';
             updateMarcaFilter();
             applyAndSaveFilters();
         });
@@ -970,12 +1080,13 @@
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             rubroFilter.value = '';
-            updateSegmentoFilter();
-            updateMarcaFilter();
+             segmentoFilter.value = ''; // Resetear
+             marcaFilter.value = ''; // Resetear
+            updateSegmentoFilter(); // Actualizar cascada
             applyAndSaveFilters();
         });
 
-        renderCallback();
+        // renderCallback(); // No llamar aquí, esperar al timeout
     }
 
 
@@ -989,7 +1100,9 @@
         let productos = [..._inventarioCache]; 
 
         productos = productos.filter(p => {
-            return (!_lastFilters.searchTerm || (p.presentacion && p.presentacion.toLowerCase().includes(_lastFilters.searchTerm))) &&
+             const searchTermLower = _lastFilters.searchTerm.toLowerCase();
+             const presentacionLower = (p.presentacion || '').toLowerCase();
+            return (!searchTermLower || presentacionLower.includes(searchTermLower)) &&
                    (!_lastFilters.rubro || p.rubro === _lastFilters.rubro) &&
                    (!_lastFilters.segmento || p.segmento === _lastFilters.segmento) &&
                    (!_lastFilters.marca || p.marca === _lastFilters.marca);
@@ -1001,8 +1114,12 @@
                 const orderA = segmentoOrderMap[a.segmento] ?? 9999;
                 const orderB = segmentoOrderMap[b.segmento] ?? 9999;
                 if (orderA !== orderB) return orderA - orderB;
-                if (a.marca.localeCompare(b.marca) !== 0) return a.marca.localeCompare(b.marca);
-                return (a.presentacion || '').localeCompare(b.presentacion);
+                 const marcaA = a.marca || '';
+                 const marcaB = b.marca || '';
+                if (marcaA.localeCompare(marcaB) !== 0) return marcaA.localeCompare(marcaB);
+                 const presentacionA = a.presentacion || '';
+                 const presentacionB = b.presentacion || '';
+                return presentacionA.localeCompare(presentacionB);
             });
         }
 
@@ -1012,11 +1129,16 @@
             return;
         }
         
+        // --- CAMBIO: Mostrar columna Acciones solo para admin ---
+         const showActions = !readOnly && _userRole === 'admin';
+         const colspanValue = showActions ? 4 : 3;
+        // --- FIN CAMBIO ---
+
         let tableHTML = `<table class="min-w-full bg-white border border-gray-200 text-sm"><thead class="bg-gray-200 sticky top-0"><tr>
             <th class="py-2 px-3 border-b text-left">Presentación</th>
             <th class="py-2 px-3 border-b text-right">Precio</th>
             <th class="py-2 px-3 border-b text-center">Stock</th>
-            ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
+            ${showActions ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
         </tr></thead><tbody>`;
 
         let currentSegmento = null;
@@ -1028,41 +1150,57 @@
             if(segmento !== currentSegmento) {
                 currentSegmento = segmento;
                 currentMarca = null; // Reset marca
-                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
+                tableHTML += `<tr><td colspan="${colspanValue}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800">${currentSegmento}</td></tr>`;
             }
             if (marca !== currentMarca) {
                 currentMarca = marca;
-                tableHTML += `<tr><td colspan="${readOnly ? 3 : 4}" class="py-2 px-4 bg-gray-100 font-semibold text-gray-600 pl-8">${currentMarca}</td></tr>`;
+                tableHTML += `<tr><td colspan="${colspanValue}" class="py-2 px-4 bg-gray-100 font-semibold text-gray-600 pl-8">${currentMarca}</td></tr>`;
             }
 
             const ventaPor = p.ventaPor || { und: true };
-            let displayPresentacion = `${p.presentacion}`;
+            let displayPresentacion = `${p.presentacion || 'N/A'}`;
             
             let displayPrecio = `$0.00`;
             let displayStock = `${p.cantidadUnidades || 0} Und`;
+            let stockUnit = 'Und'; // Para mostrar en tooltip o similar si es necesario
 
-            if (ventaPor.cj) {
-                displayPresentacion += ` (${p.unidadesPorCaja} und.)`;
+            // --- CAMBIO: Lógica de visualización de stock y precio mejorada ---
+            const unidadesPorCaja = p.unidadesPorCaja || 1;
+            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+             const cantidadUnidades = p.cantidadUnidades || 0;
+            
+            if (ventaPor.cj && unidadesPorCaja > 0) {
+                displayPresentacion += ` (${unidadesPorCaja} und.)`;
                 displayPrecio = `$${(p.precios?.cj || 0).toFixed(2)}`;
-                displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorCaja || 1))} Cj`;
-            } else if (ventaPor.paq) {
-                displayPresentacion += ` (${p.unidadesPorPaquete} und.)`;
+                displayStock = `${Math.floor(cantidadUnidades / unidadesPorCaja)} Cj`;
+                stockUnit = 'Cj';
+            } else if (ventaPor.paq && unidadesPorPaquete > 0) {
+                displayPresentacion += ` (${unidadesPorPaquete} und.)`;
                 displayPrecio = `$${(p.precios?.paq || 0).toFixed(2)}`;
-                displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorPaquete || 1))} Paq`;
-            } else {
+                displayStock = `${Math.floor(cantidadUnidades / unidadesPorPaquete)} Paq`;
+                 stockUnit = 'Paq';
+            } else { // Predeterminado a unidad si no hay caja o paquete definido
                  displayPrecio = `$${(p.precios?.und || p.precioPorUnidad || 0).toFixed(2)}`;
             }
+            // --- FIN CAMBIO ---
             
+            // --- CAMBIO: Generar botones de acción solo si es admin ---
+            let actionButtonsHTML = '';
+             if (showActions) {
+                 actionButtonsHTML = `
+                     <td class="py-2 px-3 border-b text-center space-x-2">
+                         <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Editar</button>
+                         <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
+                     </td>`;
+             }
+            // --- FIN CAMBIO ---
+
             tableHTML += `
                 <tr class="hover:bg-gray-50">
                     <td class="py-2 px-3 border-b pl-12">${displayPresentacion}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">${displayPrecio}</td>
                     <td class="py-2 px-3 border-b text-center font-bold">${displayStock}</td>
-                    ${!readOnly ? `
-                    <td class="py-2 px-3 border-b text-center space-x-2">
-                        <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Editar</button>
-                        <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Eliminar</button>
-                    </td>` : ''}
+                    ${actionButtonsHTML}
                 </tr>
             `;
         });
@@ -1074,6 +1212,12 @@
      * Muestra el formulario para editar un producto.
      */
     function editProducto(productId) {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) return;
 
@@ -1091,29 +1235,32 @@
                                 <div><label for="presentacion" class="block text-gray-700 font-medium mb-1">Presentación:</label><input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required></div>
                             </div>
                             <div class="border-t pt-4">
-                                <div>
-                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
-                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
-                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                 <div class="flex justify-between items-center flex-wrap">
+                                    <div>
+                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 flex items-center space-x-4">
+                                        <label class="flex items-center"><input type="checkbox" id="manejaVaciosCheck" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
+                                        <select id="tipoVacioSelect" class="px-2 py-1 border rounded-lg text-sm hidden">
+                                            <option value="">Seleccione tipo...</option>
+                                            ${TIPOS_VACIO.map(tipo => `<option value="${tipo}">${tipo}</option>`).join('')}
+                                        </select>
                                     </div>
                                 </div>
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
-                                <!-- CAMBIO: Manejo de Vacíos -->
-                                <div class="mt-4">
-                                    <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
-                                </div>
-                                <div id="vaciosOpcionesContainer" class="mt-4 pl-6 hidden">
-                                    <!-- Opciones de vacío se insertarán aquí dinámicamente -->
-                                </div>
-                                <!-- FIN CAMBIO -->
                             </div>
                             <div class="border-t pt-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div id="stock-edit-container">
                                         <!-- Stock input will be dynamically inserted here -->
+                                        <label class="block text-gray-700 font-medium mb-1">Stock Total (en Unidades):</label>
+                                         <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required disabled title="El stock solo se modifica desde 'Ajuste Masivo'">
                                     </div>
                                     <div><label for="ivaTipo" class="block text-gray-700 font-medium mb-1">Tipo de IVA:</label><select id="ivaTipo" class="w-full px-4 py-2 border rounded-lg" required><option value="16">IVA 16%</option><option value="0">Exento</option></select></div>
                                 </div>
@@ -1127,15 +1274,24 @@
         `;
         
         // --- LÓGICA DINÁMICA DEL FORMULARIO DE EDICIÓN ---
-        _populateDropdown('rubros', 'rubro', 'Rubro');
-        _populateDropdown('segmentos', 'segmento', 'Segmento');
-        _populateDropdown('marcas', 'marca', 'Marca');
+        _populateDropdown('rubros', 'rubro', 'Rubro', producto.rubro);
+        _populateDropdown('segmentos', 'segmento', 'Segmento', producto.segmento);
+        _populateDropdown('marcas', 'marca', 'Marca', producto.marca);
 
         const ventaPorContainer = document.getElementById('ventaPorContainer');
         const preciosContainer = document.getElementById('preciosContainer');
         const empaquesContainer = document.getElementById('empaquesContainer');
-        const manejaVaciosCheckbox = document.getElementById('manejaVacios'); // <-- CAMBIO
-        const vaciosOpcionesContainer = document.getElementById('vaciosOpcionesContainer'); // <-- CAMBIO
+         // --- CAMBIO: Referencias vacíos ---
+         const manejaVaciosCheck = document.getElementById('manejaVaciosCheck');
+         const tipoVacioSelect = document.getElementById('tipoVacioSelect');
+         // --- FIN CAMBIO ---
+
+         // --- CAMBIO: Mostrar/ocultar select de tipo de vacío ---
+         manejaVaciosCheck.addEventListener('change', () => {
+             tipoVacioSelect.classList.toggle('hidden', !manejaVaciosCheck.checked);
+              if (!manejaVaciosCheck.checked) tipoVacioSelect.value = "";
+         });
+         // --- FIN CAMBIO ---
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
@@ -1158,68 +1314,15 @@
                 preciosHTML += `<div><label class="block text-sm font-medium">Precio por Cj.</label><input type="number" step="0.01" id="precioCj" class="w-full px-2 py-1 border rounded" data-source="cj"></div>`;
             }
             preciosContainer.innerHTML = preciosHTML;
-            
-            empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
-            preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
-
-            // --- CAMBIO: Lógica dinámica para Vacíos ---
-            if (manejaVaciosCheckbox.checked) {
-                vaciosOpcionesContainer.innerHTML = `
-                    <label class="block text-sm font-medium text-gray-700">Tipo de Vacío:</label>
-                    <div class="flex flex-col sm:flex-row sm:space-x-4">
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="1/4 - 1/3" class="h-4 w-4" required> <span class="ml-2">1/4 - 1/3</span></label>
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 350 ml" class="h-4 w-4"> <span class="ml-2">ret 350 ml</span></label>
-                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 1.25 Lts" class="h-4 w-4"> <span class="ml-2">ret 1.25 Lts</span></label>
-                    </div>
-                `;
-                vaciosOpcionesContainer.classList.remove('hidden');
-            } else {
-                vaciosOpcionesContainer.innerHTML = '';
-                vaciosOpcionesContainer.classList.add('hidden');
-            }
-            // --- FIN CAMBIO ---
         };
 
-        const handlePrecioChange = (e) => {
-             // No hacer nada aquí, el cálculo se hará al guardar.
-        };
 
         // --- POBLAR EL FORMULARIO CON DATOS EXISTENTES ---
         setTimeout(() => { // Timeout to allow dropdowns to populate
-            document.getElementById('rubro').value = producto.rubro;
-            document.getElementById('segmento').value = producto.segmento;
-            document.getElementById('marca').value = producto.marca;
-            document.getElementById('presentacion').value = producto.presentacion;
+            document.getElementById('presentacion').value = producto.presentacion || '';
             
-            // CORRECCIÓN: Lógica de stock inteligente
-            const stockContainer = document.getElementById('stock-edit-container');
-            const ventaPor = producto.ventaPor || {};
-            
-            if (ventaPor.cj && !ventaPor.paq && !ventaPor.und) {
-                stockContainer.innerHTML = `
-                    <label class="block text-gray-700 font-medium mb-1">Stock (en Cajas):</label>
-                    <div class="flex items-center space-x-2">
-                        <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
-                        <select id="unidadCargada" class="hidden"><option value="cj" selected>Cj.</option></select>
-                    </div>`;
-                const stockEnCajas = Math.floor((producto.cantidadUnidades || 0) / (producto.unidadesPorCaja || 1));
-                document.getElementById('cantidadCargada').value = stockEnCajas;
-            } else if (ventaPor.paq && !ventaPor.cj && !ventaPor.und) {
-                 stockContainer.innerHTML = `
-                    <label class="block text-gray-700 font-medium mb-1">Stock (en Paquetes):</label>
-                    <div class="flex items-center space-x-2">
-                        <input type="number" id="cantidadCargada" class="w-full px-4 py-2 border rounded-lg" required>
-                        <select id="unidadCargada" class="hidden"><option value="paq" selected>Paq.</option></select>
-                    </div>`;
-                const stockEnPaquetes = Math.floor((producto.cantidadUnidades || 0) / (producto.unidadesPorPaquete || 1));
-                document.getElementById('cantidadCargada').value = stockEnPaquetes;
-            } else {
-                 stockContainer.innerHTML = `
-                    <label class="block text-gray-700 font-medium mb-1">Stock Total (en Unidades):</label>
-                    <input type="number" id="cantidadUnidades" class="w-full px-4 py-2 border rounded-lg" required>`;
-                document.getElementById('cantidadUnidades').value = producto.cantidadUnidades || 0;
-            }
-
+            // Poblar campo de stock (deshabilitado)
+             document.getElementById('cantidadUnidades').value = producto.cantidadUnidades || 0;
 
             document.getElementById('ivaTipo').value = producto.iva !== undefined ? producto.iva : 16;
             
@@ -1228,25 +1331,22 @@
                 document.getElementById('ventaPorPaq').checked = producto.ventaPor.paq;
                 document.getElementById('ventaPorCj').checked = producto.ventaPor.cj;
             }
-            
-            // --- CAMBIO: Poblar datos de Vacíos ---
+            // --- CAMBIO: Poblar vacíos ---
             if (producto.manejaVacios) {
-                document.getElementById('manejaVacios').checked = true;
-            }
-            
-            updateDynamicInputs(); // Generate dynamic fields
-
-            if (producto.manejaVacios && producto.tipoVacio) {
-                const tipoVacioRadio = document.querySelector(`input[name="tipoVacio"][value="${producto.tipoVacio}"]`);
-                if (tipoVacioRadio) {
-                    tipoVacioRadio.checked = true;
-                }
+                 manejaVaciosCheck.checked = true;
+                 tipoVacioSelect.classList.remove('hidden');
+                 tipoVacioSelect.value = producto.tipoVacio || "";
+            } else {
+                 manejaVaciosCheck.checked = false;
+                 tipoVacioSelect.classList.add('hidden');
+                 tipoVacioSelect.value = "";
             }
             // --- FIN CAMBIO ---
+            updateDynamicInputs(); // Generate dynamic fields
 
             // Populate dynamic fields with data
-            if (producto.ventaPor.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
-            if (producto.ventaPor.cj) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
+            if (producto.ventaPor?.paq && document.getElementById('unidadesPorPaquete')) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
+            if (producto.ventaPor?.cj && document.getElementById('unidadesPorCaja')) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
             
             if (producto.precios) {
                  if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = producto.precios.und || 0;
@@ -1257,10 +1357,9 @@
                  if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = producto.precioPorUnidad;
             }
             
-        }, 200);
+        }, 300); // Aumentar ligeramente el timeout
 
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
-        manejaVaciosCheckbox.addEventListener('change', updateDynamicInputs); // <-- CAMBIO: Añadido listener
         document.getElementById('editProductoForm').addEventListener('submit', (e) => handleUpdateProducto(e, productId));
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     };
@@ -1270,14 +1369,28 @@
      */
     async function handleUpdateProducto(e, productId) {
         e.preventDefault();
-        const updatedData = getProductoDataFromForm();
+         // --- NUEVO: Comprobación de rol ---
+         if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+         }
+         // --- FIN NUEVO ---
+        const updatedDataFromForm = getProductoDataFromForm();
 
-        // --- CAMBIO: Validación de tipo de vacío ---
-        if (updatedData.manejaVacios && !updatedData.tipoVacio) {
-            _showModal('Error', 'Si "Maneja vacío" está seleccionado, debes elegir un tipo de vacío.');
-            return;
-        }
+        // --- CAMBIO: Mantener la cantidad original ---
+        const productoOriginal = _inventarioCache.find(p => p.id === productId);
+        const updatedData = {
+             ...updatedDataFromForm,
+             cantidadUnidades: productoOriginal ? (productoOriginal.cantidadUnidades || 0) : 0 // Conservar cantidad
+        };
         // --- FIN CAMBIO ---
+
+         // --- CAMBIO: Validar tipo de vacío si manejaVacios está marcado ---
+         if (updatedData.manejaVacios && !updatedData.tipoVacio) {
+              _showModal('Error', 'Si el producto maneja vacío, debes seleccionar un tipo de vacío.');
+              return;
+         }
+         // --- FIN CAMBIO ---
 
         try {
             await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData);
@@ -1294,10 +1407,20 @@
      * Elimina un producto.
      */
     function deleteProducto(productId) {
-        _showModal('Confirmar Eliminación', '¿Estás seguro de que deseas eliminar este producto?', async () => {
+         // --- NUEVO: Comprobación de rol ---
+         if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+         }
+         // --- FIN NUEVO ---
+        const producto = _inventarioCache.find(p => p.id === productId);
+        const nombreProducto = producto ? `"${producto.presentacion}"` : 'este producto';
+
+        _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar ${nombreProducto}?`, async () => {
             try {
                 await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId));
                 _showModal('Éxito', 'Producto eliminado correctamente.');
+                 // No es necesario llamar a renderProductosList aquí, el listener onSnapshot lo hará.
             } catch (e) {
                 _showModal('Error', 'Hubo un error al eliminar el producto.');
             }
@@ -1308,6 +1431,12 @@
      * Maneja la eliminación de TODOS los productos del inventario.
      */
     async function handleDeleteAllProductos() {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los productos del inventario? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando todos los productos...');
             try {
@@ -1332,6 +1461,12 @@
      * Maneja la eliminación de TODOS los datos maestros (Rubros, Segmentos, Marcas).
      */
     async function handleDeleteAllDatosMaestros() {
+         // --- NUEVO: Comprobación de rol ---
+        if (_userRole !== 'admin') {
+             _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+             return;
+        }
+        // --- FIN NUEVO ---
         _showModal('Confirmación Extrema', '¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Esta acción es irreversible.', async () => {
             _showModal('Progreso', 'Eliminando datos maestros...');
             try {
@@ -1346,6 +1481,7 @@
                     }
                 }
                 _showModal('Éxito', 'Todos los datos maestros han sido eliminados.');
+                 invalidateSegmentOrderCache(); // Invalidar caché de segmentos
             } catch (error) {
                 console.error("Error al eliminar todos los datos maestros:", error);
                 _showModal('Error', 'Hubo un error al eliminar los datos maestros.');
@@ -1363,3 +1499,4 @@
     };
 
 })();
+
