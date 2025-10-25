@@ -18,6 +18,10 @@
     let mapInstance = null;
     let mapMarkers = new Map();
 
+    // --- CAMBIO: Tipos de Vacío ---
+    const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    // --- FIN CAMBIO ---
+
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
@@ -272,7 +276,9 @@
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
-        const vaciosMovements = {};
+        // --- CAMBIO: Cambiar vaciosMovements por cliente y tipo ---
+        const vaciosMovementsPorTipo = {}; 
+        // --- FIN CAMBIO ---
         
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
         const inventarioSnapshot = await _getDocs(inventarioRef);
@@ -283,20 +289,33 @@
             if (!clientData[clientName]) {
                 clientData[clientName] = { products: {}, totalValue: 0 };
             }
-             if(!vaciosMovements[clientName]) {
-                vaciosMovements[clientName] = {};
+            // --- CAMBIO: Inicializar vacíos por tipo para el cliente ---
+             if(!vaciosMovementsPorTipo[clientName]) {
+                vaciosMovementsPorTipo[clientName] = {};
+                TIPOS_VACIO.forEach(tipo => vaciosMovementsPorTipo[clientName][tipo] = { entregados: 0, devueltos: 0 });
             }
+            // --- FIN CAMBIO ---
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
             
-            (venta.productos || []).forEach(p => {
-                if (p.manejaVacios) {
-                    if (!vaciosMovements[clientName][p.id]) {
-                        vaciosMovements[clientName][p.id] = { entregados: 0, devueltos: 0 };
-                    }
-                    vaciosMovements[clientName][p.id].entregados += p.cantidadVendida?.cj || 0;
-                    vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
+            // --- CAMBIO: Sumar vacíos devueltos por tipo para la venta ---
+            const vaciosDevueltosEnVenta = venta.vaciosDevueltosPorTipo || {};
+            for (const tipoVacio in vaciosDevueltosEnVenta) {
+                if (vaciosMovementsPorTipo[clientName][tipoVacio]) {
+                    vaciosMovementsPorTipo[clientName][tipoVacio].devueltos += vaciosDevueltosEnVenta[tipoVacio];
                 }
+            }
+            // --- FIN CAMBIO ---
+
+            (venta.productos || []).forEach(p => {
+                // --- CAMBIO: Sumar vacíos entregados por tipo ---
+                if (p.manejaVacios && p.tipoVacio) {
+                     const tipoVacio = p.tipoVacio;
+                    if (vaciosMovementsPorTipo[clientName][tipoVacio]) {
+                        vaciosMovementsPorTipo[clientName][tipoVacio].entregados += p.cantidadVendida?.cj || 0;
+                    }
+                }
+                // --- FIN CAMBIO ---
 
                 const productoCompleto = inventarioMap.get(p.id) || p;
                 const rubro = productoCompleto.rubro || 'Sin Rubro';
@@ -305,7 +324,7 @@
                 
                 if (!allProductsMap.has(p.id)) {
                     allProductsMap.set(p.id, {
-                        ...productoCompleto, // Copiar todos los datos del inventario
+                        ...productoCompleto, 
                         id: p.id,
                         rubro: rubro,
                         segmento: segmento,
@@ -348,7 +367,7 @@
             });
         });
 
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap }; // <-- CAMBIO: Devolver vaciosMovementsPorTipo
     }
 
     /**
@@ -363,7 +382,7 @@
         
         _showModal('Progreso', 'Generando reporte detallado...');
         
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId); // <-- CAMBIO
         
         let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
         let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
@@ -461,8 +480,11 @@
         });
         footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
+        // --- CAMBIO: Reporte de Vacíos por Tipo ---
         let vaciosReportHTML = '';
-        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        const clientesConMovimientoVacios = Object.keys(vaciosMovementsPorTipo).filter(cliente => 
+            TIPOS_VACIO.some(tipo => (vaciosMovementsPorTipo[cliente][tipo]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cliente][tipo]?.devueltos || 0) > 0)
+        ).sort();
         
         if (clientesConMovimientoVacios.length > 0) {
             vaciosReportHTML = `
@@ -472,7 +494,7 @@
                         <thead class="bg-gray-200">
                             <tr>
                                 <th class="p-1 border text-left">Cliente</th>
-                                <th class="p-1 border text-left">Producto</th>
+                                <th class="p-1 border text-left">Tipo Vacío</th>
                                 <th class="p-1 border text-center">Entregados (Cajas)</th>
                                 <th class="p-1 border text-center">Devueltos (Cajas)</th>
                                 <th class="p-1 border text-center">Neto</th>
@@ -481,26 +503,26 @@
                         <tbody>`;
 
             clientesConMovimientoVacios.forEach(cliente => {
-                const movimientos = vaciosMovements[cliente];
-                for(const productoId in movimientos) {
-                    const mov = movimientos[productoId];
-                    const producto = allProductsMap.get(productoId);
-                    const neto = mov.entregados - mov.devueltos;
-                    if(mov.entregados > 0 || mov.devueltos > 0) {
-                         vaciosReportHTML += `
+                const movimientos = vaciosMovementsPorTipo[cliente];
+                TIPOS_VACIO.forEach(tipoVacio => {
+                    const mov = movimientos[tipoVacio] || { entregados: 0, devueltos: 0 };
+                    if (mov.entregados > 0 || mov.devueltos > 0) {
+                        const neto = mov.entregados - mov.devueltos;
+                        vaciosReportHTML += `
                             <tr class="hover:bg-blue-50">
                                 <td class="p-1 border">${cliente}</td>
-                                <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
+                                <td class="p-1 border">${tipoVacio}</td>
                                 <td class="p-1 border text-center">${mov.entregados}</td>
                                 <td class="p-1 border text-center">${mov.devueltos}</td>
                                 <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
                             </tr>
                         `;
                     }
-                }
+                });
             });
             vaciosReportHTML += '</tbody></table></div>';
         }
+        // --- FIN CAMBIO ---
 
         const vendedor = closingData.vendedorInfo || {};
         const reporteHTML = `
@@ -532,8 +554,9 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId); // <-- CAMBIO
 
+        // --- Hoja 1: Reporte de Ventas --- (Sin cambios aquí)
         const dataForSheet1 = [];
         const merges1 = [];
         const headerRow1 = [""]; const headerRow2 = [""]; const headerRow3 = [""]; const headerRow4 = ["Cliente"];
@@ -632,29 +655,33 @@
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, 'Reporte de Cierre');
 
-        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        // --- CAMBIO: Hoja 2: Reporte de Vacíos por Tipo ---
+        const clientesConMovimientoVacios = Object.keys(vaciosMovementsPorTipo).filter(cliente => 
+            TIPOS_VACIO.some(tipo => (vaciosMovementsPorTipo[cliente][tipo]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cliente][tipo]?.devueltos || 0) > 0)
+        ).sort();
+        
         if (clientesConMovimientoVacios.length > 0) {
-            const dataForSheet2 = [['Cliente', 'Producto', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
+            const dataForSheet2 = [['Cliente', 'Tipo Vacío', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
             clientesConMovimientoVacios.forEach(cliente => {
-                 const movimientos = vaciosMovements[cliente];
-                for(const productoId in movimientos) {
-                    const mov = movimientos[productoId];
-                    const producto = allProductsMap.get(productoId);
-                    const neto = mov.entregados - mov.devueltos;
+                 const movimientos = vaciosMovementsPorTipo[cliente];
+                TIPOS_VACIO.forEach(tipoVacio => {
+                    const mov = movimientos[tipoVacio] || { entregados: 0, devueltos: 0 };
                      if(mov.entregados > 0 || mov.devueltos > 0) {
+                        const neto = mov.entregados - mov.devueltos;
                         dataForSheet2.push([
                             cliente,
-                            producto ? producto.presentacion : 'Producto Desconocido',
+                            tipoVacio,
                             mov.entregados,
                             mov.devueltos,
                             neto
                         ]);
                     }
-                }
+                });
             });
             const ws2 = XLSX.utils.aoa_to_sheet(dataForSheet2);
             XLSX.utils.book_append_sheet(wb, ws2, 'Reporte de Vacíos');
         }
+        // --- FIN CAMBIO ---
         
         const vendedor = closingData.vendedorInfo || {};
         const fecha = closingData.fecha.toDate().toISOString().slice(0, 10);
@@ -746,6 +773,7 @@
             const dayOfWeek = now.getDay(); // 0 = Domingo, 1 = Lunes, ...
             fechaDesde = new Date(now);
             const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Ajusta para que la semana empiece en Lunes
+            fechaDesde.setDate(diff); // <-- CORRECCIÓN: Usar setDate
             fechaDesde.setHours(0, 0, 0, 0);
         } else if (statsType === 'mensual') {
             fechaDesde = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -853,6 +881,10 @@
             } else {
                 displayQuantity = total.toFixed(0);
             }
+            // Eliminar .0 si es entero
+            if (displayQuantity.endsWith('.0')) {
+                displayQuantity = displayQuantity.slice(0, -2);
+            }
             
             tableHTML += `
                 <tr class="hover:bg-gray-50">
@@ -900,6 +932,10 @@
                 displayUnit = 'Paq.';
             } else {
                 displayQuantity = total.toFixed(0);
+            }
+             // Eliminar .0 si es entero
+            if (displayQuantity.endsWith('.0')) {
+                displayQuantity = displayQuantity.slice(0, -2);
             }
     
             return {
@@ -1237,4 +1273,3 @@
     };
 
 })();
-
