@@ -11,8 +11,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+    <!-- Leaflet CSS for maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
+    <!-- PWA Manifest and Theme Color -->
     <meta name="theme-color" content="#ffffff"/>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
@@ -86,10 +88,14 @@
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col bg-gray-100"> <div id="app" class="flex flex-col min-h-screen">
+<body class="min-h-screen flex flex-col bg-gray-100"> <!-- Default body background -->
+    <div id="app" class="flex flex-col min-h-screen">
+        <!-- Main content area -->
         <main id="mainContent" class="flex-grow hidden">
-            </main>
+            <!-- Page content inserted dynamically -->
+        </main>
 
+        <!-- Login view area -->
         <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -101,7 +107,8 @@
                     <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                         Ingresar
                     </button>
-                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> </form>
+                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
+                </form>
                  <p class="mt-6 text-sm text-gray-800">
                     ¿No tienes una cuenta?
                     <button id="goToRegisterBtn" class="font-semibold text-blue-600 hover:underline">Regístrate aquí</button>
@@ -109,6 +116,7 @@
             </div>
         </main>
 
+        <!-- Registration view area -->
         <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
@@ -122,7 +130,8 @@
                     <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
                         Registrar
                     </button>
-                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> </form>
+                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
+                </form>
                 <p class="mt-6 text-sm text-gray-800">
                     ¿Ya tienes una cuenta?
                     <button id="goToLoginBtn" class="font-semibold text-blue-600 hover:underline">Inicia sesión</button>
@@ -131,12 +140,15 @@
         </main>
 
 
+        <!-- Modal container -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden animate-fade-in p-4">
             <div id="modalContent" class="bg-white p-6 md:p-8 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                </div>
+                <!-- Content injected dynamically -->
+            </div>
         </div>
 
 
+        <!-- Floating Controls -->
         <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-40 hidden">
              <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300"></span>
             <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center transform hover:scale-110" title="Cerrar Sesión">
@@ -147,8 +159,10 @@
         </div>
     </div>
 
+    <!-- Leaflet JS for maps -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
+    <!-- Load module scripts -->
     <script src="data.js"></script>
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
@@ -247,16 +261,22 @@
                                // Use window.showModal here as it's guaranteed to be global
                                window.showModal("Error", `Ocurrió un error: ${e.message}`);
                           } finally {
-                              if (!modalContainer.classList.contains('hidden')) {
-                                   confirmBtn.disabled = false;
-                                   confirmBtn.textContent = confirmText;
-                                    const closeButton = document.getElementById('closeModalBtn');
+                              // Re-enable buttons only if modal is still visible
+                              if (modalContainer && !modalContainer.classList.contains('hidden')) {
+                                   if(confirmBtn) { // Check again if exists
+                                       confirmBtn.disabled = false;
+                                       confirmBtn.textContent = confirmText;
+                                   }
+                                    const closeButton = document.getElementById('closeModalBtn'); // Check again
                                     if(closeButton) closeButton.disabled = false;
                               }
                           }
                       } else {
-                          closeModal();
-                          try { onConfirm(); } catch (e) { console.error("Error in modal onConfirm:", e); }
+                          // Only close modal if onConfirm doesn't return false explicitly
+                          if(onConfirm() !== false) {
+                            closeModal();
+                          }
+                          // try { onConfirm(); } catch (e) { console.error("Error in modal onConfirm:", e); } // Already called
                       }
                  });
              }
@@ -322,6 +342,21 @@
                             addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
                             newItemInput.value = '';
                             newItemInput.focus();
+                            // Update dropdown if it's currently visible (e.g., in add product view)
+                            const relatedDropdownId = collectionName.slice(0,-1); // rubro, segmento, marca
+                            const dropdown = document.getElementById(relatedDropdownId);
+                            if(dropdown){
+                                const option = document.createElement('option');
+                                option.value = newItemNameUpper;
+                                option.textContent = newItemNameUpper;
+                                dropdown.appendChild(option);
+                                // Sort options alphabetically
+                                Array.from(dropdown.options)
+                                     .sort((a, b) => a.text.localeCompare(b.text))
+                                     .forEach(opt => dropdown.add(opt));
+                                dropdown.value = newItemNameUpper; // Select the newly added item
+                            }
+
                             setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
                         }
                     } catch (err) {
@@ -348,14 +383,17 @@
                  selectElement.prepend(placeholder);
             }
             placeholder.textContent = placeholderText;
+            // Clear previous options except placeholder
             Array.from(selectElement.options).forEach(option => {
                 if (option.value !== "") selectElement.removeChild(option);
             });
             selectElement.disabled = true; // Disable while loading
 
             const collectionRef = collection(db, collectionPath);
-            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                const currentSelection = selectedValue || selectElement.value;
+            // Use getDocs instead of onSnapshot for dropdowns that don't need real-time updates
+            getDocs(collectionRef).then(snapshot => {
+                const currentSelection = selectedValue || selectElement.value; // Use selectedValue passed in if available
+                // Clear again just in case (though should be empty)
                 Array.from(selectElement.options).forEach(option => {
                      if (option.value !== "") selectElement.removeChild(option);
                 });
@@ -370,26 +408,29 @@
                      const option = document.createElement('option');
                      option.value = item.name;
                      option.textContent = item.name;
-                     if (item.name === currentSelection) {
+                     // Use selectedValue passed in for initial selection
+                     if (selectedValue && item.name === selectedValue) {
+                         option.selected = true;
+                         foundSelected = true;
+                     }
+                     // Or fallback to current value if no selectedValue was passed
+                     else if (!selectedValue && item.name === currentSelection) {
                          option.selected = true;
                          foundSelected = true;
                      }
                      selectElement.appendChild(option);
                 });
 
-                if (!foundSelected && currentSelection !== "") { selectElement.value = ""; }
+                // If the intended selection wasn't found (or was empty), reset to placeholder
+                if (!foundSelected) { selectElement.value = ""; }
                  selectElement.disabled = false; // Re-enable dropdown
 
-            }, (error) => {
+            }).catch(error => {
                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
                  selectElement.disabled = true;
-                 // Stop listening on error
-                 try { unsubscribe(); } catch(e) {}
-                 activeListeners = activeListeners.filter(l => l !== unsubscribe);
             });
-
-            activeListeners.push(unsubscribe);
+            // Note: No listener to clean up as we used getDocs
         }
 
 
@@ -423,11 +464,11 @@
                  const userDocRef = doc(db, "users", user.uid);
                  await setDoc(userDocRef, {
                      email: user.email,
-                     role: 'user',
+                     role: 'user', // Default role
                      createdAt: new Date()
                  });
                  console.log("User document created in Firestore.");
-                 // El onAuthStateChanged se encargará de mostrar la vista principal
+                 // onAuthStateChanged will handle showing the main view
              } catch (error) {
                  console.error("Registration error:", error.code, error.message);
                  if (error.code === 'auth/email-already-in-use') {
@@ -456,7 +497,7 @@
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 console.log("signInWithEmailAndPassword successful (waiting for onAuthStateChanged).");
-                 // No es necesario habilitar el botón aquí, onAuthStateChanged manejará la vista
+                 // Button state will be reset by showLoginView if needed
             } catch (error) {
                 console.error("Login error:", error.code, error.message);
                  if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -480,7 +521,7 @@
              try {
                  await signOut(auth);
                  console.log("User signed out successfully.");
-                 // onAuthStateChanged se encargará de mostrar la vista de login
+                 // onAuthStateChanged will handle showing the login view
              } catch (error) {
                  console.error("Logout error:", error);
                  window.isLoggingOut = false;
@@ -502,15 +543,13 @@
         /** Displays the login view */
         function showLoginView() {
             console.log("Showing Login View");
-            window.isLoggingOut = false;
-            cleanupListeners();
-            // --- INICIO CORRECCIÓN ---
+            window.isLoggingOut = false; // Reset flag
+            cleanupListeners(); // Clean up any lingering listeners
             if (floatingControls) {
                 floatingControls.classList.add('hidden');
             } else {
                 console.warn("floatingControls element not found when trying to hide in showLoginView");
             }
-            // --- FIN CORRECCIÓN ---
             mainContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             loginContent.classList.remove('hidden');
@@ -528,13 +567,11 @@
         /** Displays the registration view */
         function showRegisterView() {
             console.log("Showing Register View");
-             // --- INICIO CORRECCIÓN ---
              if (floatingControls) {
                 floatingControls.classList.add('hidden');
             } else {
                 console.warn("floatingControls element not found when trying to hide in showRegisterView");
             }
-            // --- FIN CORRECCIÓN ---
             mainContent.classList.add('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.remove('hidden');
@@ -555,22 +592,26 @@
                   { path: `artifacts/${appId}/users/${userId}/rubros`, name: 'Rubros' },
                   { path: `artifacts/${appId}/users/${userId}/segmentos`, name: 'Segmentos' },
                   { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' }, // CORRECCIÓN: Usar Project ID
-                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' } // CORRECCIÓN: Usar Project ID
-                  // Config obsequio removida
+                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
+                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' }
               ];
               console.log("Preloading data for offline use...");
+              // Usar Promise.allSettled para continuar incluso si alguna falla
               const results = await Promise.allSettled(
                   collectionsToPreload.map(col => getDocs(collection(db, col.path)).catch(err => {
+                       // Log specific error but don't throw, let allSettled handle it
                        console.warn(`Preload failed for ${col.name} (${col.path}):`, err.code || err.message);
-                       return { failed: true, reason: err };
+                       return { failed: true, reason: err }; // Return structured error info
                   }))
               );
               results.forEach((result, index) => {
+                  const colInfo = collectionsToPreload[index];
                   if (result.status === 'fulfilled' && !result.value.failed) {
-                       console.log(` - ${collectionsToPreload[index].name}: Preloaded successfully.`);
-                  } else if (result.status === 'rejected' || result.value.failed) {
-                       console.warn(` - ${collectionsToPreload[index].name}: Preload failed.`);
+                       // Optional: Log success details if needed
+                       // console.log(` - ${colInfo.name}: Preloaded successfully (${result.value.size} docs).`);
+                  } else {
+                       // Log only the failed ones
+                       console.warn(` - ${colInfo.name}: Preload failed.`);
                   }
               });
               const endTime = performance.now();
@@ -593,13 +634,14 @@
                     console.log("User role fetched:", userRole);
                 } else {
                      console.warn(`User document for ${userId} not found. Creating default.`);
+                    // Ensure createdAt is a Firestore Timestamp if needed elsewhere, otherwise JS Date is fine here
                     await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true });
                     userRole = 'user';
                 }
             } catch (error) {
                  console.error("CRITICAL: Error fetching user role:", error);
                  window.showModal("Error Crítico", "No se pudo verificar tu rol. Usando rol 'user'."); // Use window.showModal
-                 userRole = 'user';
+                 userRole = 'user'; // Default to user role on error
             }
 
             // Show loading state
@@ -607,17 +649,21 @@
             registerContent.classList.add('hidden');
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando datos iniciales...</h2></div></div>`;
             mainContent.classList.remove('hidden');
-            // --- INICIO CORRECCIÓN ---
             if (floatingControls) {
                 floatingControls.classList.add('hidden'); // Ocultar mientras carga
             } else {
                 console.warn("floatingControls element not found when trying to hide in showMainView (loading state)");
             }
-            // --- FIN CORRECCIÓN ---
 
-            // Preload data
+            // Preload data (allow continuing even if preload fails partially)
              console.log("Starting data preload...");
-             await preloadAllData();
+             try {
+                 await preloadAllData();
+             } catch (preloadError) {
+                  console.error("Error during preloadAllData:", preloadError);
+                  // Decide if this is critical or if the app can continue
+                  // window.showModal("Advertencia", "No se pudieron precargar todos los datos para uso offline.");
+             }
              console.log("Preload attempted. Initializing modules...");
 
 
@@ -627,7 +673,8 @@
                 showMainMenu, // Pass showMainMenu itself
                 showModal: window.showModal, // Pass the globally defined showModal
                 showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit,
+                firebaseConfig: firebaseConfig // Pasar firebaseConfig
             };
 
             // Initialize modules
@@ -641,26 +688,43 @@
                  { name: 'Ventas', init: window.initVentas },
                  { name: 'Obsequios', init: window.initObsequios }
              ];
+
+             // --- DEBUGGING: Check init functions before loop ---
+             console.log("Checking init functions before initialization loop:");
+             console.log("window.initData type:", typeof window.initData);
+             console.log("window.initAdmin type:", typeof window.initAdmin);
+             console.log("window.initInventario type:", typeof window.initInventario);
+             console.log("window.initCatalogo type:", typeof window.initCatalogo);
+             console.log("window.initClientes type:", typeof window.initClientes);
+             console.log("window.initVentas type:", typeof window.initVentas);
+             console.log("window.initObsequios type:", typeof window.initObsequios);
+             // --- END DEBUGGING ---
+
              modules.forEach(m => {
                  if (typeof m.init === 'function') {
                      try {
-                         m.init(dependencies);
+                         m.init(dependencies); // Llamar a la función init
                          console.log(`${m.name} module initialized.`);
                      } catch (e) {
                          console.error(`Error initializing ${m.name} module:`, e);
-                         initSuccess = false;
+                         initSuccess = false; // Marcar que la inicialización falló
                      }
                  } else {
+                     // Este es el punto donde se genera el error "init function not found"
                      console.warn(`${m.name} module init function not found.`);
-                      // Considerar si esto debe marcar initSuccess como false
+                     initSuccess = false; // Marcar que la inicialización falló
                  }
              });
 
+            // After the loop: Check if initialization was successful overall
             if (!initSuccess) {
-                 window.showModal("Error Crítico", "Uno o más componentes de la aplicación no pudieron inicializarse. Por favor, recarga la página."); // Use window.showModal
+                 // Usar window.showModal porque _showModal podría no estar seteado si la inicialización falló pronto
+                 window.showModal("Error Crítico", "Uno o más componentes de la aplicación no pudieron inicializarse. Por favor, revisa la consola y recarga la página.");
+                 // Podríamos incluso intentar un logout forzado aquí si la app queda inutilizable
+                 // handleLogout();
             } else {
-                 console.log("Modules initialized. Showing main menu.");
-                 showMainMenu(); // Esto mostrará los controles flotantes si floatingControls existe
+                 console.log("All modules initialized successfully. Showing main menu.");
+                 showMainMenu(); // Proceed to main menu only if all inits were successful
             }
         }
 
@@ -670,8 +734,7 @@
             cleanupListeners(); // Clean up previous listeners FIRST
 
             // Connection Status Listener
-            // --- CORRECCIÓN: Usar una colección que siempre exista para el usuario, como su propio inventario ---
-            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`); // Usar inventario del usuario
+            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`); // Use user's inventory
             const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
                  if (!connectionStatusEl) return;
                  const isOffline = snapshot.metadata.fromCache;
@@ -684,17 +747,15 @@
                       connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                  }
             });
-            activeListeners.push(unsubscribeStatus);
+            activeListeners.push(unsubscribeStatus); // Add to active listeners
 
-            // --- INICIO CORRECCIÓN ---
-            // Mostrar los controles flotantes SOLO si el elemento existe
+            // Show floating controls if the element exists
             if (floatingControls) {
                 floatingControls.classList.remove('hidden');
             } else {
                 console.error("floatingControls element not found when trying to show in showMainMenu. Controls will be missing.");
             }
-            // --- FIN CORRECCIÓN ---
-            mainContent.classList.remove('hidden'); // Asegurar que el contenido principal sea visible
+            mainContent.classList.remove('hidden'); // Ensure main content is visible
 
             const isAdmin = userRole === 'admin';
             mainContent.innerHTML = `
@@ -716,38 +777,41 @@
                 </div>
             `;
 
+            // Navigation function with error handling and floating controls management
             const navigateTo = (viewFunction) => {
+                const functionName = Object.keys(window).find(key => window[key] === viewFunction); // Get function name for logging
+                console.log(`Navigating to: ${functionName || 'Unknown View'}`);
                 if (typeof viewFunction === 'function') {
-                    // --- INICIO CORRECCIÓN ---
-                    // Ocultar controles flotantes ANTES de navegar, si existen
+                    // Hide controls before navigating
                     if (floatingControls) {
                         floatingControls.classList.add('hidden');
                     } else {
-                        console.warn("floatingControls not found before navigating to view. This might cause issues in the target view if it expects controls to be hidden.");
+                        console.warn("floatingControls not found before navigating to view.");
                     }
-                    // --- FIN CORRECCIÓN ---
                     try {
-                        viewFunction(); // Ejecutar la función de la vista
+                        viewFunction(); // Execute the view function
                     } catch (navError) {
-                        console.error("Error navigating to view:", navError);
+                        console.error(`Error navigating to ${functionName || 'view'}:`, navError);
                          window.showModal("Error de Navegación", `No se pudo abrir la sección solicitada: ${navError.message}`);
-                         // Mostrar menú principal de nuevo si falla la navegación
+                         // Attempt to show main menu again if navigation fails
                          showMainMenu();
                     }
                 } else {
                     console.error("Navigation target is not a function:", viewFunction);
-                    window.showModal("Error Interno", "La acción solicitada no está disponible.");
+                    window.showModal("Error Interno", `La acción solicitada (${functionName || 'desconocida'}) no está disponible.`);
+                    // Show main menu again if target is invalid
+                    showMainMenu();
                 }
             };
 
-            // Asegurarse de que las funciones globales existan antes de añadir listeners
-            document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
-            document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
-            document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
-            document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); // Solo existe si !isAdmin
-            document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
-            document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
-            document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); // Solo existe si isAdmin
+            // Add event listeners only if the corresponding function exists on window
+            if (window.showInventarioSubMenu) document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
+            if (window.showClientesSubMenu) document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
+            if (window.showVentasView) document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
+            if (window.showGestionObsequiosView) document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); // Only exists if !isAdmin
+            if (window.showCatalogoSubMenu) document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
+            if (window.showAdminOrProfileView) document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
+            if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); // Only exists if isAdmin
         }
 
         // --- APP INITIALIZATION ---
@@ -757,11 +821,12 @@
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                setLogLevel('warn');
+                setLogLevel('warn'); // Use 'debug' for more verbose logs if needed
                 console.log("Firebase App, Firestore, Auth initialized.");
             } catch (initError) {
                  console.error("CRITICAL: Firebase initialization failed:", initError);
-                 window.showModal("Error Crítico", "No se pudo conectar con los servicios base. Recarga."); // Use window.showModal
+                 // Try to show modal even if _showModal isn't ready
+                 alert("Error Crítico: No se pudo conectar con los servicios base. Recarga la página.");
                  return;
             }
 
@@ -772,9 +837,9 @@
                 console.log("Offline persistence enabled.");
             } catch (err) {
                 if (err.code == 'failed-precondition') {
-                    console.warn("Persistence failed: Multiple tabs open?");
+                    console.warn("Persistence failed: Multiple tabs open? Offline features might be limited.");
                 } else if (err.code == 'unimplemented') {
-                    console.warn("Persistence failed: Browser not supported.");
+                    console.warn("Persistence failed: Browser not supported for offline features.");
                 } else {
                      console.error("Persistence error:", err);
                 }
@@ -784,11 +849,13 @@
              console.log("Attaching Auth listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners(); // Limpiar listeners anteriores al cambiar estado
+                cleanupListeners(); // Clean up listeners on any auth state change
                 if (user) {
                     showMainView(user).catch(err => {
                          console.error("CRITICAL: Error during showMainView execution:", err);
                          window.showModal("Error Crítico", "Ocurrió un error al cargar la aplicación principal. Intenta recargar.");
+                         // Consider logging out the user if the app is unusable
+                         // handleLogout();
                     });
                 } else {
                     showLoginView();
@@ -802,7 +869,7 @@
             console.log("Window loaded. Initializing app...");
             await initializeAppAndListeners();
 
-            // Setup static listeners
+            // Setup static listeners (safe to do here as elements exist on load)
             loginForm?.addEventListener('submit', handleLogin);
             registerForm?.addEventListener('submit', handleRegister);
             document.getElementById('logoutBtn')?.addEventListener('click', () => {
