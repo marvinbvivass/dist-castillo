@@ -2,7 +2,9 @@
 
 (function() {
     // Variables locales del módulo
-    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc, _getDoc, _writeBatch;
+    // --- NUEVO: Añadir _populateDropdown ---
+    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _showMainMenu, _showModal, _collection, _getDocs, _doc, _setDoc, _getDoc, _writeBatch, _populateDropdown;
+    // --- FIN NUEVO ---
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
@@ -22,19 +24,49 @@
         _getDoc = dependencies.getDoc;
         _setDoc = dependencies.setDoc;
         _writeBatch = dependencies.writeBatch;
+        // --- NUEVO ---
+        _populateDropdown = dependencies.populateDropdown;
+        // --- FIN NUEVO ---
     };
-    
+
     /**
      * Función principal que decide qué vista mostrar según el rol del usuario.
      */
     window.showAdminOrProfileView = function() {
         _floatingControls.classList.add('hidden');
         if (_userRole === 'admin') {
-            showUserManagementView();
+            showAdminMenuView(); // Mostrar menú admin en lugar de directo a usuarios
         } else {
             showUserProfileView();
         }
     };
+
+    // --- NUEVO: Menú de Administración ---
+    /**
+     * Muestra el menú principal de administración.
+     */
+    function showAdminMenuView() {
+         _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Administración</h1>
+                        <div class="space-y-4">
+                            <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Gestión de Usuarios</button>
+                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Datos de Inventario</button>
+                            <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Configurar Producto de Obsequio</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('userManagementBtn').addEventListener('click', showUserManagementView);
+        document.getElementById('syncDataBtn').addEventListener('click', showSyncDataView);
+        document.getElementById('obsequioConfigBtn').addEventListener('click', showObsequioConfigView);
+        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+    }
+    // --- FIN NUEVO ---
 
     /**
      * Muestra la vista de gestión de usuarios (solo para administradores).
@@ -49,16 +81,16 @@
                             <p class="text-center text-gray-500">Cargando usuarios...</p>
                         </div>
                         <div class="mt-6 flex flex-col sm:flex-row gap-4">
-                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Datos de Inventario</button>
+                            <!-- CAMBIO: Volver al menú admin -->
+                            <button id="backToAdminMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <!-- FIN CAMBIO -->
                         </div>
                     </div>
                 </div>
             </div>
         `;
 
-        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
-        document.getElementById('syncDataBtn').addEventListener('click', showSyncDataView);
+        document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminMenuView); // <-- CAMBIO
         renderUserList();
     };
 
@@ -117,7 +149,7 @@
      */
     async function handleRoleChange(userId, newRole, userEmail) {
         _showModal(
-            'Confirmar Cambio de Rol', 
+            'Confirmar Cambio de Rol',
             `¿Estás seguro de que quieres cambiar el rol de <strong>${userEmail}</strong> a <strong>${newRole}</strong>?`,
             async () => {
                 _showModal('Progreso', 'Actualizando rol...');
@@ -134,7 +166,7 @@
             'Sí, Cambiar Rol'
         );
     }
-    
+
     /**
      * Muestra la vista del perfil del usuario (para roles 'user').
      */
@@ -221,11 +253,12 @@
      * Muestra la vista para que el admin sincronice datos con otros usuarios.
      */
     async function showSyncDataView() {
+        // --- CAMBIO: Volver al menú admin ---
         const usersRef = _collection(_db, "users");
         const snapshot = await _getDocs(usersRef);
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
-        let sourceUserOptionsHTML = users.map(user => 
+        let sourceUserOptionsHTML = users.map(user =>
             `<option value="${user.id}">${user.email} ${user.id === _userId ? '(Yo)' : ''}</option>`
         ).join('');
 
@@ -236,28 +269,40 @@
             </label>
         `).join('');
 
-        const modalContent = `
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Sincronizar Datos de Inventario</h3>
-            <div class="text-left space-y-4">
-                 <div>
-                    <p class="text-sm text-gray-600">Esta herramienta copiará el <strong>inventario y sus categorías (rubros, segmentos, marcas)</strong> desde una cuenta de origen a una o más cuentas de destino. Las cantidades de stock de los usuarios de destino se conservarán.</p>
-                </div>
-                <div>
-                    <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">1. Seleccione la cuenta de origen:</label>
-                    <select id="sourceUserSelect" class="w-full p-2 border rounded-lg bg-gray-50">
-                        ${sourceUserOptionsHTML}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-gray-700 font-medium mb-2">2. Seleccione los usuarios de destino:</label>
-                    <div id="targetUsersContainer" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
-                        ${targetUserCheckboxesHTML}
+        _mainContent.innerHTML = `
+             <div class="p-4 pt-8">
+                 <div class="container mx-auto max-w-lg">
+                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                         <h3 class="text-2xl font-bold text-gray-800 mb-4 text-center">Sincronizar Datos de Inventario</h3>
+                         <div class="text-left space-y-4">
+                              <div>
+                                 <p class="text-sm text-gray-600">Esta herramienta copiará el <strong>inventario y sus categorías (rubros, segmentos, marcas)</strong> desde una cuenta de origen a una o más cuentas de destino. Las cantidades de stock de los usuarios de destino se conservarán.</p>
+                             </div>
+                             <div>
+                                 <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">1. Seleccione la cuenta de origen:</label>
+                                 <select id="sourceUserSelect" class="w-full p-2 border rounded-lg bg-gray-50">
+                                     ${sourceUserOptionsHTML}
+                                 </select>
+                             </div>
+                             <div>
+                                 <label class="block text-gray-700 font-medium mb-2">2. Seleccione los usuarios de destino:</label>
+                                 <div id="targetUsersContainer" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">
+                                     ${targetUserCheckboxesHTML}
+                                 </div>
+                             </div>
+                             <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                                <button id="backToAdminMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                                <button id="confirmSyncBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Ahora</button>
+                             </div>
+                         </div>
                     </div>
                 </div>
             </div>
         `;
-        
-        _showModal('Sincronizar Datos de Admin', modalContent, handleAdminSync, 'Sincronizar Ahora');
+        // --- FIN CAMBIO ---
+
+        document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminMenuView); // <-- CAMBIO
+        document.getElementById('confirmSyncBtn').addEventListener('click', handleAdminSync); // <-- CAMBIO
 
         // Lógica para deshabilitar el usuario de origen en la lista de destino
         const sourceSelect = document.getElementById('sourceUserSelect');
@@ -267,12 +312,8 @@
             const selectedSourceId = sourceSelect.value;
             const targetCheckboxes = targetContainer.querySelectorAll('input[name="targetUsers"]');
             targetCheckboxes.forEach(checkbox => {
-                if (checkbox.value === selectedSourceId) {
-                    checkbox.disabled = true;
-                    checkbox.checked = false;
-                } else {
-                    checkbox.disabled = false;
-                }
+                checkbox.disabled = checkbox.value === selectedSourceId;
+                if (checkbox.disabled) checkbox.checked = false;
             });
         };
 
@@ -280,6 +321,7 @@
         sourceSelect.value = _userId; // Seleccionar al admin actual por defecto
         updateTargetUsers(); // Ejecutar al inicio
     }
+
 
     /**
      * Ejecuta la lógica de sincronización del admin.
@@ -294,7 +336,8 @@
             return;
         }
 
-        const sourceUserEmail = document.getElementById('sourceUserSelect').options[document.getElementById('sourceUserSelect').selectedIndex].text;
+        const sourceUserOption = document.getElementById('sourceUserSelect').selectedOptions[0];
+        const sourceUserEmail = sourceUserOption ? sourceUserOption.text.split(' ')[0] : 'desconocido'; // Extraer email
         const confirmationMessage = `
             <p>Estás a punto de sincronizar el inventario desde <strong>${sourceUserEmail}</strong> con <strong>${targetUserIds.length}</strong> usuario(s).</p>
             <p class="mt-2 font-bold text-red-600">¡Atención! Esto sobreescribirá la estructura del inventario en las cuentas de destino, pero se conservarán las cantidades de stock existentes.</p>
@@ -311,28 +354,127 @@
                 for (const col of collections) {
                     const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
                     const snapshot = await _getDocs(_collection(_db, sourcePath));
-                    if (!snapshot.empty) sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    sourceData[col] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); // Guardar siempre, incluso si está vacío
                 }
                 
                 // 2. Iterar sobre cada usuario de destino y aplicar la sincronización
                 for (const targetId of targetUserIds) {
-                    await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
+                    // Copiar categorías primero (sobrescribir)
                     for(const cat of ['rubros', 'segmentos', 'marcas']) {
                         await copyDataToUser(targetId, cat, sourceData[cat]);
                     }
+                    // Luego, fusionar inventario conservando cantidades
+                    await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
                 }
 
                 _showModal('Éxito', 'La sincronización se ha completado correctamente para todos los usuarios seleccionados.');
+                showAdminMenuView(); // Volver al menú admin después del éxito
 
             } catch (error) {
                 console.error("Error durante la sincronización de admin:", error);
                 _showModal('Error', `Ocurrió un error: ${error.message}`);
             }
-        });
+        }, 'Sí, Sincronizar'); // Texto del botón de confirmación
     }
 
+    // --- NUEVO: Función para poblar dropdown de inventario ---
+    /**
+     * Popula un dropdown con los productos del inventario del admin.
+     * @param {string} elementId - ID del elemento select.
+     * @param {string} selectedValue - ID del producto a seleccionar por defecto.
+     */
+    async function populateInventarioDropdown(elementId, selectedValue = null) {
+        const selectElement = document.getElementById(elementId);
+        if (!selectElement) return;
+        selectElement.innerHTML = '<option value="">Cargando inventario...</option>';
+
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); // Siempre usa el inventario del admin
+            const snapshot = await _getDocs(inventarioRef);
+            const productos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                                         .sort((a,b) => `${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
+
+            selectElement.innerHTML = '<option value="">-- Seleccione un producto --</option>';
+            productos.forEach(p => {
+                const selected = p.id === selectedValue ? ' selected' : '';
+                selectElement.innerHTML += `<option value="${p.id}"${selected}>${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;
+            });
+        } catch (error) {
+            console.error("Error al cargar inventario para dropdown:", error);
+            selectElement.innerHTML = '<option value="">Error al cargar</option>';
+        }
+    }
+    // --- FIN NUEVO ---
+
+
+    // --- NUEVO: Lógica para Configurar Obsequio ---
+    /**
+     * Muestra la vista para configurar el producto de obsequio.
+     */
+    async function showObsequioConfigView() {
+         _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Configurar Producto de Obsequio</h1>
+                        <p class="text-center text-gray-600 mb-6">Selecciona el producto que se utilizará como obsequio en la gestión correspondiente.</p>
+                        <div class="space-y-4 text-left">
+                            <div>
+                                <label for="obsequioProductoSelect" class="block text-gray-700 font-medium mb-2">Producto de Obsequio:</label>
+                                <select id="obsequioProductoSelect" class="w-full px-4 py-2 border rounded-lg bg-gray-50">
+                                    <option value="">Cargando...</option>
+                                </select>
+                            </div>
+                            <button id="saveObsequioConfigBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Guardar Configuración</button>
+                        </div>
+                        <button id="backToAdminMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminMenuView);
+        document.getElementById('saveObsequioConfigBtn').addEventListener('click', handleSaveObsequioConfig);
+
+        // Cargar configuración actual y poblar dropdown
+        try {
+            const configRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/obsequio`);
+            const configSnap = await _getDoc(configRef);
+            const currentProductId = configSnap.exists() ? configSnap.data().productoId : null;
+            await populateInventarioDropdown('obsequioProductoSelect', currentProductId);
+        } catch (error) {
+            console.error("Error al cargar configuración de obsequio:", error);
+            document.getElementById('obsequioProductoSelect').innerHTML = '<option value="">Error al cargar</option>';
+        }
+    }
+
+    /**
+     * Guarda la configuración del producto de obsequio.
+     */
+    async function handleSaveObsequioConfig() {
+        const selectedProductId = document.getElementById('obsequioProductoSelect').value;
+
+        if (!selectedProductId) {
+            _showModal('Aviso', 'Por favor, seleccione un producto para guardar la configuración.');
+            return;
+        }
+
+        _showModal('Progreso', 'Guardando configuración...');
+        try {
+            const configRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/obsequio`);
+            await _setDoc(configRef, { productoId: selectedProductId });
+            _showModal('Éxito', 'Producto de obsequio configurado correctamente.');
+            showAdminMenuView(); // Volver al menú admin
+        } catch (error) {
+            console.error("Error al guardar configuración de obsequio:", error);
+            _showModal('Error', 'No se pudo guardar la configuración.');
+        }
+    }
+    // --- FIN NUEVO ---
+
+
     async function mergeDataForUser(targetUserId, collectionName, sourceItems, fieldToPreserve) {
-        if (!sourceItems || sourceItems.length === 0) return;
+        if (!sourceItems) return; // Permitir sourceItems vacío o nulo
 
         const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
         const targetRef = _collection(_db, targetPath);
@@ -343,23 +485,33 @@
 
         sourceItems.forEach(item => {
             const { id, ...data } = item;
-            const targetDocRef = _doc(_db, targetPath, id);
-            
-            if (targetMap.has(id)) {
-                const preservedValue = targetMap.get(id)[fieldToPreserve] || (fieldToPreserve === 'saldoVacios' ? {} : 0);
-                data[fieldToPreserve] = preservedValue;
-            } else {
-                data[fieldToPreserve] = (fieldToPreserve === 'saldoVacios' ? {} : 0);
+            if (!id) {
+                console.warn(`Item en ${collectionName} sin ID, omitiendo:`, data);
+                return; // Omitir items sin ID
             }
+            const targetDocRef = _doc(_db, targetPath, id); // Usar ID existente
+
+            const preservedValue = targetMap.get(id)?.[fieldToPreserve];
+            // Si el campo a preservar existe en el destino, usarlo. Si no, usar 0 o {}
+            data[fieldToPreserve] = preservedValue !== undefined ? preservedValue : (fieldToPreserve === 'saldoVacios' ? {} : 0);
+
             batch.set(targetDocRef, data);
         });
+
+        // Opcional: Eliminar documentos en destino que no están en origen (si se desea una sincronización completa)
+        /*
+        targetSnapshot.docs.forEach(doc => {
+            if (!sourceItems.some(item => item.id === doc.id)) {
+                batch.delete(doc.ref);
+            }
+        });
+        */
 
         await batch.commit();
     }
 
-    async function copyDataToUser(targetUserId, collectionName, sourceItems) {
-        if (!sourceItems || sourceItems.length === 0) return;
 
+    async function copyDataToUser(targetUserId, collectionName, sourceItems) {
         const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
         const batch = _writeBatch(_db);
 
@@ -367,15 +519,22 @@
         const oldSnapshot = await _getDocs(_collection(_db, targetPath));
         oldSnapshot.docs.forEach(doc => batch.delete(doc.ref));
 
-        // Escribir nuevos datos
-        sourceItems.forEach(item => {
-            const { id, ...data } = item;
-            const targetDocRef = _doc(_db, targetPath, id);
-            batch.set(targetDocRef, data);
-        });
+        // Escribir nuevos datos si existen
+        if (sourceItems && sourceItems.length > 0) {
+            sourceItems.forEach(item => {
+                const { id, ...data } = item;
+                 if (!id) {
+                    console.warn(`Item en ${collectionName} sin ID durante copia, omitiendo:`, data);
+                    return; // Omitir items sin ID
+                }
+                const targetDocRef = _doc(_db, targetPath, id); // Usar ID existente
+                batch.set(targetDocRef, data);
+            });
+        }
 
         await batch.commit();
     }
+
 
     // Exponer funciones públicas al objeto window
     window.adminModule = {
