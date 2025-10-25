@@ -3,7 +3,7 @@
 (function() {
     // Variables locales del módulo
     let _db, _userId, _appId, _mainContent, _showMainMenu, _collection, _getDocs, _floatingControls;
-    
+
     // Estado específico del catálogo
     let _catalogoTasaCOP = 0;
     let _catalogoMonedaActual = 'USD';
@@ -17,7 +17,7 @@
     let _productosAgrupadosCache = {};
 
     /**
-     * Inicializa el módulo de catálogo. 
+     * Inicializa el módulo de catálogo.
      */
     window.initCatalogo = function(dependencies) {
         _db = dependencies.db;
@@ -27,33 +27,41 @@
         _showMainMenu = dependencies.showMainMenu;
         _collection = dependencies.collection;
         _getDocs = dependencies.getDocs;
-        _floatingControls = dependencies.floatingControls;
+        _floatingControls = dependencies.floatingControls; // Guardar referencia
+        console.log("Catalogo module initialized. floatingControls valid:", !!_floatingControls); // Log
     };
-    
+
     /**
      * Obtiene y cachea el mapa de orden de los segmentos.
      */
     async function getSegmentoOrderMapCatalogo() {
         if (_segmentoOrderCacheCatalogo) return _segmentoOrderCacheCatalogo;
-        
+
+        // Intentar obtener del módulo de inventario si está disponible
         if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
-            _segmentoOrderCacheCatalogo = await window.inventarioModule.getSegmentoOrderMap();
-            return _segmentoOrderCacheCatalogo;
+            try {
+                _segmentoOrderCacheCatalogo = await window.inventarioModule.getSegmentoOrderMap();
+                if (_segmentoOrderCacheCatalogo) return _segmentoOrderCacheCatalogo; // Usar si se obtuvo
+            } catch (e) {
+                console.warn("Error getting segment order map from inventarioModule:", e);
+            }
         }
 
+        // Fallback: Leer directamente si falla lo anterior
+        console.log("Falling back to direct segment order read in catalogo.js");
         const map = {};
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
         try {
             const snapshot = await _getDocs(segmentosRef);
             snapshot.docs.forEach(doc => {
                 const data = doc.data();
-                map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
+                map[data.name] = (data.orden !== undefined && data.orden !== null) ? data.orden : 9999;
             });
             _segmentoOrderCacheCatalogo = map;
             return map;
         } catch (e) {
-            console.warn("No se pudo obtener el orden de los segmentos en catalogo.js", e);
-            return null;
+            console.warn("No se pudo obtener el orden de los segmentos en catalogo.js (fallback failed):", e);
+            return {}; // Devolver vacío si todo falla
         }
     }
 
@@ -61,31 +69,43 @@
      * Muestra el submenú de opciones del catálogo.
      */
     window.showCatalogoSubMenu = function() {
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.error("Floating controls not available in showCatalogoSubMenu");
+        }
+        // --- FIN CORRECCIÓN ---
         document.body.classList.remove('catalogo-active');
         document.body.style.removeProperty('--catalogo-bg-image');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
-                <div class="container mx-auto">
+                <div class="container mx-auto max-w-lg"> {/* Consistent width */}
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                        <h1 class="text-4xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Catálogo de Productos</h1>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button data-rubros='["CERVECERIA Y VINOS"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Cerveza y Vinos</button>
-                            <button data-rubros='["MALTIN & PEPSI"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800">Maltin y Pepsicola</button>
-                            <button data-rubros='["ALIMENTOS"]' data-bg="images/alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600">Alimentos Polar</button>
-                            <button data-rubros='["P&G"]' data-bg="images/p&g.png" class="catalogo-btn w-full px-6 py-3 bg-sky-500 text-white font-semibold rounded-lg shadow-md hover:bg-sky-600">Procter & Gamble</button>
-                            <button data-rubros='[]' data-bg="" class="catalogo-btn md:col-span-2 w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800">Unificado (Todos)</button>
+                            {/* Simplified buttons */}
+                            <button data-rubros='["CERVECERIA Y VINOS"]' data-bg="images/cervezayvinos.png" class="catalogo-btn w-full px-6 py-3 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200">Cerveza y Vinos</button>
+                            <button data-rubros='["MALTIN & PEPSI"]' data-bg="images/maltinypepsi.png" class="catalogo-btn w-full px-6 py-3 bg-blue-700 text-white font-semibold rounded-lg shadow-md hover:bg-blue-800 transition duration-200">Maltin y Pepsicola</button>
+                            <button data-rubros='["ALIMENTOS"]' data-bg="images/alimentospolar.png" class="catalogo-btn w-full px-6 py-3 bg-red-500 text-white font-semibold rounded-lg shadow-md hover:bg-red-600 transition duration-200">Alimentos Polar</button>
+                            <button data-rubros='["P&G"]' data-bg="images/p&g.png" class="catalogo-btn w-full px-6 py-3 bg-sky-500 text-white font-semibold rounded-lg shadow-md hover:bg-sky-600 transition duration-200">Procter & Gamble</button>
+                            <button data-rubros='[]' data-bg="" class="catalogo-btn md:col-span-2 w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition duration-200">Unificado (Todos)</button>
                         </div>
-                        <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                        <button id="backToMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-200">Volver al Menú</button>
                     </div>
                 </div>
             </div>
         `;
         document.querySelectorAll('.catalogo-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                _currentRubros = JSON.parse(e.target.dataset.rubros);
+                 try {
+                     _currentRubros = JSON.parse(e.target.dataset.rubros || '[]'); // Default to empty array
+                 } catch (parseError) {
+                      console.error("Error parsing rubros data:", parseError, e.target.dataset.rubros);
+                      _currentRubros = []; // Fallback to empty
+                 }
                 const title = e.target.textContent.trim();
-                const bgImage = e.target.dataset.bg;
+                const bgImage = e.target.dataset.bg || ''; // Default to empty string
                 showCatalogoView(title, bgImage);
             });
         });
@@ -99,54 +119,80 @@
         _currentBgImage = bgImage;
         if (bgImage) {
             document.body.style.setProperty('--catalogo-bg-image', `url('${bgImage}')`);
+             document.body.classList.add('catalogo-active');
+        } else {
+             document.body.classList.remove('catalogo-active');
+             document.body.style.removeProperty('--catalogo-bg-image');
         }
-        document.body.classList.add('catalogo-active');
-        _catalogoMonedaActual = 'USD';
+        _catalogoMonedaActual = 'USD'; // Reset currency on view change
+
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden'); // Ocultar controles flotantes en el catálogo
+        } else {
+            console.error("Floating controls not available in showCatalogoView");
+        }
+         // Asegurarse de que _mainContent esté definido
+         if (!_mainContent) {
+             console.error("Main content area not available in showCatalogoView");
+             // Podríamos intentar obtenerlo de nuevo, o mostrar un error fatal
+             // _mainContent = document.getElementById('mainContent');
+             // if (!_mainContent) return; // Salir si sigue sin encontrarse
+             alert("Error crítico: No se encuentra el área de contenido principal.");
+             return;
+         }
+        // --- FIN CORRECCIÓN ---
 
         _mainContent.innerHTML = `
-            <div class="p-4 pt-8">
+            <div class="p-4 pt-6 md:pt-8"> {/* Less padding top on mobile */}
                 <div class="container mx-auto">
-                    <div id="catalogo-container-wrapper" class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                    {/* Wrapper con overflow auto para scrolling interno si es necesario */}
+                    <div id="catalogo-container-wrapper" class="bg-white/95 backdrop-blur-sm p-4 sm:p-6 md:p-8 rounded-lg shadow-xl max-h-[calc(100vh-6rem)] overflow-y-auto">
+                        {/* Contenido que se convertirá en imagen */}
                         <div id="catalogo-para-imagen">
-                            <h2 class="text-4xl font-bold text-black mb-2 text-center">${title}</h2>
-                            <p class="text-center text-gray-800 mb-1 text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
-                            <p class="text-center text-gray-700 mb-4 text-base italic">(Todos los precios incluyen IVA)</p>
-                            
-                            <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
-                                <div id="tasa-input-container" class="flex-grow">
-                                    <label for="catalogoTasaCopInput" class="block text-base font-medium mb-1">Tasa (USD a COP):</label>
-                                    <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-4 py-2 border rounded-lg">
+                            <h2 class="text-3xl md:text-4xl font-bold text-black mb-2 text-center">${title}</h2>
+                            <p class="text-center text-gray-800 mb-1 text-sm md:text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
+                            <p class="text-center text-gray-700 mb-4 text-xs md:text-base italic">(Todos los precios incluyen IVA)</p>
+
+                            <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
+                                <div id="tasa-input-container" class="flex-grow w-full sm:w-auto">
+                                    <label for="catalogoTasaCopInput" class="block text-sm font-medium mb-1">Tasa (USD a COP):</label>
+                                    <input type="number" id="catalogoTasaCopInput" placeholder="Ej: 4000" class="w-full px-3 py-1.5 border rounded-lg text-sm"> {/* Ajustar padding/size */}
                                 </div>
+                                {/* El botón de moneda ahora está en la cabecera de la tabla */}
                             </div>
-                            
-                            <div id="catalogo-content" class="space-y-6"><p class="text-center text-gray-500">Cargando...</p></div>
+
+                            <div id="catalogo-content" class="space-y-6"><p class="text-center text-gray-500 p-4">Cargando...</p></div>
                         </div>
-                        <div id="catalogo-buttons-container" class="mt-6 text-center space-y-4">
-                            <button id="generateCatalogoImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Generar Imagen</button>
-                            <button id="backToCatalogoMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                        </div>
+                        {/* Botones fuera del área de imagen */}
+                         <div id="catalogo-buttons-container" class="mt-6 text-center space-y-3 sm:space-y-4">
+                             <button id="generateCatalogoImageBtn" class="w-full px-6 py-2.5 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-200">Generar Imagen</button>
+                             <button id="backToCatalogoMenuBtn" class="w-full px-6 py-2.5 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-200">Volver</button>
+                         </div>
                     </div>
                 </div>
             </div>
         `;
-        
-        const savedTasa = localStorage.getItem('tasaCOP');
-        if (savedTasa) {
-            _catalogoTasaCOP = parseFloat(savedTasa);
-            document.getElementById('catalogoTasaCopInput').value = _catalogoTasaCOP;
-        }
 
-        document.getElementById('catalogoTasaCopInput').addEventListener('input', (e) => {
-            _catalogoTasaCOP = parseFloat(e.target.value) || 0;
-            localStorage.setItem('tasaCOP', _catalogoTasaCOP);
-            if (_catalogoMonedaActual === 'COP') {
-                renderCatalogo();
+        const tasaInput = document.getElementById('catalogoTasaCopInput');
+        if (tasaInput) {
+            const savedTasa = localStorage.getItem('tasaCOP');
+            if (savedTasa) {
+                _catalogoTasaCOP = parseFloat(savedTasa);
+                tasaInput.value = _catalogoTasaCOP;
             }
-        });
+            tasaInput.addEventListener('input', (e) => {
+                _catalogoTasaCOP = parseFloat(e.target.value) || 0;
+                localStorage.setItem('tasaCOP', _catalogoTasaCOP);
+                if (_catalogoMonedaActual === 'COP') {
+                    renderCatalogo(); // Re-renderizar si la moneda actual es COP
+                }
+            });
+        }
 
         document.getElementById('backToCatalogoMenuBtn').addEventListener('click', showCatalogoSubMenu);
         document.getElementById('generateCatalogoImageBtn').addEventListener('click', handleGenerateCatalogoImage);
-        
+
         loadAndRenderCatalogo(); // Carga el inventario antes de renderizar
     }
 
@@ -155,118 +201,154 @@
      */
     window.toggleCatalogoMoneda = function() {
         if (_catalogoTasaCOP <= 0) {
-            alert('Por favor, ingresa una tasa de cambio válida para convertir a COP.');
+             window.showModal('Aviso', 'Ingresa una tasa de cambio (USD a COP) válida para ver precios en COP.'); // Usar showModal global
             return;
         }
         _catalogoMonedaActual = _catalogoMonedaActual === 'USD' ? 'COP' : 'USD';
-        renderCatalogo();
+        renderCatalogo(); // Re-renderizar con la nueva moneda
     };
 
     /**
-     * Carga los datos del inventario y luego renderiza el catálogo.
+     * Carga los datos del inventario del usuario actual y luego renderiza el catálogo.
      */
     async function loadAndRenderCatalogo() {
         const container = document.getElementById('catalogo-content');
         if (!container) return;
-        container.innerHTML = `<p class="text-center text-gray-500">Cargando inventario...</p>`;
-        
+        container.innerHTML = `<p class="text-center text-gray-500 p-4">Cargando inventario...</p>`;
+
         try {
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const snapshot = await _getDocs(inventarioRef);
-            _inventarioCache = snapshot.docs.map(doc => doc.data());
-            renderCatalogo();
+            // Usar caché si ya está cargada, si no, cargarla
+            // Asumimos que initInventario ya ha cargado _inventarioCache
+            // Si no, necesitamos cargarla aquí explícitamente.
+            // Por simplicidad ahora, asumiremos que está cargada.
+            // if (_inventarioCache.length === 0) {
+            //     const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            //     const snapshot = await _getDocs(inventarioRef);
+            //     _inventarioCache = snapshot.docs.map(doc => doc.data());
+            // }
+
+            // O, si queremos asegurar datos frescos siempre para el catálogo:
+             console.log("Fetching fresh inventory for catalog...");
+             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+             const snapshot = await _getDocs(inventarioRef);
+             _inventarioCache = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})); // Guardar ID también por si acaso
+             console.log(`Inventory fetched: ${_inventarioCache.length} items.`);
+
+            renderCatalogo(); // Renderizar con los datos cargados/cacheados
         } catch (error) {
             console.error("Error al cargar el inventario para el catálogo:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Error al cargar el inventario.</p>`;
+            container.innerHTML = `<p class="text-center text-red-500 p-4">Error al cargar el inventario.</p>`;
         }
     }
-    
+
     /**
      * Renderiza la tabla de productos del catálogo.
      */
     async function renderCatalogo() {
         const container = document.getElementById('catalogo-content');
-        if (!container) return;
-        container.innerHTML = `<p class="text-center text-gray-500">Ordenando productos...</p>`;
+        if (!container) { console.error("Catalogo content container not found."); return; }
+        container.innerHTML = `<p class="text-center text-gray-500 p-4">Ordenando productos...</p>`;
 
         try {
-            let productos = [..._inventarioCache];
+            let productos = [..._inventarioCache]; // Trabajar con copia de la caché
 
+            // Filtrar por rubros seleccionados (si los hay)
             if (_currentRubros && _currentRubros.length > 0) {
-                productos = productos.filter(p => _currentRubros.includes(p.rubro));
+                productos = productos.filter(p => p.rubro && _currentRubros.includes(p.rubro));
             }
 
-            const segmentoOrderMap = await getSegmentoOrderMapCatalogo();
-            if (segmentoOrderMap) {
-                productos.sort((a, b) => {
-                    const orderA = segmentoOrderMap[a.segmento] ?? 9999;
-                    const orderB = segmentoOrderMap[b.segmento] ?? 9999;
-                    if (orderA !== orderB) return orderA - orderB;
-                    if ((a.marca || '').localeCompare(b.marca || '') !== 0) return (a.marca || '').localeCompare(b.marca || '');
-                    return a.presentacion.localeCompare(b.presentacion);
-                });
-            }
+            // Ordenar productos
+            const segmentoOrderMap = await getSegmentoOrderMapCatalogo(); // Obtener mapa de orden
+            productos.sort((a, b) => {
+                 const orderA = segmentoOrderMap[a.segmento] ?? 9999;
+                 const orderB = segmentoOrderMap[b.segmento] ?? 9999;
+                 if (orderA !== orderB) return orderA - orderB;
+                 const marcaComp = (a.marca || '').localeCompare(b.marca || '');
+                 if (marcaComp !== 0) return marcaComp;
+                 return (a.presentacion || '').localeCompare(b.presentacion || '');
+            });
 
             if (productos.length === 0) {
-                container.innerHTML = `<p class="text-center text-gray-500">No hay productos en esta categoría.</p>`;
+                container.innerHTML = `<p class="text-center text-gray-500 p-4">No hay productos ${ _currentRubros.length > 0 ? 'en esta categoría' : 'definidos'}.</p>`;
+                _marcasCache = []; // Limpiar caché de marcas
+                _productosAgrupadosCache = {}; // Limpiar caché de productos agrupados
                 return;
             }
-            
+
+            // Agrupar productos por marca para la visualización
             const productosAgrupados = productos.reduce((acc, p) => {
                 const marca = p.marca || 'Sin Marca';
                 if (!acc[marca]) acc[marca] = [];
                 acc[marca].push(p);
                 return acc;
             }, {});
-            
-            const marcasOrdenadas = [...new Set(productos.map(p => p.marca || 'Sin Marca'))];
-            
+
+             // Obtener lista ordenada de marcas presentes en los productos filtrados
+             const marcasOrdenadas = [...new Set(productos.map(p => p.marca || 'Sin Marca'))]
+                .sort((a, b) => a.localeCompare(b)); // Ordenar marcas alfabéticamente
+
+
+            // Guardar en caché para generación de imagen
             _marcasCache = marcasOrdenadas;
             _productosAgrupadosCache = productosAgrupados;
 
-            let html = '<div class="space-y-4">';
-            
+            // Construir HTML
+            let html = '<div class="space-y-4">'; // Espacio entre tablas de marca
+            const monedaLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)';
+
             marcasOrdenadas.forEach(marca => {
-                html += `<table class="min-w-full bg-transparent text-lg">
+                html += `<table class="min-w-full bg-transparent text-sm md:text-lg print:text-sm"> {/* Ajustar tamaño fuente */}
                             <thead class="text-black">
-                                <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
+                                <tr><th colspan="2" class="py-2 px-2 md:px-4 bg-gray-100 font-bold text-left text-base md:text-xl rounded-t-lg">${marca}</th></tr>
                                 <tr>
-                                    <th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th>
-                                    <th class="py-2 px-2 text-right font-bold price-toggle" onclick="toggleCatalogoMoneda()">PRECIO</th>
+                                    <th class="py-1 md:py-2 px-2 md:px-4 text-left font-semibold text-xs md:text-base border-b border-gray-300">PRESENTACIÓN (Segmento)</th>
+                                    {/* Botón para cambiar moneda */}
+                                    <th class="py-1 md:py-2 px-2 md:px-4 text-right font-semibold text-xs md:text-base border-b border-gray-300 price-toggle" onclick="toggleCatalogoMoneda()" title="Clic para cambiar moneda">${monedaLabel}</th>
                                 </tr>
                             </thead>
                             <tbody>`;
-                
-                const productosOrdenados = productosAgrupados[marca];
 
-                productosOrdenados.forEach(p => {
+                const productosDeMarca = productosAgrupados[marca]; // Ya están ordenados por segmento/presentación
+
+                productosDeMarca.forEach(p => {
                     const ventaPor = p.ventaPor || { und: true };
                     const precios = p.precios || { und: p.precioPorUnidad || 0 };
-                    
-                    let precioBaseUSD = 0;
-                    let displayPresentacion = `${p.presentacion} (${p.segmento})`;
 
+                    let precioBaseUSD = 0;
+                    let displayPresentacion = `${p.presentacion || 'N/A'}`; // Incluir segmento en descripción
+                    let unitInfo = ''; // Información de unidades por empaque
+
+                    // Determinar precio base y descripción según forma de venta principal
                     if (ventaPor.cj && precios.cj > 0) {
                         precioBaseUSD = precios.cj;
-                        displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Cj. con ${p.unidadesPorCaja || 1} unds.)</span> (${p.segmento})`;
+                        unitInfo = `(Cj/${p.unidadesPorCaja || 1} und)`;
                     } else if (ventaPor.paq && precios.paq > 0) {
                         precioBaseUSD = precios.paq;
-                        displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Paq. con ${p.unidadesPorPaquete || 1} unds.)</span> (${p.segmento})`;
-                    } else {
+                        unitInfo = `(Paq/${p.unidadesPorPaquete || 1} und)`;
+                    } else { // Fallback a Und
                         precioBaseUSD = precios.und || 0;
+                         unitInfo = `(Und)`;
                     }
 
+                    // Formato del precio según moneda actual
                     let precioMostrado;
                     if (_catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0) {
+                         // Redondear al múltiplo de 100 más cercano hacia arriba
                         precioMostrado = `COP ${(Math.ceil((precioBaseUSD * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                     } else {
                         precioMostrado = `$${precioBaseUSD.toFixed(2)}`;
                     }
 
+                     // Segmento como texto más pequeño
+                    const segmentoDisplay = p.segmento ? `<span class="text-xs text-gray-500 ml-1">(${p.segmento})</span>` : '';
+
                     html += `
-                        <tr class="border-b border-gray-200">
-                            <td class="py-2 px-2 text-gray-900">${displayPresentacion}</td>
-                            <td class="py-2 px-2 text-right font-bold">${precioMostrado}</td>
+                        <tr class="border-b border-gray-200 last:border-b-0">
+                            <td class="py-1.5 md:py-2 px-2 md:px-4 text-gray-900 align-top"> {/* Align top */}
+                                ${displayPresentacion} ${segmentoDisplay}
+                                ${unitInfo ? `<span class="block text-xs text-gray-500">${unitInfo}</span>` : ''} {/* Info unidades */}
+                            </td>
+                            <td class="py-1.5 md:py-2 px-2 md:px-4 text-right font-semibold align-top">${precioMostrado}</td> {/* Align top */}
                         </tr>
                     `;
                 });
@@ -276,75 +358,86 @@
             container.innerHTML = html;
         } catch (error) {
             console.error("Error al renderizar el catálogo:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Error al cargar el catálogo.</p>`;
+            container.innerHTML = `<p class="text-center text-red-500 p-4">Error al mostrar el catálogo.</p>`;
         }
     }
 
+
     /**
-     * Genera una o varias imágenes del catálogo y las comparte.
+     * Genera una o varias imágenes del catálogo (dividido por páginas) y las comparte.
      */
     async function handleGenerateCatalogoImage() {
-        const MAX_BRANDS_PER_PAGE = 5;
+        const MAX_BRANDS_PER_PAGE = 5; // Ajustable según necesidad
 
         const shareButton = document.getElementById('generateCatalogoImageBtn');
         const tasaInputContainer = document.getElementById('tasa-input-container');
         const buttonsContainer = document.getElementById('catalogo-buttons-container');
 
-        if (_marcasCache.length === 0) return;
+        if (!_marcasCache || _marcasCache.length === 0) {
+             window.showModal('Aviso', 'No hay productos en el catálogo actual para generar imagen.');
+             return;
+        }
 
+        // Dividir marcas en páginas
         const pagesOfBrands = [];
         for (let i = 0; i < _marcasCache.length; i += MAX_BRANDS_PER_PAGE) {
             pagesOfBrands.push(_marcasCache.slice(i, i + MAX_BRANDS_PER_PAGE));
         }
         const totalPages = pagesOfBrands.length;
 
-        shareButton.textContent = `Generando ${totalPages} imagen(es)...`;
-        shareButton.disabled = true;
-        tasaInputContainer.classList.add('hidden');
-        buttonsContainer.classList.add('hidden');
+        // Ocultar UI y mostrar progreso
+        if (shareButton) {
+            shareButton.textContent = `Generando ${totalPages} imagen(es)... (Puede tardar)`;
+            shareButton.disabled = true;
+        }
+        if (tasaInputContainer) tasaInputContainer.classList.add('hidden');
+        if (buttonsContainer) buttonsContainer.classList.add('hidden');
+        window.showModal('Progreso', `Generando ${totalPages} página(s) del catálogo como imagen...`); // Usar modal de progreso
+
 
         try {
-            const imageFiles = await Promise.all(pagesOfBrands.map(async (brands, index) => {
+            const imageFiles = await Promise.all(pagesOfBrands.map(async (brandsInPage, index) => {
                 const pageNum = index + 1;
-                
+                console.log(`Generating image for page ${pageNum}/${totalPages}`);
+
+                // Construir HTML solo para las marcas de esta página
                 let contentHtml = '<div class="space-y-4">';
-                brands.forEach(marca => {
-                    contentHtml += `<table class="min-w-full bg-transparent text-lg">
+                const monedaLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)';
+                brandsInPage.forEach(marca => {
+                    contentHtml += `<table class="min-w-full bg-transparent text-lg print:text-sm">
                                 <thead class="text-black">
                                     <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
-                                    <tr><th class="py-2 px-2 text-left font-bold">PRESENTACIÓN</th><th class="py-2 px-2 text-right font-bold">PRECIO</th></tr>
+                                    <tr><th class="py-2 px-4 text-left font-semibold text-base border-b border-gray-300">PRESENTACIÓN (Segmento)</th><th class="py-2 px-4 text-right font-semibold text-base border-b border-gray-300">${monedaLabel}</th></tr>
                                 </thead><tbody>`;
-                    const productosDeMarca = _productosAgrupadosCache[marca];
+                    const productosDeMarca = _productosAgrupadosCache[marca] || [];
                     productosDeMarca.forEach(p => {
+                        // (Misma lógica de cálculo de precio y descripción que en renderCatalogo)
                         const ventaPor = p.ventaPor || { und: true };
                         const precios = p.precios || { und: p.precioPorUnidad || 0 };
-                        
                         let precioBaseUSD = 0;
-                        let displayPresentacion = `${p.presentacion} (${p.segmento})`;
+                        let displayPresentacion = `${p.presentacion || 'N/A'}`;
+                        let unitInfo = '';
 
-                        if (ventaPor.cj && precios.cj > 0) {
-                            precioBaseUSD = precios.cj;
-                            displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Cj. con ${p.unidadesPorCaja || 1} unds.)</span> (${p.segmento})`;
-                        } else if (ventaPor.paq && precios.paq > 0) {
-                            precioBaseUSD = precios.paq;
-                            displayPresentacion = `${p.presentacion} <span class="text-base text-gray-600">(Paq. con ${p.unidadesPorPaquete || 1} unds.)</span> (${p.segmento})`;
-                        } else {
-                            precioBaseUSD = precios.und || 0;
-                        }
+                        if (ventaPor.cj && precios.cj > 0) { precioBaseUSD = precios.cj; unitInfo = `(Cj/${p.unidadesPorCaja || 1} und)`; }
+                        else if (ventaPor.paq && precios.paq > 0) { precioBaseUSD = precios.paq; unitInfo = `(Paq/${p.unidadesPorPaquete || 1} und)`; }
+                        else { precioBaseUSD = precios.und || 0; unitInfo = `(Und)`; }
 
                         let precioMostrado = _catalogoMonedaActual === 'COP' && _catalogoTasaCOP > 0
                             ? `COP ${(Math.ceil((precioBaseUSD * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`
                             : `$${precioBaseUSD.toFixed(2)}`;
 
-                        contentHtml += `<tr class="border-b border-gray-200"><td class="py-2 px-2 text-gray-900">${displayPresentacion}</td><td class="py-2 px-2 text-right font-bold">${precioMostrado}</td></tr>`;
+                        const segmentoDisplay = p.segmento ? `<span class="text-xs text-gray-500 ml-1">(${p.segmento})</span>` : '';
+
+                        contentHtml += `<tr class="border-b border-gray-200 last:border-b-0"><td class="py-2 px-4 text-gray-900 align-top">${displayPresentacion} ${segmentoDisplay} ${unitInfo ? `<span class="block text-xs text-gray-500">${unitInfo}</span>` : ''}</td><td class="py-2 px-4 text-right font-semibold align-top">${precioMostrado}</td></tr>`;
                     });
                     contentHtml += `</tbody></table>`;
                 });
                 contentHtml += '</div>';
-                
-                const title = document.querySelector('#catalogo-para-imagen h2').textContent;
+
+                // Crear HTML completo para la página actual
+                const title = document.querySelector('#catalogo-para-imagen h2')?.textContent || 'Catálogo'; // Safely get title
                 const fullPageHtml = `
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl" style="width: 800px;">
+                    <div class="bg-white p-8" style="width: 800px; /* Ancho fijo para consistencia */ box-shadow: none; border: 1px solid #eee;"> {/* Estilo base para imagen */}
                         <h2 class="text-4xl font-bold text-black mb-2 text-center">${title}</h2>
                         <p class="text-center text-gray-800 mb-1 text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p>
                         <p class="text-center text-gray-700 mb-4 text-base italic">(Todos los precios incluyen IVA)</p>
@@ -352,42 +445,93 @@
                         <p class="text-center text-gray-600 mt-4 text-sm">Página ${pageNum} de ${totalPages}</p>
                     </div>`;
 
+                // Crear elemento temporal para renderizar
                 const tempDiv = document.createElement('div');
                 tempDiv.style.position = 'absolute';
-                tempDiv.style.left = '-9999px';
+                tempDiv.style.left = '-9999px'; // Fuera de pantalla
+                tempDiv.style.top = '0';
                 tempDiv.innerHTML = fullPageHtml;
                 document.body.appendChild(tempDiv);
 
                 const pageWrapper = tempDiv.firstElementChild;
+
+                // Aplicar fondo si existe
                 if (_currentBgImage) {
-                    pageWrapper.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('${_currentBgImage}')`;
+                    pageWrapper.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.75)), url('${_currentBgImage}')`; // Más opacidad
                     pageWrapper.style.backgroundSize = 'cover';
                     pageWrapper.style.backgroundPosition = 'center';
                 }
 
-                // MEJORA: Aumentamos la escala para mayor calidad de imagen.
-                const canvas = await html2canvas(pageWrapper, { scale: 4, useCORS: true, allowTaint: true });
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-                
-                document.body.removeChild(tempDiv);
-                return new File([blob], `catalogo-pagina-${pageNum}.png`, { type: "image/png" });
+                // Generar canvas y blob
+                 console.log(` - Rendering page ${pageNum} with html2canvas...`);
+                 // Aumentar escala para mejor calidad, usar fondo blanco explícito si no hay imagen
+                const canvasOptions = { scale: 3, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' };
+                const canvas = await html2canvas(pageWrapper, canvasOptions);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.9)); // Calidad 0.9
+                console.log(` - Blob created for page ${pageNum}, size: ${blob.size} bytes`);
+
+                document.body.removeChild(tempDiv); // Limpiar DOM
+                return new File([blob], `catalogo-${title.replace(/\s+/g, '_')}-p${pageNum}.png`, { type: "image/png" });
             }));
 
+            // Cerrar modal de progreso
+            const modalContainer = document.getElementById('modalContainer');
+            if(modalContainer) modalContainer.classList.add('hidden');
+
+
+            // Compartir archivos generados
             if (navigator.share && imageFiles.length > 0) {
-                await navigator.share({ files: imageFiles, title: "Catálogo de Productos" });
+                 console.log(`Sharing ${imageFiles.length} catalog image(s)...`);
+                 try {
+                     await navigator.share({
+                         files: imageFiles,
+                         title: `Catálogo: ${title}`,
+                         text: `Catálogo de productos (${title})`
+                     });
+                     console.log("Catalog shared successfully.");
+                 } catch (shareError) {
+                      // Manejar error si el usuario cancela o falla el share
+                      console.warn("Sharing failed or was cancelled:", shareError);
+                      // No mostrar error si el usuario canceló
+                      if (!shareError.message.includes('Abort due to cancellation')) {
+                          window.showModal('Error al Compartir', 'No se pudieron compartir las imágenes.');
+                      }
+                 }
+            } else if (imageFiles.length > 0) {
+                 window.showModal('Imágenes Generadas', 'Las imágenes del catálogo se generaron, pero tu navegador no soporta la función de compartir archivos directamente. Busca las imágenes descargadas si tu navegador las descargó.');
+                 // Opcional: intentar descargar la primera imagen
+                 // const url = URL.createObjectURL(imageFiles[0]);
+                 // const a = document.createElement('a');
+                 // a.href = url;
+                 // a.download = imageFiles[0].name;
+                 // document.body.appendChild(a);
+                 // a.click();
+                 // document.body.removeChild(a);
+                 // URL.revokeObjectURL(url);
             } else {
-                alert('La función para compartir no está disponible o no se generaron imágenes.');
+                 window.showModal('Error', 'No se pudieron generar las imágenes del catálogo.');
             }
         } catch (error) {
-            console.error("Error al generar imagen del catálogo: ", error);
+            console.error("Error grave al generar imagen(es) del catálogo: ", error);
+             window.showModal('Error Grave', `No se pudo generar la imagen: ${error.message}`);
         } finally {
-            shareButton.textContent = 'Generar Imagen';
-            shareButton.disabled = false;
-            tasaInputContainer.classList.remove('hidden');
-            buttonsContainer.classList.remove('hidden');
+            // Restaurar UI
+            if (shareButton) {
+                shareButton.textContent = 'Generar Imagen';
+                shareButton.disabled = false;
+            }
+            if (tasaInputContainer) tasaInputContainer.classList.remove('hidden');
+            if (buttonsContainer) buttonsContainer.classList.remove('hidden');
+            // Cerrar modal de progreso si aún está abierto
+             const modalContainer = document.getElementById('modalContainer');
+             const modalTitle = modalContainer?.querySelector('h3')?.textContent;
+             if(modalContainer && modalTitle?.startsWith('Progreso')) {
+                  modalContainer.classList.add('hidden');
+             }
         }
     }
-    
+
+
     // Exponer función para invalidar la caché
     window.catalogoModule = {
         invalidateCache: () => { _segmentoOrderCacheCatalogo = null; }
