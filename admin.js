@@ -8,7 +8,6 @@
             console.error("Admin Init Error: Missing critical dependencies (db, mainContent, showMainMenu, showModal)");
             return;
         }
-
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole;
@@ -26,7 +25,6 @@
         _query = dependencies.query;
         _where = dependencies.where;
         _deleteDoc = dependencies.deleteDoc;
-
         if (!_floatingControls) {
             console.warn("Admin Init Warning: floatingControls element was not provided or found. Floating buttons might not function correctly.");
         }
@@ -57,7 +55,7 @@
                         <div class="space-y-4">
                             <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Gestión de Usuarios</button>
                             <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700">Configurar Obsequio</button>
-                            <button id="syncDataBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600">Sincronizar Inventario Manual</button>
+                            {/* Botón de Sincronización Manual Eliminado */}
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -66,7 +64,7 @@
         `;
          document.getElementById('userManagementBtn').addEventListener('click', showUserManagementView);
          document.getElementById('obsequioConfigBtn').addEventListener('click', showObsequioConfigView);
-         document.getElementById('syncDataBtn').addEventListener('click', showSyncDataView);
+         // Listener para syncDataBtn eliminado
          document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
@@ -343,181 +341,9 @@
         }
     }
 
-    async function showSyncDataView() {
-         if (_floatingControls) {
-            _floatingControls.classList.add('hidden');
-        }
-         _mainContent.innerHTML = `
-            <div class="p-4 pt-8">
-                <div class="container mx-auto">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                         <div class="flex justify-between items-center mb-6">
-                             <h1 class="text-2xl font-bold text-gray-800 text-center flex-grow">Sincronizar Inventario Manualmente</h1>
-                             <button id="backToAdminMenuBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500 ml-4 flex-shrink-0">Volver</button>
-                        </div>
-                         <p class="text-sm text-gray-600 mb-4 text-center">Copia la <strong>estructura del inventario</strong> (productos y categorías) desde un origen a uno o más destinos. <strong>Conserva cantidades de stock</strong> de los destinos.</p>
-                         <p class="text-sm text-orange-600 mb-4 text-center font-semibold">Nota: Cambios del admin se propagan automáticamente. Usa esto solo para forzar una sincronización completa desde otra cuenta.</p>
-                        <div id="sync-form-container" class="text-left space-y-4">Cargando usuarios...</div>
-                    </div>
-                </div>
-            </div>
-         `;
-         document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
-
-        try {
-             const usersRef = _collection(_db, "users");
-             const snapshot = await _getDocs(usersRef);
-             const users = snapshot.docs
-                .map(doc => ({ id: doc.id, ...doc.data() }))
-                .sort((a, b) => (a.email || '').localeCompare(b.email || ''));
-
-             let sourceUserOptionsHTML = users.map(user => `<option value="${user.id}">${user.email || 'N/A'} ${user.id === _userId ? '(Yo - Admin)' : ''}</option>`).join('');
-             let targetUserCheckboxesHTML = users.map(user => `<label class="flex items-center text-sm"><input type="checkbox" name="targetUsers" value="${user.id}" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"><span class="ml-2 text-gray-700">${user.email || 'N/A'}</span></label>`).join('');
-
-             const formContainer = document.getElementById('sync-form-container');
-             formContainer.innerHTML = `
-                 <div>
-                     <label for="sourceUserSelect" class="block text-gray-700 font-medium mb-2">1. Seleccione cuenta origen:</label>
-                     <select id="sourceUserSelect" class="w-full p-2 border rounded-lg bg-gray-50 text-sm">${sourceUserOptionsHTML}</select>
-                 </div>
-                 <div>
-                     <label class="block text-gray-700 font-medium mb-2">2. Seleccione usuarios destino:</label>
-                     <div id="targetUsersContainer" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-lg">${targetUserCheckboxesHTML}</div>
-                 </div>
-                 <button id="executeSyncBtn" class="w-full px-6 py-3 bg-orange-500 text-white font-semibold rounded-lg shadow-md hover:bg-orange-600 mt-4">Sincronizar Ahora</button>
-             `;
-             document.getElementById('executeSyncBtn').addEventListener('click', handleAdminSync);
-             const sourceSelect = document.getElementById('sourceUserSelect');
-             const targetContainer = document.getElementById('targetUsersContainer');
-             const updateTargetUsers = () => {
-                 const selectedSourceId = sourceSelect.value;
-                 const targetCheckboxes = targetContainer.querySelectorAll('input[name="targetUsers"]');
-                 targetCheckboxes.forEach(checkbox => { checkbox.disabled = checkbox.value === selectedSourceId; if (checkbox.disabled) checkbox.checked = false; });
-             };
-             sourceSelect.addEventListener('change', updateTargetUsers);
-             sourceSelect.value = _userId;
-             updateTargetUsers();
-        } catch (error) {
-             console.error("Error cargando usuarios para sincronización:", error);
-             const formContainer = document.getElementById('sync-form-container');
-             if(formContainer) formContainer.innerHTML = '<p class="text-red-500 text-center">Error al cargar la lista de usuarios.</p>';
-        }
-    }
-
-    async function handleAdminSync() {
-        const sourceUserId = document.getElementById('sourceUserSelect')?.value;
-        const targetUsersCheckboxes = document.querySelectorAll('input[name="targetUsers"]:checked');
-        const targetUserIds = Array.from(targetUsersCheckboxes).map(cb => cb.value);
-
-        if (!sourceUserId) { _showModal('Error', 'No se pudo determinar el usuario de origen.'); return; }
-        if (targetUserIds.length === 0) { _showModal('Error', 'Debe seleccionar al menos un usuario de destino.'); return; }
-
-        const sourceUserOption = document.getElementById('sourceUserSelect').options[document.getElementById('sourceUserSelect').selectedIndex];
-        const sourceUserEmail = sourceUserOption ? sourceUserOption.text : 'Desconocido';
-        const confirmationMessage = `<p>Sobrescribir estructura de inventario en ${targetUserIds.length} usuario(s) destino, usando datos de <strong>${sourceUserEmail}</strong>.</p><p class="mt-2">Se conservarán cantidades de stock destino.</p><p class="mt-4 font-bold text-red-600">¡Acción intensiva y puede tardar! ¿Continuar?</p>`;
-
-        _showModal('Confirmar Sincronización Manual', confirmationMessage, async () => {
-            _showModal('Progreso', `Sincronizando desde ${sourceUserEmail}...`);
-            let errorsOccurred = false;
-            try {
-                _showModal('Progreso', `1/3: Obteniendo datos de ${sourceUserEmail}...`);
-                const sourceData = {};
-                const collectionsToSync = ['inventario', 'rubros', 'segmentos', 'marcas'];
-                for (const col of collectionsToSync) {
-                    const sourcePath = `artifacts/${_appId}/users/${sourceUserId}/${col}`;
-                    const snapshot = await _getDocs(_collection(_db, sourcePath));
-                    sourceData[col] = !snapshot.empty ? snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) : [];
-                }
-                _showModal('Progreso', `2/3: Aplicando datos a ${targetUserIds.length} usuario(s)...`);
-                let count = 0;
-                for (const targetId of targetUserIds) {
-                     count++;
-                     _showModal('Progreso', `2/3: Aplicando a usuario ${count}/${targetUserIds.length}...`);
-                     console.log(`Sincronizando para: ${targetId}`);
-                     try {
-                         for(const cat of ['rubros', 'segmentos', 'marcas']) { await copyDataToUser(targetId, cat, sourceData[cat]); }
-                         await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
-                     } catch (userSyncError) { console.error(`Error sincronizando para usuario ${targetId}:`, userSyncError); errorsOccurred = true; }
-                }
-                 _showModal('Progreso', `3/3: Finalizando...`);
-                 _showModal(errorsOccurred ? 'Advertencia' : 'Éxito', `Sincronización manual completada.${errorsOccurred ? ' Ocurrieron errores.' : ''}`);
-                showAdminSubMenuView();
-            } catch (error) {
-                console.error("Error durante la sincronización de admin:", error);
-                _showModal('Error', `Error durante sincronización: ${error.message}`);
-            }
-        }, 'Sí, Sincronizar');
-    }
-
-    async function mergeDataForUser(targetUserId, collectionName, sourceItems, fieldToPreserve) {
-        if (!sourceItems || sourceItems.length === 0) { console.log(` - No hay ${collectionName} fuente para ${targetUserId}.`); return; }
-        const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
-        const targetRef = _collection(_db, targetPath);
-        let targetMap = new Map();
-        try {
-            const targetSnapshot = await _getDocs(targetRef);
-            targetMap = new Map(targetSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        } catch (readError) { console.warn(`No se pudo leer ${collectionName} existente para ${targetUserId}.`, readError); }
-        const batch = _writeBatch(_db);
-        let operations = 0;
-        const MAX_OPS_PER_BATCH = 490;
-        for (const item of sourceItems) {
-            const itemId = item.id;
-            if (!itemId) { console.warn("Item fuente sin ID:", item); continue; }
-            const { id, ...data } = item;
-            const targetDocRef = _doc(_db, targetPath, itemId);
-            let preservedValue = (fieldToPreserve === 'saldoVacios' ? {} : 0);
-            if (targetMap.has(itemId)) {
-                 const existingData = targetMap.get(itemId);
-                 preservedValue = existingData?.[fieldToPreserve] ?? preservedValue;
-                 targetMap.delete(itemId);
-            }
-            data[fieldToPreserve] = preservedValue;
-            batch.set(targetDocRef, data);
-            operations++;
-             if (operations >= MAX_OPS_PER_BATCH) { await batch.commit(); batch = _writeBatch(_db); operations = 0; }
-        }
-        const deleteOrphans = true;
-         if (deleteOrphans && targetMap.size > 0) {
-             console.log(` - Eliminando ${targetMap.size} items huérfanos de ${collectionName} para ${targetUserId}`);
-             for (const orphanId of targetMap.keys()) {
-                 batch.delete(_doc(_db, targetPath, orphanId));
-                 operations++;
-                 if (operations >= MAX_OPS_PER_BATCH) { await batch.commit(); batch = _writeBatch(_db); operations = 0; }
-             }
-         }
-        if (operations > 0) await batch.commit();
-         console.log(` - Merge de ${collectionName} completado para ${targetUserId}`);
-    }
-
-    async function copyDataToUser(targetUserId, collectionName, sourceItems) {
-         const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
-         const targetCollectionRef = _collection(_db, targetPath);
-         console.log(` - Limpiando ${collectionName} anterior para ${targetUserId}...`);
-         try {
-             const oldSnapshot = await _getDocs(targetCollectionRef);
-             if (!oldSnapshot.empty) {
-                 const deleteBatch = _writeBatch(_db);
-                 oldSnapshot.docs.forEach(doc => deleteBatch.delete(doc.ref));
-                  await deleteBatch.commit();
-                  console.log(`   - ${oldSnapshot.size} items eliminados.`);
-             }
-         } catch (deleteError) { console.error(`Error limpiando ${collectionName} for ${targetUserId}:`, deleteError); throw new Error(`Fallo al limpiar ${collectionName}: ${deleteError.message}`); }
-        if (!sourceItems || sourceItems.length === 0) { console.log(` - No hay ${collectionName} fuente.`); return; }
-         console.log(` - Copiando ${sourceItems.length} items de ${collectionName} a ${targetUserId}...`);
-        const writeBatch = _writeBatch(_db);
-        let writeOps = 0;
-        const MAX_OPS_PER_BATCH = 490;
-        sourceItems.forEach(item => {
-             const itemId = item.id;
-             const { id, ...data } = item;
-             const targetDocRef = (itemId && typeof itemId === 'string' && itemId.trim() !== '') ? _doc(_db, targetPath, itemId) : _doc(targetCollectionRef);
-             writeBatch.set(targetDocRef, data);
-             writeOps++;
-        });
-         await writeBatch.commit();
-         console.log(` - Copia de ${collectionName} completada.`);
-    }
+    // --- Funciones de Sincronización Manual Eliminadas ---
+    // showSyncDataView, handleAdminSync, mergeDataForUser, copyDataToUser
+    // ya no existen.
 
     async function _getAllOtherUserIds() {
         try {
