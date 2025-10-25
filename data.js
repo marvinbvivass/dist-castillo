@@ -3,7 +3,7 @@
 (function() {
     // Variables locales del módulo
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown;
+    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _writeBatch, _doc, _getDoc, _deleteDoc; // Añadir faltantes
 
     let _lastStatsData = []; // Caché para los datos de la última estadística generada
     let _lastNumWeeks = 1;   // Caché para el número de semanas del último cálculo
@@ -27,15 +27,25 @@
         _appId = dependencies.appId;
         _userId = dependencies.userId; // El ID del admin actual
         _mainContent = dependencies.mainContent;
-        _floatingControls = dependencies.floatingControls;
+        _floatingControls = dependencies.floatingControls; // Guardar referencia
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _collection = dependencies.collection;
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
-        _orderBy = dependencies.orderBy;
+        _orderBy = dependencies.orderBy; // Puede que no se use directamente aquí, pero bueno tenerla
         _populateDropdown = dependencies.populateDropdown;
+        _writeBatch = dependencies.writeBatch; // Necesario para borrado masivo
+        _doc = dependencies.doc; // Necesario para borrado masivo
+        _getDoc = dependencies.getDoc; // Necesario para borrado masivo
+        _deleteDoc = dependencies.deleteDoc; // Necesario para borrado masivo (aunque writeBatch.delete es más común)
+
+
+        if (!_floatingControls) {
+            console.warn("Data Init Warning: floatingControls not provided.");
+        }
+         console.log("Data module initialized.");
     };
 
     // --- [INICIO] Funciones movidas antes de showDataView ---
@@ -52,10 +62,18 @@
             const snapshot = await _getDocs(usersRef);
             // Limpiar opciones existentes excepto la primera ("Todos")
             userFilterSelect.innerHTML = '<option value="">Todos los Vendedores</option>';
-            snapshot.docs.forEach(doc => {
-                const user = doc.data();
+            // Ordenar usuarios por email o nombre para consistencia
+            const users = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => {
+                    const nameA = `${a.nombre || ''} ${a.apellido || ''}`.trim() || a.email || '';
+                    const nameB = `${b.nombre || ''} ${b.apellido || ''}`.trim() || b.email || '';
+                    return nameA.localeCompare(nameB);
+                });
+
+            users.forEach(user => {
                 const option = document.createElement('option');
-                option.value = doc.id;
+                option.value = user.id;
                 // Intentar mostrar nombre y apellido si existen
                 const userName = (user.nombre || user.apellido)
                     ? `${user.nombre || ''} ${user.apellido || ''}`.trim()
@@ -65,6 +83,7 @@
             });
         } catch (error) {
             console.error("Error al cargar usuarios para el filtro:", error);
+            userFilterSelect.innerHTML = '<option value="">Error al cargar</option>'; // Indicar error
         }
     }
 
@@ -74,11 +93,21 @@
      */
     async function handleSearchClosings() {
         const container = document.getElementById('cierres-list-container');
+        if (!container) return; // Salir si el contenedor no existe
         container.innerHTML = `<p class="text-center text-gray-500">Buscando...</p>`;
 
-        const selectedUserId = document.getElementById('userFilter').value;
-        const fechaDesdeStr = document.getElementById('fechaDesde').value;
-        const fechaHastaStr = document.getElementById('fechaHasta').value;
+        const selectedUserId = document.getElementById('userFilter')?.value; // Usar optional chaining
+        const fechaDesdeStr = document.getElementById('fechaDesde')?.value;
+        const fechaHastaStr = document.getElementById('fechaHasta')?.value;
+
+        // Validar que los elementos existen antes de usarlos
+        if (selectedUserId === undefined || fechaDesdeStr === undefined || fechaHastaStr === undefined) {
+             console.error("Error: Uno o más elementos del formulario de búsqueda no se encontraron.");
+             _showModal('Error Interno', 'No se pudieron encontrar los controles de búsqueda.');
+             container.innerHTML = `<p class="text-center text-red-500">Error interno al buscar.</p>`;
+             return;
+        }
+
 
         if (!fechaDesdeStr || !fechaHastaStr) {
             _showModal('Error', 'Por favor, seleccione ambas fechas.');
@@ -87,8 +116,25 @@
         }
 
         // Convertir fechas a objetos Date de JS asegurando el inicio y fin del día
-        const fechaDesde = new Date(fechaDesdeStr + 'T00:00:00'); // Inicio del día
-        const fechaHasta = new Date(fechaHastaStr + 'T23:59:59.999'); // Fin del día
+        let fechaDesde, fechaHasta;
+        try {
+             fechaDesde = new Date(fechaDesdeStr + 'T00:00:00'); // Inicio del día (local)
+             fechaHasta = new Date(fechaHastaStr + 'T23:59:59.999'); // Fin del día (local)
+             // Validar fechas
+             if (isNaN(fechaDesde.getTime()) || isNaN(fechaHasta.getTime())) {
+                 throw new Error("Formato de fecha inválido.");
+             }
+             if (fechaDesde > fechaHasta) {
+                 _showModal('Error', 'La fecha "Desde" no puede ser posterior a la fecha "Hasta".');
+                 container.innerHTML = `<p class="text-center text-gray-500">Seleccione un rango de fechas válido.</p>`;
+                 return;
+             }
+        } catch(dateError) {
+             console.error("Error parsing dates:", dateError);
+             _showModal('Error', 'Hubo un problema con las fechas seleccionadas.');
+             container.innerHTML = `<p class="text-center text-red-500">Error en las fechas.</p>`;
+             return;
+        }
 
 
         try {
@@ -96,11 +142,12 @@
             const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
 
             // Construir la consulta base con filtro de fecha
+            // Usar Timestamp de Firestore para consultas de fecha más fiables
+            const { Timestamp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
             let q = _query(closingsRef,
-                _where("fecha", ">=", fechaDesde),
-                _where("fecha", "<=", fechaHasta)
+                _where("fecha", ">=", Timestamp.fromDate(fechaDesde)),
+                _where("fecha", "<=", Timestamp.fromDate(fechaHasta))
                 // Nota: Firestore puede requerir un índice compuesto para esta consulta.
-                // Si da error de índice, créalo desde la consola de Firebase.
             );
 
             // Si se seleccionó un usuario específico, añadir ese filtro
@@ -108,13 +155,17 @@
                 q = _query(q, _where("vendedorInfo.userId", "==", selectedUserId));
                  // Nota: Puede requerir otro índice compuesto (fecha, vendedorInfo.userId).
             }
+            // Opcional: Ordenar por fecha si no hay filtro de usuario específico
+            // else {
+            //     q = _query(q, _orderBy("fecha", "desc")); // Puede requerir índice solo en fecha
+            // }
 
 
             const snapshot = await _getDocs(q);
             let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             // Guardar temporalmente para usar en detalles y descarga
-            window.tempClosingsData = closings;
+            window.tempClosingsData = closings; // Advertencia: puede ser sobrescrito si se hacen múltiples búsquedas
 
             renderClosingsList(closings);
 
@@ -122,8 +173,9 @@
             console.error("Error al buscar cierres:", error);
             // Mostrar un mensaje más útil si es un error de índice
             if (error.code === 'failed-precondition') {
-                 container.innerHTML = `<p class="text-center text-red-500">Error: Se requiere un índice de Firestore para esta consulta. Por favor, créalo desde la consola de Firebase o contacta al administrador.</p>`;
-                 _showModal('Error de Índice', 'Se necesita configurar un índice en Firestore para realizar esta búsqueda. Consulta la consola de Firebase o al administrador.');
+                 container.innerHTML = `<p class="text-center text-red-500">Error: Se requiere un índice de Firestore para esta consulta. <a href="https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/indexes" target="_blank" rel="noopener noreferrer" class="underline">Crear índice aquí</a> o contacta al administrador.</p>`;
+                 // Mostrar el mensaje de error de Firebase que sugiere el índice
+                 _showModal('Error de Índice Requerido', `Firestore necesita un índice para esta consulta. El mensaje de error sugiere crearlo: <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto">${error.message}</pre> Por favor, créalo desde la consola de Firebase o contacta al administrador.`);
             } else {
                  container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al buscar los cierres: ${error.message}</p>`;
             }
@@ -136,13 +188,26 @@
      */
     function renderClosingsList(closings) {
         const container = document.getElementById('cierres-list-container');
+        if (!container) return; // Salir si el contenedor no existe
+
+        if (!Array.isArray(closings)) {
+            console.error("renderClosingsList: closings is not an array", closings);
+            container.innerHTML = `<p class="text-center text-red-500">Error interno al procesar los resultados.</p>`;
+            return;
+        }
+
         if (closings.length === 0) {
             container.innerHTML = `<p class="text-center text-gray-500">No se encontraron cierres para los filtros seleccionados.</p>`;
             return;
         }
 
         // Ordenar por fecha descendente (más reciente primero)
-        closings.sort((a, b) => b.fecha.toDate().getTime() - a.fecha.toDate().getTime());
+        // Asegurarse de que 'fecha' sea un objeto Timestamp o Date
+        closings.sort((a, b) => {
+            const dateA = a.fecha?.toDate ? a.fecha.toDate().getTime() : 0;
+            const dateB = b.fecha?.toDate ? b.fecha.toDate().getTime() : 0;
+            return dateB - dateA;
+        });
 
         let tableHTML = `
             <table class="min-w-full bg-white text-sm">
@@ -162,10 +227,11 @@
             const vendedorNombreCompleto = (vendedor.nombre || vendedor.apellido)
                 ? `${vendedor.nombre || ''} ${vendedor.apellido || ''}`.trim()
                 : (vendedor.email || 'Desconocido'); // Fallback a email o 'Desconocido'
+            const fechaCierre = cierre.fecha?.toDate ? cierre.fecha.toDate() : null;
 
             tableHTML += `
                 <tr class="hover:bg-gray-50">
-                    <td class="py-2 px-3 border-b">${cierre.fecha.toDate().toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+                    <td class="py-2 px-3 border-b">${fechaCierre ? fechaCierre.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' }) : 'Fecha Inválida'}</td>
                     <td class="py-2 px-3 border-b">${vendedorNombreCompleto}</td>
                     <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
@@ -189,6 +255,13 @@
      * Muestra la vista para buscar y ver cierres de vendedores.
      */
     async function showClosingDataView() {
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showClosingDataView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -228,8 +301,11 @@
 
         // Establecer fechas por defecto (hoy)
         const today = new Date().toISOString().split('T')[0];
-        document.getElementById('fechaDesde').value = today;
-        document.getElementById('fechaHasta').value = today;
+        const fechaDesdeInput = document.getElementById('fechaDesde');
+        const fechaHastaInput = document.getElementById('fechaHasta');
+        if (fechaDesdeInput) fechaDesdeInput.value = today;
+        if (fechaHastaInput) fechaHastaInput.value = today;
+
 
         // Poblar el filtro de usuarios después de renderizar el HTML
         await populateUserFilter();
@@ -243,10 +319,19 @@
      */
     window.showDataView = function() {
         if (mapInstance) {
-            mapInstance.remove();
+            try {
+                mapInstance.remove();
+            } catch(e) { console.warn("Error removing map instance:", e); }
             mapInstance = null;
+            mapMarkers.clear(); // Limpiar referencias a marcadores
         }
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showDataView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -264,19 +349,22 @@
                 </div>
             </div>
         `;
-        document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView); // <-- Ahora debería funcionar
+        document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
         document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
         document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
-        document.getElementById('dataManagementBtn').addEventListener('click', showDataManagementView); // <-- Listener para el nuevo botón
+        document.getElementById('dataManagementBtn').addEventListener('click', showDataManagementView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     };
 
 
     // --- Lógica de Reporte (duplicada de ventas.js para independencia) ---
 
+    // Cache para mapas de orden (específico de este módulo)
     async function getRubroOrderMapData(userIdForData) {
-        if (_rubroOrderCacheData) return _rubroOrderCacheData;
+        // Cache simple por userId
+        if (_rubroOrderCacheData && _rubroOrderCacheData.userId === userIdForData) return _rubroOrderCacheData.map;
+
         const map = {};
         const rubrosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/rubros`);
         try {
@@ -285,13 +373,18 @@
                 const data = doc.data();
                 map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
             });
-            _rubroOrderCacheData = map;
+            _rubroOrderCacheData = { userId: userIdForData, map: map }; // Guardar en caché con userId
             return map;
-        } catch (e) { console.warn("No se pudo obtener el orden de los rubros en data.js", e); return null; }
+        } catch (e) {
+            console.warn(`No se pudo obtener el orden de los rubros para ${userIdForData} en data.js`, e);
+            return {}; // Devolver vacío si falla
+        }
     }
 
     async function getSegmentoOrderMapData(userIdForData) {
-        if (_segmentoOrderCacheData) return _segmentoOrderCacheData;
+         // Cache simple por userId
+        if (_segmentoOrderCacheData && _segmentoOrderCacheData.userId === userIdForData) return _segmentoOrderCacheData.map;
+
         const map = {};
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${userIdForData}/segmentos`);
         try {
@@ -300,43 +393,72 @@
                 const data = doc.data();
                 map[data.name] = (data.orden !== undefined) ? data.orden : 9999;
             });
-            _segmentoOrderCacheData = map;
+             _segmentoOrderCacheData = { userId: userIdForData, map: map }; // Guardar en caché con userId
             return map;
-        } catch (e) { console.warn("No se pudo obtener el orden de los segmentos en data.js", e); return null; }
+        } catch (e) {
+            console.warn(`No se pudo obtener el orden de los segmentos para ${userIdForData} en data.js`, e);
+            return {}; // Devolver vacío si falla
+        }
     }
 
     async function processSalesDataForReport(ventas, userIdForInventario) {
+        // Resetear cachés de orden si el userId es diferente al último usado
+        if (_rubroOrderCacheData?.userId !== userIdForInventario) _rubroOrderCacheData = null;
+        if (_segmentoOrderCacheData?.userId !== userIdForInventario) _segmentoOrderCacheData = null;
+
         const clientData = {};
         let grandTotalValue = 0;
-        const allProductsMap = new Map();
-        const vaciosMovements = { // Objeto para rastrear por tipo de vacío
-            "1/4 - 1/3": {},
-            "ret 350 ml": {},
-            "ret 1.25 Lts": {}
-        };
+        const allProductsMap = new Map(); // Mapa para almacenar datos maestros de productos encontrados
+        const vaciosMovementsPorTipo = {}; // Objeto para rastrear por tipo de vacío
 
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-        const inventarioSnapshot = await _getDocs(inventarioRef);
-        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        // Obtener inventario de referencia UNA VEZ
+        let inventarioMap = new Map();
+        try {
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+            const inventarioSnapshot = await _getDocs(inventarioRef);
+            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        } catch(invError) {
+             console.error(`Error grave al leer inventario de ${userIdForInventario}:`, invError);
+             _showModal('Error de Datos', `No se pudo leer el inventario del vendedor para generar el reporte. ${invError.message}`);
+             // Devolver estructura vacía o lanzar error para detener el proceso
+             return { clientData: {}, grandTotalValue: 0, sortedClients: [], groupedProducts: {}, finalProductOrder: [], sortedRubros: [], segmentoOrderMap: {}, vaciosMovementsPorTipo: {}, allProductsMap: new Map() };
+        }
+
 
         ventas.forEach(venta => {
-            const clientName = venta.clienteNombre;
+            const clientName = venta.clienteNombre || 'Cliente Desconocido';
             if (!clientData[clientName]) {
                 clientData[clientName] = { products: {}, totalValue: 0 };
             }
-            clientData[clientName].totalValue += venta.total;
-            grandTotalValue += venta.total;
+             // Inicializar vacíos para este cliente si no existen
+             if (!vaciosMovementsPorTipo[clientName]) {
+                 vaciosMovementsPorTipo[clientName] = {};
+                 // Asumiendo que TIPOS_VACIO está definido globalmente o importado
+                 // const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; // Descomentar si no está global
+                 TIPOS_VACIO.forEach(tipo => vaciosMovementsPorTipo[clientName][tipo] = { entregados: 0, devueltos: 0 });
+             }
 
+            clientData[clientName].totalValue += venta.total || 0;
+            grandTotalValue += venta.total || 0;
+
+             // Sumar vacíos devueltos registrados en la venta
+             const vaciosDevueltosEnVenta = venta.vaciosDevueltosPorTipo || {};
+             for (const tipoVacio in vaciosDevueltosEnVenta) {
+                 if (vaciosMovementsPorTipo[clientName][tipoVacio]) {
+                     vaciosMovementsPorTipo[clientName][tipoVacio].devueltos += vaciosDevueltosEnVenta[tipoVacio] || 0;
+                 } else {
+                      console.warn(`Tipo de vacío '${tipoVacio}' encontrado en venta pero no inicializado para cliente ${clientName}.`);
+                 }
+             }
+
+            // Procesar productos vendidos
             (venta.productos || []).forEach(p => {
                  const productoCompleto = inventarioMap.get(p.id) || p; // Usar datos del inventario si están disponibles
                  const tipoVacioProd = productoCompleto.tipoVacio; // Obtener el tipo de vacío del producto
 
-                 if (p.manejaVacios && tipoVacioProd && vaciosMovements[tipoVacioProd]) {
-                     if (!vaciosMovements[tipoVacioProd][clientName]) {
-                         vaciosMovements[tipoVacioProd][clientName] = { entregados: 0, devueltos: 0 };
-                     }
-                     vaciosMovements[tipoVacioProd][clientName].entregados += p.cantidadVendida?.cj || 0;
-                     vaciosMovements[tipoVacioProd][clientName].devueltos += p.vaciosDevueltos || 0;
+                 // Sumar vacíos entregados (cajas)
+                 if (productoCompleto.manejaVacios && tipoVacioProd && vaciosMovementsPorTipo[clientName]?.[tipoVacioProd]) {
+                     vaciosMovementsPorTipo[clientName][tipoVacioProd].entregados += p.cantidadVendida?.cj || 0;
                  }
 
 
@@ -344,26 +466,29 @@
                 const segmento = productoCompleto.segmento || 'Sin Segmento';
                 const marca = productoCompleto.marca || 'Sin Marca';
 
+                // Guardar/actualizar datos maestros del producto en allProductsMap
                 if (!allProductsMap.has(p.id)) {
                     allProductsMap.set(p.id, {
                         ...productoCompleto, // Copiar todos los datos del inventario
-                        id: p.id,
+                        id: p.id, // Asegurar que el ID esté presente
                         rubro: rubro,
                         segmento: segmento,
                         marca: marca,
-                        presentacion: p.presentacion
+                        presentacion: p.presentacion // Usar la presentación de la venta (podría haber cambiado)
                     });
                 }
 
+                // Acumular unidades vendidas por cliente y producto
                 if (!clientData[clientName].products[p.id]) {
                     clientData[clientName].products[p.id] = 0;
                 }
-                clientData[clientName].products[p.id] += p.totalUnidadesVendidas;
+                clientData[clientName].products[p.id] += p.totalUnidadesVendidas || 0;
             });
         });
 
         const sortedClients = Object.keys(clientData).sort();
 
+        // Agrupar productos para la estructura del reporte
         const groupedProducts = {};
         for (const product of allProductsMap.values()) {
              const rubroKey = product.rubro || 'Sin Rubro';
@@ -376,24 +501,27 @@
         }
 
 
+        // Obtener mapas de orden (usarán caché si el userId no cambió)
         const rubroOrderMap = await getRubroOrderMapData(userIdForInventario);
         const segmentoOrderMap = await getSegmentoOrderMapData(userIdForInventario);
 
+        // Ordenar rubros según el mapa
         const sortedRubros = Object.keys(groupedProducts).sort((a, b) => (rubroOrderMap[a] ?? 999) - (rubroOrderMap[b] ?? 999));
 
+        // Crear la lista final ordenada de productos
         const finalProductOrder = [];
         sortedRubros.forEach(rubro => {
             const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
             sortedSegmentos.forEach(segmento => {
                 const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
                 sortedMarcas.forEach(marca => {
-                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
+                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => (a.presentacion || '').localeCompare(b.presentacion || ''));
                     finalProductOrder.push(...sortedPresentaciones);
                 });
             });
         });
 
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap };
     }
 
 
@@ -401,180 +529,197 @@
      * Muestra el detalle de un cierre en un modal
      */
     async function showClosingDetail(closingId) {
+        // Asegurarse de que tempClosingsData exista y contenga datos
+        if (!window.tempClosingsData || !Array.isArray(window.tempClosingsData)) {
+            _showModal('Error', 'Los datos de la búsqueda de cierres no están disponibles. Por favor, realiza la búsqueda de nuevo.');
+            return;
+        }
         const closingData = window.tempClosingsData.find(c => c.id === closingId);
-        if (!closingData) {
-            _showModal('Error', 'No se pudieron cargar los detalles del cierre.');
+        if (!closingData || !closingData.vendedorInfo || !closingData.vendedorInfo.userId) { // Verificar info necesaria
+            _showModal('Error', 'No se pudieron cargar los detalles del cierre seleccionado o falta información del vendedor.');
             return;
         }
 
         _showModal('Progreso', 'Generando reporte detallado...');
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+        try {
+            const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(closingData.ventas || [], closingData.vendedorInfo.userId); // Pasar ventas o array vacío
 
-        // --- Generación de encabezados (sin cambios) ---
-        let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
-        let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
-        let headerRow3 = `<tr class="sticky z-20" style="top: 50px;">`;
-        let headerRow4 = `<tr class="sticky z-20" style="top: 75px;">`;
+            // --- Generación de encabezados (sin cambios aparentes necesarios) ---
+            let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
+            let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`; // Ajustar top si es necesario
+            let headerRow3 = `<tr class="sticky z-20" style="top: 50px;">`;
+            let headerRow4 = `<tr class="sticky z-20" style="top: 75px;">`;
 
-        sortedRubros.forEach(rubro => {
-            let rubroColspan = 0;
-            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
-            sortedSegmentos.forEach(segmento => {
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                sortedMarcas.forEach(marca => {
-                    rubroColspan += groupedProducts[rubro][segmento][marca].length;
+            sortedRubros.forEach(rubro => {
+                let rubroColspan = 0;
+                const sortedSegmentos = Object.keys(groupedProducts[rubro] || {}).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+                sortedSegmentos.forEach(segmento => {
+                    const sortedMarcas = Object.keys(groupedProducts[rubro]?.[segmento] || {}).sort();
+                    sortedMarcas.forEach(marca => {
+                        rubroColspan += groupedProducts[rubro]?.[segmento]?.[marca]?.length || 0;
+                    });
                 });
-            });
-            headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
+                // Evitar colspan=0 si no hay productos en el rubro
+                if (rubroColspan > 0) headerRow1 += `<th colspan="${rubroColspan}" class="p-1 border bg-gray-300">${rubro}</th>`;
 
-            sortedSegmentos.forEach(segmento => {
-                let segmentoColspan = 0;
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
-                sortedMarcas.forEach(marca => {
-                    segmentoColspan += groupedProducts[rubro][segmento][marca].length;
-                });
-                headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
+                sortedSegmentos.forEach(segmento => {
+                    let segmentoColspan = 0;
+                    const sortedMarcas = Object.keys(groupedProducts[rubro]?.[segmento] || {}).sort();
+                    sortedMarcas.forEach(marca => {
+                        segmentoColspan += groupedProducts[rubro]?.[segmento]?.[marca]?.length || 0;
+                    });
+                     if (segmentoColspan > 0) headerRow2 += `<th colspan="${segmentoColspan}" class="p-1 border bg-gray-200">${segmento}</th>`;
 
-                sortedMarcas.forEach(marca => {
-                    const marcaColspan = groupedProducts[rubro][segmento][marca].length;
-                    headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
+                    sortedMarcas.forEach(marca => {
+                        const marcaColspan = groupedProducts[rubro]?.[segmento]?.[marca]?.length || 0;
+                         if (marcaColspan > 0) headerRow3 += `<th colspan="${marcaColspan}" class="p-1 border bg-gray-100">${marca}</th>`;
 
-                    const sortedPresentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
-                    sortedPresentaciones.forEach(producto => {
-                        headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
+                        const sortedPresentaciones = (groupedProducts[rubro]?.[segmento]?.[marca] || []).sort((a,b) => (a.presentacion || '').localeCompare(b.presentacion || ''));
+                        sortedPresentaciones.forEach(producto => {
+                            headerRow4 += `<th class="p-1 border bg-gray-50 whitespace-nowrap">${producto.presentacion}</th>`;
+                        });
                     });
                 });
             });
-        });
-        headerRow1 += `<th rowspan="4" class="p-1 border bg-gray-200 sticky right-0 z-30">Total Cliente</th></tr>`;
-        headerRow2 += `</tr>`;
-        headerRow3 += `</tr>`;
-        headerRow4 += `</tr>`;
+            headerRow1 += `<th rowspan="4" class="p-1 border bg-gray-200 sticky right-0 z-30">Total Cliente</th></tr>`;
+            headerRow2 += `</tr>`;
+            headerRow3 += `</tr>`;
+            headerRow4 += `</tr>`;
 
-        // --- Generación del cuerpo (sin cambios) ---
-        let bodyHTML = '';
-        sortedClients.forEach(clientName => {
-            bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
-            const currentClient = clientData[clientName];
+            // --- Generación del cuerpo (revisar acceso a datos) ---
+            let bodyHTML = '';
+            sortedClients.forEach(clientName => {
+                bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientName}</td>`;
+                const currentClient = clientData[clientName];
+                finalProductOrder.forEach(product => {
+                    const quantityInUnits = currentClient.products?.[product.id] || 0; // Usar optional chaining
+                    let displayQuantity = '';
+
+                    if (quantityInUnits > 0) {
+                        displayQuantity = `${quantityInUnits} Unds`;
+                        const ventaPor = product.ventaPor || {};
+                        const unidadesPorCaja = product.unidadesPorCaja || 1;
+                        const unidadesPorPaquete = product.unidadesPorPaquete || 1;
+                        // Priorizar Cj, luego Paq
+                        if (ventaPor.cj && unidadesPorCaja > 0) {
+                            const totalBoxes = quantityInUnits / unidadesPorCaja;
+                            displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                        } else if (ventaPor.paq && unidadesPorPaquete > 0) {
+                            const totalPackages = quantityInUnits / unidadesPorPaquete;
+                            displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                        }
+                    }
+                    bodyHTML += `<td class="p-1 border text-center">${displayQuantity}</td>`;
+                });
+                bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${(currentClient.totalValue || 0).toFixed(2)}</td></tr>`;
+            });
+
+            // --- Generación del pie de página (revisar acceso a datos) ---
+            let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>';
             finalProductOrder.forEach(product => {
-                const quantityInUnits = currentClient.products[product.id] || 0;
-                let displayQuantity = '';
+                let totalQty = 0;
+                sortedClients.forEach(clientName => {
+                    totalQty += clientData[clientName]?.products?.[product.id] || 0; // Usar optional chaining
+                });
 
-                if (quantityInUnits > 0) {
-                    displayQuantity = `${quantityInUnits} Unds`;
+                let displayTotal = '';
+                if (totalQty > 0) {
+                    displayTotal = `${totalQty} Unds`;
                     const ventaPor = product.ventaPor || {};
                     const unidadesPorCaja = product.unidadesPorCaja || 1;
                     const unidadesPorPaquete = product.unidadesPorPaquete || 1;
-                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
-                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
-                    if (isExclusiveCj && unidadesPorCaja > 0) {
-                        const totalBoxes = quantityInUnits / unidadesPorCaja;
-                        displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
-                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
-                        const totalPackages = quantityInUnits / unidadesPorPaquete;
-                        displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
+                    if (ventaPor.cj && unidadesPorCaja > 0) {
+                        const totalBoxes = totalQty / unidadesPorCaja;
+                        displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
+                    } else if (ventaPor.paq && unidadesPorPaquete > 0) {
+                        const totalPackages = totalQty / unidadesPorPaquete;
+                        displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
                     }
                 }
-                bodyHTML += `<td class="p-1 border text-center">${displayQuantity}</td>`;
+                footerHTML += `<td class="p-1 border text-center">${displayTotal}</td>`;
             });
-            bodyHTML += `<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${currentClient.totalValue.toFixed(2)}</td></tr>`;
-        });
-
-        // --- Generación del pie de página (sin cambios) ---
-        let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>';
-        finalProductOrder.forEach(product => {
-            let totalQty = 0;
-            sortedClients.forEach(clientName => {
-                totalQty += clientData[clientName].products[product.id] || 0;
-            });
-
-            let displayTotal = '';
-            if (totalQty > 0) {
-                displayTotal = `${totalQty} Unds`;
-                const ventaPor = product.ventaPor || {};
-                const unidadesPorCaja = product.unidadesPorCaja || 1;
-                const unidadesPorPaquete = product.unidadesPorPaquete || 1;
-                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
-                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
-
-                if (isExclusiveCj && unidadesPorCaja > 0) {
-                    const totalBoxes = totalQty / unidadesPorCaja;
-                    displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
-                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
-                    const totalPackages = totalQty / unidadesPorPaquete;
-                    displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
-                }
-            }
-            footerHTML += `<td class="p-1 border text-center">${displayTotal}</td>`;
-        });
-        footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${(grandTotalValue || 0).toFixed(2)}</td></tr>`;
 
 
-        // --- [INICIO] Reporte de Vacíos por Tipo ---
-        let vaciosReportHTML = '';
-        const tiposConMovimiento = Object.keys(vaciosMovements).filter(tipo =>
-            Object.values(vaciosMovements[tipo]).some(mov => mov.entregados > 0 || mov.devueltos > 0)
-        );
+            // --- [INICIO] Reporte de Vacíos por Tipo (revisar acceso a datos) ---
+            let vaciosReportHTML = '';
+             // Usar TIPOS_VACIO definido globalmente o localmente
+             // const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+             const tiposConMovimiento = TIPOS_VACIO.filter(tipo =>
+                sortedClients.some(cliente =>
+                    (vaciosMovementsPorTipo[cliente]?.[tipo]?.entregados || 0) > 0 ||
+                    (vaciosMovementsPorTipo[cliente]?.[tipo]?.devueltos || 0) > 0
+                )
+            );
 
-        if (tiposConMovimiento.length > 0) {
-            vaciosReportHTML = `<h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos) por Tipo</h3>`;
 
-            tiposConMovimiento.forEach(tipoVacio => {
-                vaciosReportHTML += `
-                    <h4 class="text-lg font-semibold text-gray-700 mt-4 mb-2">${tipoVacio}</h4>
-                    <div class="overflow-auto border mb-4">
-                        <table class="min-w-full bg-white text-xs">
-                            <thead class="bg-gray-200">
-                                <tr>
-                                    <th class="p-1 border text-left">Cliente</th>
-                                    <th class="p-1 border text-center">Entregados (Cajas)</th>
-                                    <th class="p-1 border text-center">Devueltos (Cajas)</th>
-                                    <th class="p-1 border text-center">Neto</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
+            if (tiposConMovimiento.length > 0) {
+                vaciosReportHTML = `<h3 class="text-xl font-bold text-gray-800 my-6">Reporte de Envases Retornables (Vacíos) por Tipo</h3>`;
 
-                const clientesDelTipo = Object.keys(vaciosMovements[tipoVacio]).sort();
-                clientesDelTipo.forEach(cliente => {
-                    const mov = vaciosMovements[tipoVacio][cliente];
-                    const neto = mov.entregados - mov.devueltos;
-                    if (mov.entregados > 0 || mov.devueltos > 0) {
+                tiposConMovimiento.forEach(tipoVacio => {
+                    vaciosReportHTML += `
+                        <h4 class="text-lg font-semibold text-gray-700 mt-4 mb-2">${tipoVacio}</h4>
+                        <div class="overflow-auto border mb-4">
+                            <table class="min-w-full bg-white text-xs">
+                                <thead class="bg-gray-200">
+                                    <tr>
+                                        <th class="p-1 border text-left">Cliente</th>
+                                        <th class="p-1 border text-center">Entregados (Cajas)</th>
+                                        <th class="p-1 border text-center">Devueltos (Cajas)</th>
+                                        <th class="p-1 border text-center">Neto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                    // Filtrar clientes que tuvieron movimiento para este tipo específico
+                    const clientesDelTipo = sortedClients.filter(cliente =>
+                         (vaciosMovementsPorTipo[cliente]?.[tipoVacio]?.entregados || 0) > 0 ||
+                         (vaciosMovementsPorTipo[cliente]?.[tipoVacio]?.devueltos || 0) > 0
+                    );
+
+                    clientesDelTipo.forEach(cliente => {
+                        const mov = vaciosMovementsPorTipo[cliente]?.[tipoVacio] || { entregados: 0, devueltos: 0 };
+                        const neto = mov.entregados - mov.devueltos;
                         vaciosReportHTML += `
                             <tr class="hover:bg-blue-50">
                                 <td class="p-1 border">${cliente}</td>
                                 <td class="p-1 border text-center">${mov.entregados}</td>
                                 <td class="p-1 border text-center">${mov.devueltos}</td>
-                                <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
+                                <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : (neto < 0 ? neto : '0')}</td> {/* Mostrar 0 explícito */}
                             </tr>
                         `;
-                    }
+                    });
+                    vaciosReportHTML += '</tbody></table></div>';
                 });
-                vaciosReportHTML += '</tbody></table></div>';
-            });
+            }
+            // --- [FIN] Reporte de Vacíos por Tipo ---
+
+
+            const vendedor = closingData.vendedorInfo || {};
+            const fechaCierreModal = closingData.fecha?.toDate ? closingData.fecha.toDate() : null;
+            const reporteHTML = `
+                <div class="text-left max-h-[80vh] overflow-auto">
+                    <div class="mb-4">
+                        <p><strong>Vendedor:</strong> ${vendedor.nombre || ''} ${vendedor.apellido || ''}</p>
+                        <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
+                        <p><strong>Fecha:</strong> ${fechaCierreModal ? fechaCierreModal.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }) : 'Fecha Inválida'}</p>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
+                    <div class="overflow-auto border">
+                        <table class="min-w-full bg-white text-xs">
+                            <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
+                            <tbody>${bodyHTML}</tbody>
+                            <tfoot>${footerHTML}</tfoot>
+                        </table>
+                    </div>
+                    ${vaciosReportHTML} {/* <-- Insertar reporte de vacíos */}
+                </div>`;
+            _showModal(`Detalle del Cierre`, reporteHTML);
+        } catch (reportError) {
+             console.error("Error generating closing detail report:", reportError);
+             _showModal('Error', `No se pudo generar el reporte detallado: ${reportError.message}`);
         }
-        // --- [FIN] Reporte de Vacíos por Tipo ---
-
-
-        const vendedor = closingData.vendedorInfo || {};
-        const reporteHTML = `
-            <div class="text-left max-h-[80vh] overflow-auto">
-                <div class="mb-4">
-                    <p><strong>Vendedor:</strong> ${vendedor.nombre || ''} ${vendedor.apellido || ''}</p>
-                    <p><strong>Camión:</strong> ${vendedor.camion || 'N/A'}</p>
-                    <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</p>
-                </div>
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Reporte de Cierre de Ventas</h3>
-                <div class="overflow-auto border">
-                    <table class="min-w-full bg-white text-xs">
-                        <thead class="bg-gray-200">${headerRow1}${headerRow2}${headerRow3}${headerRow4}</thead>
-                        <tbody>${bodyHTML}</tbody>
-                        <tfoot>${footerHTML}</tfoot>
-                    </table>
-                </div>
-                ${vaciosReportHTML} {/* <-- Insertar reporte de vacíos */}
-            </div>`;
-        _showModal(`Detalle del Cierre`, reporteHTML);
     }
 
 
@@ -583,56 +728,66 @@
      */
     async function exportSingleClosingToExcel(closingData) {
         if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
-            return;
+            throw new Error('La librería para exportar a Excel (XLSX) no está cargada.'); // Lanzar error
+        }
+        if (!closingData || !closingData.vendedorInfo || !closingData.vendedorInfo.userId) {
+            throw new Error('Datos del cierre incompletos o inválidos.');
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(closingData.ventas || [], closingData.vendedorInfo.userId);
 
-        // --- Hoja 1: Reporte de Ventas (sin cambios) ---
+        // --- Hoja 1: Reporte de Ventas (revisar acceso a datos) ---
         const dataForSheet1 = [];
         const merges1 = [];
         const headerRow1 = [""]; const headerRow2 = [""]; const headerRow3 = [""]; const headerRow4 = ["Cliente"];
 
-        let currentColumn = 1;
+        let currentColumn = 1; // Columna B en Excel (índice 1)
         sortedRubros.forEach(rubro => {
             const rubroStartCol = currentColumn;
             let rubroColspan = 0;
-            const sortedSegmentos = Object.keys(groupedProducts[rubro]).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
+            const sortedSegmentos = Object.keys(groupedProducts[rubro] || {}).sort((a, b) => (segmentoOrderMap[a] ?? 999) - (segmentoOrderMap[b] ?? 999));
             sortedSegmentos.forEach(segmento => {
                 const segmentoStartCol = currentColumn;
                 let segmentoColspan = 0;
-                const sortedMarcas = Object.keys(groupedProducts[rubro][segmento]).sort();
+                const sortedMarcas = Object.keys(groupedProducts[rubro]?.[segmento] || {}).sort();
                 sortedMarcas.forEach(marca => {
                     const marcaStartCol = currentColumn;
-                    const presentaciones = groupedProducts[rubro][segmento][marca].sort((a,b) => a.presentacion.localeCompare(b.presentacion));
-                    rubroColspan += presentaciones.length;
-                    segmentoColspan += presentaciones.length;
-                    headerRow3.push(marca);
-                    for (let i = 1; i < presentaciones.length; i++) headerRow3.push("");
-                    if (presentaciones.length > 1) merges1.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + presentaciones.length - 1 } });
-                    presentaciones.forEach(p => headerRow4.push(p.presentacion));
-                    currentColumn += presentaciones.length;
+                    const presentaciones = (groupedProducts[rubro]?.[segmento]?.[marca] || []).sort((a,b) => (a.presentacion || '').localeCompare(b.presentacion || ''));
+                    const marcaColspan = presentaciones.length;
+                    if (marcaColspan > 0) {
+                        rubroColspan += marcaColspan;
+                        segmentoColspan += marcaColspan;
+                        headerRow3.push(marca);
+                        for (let i = 1; i < marcaColspan; i++) headerRow3.push(""); // Celdas vacías para merge
+                        if (marcaColspan > 1) merges1.push({ s: { r: 2, c: marcaStartCol }, e: { r: 2, c: marcaStartCol + marcaColspan - 1 } }); // Merge fila 3 (índice 2)
+                        presentaciones.forEach(p => headerRow4.push(p.presentacion));
+                        currentColumn += marcaColspan;
+                    }
                 });
-                headerRow2.push(segmento);
-                for (let i = 1; i < segmentoColspan; i++) headerRow2.push("");
-                if (segmentoColspan > 1) merges1.push({ s: { r: 1, c: segmentoStartCol }, e: { r: 1, c: segmentoStartCol + segmentoColspan - 1 } });
+                if (segmentoColspan > 0) {
+                    headerRow2.push(segmento);
+                    for (let i = 1; i < segmentoColspan; i++) headerRow2.push("");
+                    if (segmentoColspan > 1) merges1.push({ s: { r: 1, c: segmentoStartCol }, e: { r: 1, c: segmentoStartCol + segmentoColspan - 1 } }); // Merge fila 2 (índice 1)
+                }
             });
-            headerRow1.push(rubro);
-            for (let i = 1; i < rubroColspan; i++) headerRow1.push("");
-            if (rubroColspan > 1) merges1.push({ s: { r: 0, c: rubroStartCol }, e: { r: 0, c: rubroStartCol + rubroColspan - 1 } });
+            if (rubroColspan > 0) {
+                headerRow1.push(rubro);
+                for (let i = 1; i < rubroColspan; i++) headerRow1.push("");
+                if (rubroColspan > 1) merges1.push({ s: { r: 0, c: rubroStartCol }, e: { r: 0, c: rubroStartCol + rubroColspan - 1 } }); // Merge fila 1 (índice 0)
+            }
         });
 
+        const totalCols = finalProductOrder.length;
         headerRow1.push(""); headerRow2.push(""); headerRow3.push(""); headerRow4.push("Total Cliente");
         dataForSheet1.push(headerRow1, headerRow2, headerRow3, headerRow4);
-        merges1.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } }); // Merge Cliente cell
-        merges1.push({ s: { r: 0, c: finalProductOrder.length + 1 }, e: { r: 3, c: finalProductOrder.length + 1 } }); // Merge Total Cliente cell
+        merges1.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } }); // Merge Cliente cell (A1:A4)
+        merges1.push({ s: { r: 0, c: totalCols + 1 }, e: { r: 3, c: totalCols + 1 } }); // Merge Total Cliente cell
 
         sortedClients.forEach(clientName => {
             const row = [clientName];
             const currentClient = clientData[clientName];
             finalProductOrder.forEach(product => {
-                const quantityInUnits = currentClient.products[product.id] || 0;
+                const quantityInUnits = currentClient.products?.[product.id] || 0;
                 let displayQuantity = '';
 
                 if (quantityInUnits > 0) {
@@ -640,26 +795,25 @@
                     const ventaPor = product.ventaPor || {};
                     const unidadesPorCaja = product.unidadesPorCaja || 1;
                     const unidadesPorPaquete = product.unidadesPorPaquete || 1;
-                    const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
-                    const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
-                    if (isExclusiveCj && unidadesPorCaja > 0) {
+                    if (ventaPor.cj && unidadesPorCaja > 0) {
                         const totalBoxes = quantityInUnits / unidadesPorCaja;
                         displayQuantity = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
-                    } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                    } else if (ventaPor.paq && unidadesPorPaquete > 0) {
                         const totalPackages = quantityInUnits / unidadesPorPaquete;
                         displayQuantity = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
                     }
                 }
                 row.push(displayQuantity);
             });
-            row.push(currentClient.totalValue);
+            // Formatear total como número para Excel
+            row.push(currentClient.totalValue || 0);
             dataForSheet1.push(row);
         });
 
         const footerRow = ["TOTALES"];
         finalProductOrder.forEach(product => {
             let totalQty = 0;
-            sortedClients.forEach(clientName => totalQty += clientData[clientName].products[product.id] || 0);
+            sortedClients.forEach(clientName => totalQty += clientData[clientName]?.products?.[product.id] || 0);
 
             let displayTotal = '';
             if (totalQty > 0) {
@@ -667,68 +821,94 @@
                 const ventaPor = product.ventaPor || {};
                 const unidadesPorCaja = product.unidadesPorCaja || 1;
                 const unidadesPorPaquete = product.unidadesPorPaquete || 1;
-                const isExclusiveCj = ventaPor.cj && !ventaPor.paq && !ventaPor.und;
-                const isExclusivePaq = ventaPor.paq && !ventaPor.cj && !ventaPor.und;
-                if (isExclusiveCj && unidadesPorCaja > 0) {
+                if (ventaPor.cj && unidadesPorCaja > 0) {
                     const totalBoxes = totalQty / unidadesPorCaja;
                     displayTotal = `${Number.isInteger(totalBoxes) ? totalBoxes : totalBoxes.toFixed(1)} Cj`;
-                } else if (isExclusivePaq && unidadesPorPaquete > 0) {
+                } else if (ventaPor.paq && unidadesPorPaquete > 0) {
                     const totalPackages = totalQty / unidadesPorPaquete;
                     displayTotal = `${Number.isInteger(totalPackages) ? totalPackages : totalPackages.toFixed(1)} Paq`;
                 }
             }
             footerRow.push(displayTotal);
         });
-        footerRow.push(grandTotalValue);
+         // Formatear total general como número
+        footerRow.push(grandTotalValue || 0);
         dataForSheet1.push(footerRow);
 
         const ws1 = XLSX.utils.aoa_to_sheet(dataForSheet1);
         ws1['!merges'] = merges1;
+         // Aplicar formato de moneda a la columna Total Cliente
+         const totalColLetter = XLSX.utils.encode_col(totalCols + 1); // +1 porque las columnas son 0-indexed
+         ws1[`!cols`] = ws1[`!cols`] || [];
+         ws1[`!cols`][totalCols + 1] = { wch: 15 }; // Ancho de columna
+         for (let R = 4; R < dataForSheet1.length; ++R) { // Empezar desde la primera fila de datos (índice 4)
+             const cellRef = `${totalColLetter}${R + 1}`; // +1 porque las filas son 1-indexed
+             if (ws1[cellRef]) {
+                 ws1[cellRef].t = 'n'; // Establecer tipo como número
+                 ws1[cellRef].z = '$#,##0.00'; // Formato de moneda
+             }
+         }
+
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, 'Reporte de Cierre');
 
         // --- [INICIO] Hoja 2: Reporte de Vacíos por Tipo ---
-        const tiposConMovimiento = Object.keys(vaciosMovements).filter(tipo =>
-            Object.values(vaciosMovements[tipo]).some(mov => mov.entregados > 0 || mov.devueltos > 0)
-        );
+         // const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+         const tiposConMovimiento = TIPOS_VACIO.filter(tipo =>
+            sortedClients.some(cliente =>
+                (vaciosMovementsPorTipo[cliente]?.[tipo]?.entregados || 0) > 0 ||
+                (vaciosMovementsPorTipo[cliente]?.[tipo]?.devueltos || 0) > 0
+            )
+         );
+
 
         if (tiposConMovimiento.length > 0) {
              const dataForSheet2 = [['Tipo Vacío', 'Cliente', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
              tiposConMovimiento.forEach(tipoVacio => {
-                 const clientesDelTipo = Object.keys(vaciosMovements[tipoVacio]).sort();
+                 // Filtrar y ordenar clientes con movimiento para este tipo
+                 const clientesDelTipo = sortedClients.filter(cliente =>
+                      (vaciosMovementsPorTipo[cliente]?.[tipoVacio]?.entregados || 0) > 0 ||
+                      (vaciosMovementsPorTipo[cliente]?.[tipoVacio]?.devueltos || 0) > 0
+                 );
+
                  clientesDelTipo.forEach(cliente => {
-                    const mov = vaciosMovements[tipoVacio][cliente];
+                    const mov = vaciosMovementsPorTipo[cliente]?.[tipoVacio] || { entregados: 0, devueltos: 0 };
                     const neto = mov.entregados - mov.devueltos;
-                    if (mov.entregados > 0 || mov.devueltos > 0) {
-                        dataForSheet2.push([
-                            tipoVacio,
-                            cliente,
-                            mov.entregados,
-                            mov.devueltos,
-                            neto
-                        ]);
-                    }
+                    dataForSheet2.push([
+                        tipoVacio,
+                        cliente,
+                        mov.entregados,
+                        mov.devueltos,
+                        neto // Neto como número
+                    ]);
                  });
              });
             const ws2 = XLSX.utils.aoa_to_sheet(dataForSheet2);
+             // Opcional: ajustar ancho de columnas
+             ws2['!cols'] = [{wch: 20}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 10}];
             XLSX.utils.book_append_sheet(wb, ws2, 'Reporte de Vacíos');
         }
         // --- [FIN] Hoja 2: Reporte de Vacíos por Tipo ---
 
         const vendedor = closingData.vendedorInfo || {};
-        const fecha = closingData.fecha.toDate().toISOString().slice(0, 10);
-        const vendedorNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
-        XLSX.writeFile(wb, `Cierre_${vendedorNombre}_${fecha}.xlsx`);
+        const fechaCierreFile = closingData.fecha?.toDate ? closingData.fecha.toDate() : new Date();
+        const fechaStr = fechaCierreFile.toISOString().slice(0, 10);
+        const vendedorNombreFile = (`${vendedor.nombre || ''}_${vendedor.apellido || ''}`.trim() || vendedor.email || 'Vendedor').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        XLSX.writeFile(wb, `Cierre_${vendedorNombreFile}_${fechaStr}.xlsx`);
     }
 
     /**
      * Maneja la descarga de un único cierre.
      */
     async function handleDownloadSingleClosing(closingId) {
+         if (!window.tempClosingsData || !Array.isArray(window.tempClosingsData)) {
+            _showModal('Error', 'Los datos de la búsqueda de cierres no están disponibles. Por favor, realiza la búsqueda de nuevo.');
+            return;
+        }
         const closingData = window.tempClosingsData.find(c => c.id === closingId);
         if (!closingData) {
-            _showModal('Error', 'No se pudieron encontrar los datos del cierre para descargar.');
+            _showModal('Error', 'No se pudieron encontrar los datos del cierre seleccionado para descargar.');
             return;
         }
 
@@ -752,6 +932,13 @@
     // --- Lógica de Estadísticas de Productos ---
 
     function showProductStatsView() {
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showProductStatsView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -769,7 +956,7 @@
                             </div>
                             <div>
                                 <label for="stats-rubro-filter" class="block text-sm font-medium text-gray-700">Rubro:</label>
-                                <select id="stats-rubro-filter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></select>
+                                <select id="stats-rubro-filter" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"></select> {/* Se poblará con _populateDropdown */}
                             </div>
                             <button id="searchStatsBtn" class="w-full px-6 py-2 bg-teal-600 text-white font-semibold rounded-lg shadow-md hover:bg-teal-700">Mostrar Estadísticas</button>
                         </div>
@@ -783,17 +970,27 @@
             </div>
         `;
 
-        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'stats-rubro-filter', 'Rubro'); // Usar ruta completa
+        // Usar la ruta de rubros del admin actual para el filtro
+        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'stats-rubro-filter', 'Rubro');
         document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('searchStatsBtn').addEventListener('click', handleSearchStats);
     }
 
-    async function handleSearchStats() {
+    // ... (resto de funciones de estadísticas: handleSearchStats, renderStatsList, handleDownloadStats - sin cambios críticos aparentes) ...
+     async function handleSearchStats() {
         const container = document.getElementById('stats-list-container');
+        if (!container) return;
         container.innerHTML = `<p class="text-center text-gray-500">Calculando estadísticas...</p>`;
 
-        const statsType = document.getElementById('stats-type').value;
-        const rubroFilter = document.getElementById('stats-rubro-filter').value;
+        const statsType = document.getElementById('stats-type')?.value;
+        const rubroFilter = document.getElementById('stats-rubro-filter')?.value;
+
+         if (!statsType || rubroFilter === undefined) { // Verificar si los elementos existen
+             console.error("Error: No se encontraron los elementos del formulario de estadísticas.");
+             _showModal('Error Interno', 'No se pudieron encontrar los controles de estadísticas.');
+             container.innerHTML = `<p class="text-center text-red-500">Error interno al buscar.</p>`;
+             return;
+         }
 
         if (!rubroFilter) {
             _showModal('Error', 'Por favor, seleccione un rubro.');
@@ -820,22 +1017,23 @@
         }
 
         try {
-            // Obtener cierres públicos
+             // Importar Timestamp
+             const { Timestamp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            // Obtener cierres públicos dentro del rango
             const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
-            const publicQuery = _query(publicClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+            const publicQuery = _query(publicClosingsRef,
+                 _where("fecha", ">=", Timestamp.fromDate(fechaDesde)),
+                 _where("fecha", "<=", Timestamp.fromDate(fechaHasta))
+                 // Podría necesitar índice en 'fecha'
+            );
             const publicSnapshot = await _getDocs(publicQuery);
-            const publicClosings = publicSnapshot.docs.map(doc => doc.data());
-
-            // Obtener cierres del admin actual (si es necesario agregarlos, aunque no deberían existir si sigue la lógica)
-            // const adminClosingsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
-            // const adminQuery = _query(adminClosingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
-            // const adminSnapshot = await _getDocs(adminQuery);
-            // const adminClosings = adminSnapshot.docs.map(doc => doc.data());
-            // const allClosings = [...publicClosings, ...adminClosings];
-            const allClosings = publicClosings; // Usar solo los públicos
+            const allClosings = publicSnapshot.docs.map(doc => doc.data());
 
             if (allClosings.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500">No hay datos de ventas en el período seleccionado.</p>`;
+                _lastStatsData = []; // Limpiar caché
+                 const downloadBtn = document.getElementById('downloadStatsBtn');
+                 if (downloadBtn) downloadBtn.classList.add('hidden');
                 return;
             }
 
@@ -846,14 +1044,15 @@
             const adminInventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
 
             allClosings.forEach(cierre => {
-                cierre.ventas.forEach(venta => {
-                    venta.productos.forEach(p => {
+                (cierre.ventas || []).forEach(venta => { // Asegurar que ventas sea un array
+                    (venta.productos || []).forEach(p => { // Asegurar que productos sea un array
                         const adminProductInfo = adminInventarioMap.get(p.id);
                         // Filtrar por rubro usando la info del inventario maestro del admin
                         if (adminProductInfo && adminProductInfo.rubro === rubroFilter) {
                             if (!productSales[p.id]) {
                                 productSales[p.id] = {
                                     // Usar datos del admin para consistencia
+                                    id: p.id, // Guardar ID
                                     presentacion: adminProductInfo.presentacion,
                                     marca: adminProductInfo.marca || 'Sin Marca',
                                     segmento: adminProductInfo.segmento || 'Sin Segmento',
@@ -863,7 +1062,7 @@
                                     unidadesPorPaquete: adminProductInfo.unidadesPorPaquete || 1
                                 };
                             }
-                            productSales[p.id].totalUnidades += p.totalUnidadesVendidas;
+                            productSales[p.id].totalUnidades += p.totalUnidadesVendidas || 0; // Sumar, asegurando que sea número
                         }
                     });
                 });
@@ -876,32 +1075,47 @@
                 const oneDay = 24 * 60 * 60 * 1000;
                  // Encontrar la fecha del cierre más antiguo
                  const firstDate = allClosings.reduce((min, c) => {
-                     const cierreDate = c.fecha.toDate();
+                     const cierreDate = c.fecha?.toDate ? c.fecha.toDate() : min; // Usar fecha si existe y es válida
                      return cierreDate < min ? cierreDate : min;
                  }, new Date()); // Iniciar con la fecha actual como máximo inicial
                 // Calcular semanas desde la fecha más antigua hasta hoy
                  numWeeks = Math.max(1, Math.ceil(Math.abs((now - firstDate) / (oneDay * 7)))); // Asegurar al menos 1 semana
             }
 
-            _lastStatsData = productArray;
-            _lastNumWeeks = numWeeks;
+            _lastStatsData = productArray; // Guardar en caché
+            _lastNumWeeks = numWeeks; // Guardar semanas en caché
 
             renderStatsList(productArray, statsType, numWeeks);
 
         } catch (error) {
             console.error("Error al calcular estadísticas:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al calcular las estadísticas: ${error.message}</p>`;
+             if (error.code === 'failed-precondition') {
+                 container.innerHTML = `<p class="text-center text-red-500">Error: Se requiere un índice de Firestore para esta consulta (probablemente en 'fecha'). <a href="https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/indexes" target="_blank" rel="noopener noreferrer" class="underline">Crear índice</a>.</p>`;
+                 _showModal('Error de Índice Requerido', `Firestore necesita un índice para esta consulta (probablemente en el campo 'fecha'). El mensaje de error sugiere crearlo: <pre class="text-xs bg-gray-100 p-2 rounded overflow-auto">${error.message}</pre>`);
+             } else {
+                 container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al calcular las estadísticas: ${error.message}</p>`;
+             }
+             _lastStatsData = []; // Limpiar caché en error
+             const downloadBtn = document.getElementById('downloadStatsBtn');
+             if (downloadBtn) downloadBtn.classList.add('hidden');
         }
     }
 
-
-    function renderStatsList(productArray, statsType, numWeeks = 1) {
+     function renderStatsList(productArray, statsType, numWeeks = 1) {
         const container = document.getElementById('stats-list-container');
+        if (!container) return;
+
+        if (!Array.isArray(productArray)) {
+             console.error("renderStatsList: productArray is not an array");
+             container.innerHTML = `<p class="text-center text-red-500">Error interno al mostrar estadísticas.</p>`;
+             return;
+        }
+
+        const downloadBtn = document.getElementById('downloadStatsBtn'); // Buscar botón de descarga
+
         if (productArray.length === 0) {
             container.innerHTML = `<p class="text-center text-gray-500">No se encontraron ventas para este rubro en el período seleccionado.</p>`;
-            // Ocultar botón de descarga si no hay datos
-             const downloadBtn = document.getElementById('downloadStatsBtn');
-             if (downloadBtn) downloadBtn.classList.add('hidden');
+             if (downloadBtn) downloadBtn.classList.add('hidden'); // Ocultar si no hay datos
             return;
         }
 
@@ -919,32 +1133,33 @@
 
         // Ordenar por Marca -> Segmento -> Presentación
         productArray.sort((a, b) => {
-             const marcaComp = a.marca.localeCompare(b.marca);
+             const marcaComp = (a.marca || '').localeCompare(b.marca || '');
              if (marcaComp !== 0) return marcaComp;
-             const segComp = a.segmento.localeCompare(b.segmento);
+             const segComp = (a.segmento || '').localeCompare(b.segmento || '');
              if (segComp !== 0) return segComp;
-             return a.presentacion.localeCompare(b.presentacion);
+             return (a.presentacion || '').localeCompare(b.presentacion || '');
         });
 
         productArray.forEach(p => {
             let displayQuantity = 0;
             let displayUnit = 'Unds';
             // Calcular total o promedio
-            const total = (p.totalUnidades || 0) / numWeeks;
+            const value = (p.totalUnidades || 0) / numWeeks;
 
             // Determinar la unidad de venta principal para mostrar
             const ventaPor = p.ventaPor || { und: true }; // Default a unidades si no está definido
             const unidadesPorCaja = p.unidadesPorCaja || 1;
             const unidadesPorPaquete = p.unidadesPorPaquete || 1;
 
+             // Priorizar Cj, luego Paq
             if (ventaPor.cj) {
-                displayQuantity = (total / unidadesPorCaja).toFixed(1);
+                displayQuantity = (value / Math.max(1, unidadesPorCaja)).toFixed(1);
                 displayUnit = 'Cajas';
             } else if (ventaPor.paq) {
-                displayQuantity = (total / unidadesPorPaquete).toFixed(1);
+                displayQuantity = (value / Math.max(1, unidadesPorPaquete)).toFixed(1);
                 displayUnit = 'Paq.';
             } else { // Venta por unidad o si no está especificado
-                displayQuantity = total.toFixed(0);
+                displayQuantity = value.toFixed(0);
             }
              // Eliminar decimal '.0' si es un número entero
              displayQuantity = displayQuantity.replace(/\.0$/, '');
@@ -959,79 +1174,108 @@
         });
 
         tableHTML += `</tbody></table>`;
-        container.innerHTML = `
-            ${tableHTML}
+        // Asegurarse de que el botón se incluya fuera de la tabla
+        container.innerHTML = tableHTML;
+
+         // Añadir botón de descarga después de la tabla
+         const downloadButtonHTML = `
             <div class="mt-6 text-center">
                 <button id="downloadStatsBtn" class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Descargar como Excel</button>
-            </div>
-        `;
+            </div>`;
+         container.insertAdjacentHTML('afterend', downloadButtonHTML); // Insertar después del contenedor de la tabla
 
-        document.getElementById('downloadStatsBtn').addEventListener('click', handleDownloadStats);
+         // Añadir listener al botón recién creado
+         const newDownloadBtn = document.getElementById('downloadStatsBtn');
+         if (newDownloadBtn) {
+             newDownloadBtn.addEventListener('click', handleDownloadStats);
+         } else {
+              console.error("Failed to find download button after rendering stats list.");
+         }
     }
 
 
-    function handleDownloadStats() {
-        if (_lastStatsData.length === 0) {
+     function handleDownloadStats() {
+        if (!Array.isArray(_lastStatsData) || _lastStatsData.length === 0) {
             _showModal('Aviso', 'No hay datos de estadísticas para descargar.');
             return;
         }
 
         if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            _showModal('Error', 'La librería para exportar a Excel (XLSX) no está cargada.');
             return;
         }
 
-        const statsType = document.getElementById('stats-type').value;
+        const statsType = document.getElementById('stats-type')?.value || 'desconocido'; // Handle missing element
         const headerTitle = statsType === 'general' ? 'Promedio Semanal' : 'Total Vendido';
 
-        const dataToExport = _lastStatsData.map(p => {
-            let displayQuantity = 0;
-            let displayUnit = 'Unds';
-            // Recalcular para la exportación
-            const total = (p.totalUnidades || 0) / _lastNumWeeks;
-            const ventaPor = p.ventaPor || { und: true };
-            const unidadesPorCaja = p.unidadesPorCaja || 1;
-            const unidadesPorPaquete = p.unidadesPorPaquete || 1;
+        try {
+            const dataToExport = _lastStatsData.map(p => {
+                let displayQuantity = 0;
+                let displayUnit = 'Unds';
+                // Recalcular para la exportación
+                const value = (p.totalUnidades || 0) / _lastNumWeeks;
+                const ventaPor = p.ventaPor || { und: true };
+                const unidadesPorCaja = p.unidadesPorCaja || 1;
+                const unidadesPorPaquete = p.unidadesPorPaquete || 1;
 
-            if (ventaPor.cj) {
-                displayQuantity = (total / unidadesPorCaja).toFixed(1);
-                displayUnit = 'Cajas';
-            } else if (ventaPor.paq) {
-                displayQuantity = (total / unidadesPorPaquete).toFixed(1);
-                displayUnit = 'Paq.';
-            } else {
-                displayQuantity = total.toFixed(0);
-            }
-             displayQuantity = displayQuantity.replace(/\.0$/, ''); // Limpiar .0
+                if (ventaPor.cj) {
+                    displayQuantity = (value / Math.max(1, unidadesPorCaja)).toFixed(1);
+                    displayUnit = 'Cajas';
+                } else if (ventaPor.paq) {
+                    displayQuantity = (value / Math.max(1, unidadesPorPaquete)).toFixed(1);
+                    displayUnit = 'Paq.';
+                } else {
+                    displayQuantity = value.toFixed(0);
+                }
+                 displayQuantity = displayQuantity.replace(/\.0$/, ''); // Limpiar .0
 
 
-            return {
-                'Marca': p.marca,
-                'Segmento': p.segmento,
-                'Presentación': p.presentacion,
-                [headerTitle]: `${displayQuantity} ${displayUnit}` // Combinar valor y unidad
-            };
-        });
+                return {
+                    'Marca': p.marca || '',
+                    'Segmento': p.segmento || '',
+                    'Presentación': p.presentacion || '',
+                    // Usar el título dinámico como clave del objeto
+                    [headerTitle]: `${displayQuantity} ${displayUnit}` // Combinar valor y unidad
+                };
+            });
 
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            // Opcional: ajustar anchos de columna
+             ws['!cols'] = [{wch: 20}, {wch: 20}, {wch: 30}, {wch: 20}];
 
-        const rubro = document.getElementById('stats-rubro-filter').value || 'Todos';
-        const today = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, `Estadisticas_${rubro.replace(/\s+/g, '_')}_${statsType}_${today}.xlsx`);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
+
+            const rubroElement = document.getElementById('stats-rubro-filter');
+            const rubro = rubroElement ? rubroElement.value : 'Todos'; // Handle missing element
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Estadisticas_${rubro.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${statsType}_${today}.xlsx`);
+
+        } catch (excelError) {
+             console.error("Error generating Excel file for stats:", excelError);
+             _showModal('Error de Exportación', `No se pudo generar el archivo Excel: ${excelError.message}`);
+        }
     }
 
 
     // --- Lógica de Clientes Consolidados ---
 
     async function showConsolidatedClientsView() {
+         // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showConsolidatedClientsView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Clientes Consolidados</h1>
-                        <div id="consolidated-clients-filters"></div>
+                        <div id="consolidated-clients-filters">
+                             <p class="text-center text-gray-500">Cargando filtros...</p> {/* Placeholder */}
+                        </div>
                         <div id="consolidated-clients-container" class="overflow-x-auto max-h-96">
                              <p class="text-center text-gray-500">Cargando clientes...</p>
                         </div>
@@ -1049,8 +1293,12 @@
         await loadAndRenderConsolidatedClients();
     }
 
-    async function loadAndRenderConsolidatedClients() {
+    // ... (resto de funciones de clientes consolidados: loadAndRenderConsolidatedClients, renderConsolidatedClientsList, handleDownloadFilteredClients - sin cambios críticos aparentes) ...
+     async function loadAndRenderConsolidatedClients() {
         const container = document.getElementById('consolidated-clients-container');
+        const filtersContainer = document.getElementById('consolidated-clients-filters');
+         if (!container || !filtersContainer) return;
+
         try {
              // Ruta pública de clientes
             const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
@@ -1058,7 +1306,7 @@
 
             _consolidatedClientsCache = allClientSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() })); // Guardar ID también
 
-            const filtersContainer = document.getElementById('consolidated-clients-filters');
+            // Renderizar filtros ANTES de cargar sectores
             filtersContainer.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg">
                     <input type="text" id="client-search-input" placeholder="Buscar por Nombre o CEP..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg">
@@ -1066,37 +1314,61 @@
                         <label for="client-filter-sector" class="text-sm font-medium">Sector</label>
                         <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
                     </div>
+                     <button id="clearClientFiltersBtn" class="bg-gray-300 text-xs font-semibold rounded-lg self-end py-1.5 px-3 hover:bg-gray-400 md:col-start-3">Limpiar</button> {/* Botón limpiar */}
                 </div>
             `;
 
-            // Poblar filtro de sectores desde la colección pública de sectores
-            const sectoresRef = _collection(_db, `artifacts/ventas-9a210/public/data/sectores`);
-            const sectoresSnapshot = await _getDocs(sectoresRef);
-            const uniqueSectors = sectoresSnapshot.docs.map(doc => doc.data().name).sort();
             const sectorFilter = document.getElementById('client-filter-sector');
-            uniqueSectors.forEach(sector => {
-                sectorFilter.innerHTML += `<option value="${sector}">${sector}</option>`;
+            const searchInput = document.getElementById('client-search-input');
+            const clearBtn = document.getElementById('clearClientFiltersBtn');
+
+             // Poblar filtro de sectores desde la colección pública de sectores
+            try {
+                const sectoresRef = _collection(_db, `artifacts/ventas-9a210/public/data/sectores`);
+                const sectoresSnapshot = await _getDocs(sectoresRef);
+                const uniqueSectors = sectoresSnapshot.docs.map(doc => doc.data().name).sort();
+                uniqueSectors.forEach(sector => {
+                    sectorFilter.innerHTML += `<option value="${sector}">${sector}</option>`;
+                });
+            } catch (sectorError) {
+                 console.error("Error loading sectors for filter:", sectorError);
+                 sectorFilter.innerHTML = '<option value="">Error</option>'; // Indicar error
+            }
+
+
+            // Añadir listeners
+            searchInput.addEventListener('input', renderConsolidatedClientsList);
+            sectorFilter.addEventListener('change', renderConsolidatedClientsList);
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                sectorFilter.value = '';
+                renderConsolidatedClientsList();
             });
 
-            document.getElementById('client-search-input').addEventListener('input', renderConsolidatedClientsList);
-            sectorFilter.addEventListener('change', renderConsolidatedClientsList);
 
-            renderConsolidatedClientsList();
-            document.getElementById('downloadClientsBtn').classList.remove('hidden');
+            renderConsolidatedClientsList(); // Renderizar lista inicial
+            const downloadBtn = document.getElementById('downloadClientsBtn');
+            if (downloadBtn) downloadBtn.classList.remove('hidden'); // Mostrar botón de descarga
 
         } catch (error) {
             console.error("Error al cargar clientes consolidados:", error);
-            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error: ${error.message}</p>`;
+            container.innerHTML = `<p class="text-center text-red-500">Ocurrió un error al cargar clientes: ${error.message}</p>`;
+             filtersContainer.innerHTML = `<p class="text-center text-red-500">Error al cargar filtros.</p>`;
         }
     }
 
-
-    function renderConsolidatedClientsList() {
+     function renderConsolidatedClientsList() {
         const container = document.getElementById('consolidated-clients-container');
         const searchInput = document.getElementById('client-search-input');
         const sectorFilter = document.getElementById('client-filter-sector');
 
-        if (!container || !searchInput || !sectorFilter) return;
+        // Asegurarse de que los elementos existen
+        if (!container || !searchInput || !sectorFilter) {
+             console.error("renderConsolidatedClientsList: Missing DOM elements.");
+             if (container) container.innerHTML = `<p class="text-center text-red-500">Error interno al renderizar.</p>`;
+             return;
+        }
+
 
         const searchTerm = searchInput.value.toLowerCase();
         const selectedSector = sectorFilter.value;
@@ -1124,6 +1396,7 @@
                         <th class="py-2 px-3 border-b text-left">Nombre Personal</th>
                         <th class="py-2 px-3 border-b text-left">Teléfono</th>
                         <th class="py-2 px-3 border-b text-left">CEP</th> {/* Añadir columna CEP */}
+                         <th class="py-2 px-3 border-b text-left">Coordenadas</th> {/* Añadir Coordenadas */}
                     </tr>
                 </thead>
                 <tbody>`;
@@ -1136,6 +1409,7 @@
                     <td class="py-2 px-3 border-b">${c.nombrePersonal || 'N/A'}</td>
                     <td class="py-2 px-3 border-b">${c.telefono || 'N/A'}</td>
                     <td class="py-2 px-3 border-b">${c.codigoCEP || 'N/A'}</td> {/* Mostrar CEP */}
+                    <td class="py-2 px-3 border-b text-xs">${c.coordenadas || 'N/A'}</td> {/* Mostrar Coordenadas */}
                 </tr>
             `;
         });
@@ -1144,34 +1418,43 @@
     }
 
 
-    function handleDownloadFilteredClients() {
+     function handleDownloadFilteredClients() {
          if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería para exportar a Excel no está cargada.');
+            _showModal('Error', 'La librería para exportar a Excel (XLSX) no está cargada.');
             return;
         }
-        if (_filteredClientsCache.length === 0) {
+        if (!Array.isArray(_filteredClientsCache) || _filteredClientsCache.length === 0) {
             _showModal('Aviso', 'No hay clientes en la lista actual para descargar.');
             return;
         }
 
-        // Ordenar para la exportación
-        _filteredClientsCache.sort((a, b) => (a.nombreComercial || '').localeCompare(b.nombreComercial || ''));
+        try {
+            // Ordenar para la exportación
+            _filteredClientsCache.sort((a, b) => (a.nombreComercial || '').localeCompare(b.nombreComercial || ''));
 
-        const dataToExport = _filteredClientsCache.map(c => ({
-            'Sector': c.sector || '',
-            'Nombre Comercial': c.nombreComercial || '',
-            'Nombre Personal': c.nombrePersonal || '',
-            'Telefono': c.telefono || '', // Corregido el nombre del campo
-            'CEP': c.codigoCEP || '',
-            'Coordenadas': c.coordenadas || '' // Añadir coordenadas si existen
-        }));
+            const dataToExport = _filteredClientsCache.map(c => ({
+                'Sector': c.sector || '',
+                'Nombre Comercial': c.nombreComercial || '',
+                'Nombre Personal': c.nombrePersonal || '',
+                'Telefono': c.telefono || '',
+                'CEP': c.codigoCEP || '',
+                'Coordenadas': c.coordenadas || '' // Añadir coordenadas si existen
+            }));
 
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            // Ajustar anchos de columna
+             ws['!cols'] = [{wch: 15}, {wch: 30}, {wch: 30}, {wch: 15}, {wch: 10}, {wch: 20}];
 
-        const today = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+
+        } catch (excelError) {
+            console.error("Error generating Excel file for clients:", excelError);
+            _showModal('Error de Exportación', `No se pudo generar el archivo Excel: ${excelError.message}`);
+        }
     }
 
 
@@ -1182,11 +1465,19 @@
      */
     function showClientMapView() {
         if (mapInstance) {
-            mapInstance.remove();
+             try {
+                 mapInstance.remove();
+             } catch(e) { console.warn("Error removing map instance:", e); }
             mapInstance = null;
             mapMarkers.clear(); // Limpiar marcadores anteriores
         }
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showClientMapView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -1213,19 +1504,16 @@
     }
 
 
-    /**
-     * Carga los datos de los clientes y los muestra en el mapa.
-     */
-    async function loadAndDisplayMap() {
+    // ... (resto de funciones del mapa: loadAndDisplayMap, setupMapSearch - sin cambios críticos aparentes) ...
+     async function loadAndDisplayMap() {
         const mapContainer = document.getElementById('client-map');
-        if (!mapContainer || typeof L === 'undefined') {
-             // Esperar un poco y reintentar si Leaflet no está listo
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (typeof L === 'undefined') {
-                mapContainer.innerHTML = '<p class="text-center text-red-500 pt-10">Error: La librería de mapas (Leaflet) no se cargó correctamente.</p>';
-                 _showModal('Error de Mapa', 'No se pudo cargar la librería de mapas. Revisa la conexión a internet o el script de Leaflet.');
-                return;
-            }
+        if (!mapContainer) return; // Salir si el contenedor no existe
+
+        // Verificar si Leaflet está cargado
+        if (typeof L === 'undefined') {
+             _showModal('Error', 'La librería de mapas (Leaflet) no está disponible. Revisa la conexión o la carga del script en index.html.');
+             mapContainer.innerHTML = '<p class="text-center text-red-500 pt-10">Error al cargar librería de mapas.</p>';
+             return;
         }
          mapContainer.innerHTML = '<p class="text-center text-gray-500 pt-10">Cargando datos de clientes...</p>'; // Mensaje mientras carga clientes
 
@@ -1233,15 +1521,19 @@
         try {
             // Usar caché si ya está cargada, si no, cargarla
             if (_consolidatedClientsCache.length === 0) {
+                 console.log("Map: Loading consolidated clients from Firestore...");
                  const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
                  const allClientSnapshots = await _getDocs(clientesRef);
                  _consolidatedClientsCache = allClientSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                 console.log(`Map: Loaded ${_consolidatedClientsCache.length} clients.`);
+            } else {
+                 console.log("Map: Using cached consolidated clients.");
             }
             const allClients = _consolidatedClientsCache; // Usar caché
 
 
             const clientsWithCoords = allClients.filter(c => {
-                if (!c.coordenadas) return false;
+                if (!c.coordenadas || typeof c.coordenadas !== 'string') return false; // Verificar que sea string
                 const parts = c.coordenadas.split(',').map(p => parseFloat(p.trim()));
                 // Validar que sean números y estén en rangos razonables (latitud -90 a 90, longitud -180 a 180)
                 return parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) &&
@@ -1259,16 +1551,26 @@
 
             // Inicializar mapa si no existe
              if (!mapInstance) {
-                mapInstance = L.map('client-map').setView([7.77, -72.22], 13); // Centrado en San Cristóbal por defecto
+                 try {
+                     // Coordenadas de San Cristóbal, Táchira, Venezuela
+                    mapInstance = L.map('client-map').setView([7.7639, -72.2250], 13); // Centrado en San Cristóbal
 
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                    maxZoom: 19 // Aumentar zoom máximo
-                }).addTo(mapInstance);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                        maxZoom: 19 // Aumentar zoom máximo
+                    }).addTo(mapInstance);
+                    console.log("Map initialized.");
+                 } catch (mapInitError) {
+                      console.error("Error initializing Leaflet map:", mapInitError);
+                      mapContainer.innerHTML = `<p class="text-center text-red-500 pt-10">Error al inicializar el mapa: ${mapInitError.message}</p>`;
+                      return;
+                 }
+            } else {
+                 console.log("Map instance already exists.");
             }
 
 
-            // Definir iconos personalizados
+            // Definir iconos personalizados (asegurarse de que las URLs sean accesibles)
             const redIcon = new L.Icon({
                 iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                 shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -1296,25 +1598,30 @@
                     ${hasCEP ? `<br><b>CEP: ${client.codigoCEP}</b>` : ''}
                 `;
 
-                // Crear marcador y añadirlo al mapa
+                // Crear marcador y añadirlo al grupo
                 const marker = L.marker(coords, { icon: icon })
                                 .bindPopup(popupContent);
-                mapMarkers.set(client.nombreComercial, marker); // Guardar referencia para búsqueda
+                // Usar ID como clave del mapa si está disponible y es único, si no, nombre comercial
+                 const markerKey = client.id || client.nombreComercial;
+                 if (markerKey) {
+                    mapMarkers.set(markerKey, marker); // Guardar referencia para búsqueda
+                 } else {
+                      console.warn("Client missing ID and Name, cannot store marker reference:", client);
+                 }
                 markerGroup.push(marker); // Añadir al grupo para ajustar bounds
             });
 
              // Crear una capa de grupo y añadirla al mapa
-            const featureGroup = L.featureGroup(markerGroup).addTo(mapInstance);
+             if (markerGroup.length > 0) {
+                const featureGroup = L.featureGroup(markerGroup).addTo(mapInstance);
 
-
-            // Ajustar la vista del mapa para mostrar todos los marcadores si hay alguno
-            if(markerGroup.length > 0) {
-                 // Usar fitBounds en lugar de setView para ajustar automáticamente
+                // Ajustar la vista del mapa para mostrar todos los marcadores
                 mapInstance.fitBounds(featureGroup.getBounds().pad(0.1)); // pad(0.1) añade un pequeño margen
-            } else {
-                 // Si no hay marcadores, centrar en la vista por defecto
-                 mapInstance.setView([7.77, -72.22], 13);
-            }
+             } else {
+                  console.log("No markers to add to map.");
+                  // Si no hay marcadores, centrar en la vista por defecto
+                  mapInstance.setView([7.7639, -72.2250], 13);
+             }
 
 
             setupMapSearch(clientsWithCoords); // Configurar la búsqueda
@@ -1326,10 +1633,7 @@
         }
     }
 
-    /**
-     * Configura la funcionalidad de búsqueda en el mapa.
-     */
-    function setupMapSearch(clients) {
+     function setupMapSearch(clients) {
         const searchInput = document.getElementById('map-search-input');
         const resultsContainer = document.getElementById('map-search-results');
         if (!searchInput || !resultsContainer) return;
@@ -1355,24 +1659,30 @@
                 return;
             }
 
-            resultsContainer.innerHTML = filteredClients.map(client => `
-                <div class="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0" data-client-name="${client.nombreComercial}">
-                    <p class="font-semibold text-sm">${client.nombreComercial}</p>
-                    <p class="text-xs text-gray-600">${client.nombrePersonal || ''} ${client.codigoCEP && client.codigoCEP !== 'N/A' ? `(CEP: ${client.codigoCEP})` : ''}</p>
-                </div>
-            `).join('');
+            resultsContainer.innerHTML = filteredClients.map(client => {
+                 // Usar ID como data attribute si existe, si no, nombre comercial
+                 const clientKey = client.id || client.nombreComercial;
+                 return clientKey ? `
+                    <div class="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0" data-client-key="${clientKey}">
+                        <p class="font-semibold text-sm">${client.nombreComercial}</p>
+                        <p class="text-xs text-gray-600">${client.nombrePersonal || ''} ${client.codigoCEP && client.codigoCEP !== 'N/A' ? `(CEP: ${client.codigoCEP})` : ''}</p>
+                    </div>` : ''; // No renderizar si no hay clave
+            }).join('');
             resultsContainer.classList.remove('hidden');
         });
 
         // Event listener para seleccionar un resultado
         resultsContainer.addEventListener('click', (e) => {
-            const target = e.target.closest('[data-client-name]');
+            const target = e.target.closest('[data-client-key]'); // Buscar por data-client-key
             if (target && mapInstance) {
-                const clientName = target.dataset.clientName;
-                const marker = mapMarkers.get(clientName); // Buscar marcador por nombre comercial
+                const clientKey = target.dataset.clientKey;
+                const marker = mapMarkers.get(clientKey); // Buscar marcador por clave (ID o Nombre)
                 if (marker) {
                     mapInstance.flyTo(marker.getLatLng(), 17); // Volar al marcador con zoom
                     marker.openPopup(); // Abrir popup
+                } else {
+                     console.warn(`Marker not found for key: ${clientKey}`);
+                     _showModal('Aviso', 'No se pudo encontrar el marcador para este cliente.');
                 }
                 // Limpiar búsqueda después de seleccionar
                 searchInput.value = '';
@@ -1384,11 +1694,12 @@
 
         // Ocultar resultados si se hace clic fuera del input o de los resultados
         document.addEventListener('click', function(event) {
-            if (!resultsContainer.contains(event.target) && event.target !== searchInput) {
+            if (resultsContainer && searchInput && !resultsContainer.contains(event.target) && event.target !== searchInput) {
                 resultsContainer.classList.add('hidden');
             }
         });
     }
+
 
     // --- [INICIO] Lógica de Limpieza y Gestión de Datos ---
 
@@ -1396,6 +1707,13 @@
      * Muestra la vista para las opciones de limpieza y gestión de datos.
      */
     function showDataManagementView() {
+         // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showDataManagementView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-2xl"> {/* Ajustar ancho */}
@@ -1433,15 +1751,22 @@
         document.getElementById('importInventoryBtn').addEventListener('click', handleImportInventory);
     }
 
-    /** Obtiene todos los IDs de usuarios (excepto el admin actual si es necesario) */
+    // ... (resto de funciones de gestión masiva: getAllUserIds, exportClosingsToExcel, handleDeleteAndExportSales, exportInventoryToExcel, handleDeleteAndExportInventory, handleInventoryFileSelect, handleImportInventory - sin cambios críticos aparentes, pero con las advertencias mencionadas sobre ejecución en cliente) ...
+     /** Obtiene todos los IDs de usuarios (excepto el admin actual si es necesario) */
     async function getAllUserIds(excludeAdmin = false) {
-        const usersRef = _collection(_db, "users");
-        const snapshot = await _getDocs(usersRef);
-        let userIds = snapshot.docs.map(doc => doc.id);
-        if (excludeAdmin) {
-            userIds = userIds.filter(id => id !== _userId); // Excluir al admin que ejecuta la acción
+        try {
+            const usersRef = _collection(_db, "users");
+            const snapshot = await _getDocs(usersRef);
+            let userIds = snapshot.docs.map(doc => doc.id);
+            if (excludeAdmin) {
+                userIds = userIds.filter(id => id !== _userId); // Excluir al admin que ejecuta la acción
+            }
+            return userIds;
+        } catch (error) {
+             console.error("Error getting user IDs:", error);
+             _showModal('Error Interno', 'No se pudo obtener la lista completa de usuarios.');
+             return []; // Devolver vacío en caso de error
         }
-        return userIds;
     }
 
 
@@ -1453,15 +1778,18 @@
 
         // Hoja para cierres públicos
          if (publicClosings && publicClosings.length > 0) {
-             const publicData = publicClosings.map(c => ({
-                 'Fecha': c.fecha.toDate().toISOString().slice(0, 10),
-                 'Vendedor_Email': c.vendedorInfo?.email || 'N/A',
-                 'Vendedor_Nombre': `${c.vendedorInfo?.nombre || ''} ${c.vendedorInfo?.apellido || ''}`.trim(),
-                 'Camion': c.vendedorInfo?.camion || 'N/A',
-                 'Total': c.total || 0,
-                 'ID_Cierre': c.id || 'N/A', // Incluir ID si está disponible
-                 'Datos_Ventas': JSON.stringify(c.ventas) // Guardar ventas como JSON
-             }));
+             const publicData = publicClosings.map(c => {
+                 const fechaCierre = c.fecha?.toDate ? c.fecha.toDate() : null;
+                 return {
+                     'Fecha': fechaCierre ? fechaCierre.toISOString().slice(0, 10) : 'Fecha Inválida',
+                     'Vendedor_Email': c.vendedorInfo?.email || 'N/A',
+                     'Vendedor_Nombre': `${c.vendedorInfo?.nombre || ''} ${c.vendedorInfo?.apellido || ''}`.trim() || 'N/A',
+                     'Camion': c.vendedorInfo?.camion || 'N/A',
+                     'Total': c.total || 0,
+                     'ID_Cierre': c.id || 'N/A', // Incluir ID si está disponible
+                     'Datos_Ventas': JSON.stringify(c.ventas || []) // Guardar ventas como JSON, asegurar array
+                 };
+             });
              const wsPublic = XLSX.utils.json_to_sheet(publicData);
              XLSX.utils.book_append_sheet(wb, wsPublic, 'Cierres_Publicos');
          } else {
@@ -1471,12 +1799,15 @@
 
         // Hoja para cierres del admin
         if (adminClosings && adminClosings.length > 0) {
-             const adminData = adminClosings.map(c => ({
-                 'Fecha': c.fecha.toDate().toISOString().slice(0, 10),
-                 'Total': c.total || 0,
-                  'ID_Cierre': c.id || 'N/A',
-                 'Datos_Ventas': JSON.stringify(c.ventas)
-             }));
+             const adminData = adminClosings.map(c => {
+                 const fechaCierre = c.fecha?.toDate ? c.fecha.toDate() : null;
+                 return {
+                     'Fecha': fechaCierre ? fechaCierre.toISOString().slice(0, 10) : 'Fecha Inválida',
+                     'Total': c.total || 0,
+                      'ID_Cierre': c.id || 'N/A',
+                     'Datos_Ventas': JSON.stringify(c.ventas || [])
+                 };
+             });
             const wsAdmin = XLSX.utils.json_to_sheet(adminData);
             XLSX.utils.book_append_sheet(wb, wsAdmin, 'Cierres_Admin');
         } else {
@@ -1498,6 +1829,7 @@
              <p class="mt-4 font-bold">¿Estás absolutamente seguro?</p>`,
             async () => {
                 _showModal('Progreso', 'Exportando y eliminando datos de ventas...');
+                let exported = false;
                 try {
                     // 1. Obtener datos públicos
                     const publicClosingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
@@ -1512,30 +1844,43 @@
                     // 3. Exportar a Excel
                     if (publicClosings.length > 0 || adminClosings.length > 0) {
                          await exportClosingsToExcel(publicClosings, adminClosings);
+                         exported = true;
                     } else {
                          _showModal('Aviso', 'No se encontraron datos de cierres para exportar o eliminar.');
-                         return; // No continuar si no hay nada que hacer
+                         return false; // Indicar al modal que no cierre y detener
                     }
 
 
-                    // 4. Eliminar datos (con una segunda confirmación implícita por el proceso)
+                    // 4. Eliminar datos
                      _showModal('Progreso', 'Datos exportados. Eliminando registros...');
 
-                    const batchPublic = _writeBatch(_db);
-                    publicSnapshot.docs.forEach(doc => batchPublic.delete(doc.ref));
-                    await batchPublic.commit();
+                    // Eliminar públicos
+                    if (!publicSnapshot.empty) {
+                        const batchPublic = _writeBatch(_db);
+                        publicSnapshot.docs.forEach(doc => batchPublic.delete(doc.ref));
+                        await batchPublic.commit();
+                        console.log(`${publicSnapshot.size} cierres públicos eliminados.`);
+                    }
 
-                    const batchAdmin = _writeBatch(_db);
-                    adminSnapshot.docs.forEach(doc => batchAdmin.delete(doc.ref));
-                    await batchAdmin.commit();
+                     // Eliminar admin
+                     if (!adminSnapshot.empty) {
+                        const batchAdmin = _writeBatch(_db);
+                        adminSnapshot.docs.forEach(doc => batchAdmin.delete(doc.ref));
+                        await batchAdmin.commit();
+                        console.log(`${adminSnapshot.size} cierres de admin eliminados.`);
+                     }
 
 
                     _showModal('Éxito', 'Los datos de ventas han sido exportados y eliminados correctamente.');
+                    return true; // Indicar al modal que cierre
                 } catch (error) {
                     console.error("Error borrando/exportando ventas:", error);
-                    _showModal('Error', `Ocurrió un error: ${error.message}`);
+                    // Mostrar error específico si falló la exportación o el borrado
+                    const actionFailed = exported ? "eliminación" : "exportación/eliminación";
+                    _showModal('Error', `Ocurrió un error durante la ${actionFailed}: ${error.message}`);
+                    return false; // No cerrar modal
                 }
-            }, 'Sí, Borrar Todo');
+            }, 'Sí, Borrar Todo', null, true); // triggerConfirmLogic = true
     }
 
     /** Exporta el inventario maestro del admin a Excel */
@@ -1548,16 +1893,24 @@
 
         for (const colName of collections) {
             const path = `artifacts/${_appId}/users/${_userId}/${colName}`;
-            const snapshot = await _getDocs(_collection(_db, path));
-            if (!snapshot.empty) {
-                dataFound = true;
-                const data = snapshot.docs.map(doc => ({ firestore_id: doc.id, ...doc.data() })); // Incluir ID de Firestore
-                const ws = XLSX.utils.json_to_sheet(data);
-                XLSX.utils.book_append_sheet(wb, ws, colName); // Usar nombre de colección como nombre de hoja
-            } else {
-                 // Crear hoja vacía si no hay datos
-                 const ws = XLSX.utils.aoa_to_sheet([[`No hay datos en ${colName}`]]);
+            try {
+                const snapshot = await _getDocs(_collection(_db, path));
+                if (!snapshot.empty) {
+                    dataFound = true;
+                    const data = snapshot.docs.map(doc => ({ firestore_id: doc.id, ...doc.data() })); // Incluir ID de Firestore
+                    const ws = XLSX.utils.json_to_sheet(data);
+                    XLSX.utils.book_append_sheet(wb, ws, colName); // Usar nombre de colección como nombre de hoja
+                } else {
+                     // Crear hoja vacía si no hay datos
+                     const ws = XLSX.utils.aoa_to_sheet([[`No hay datos en ${colName}`]]);
+                     XLSX.utils.book_append_sheet(wb, ws, colName);
+                }
+            } catch (readError) {
+                 console.error(`Error leyendo ${colName} para exportar:`, readError);
+                  // Crear hoja indicando el error
+                 const ws = XLSX.utils.aoa_to_sheet([[`Error al leer datos de ${colName}: ${readError.message}`]]);
                  XLSX.utils.book_append_sheet(wb, ws, colName);
+                 // Continuar con las otras colecciones si es posible
             }
         }
 
@@ -1582,44 +1935,79 @@
              <p class="mt-4 font-bold">¿Estás absolutamente seguro?</p>`,
             async () => {
                 _showModal('Progreso', 'Exportando inventario maestro del admin...');
+                let exported = false;
                 try {
                     // 1. Exportar inventario del admin
-                    const exported = await exportInventoryToExcel();
-                    if (!exported) return; // Detener si no había nada que exportar
+                    exported = await exportInventoryToExcel();
+                    if (!exported) return false; // Detener si no había nada que exportar (modal ya mostrado)
 
                     // 2. Obtener IDs de todos los usuarios
                      _showModal('Progreso', 'Inventario exportado. Obteniendo lista de usuarios para limpieza...');
                     const allUserIds = await getAllUserIds();
+                    if (allUserIds.length === 0) {
+                         _showModal('Advertencia', 'Inventario exportado, pero no se encontraron otros usuarios para limpiar.');
+                         return true; // Completado técnicamente
+                    }
 
                     // 3. Eliminar datos de todos los usuarios
-                    _showModal('Progreso', `Eliminando datos de inventario para ${allUserIds.length} usuario(s)...`);
+                    _showModal('Progreso', `Eliminando datos de inventario para ${allUserIds.length} usuario(s)... (Puede tardar)`);
                     const collectionsToDelete = ['inventario', 'rubros', 'segmentos', 'marcas'];
+                    let deleteErrors = 0;
+
                     for (const userIdToDelete of allUserIds) {
                         console.log(`Eliminando datos para usuario: ${userIdToDelete}`);
                         for (const colName of collectionsToDelete) {
                             const path = `artifacts/${_appId}/users/${userIdToDelete}/${colName}`;
-                            const snapshot = await _getDocs(_collection(_db, path));
-                            if (!snapshot.empty) {
-                                const batch = _writeBatch(_db);
-                                snapshot.docs.forEach(doc => batch.delete(doc.ref));
-                                await batch.commit();
-                                console.log(` - ${colName} eliminado para ${userIdToDelete}`);
+                            try {
+                                const snapshot = await _getDocs(_collection(_db, path));
+                                if (!snapshot.empty) {
+                                    const batch = _writeBatch(_db);
+                                    let opsInBatch = 0;
+                                    const MAX_OPS = 490;
+                                    snapshot.docs.forEach(doc => {
+                                         batch.delete(doc.ref);
+                                         opsInBatch++;
+                                         if(opsInBatch >= MAX_OPS){
+                                             await batch.commit();
+                                             batch = _writeBatch(_db);
+                                             opsInBatch = 0;
+                                         }
+                                    });
+                                    if(opsInBatch > 0) await batch.commit();
+                                    console.log(` - ${colName} (${snapshot.size} items) eliminado para ${userIdToDelete}`);
+                                }
+                            } catch (userDeleteError) {
+                                 console.error(`Error eliminando ${colName} para ${userIdToDelete}:`, userDeleteError);
+                                 deleteErrors++;
+                                 // Continuar con el siguiente usuario/colección
                             }
                         }
                     }
 
-                    _showModal('Éxito', 'Los datos de inventario (productos, rubros, segmentos, marcas) han sido exportados y eliminados de todos los usuarios.');
+                    if (deleteErrors > 0) {
+                         _showModal('Advertencia', 'Inventario exportado. La eliminación se completó, pero ocurrieron errores al limpiar algunos usuarios. Revisa la consola.');
+                    } else {
+                         _showModal('Éxito', 'Los datos de inventario (productos, rubros, segmentos, marcas) han sido exportados y eliminados de todos los usuarios.');
+                    }
+                    return true; // Indicar éxito general al modal
+
                 } catch (error) {
                     console.error("Error borrando/exportando inventario:", error);
-                    _showModal('Error', `Ocurrió un error: ${error.message}`);
+                     const actionFailed = exported ? "eliminación" : "exportación/eliminación";
+                    _showModal('Error', `Ocurrió un error durante la ${actionFailed}: ${error.message}`);
+                    return false; // Indicar fallo al modal
                 }
-            }, 'Sí, Borrar Todo el Inventario');
+            }, 'Sí, Borrar Todo el Inventario', null, true); // triggerConfirmLogic = true
     }
 
     /** Maneja la selección del archivo Excel para importar inventario */
     function handleInventoryFileSelect() {
         const fileInput = document.getElementById('inventory-file-input');
-        const file = fileInput.files[0];
+        if (!fileInput) {
+             _showModal('Error Interno', 'No se encontró el input para seleccionar archivo.');
+             return null;
+        }
+        const file = fileInput.files?.[0]; // Usar optional chaining
         if (!file) {
             _showModal('Error', 'Por favor, selecciona un archivo Excel.');
             return null;
@@ -1641,11 +2029,12 @@
             `<p class="text-orange-600 font-bold">¡ATENCIÓN!</p>
              <p>Esta acción leerá el archivo Excel seleccionado y distribuirá los datos de inventario (incluyendo rubros, segmentos, marcas) a <strong>TODOS los usuarios</strong>.</p>
              <p class="mt-2">Sobreescribirá la estructura existente (productos, categorías), pero intentará conservar las cantidades de stock si un producto ya existe.</p>
-             <p class="mt-4 font-bold">Asegúrate de que el archivo tiene el formato correcto (hojas: inventario, rubros, segmentos, marcas). ¿Continuar?</p>`,
+             <p class="mt-4 font-bold">Asegúrate de que el archivo tiene el formato correcto (hojas: inventario, rubros, segmentos, marcas con columna 'firestore_id' opcional). ¿Continuar?</p>`,
             async () => {
                 _showModal('Progreso', 'Leyendo archivo Excel...');
                 const reader = new FileReader();
                 reader.onload = async (e) => {
+                    let importErrors = 0;
                     try {
                         const data = e.target.result;
                         const workbook = XLSX.read(data, { type: 'array' });
@@ -1657,54 +2046,77 @@
                         requiredSheets.forEach(sheetName => {
                              if (workbook.SheetNames.includes(sheetName)) {
                                  const ws = workbook.Sheets[sheetName];
-                                 // Convertir a JSON, asegurando que los IDs se lean si existen
+                                 // Convertir a JSON
                                  importedData[sheetName] = XLSX.utils.sheet_to_json(ws);
                              } else {
-                                 missingSheets.push(sheetName);
+                                 // Permitir hojas de categorías vacías, pero no 'inventario'
+                                 if (sheetName === 'inventario') {
+                                     missingSheets.push(sheetName);
+                                 } else {
+                                     console.warn(`Hoja opcional '${sheetName}' no encontrada, se importará vacía.`);
+                                     importedData[sheetName] = []; // Tratar como vacía
+                                 }
                              }
                         });
 
                          if (missingSheets.length > 0) {
-                             throw new Error(`Faltan las siguientes hojas en el archivo Excel: ${missingSheets.join(', ')}`);
+                             throw new Error(`Falta la hoja requerida 'inventario' en el archivo Excel.`);
                          }
                          if (!importedData.inventario || importedData.inventario.length === 0) {
-                             throw new Error("La hoja 'inventario' está vacía o no se pudo leer correctamente.");
+                              // Podría ser válido si solo se quieren importar categorías, pero advertir.
+                             console.warn("La hoja 'inventario' está vacía. Solo se importarán/actualizarán categorías.");
+                             // No lanzar error aquí, permitir continuar solo con categorías
                          }
 
 
                          // Proceder con la distribución
                          _showModal('Progreso', 'Datos leídos. Obteniendo lista de usuarios...');
                          const allUserIds = await getAllUserIds();
+                         if(allUserIds.length === 0){
+                              _showModal('Aviso', 'Datos leídos, pero no se encontraron usuarios para distribuir.');
+                              return false;
+                         }
 
-                         _showModal('Progreso', `Distribuyendo datos a ${allUserIds.length} usuario(s)...`);
+                         _showModal('Progreso', `Distribuyendo datos a ${allUserIds.length} usuario(s)... (Puede tardar)`);
 
                          for (const targetId of allUserIds) {
                             console.log(`Importando datos para usuario: ${targetId}`);
-                             // Copiar categorías primero (sobrescribir)
-                             for(const cat of ['rubros', 'segmentos', 'marcas']) {
-                                 // Preparar datos para Firestore (usar firestore_id si existe, si no, generar)
-                                 const itemsToCopy = importedData[cat]?.map(item => {
-                                      const { firestore_id, ...rest } = item;
-                                      // Devolver { id: firestore_id, ...rest } para copyDataToUser
-                                      // copyDataToUser espera 'id' como la clave del documento
-                                      return { id: firestore_id, ...rest };
-                                 }) || []; // Asegurar que sea un array
-                                 await copyDataToUser(targetId, cat, itemsToCopy);
-                                 console.log(` - ${cat} importado para ${targetId}`);
+                             try {
+                                 // Copiar categorías primero (sobrescribir)
+                                 for(const cat of ['rubros', 'segmentos', 'marcas']) {
+                                     const itemsToCopy = (importedData[cat] || []).map(item => {
+                                          const { firestore_id, ...rest } = item;
+                                          // Usar 'firestore_id' como 'id' para copyDataToUser
+                                          return { id: firestore_id, ...rest };
+                                     });
+                                     await copyDataToUser(targetId, cat, itemsToCopy);
+                                     console.log(` - ${cat} importado para ${targetId}`);
+                                 }
+                                 // Luego, fusionar inventario conservando cantidades
+                                 if (importedData.inventario.length > 0) {
+                                     const inventarioToMerge = importedData.inventario.map(item => {
+                                         const { firestore_id, cantidadUnidades, ...rest } = item; // Excluir cantidadUnidades del origen
+                                         return { id: firestore_id, ...rest };
+                                     });
+                                     await mergeDataForUser(targetId, 'inventario', inventarioToMerge, 'cantidadUnidades');
+                                     console.log(` - inventario fusionado para ${targetId}`);
+                                 }
+                             } catch(userImportError){
+                                  console.error(`Error importando datos para ${targetId}:`, userImportError);
+                                  importErrors++;
+                                  // Continuar con el siguiente usuario
                              }
-                             // Luego, fusionar inventario conservando cantidades
-                             const inventarioToMerge = importedData.inventario.map(item => {
-                                 const { firestore_id, cantidadUnidades, ...rest } = item; // Excluir cantidadUnidades del origen
-                                 return { id: firestore_id, ...rest };
-                             });
-                             await mergeDataForUser(targetId, 'inventario', inventarioToMerge, 'cantidadUnidades');
-                             console.log(` - inventario fusionado para ${targetId}`);
                          }
 
 
-                        _showModal('Éxito', 'El inventario ha sido importado y distribuido a todos los usuarios.');
+                        if (importErrors > 0) {
+                             _showModal('Advertencia', `Importación completada, pero ocurrieron errores para ${importErrors} usuario(s). Revisa la consola.`);
+                        } else {
+                             _showModal('Éxito', 'El inventario ha sido importado y distribuido a todos los usuarios.');
+                        }
                         // Opcional: Volver al menú de gestión o data
                         showDataManagementView();
+                         return true; // Éxito general
 
                     } catch (error) {
                         console.error("Error importando inventario:", error);
@@ -1712,20 +2124,18 @@
                          // Limpiar input de archivo en caso de error
                          const fileInput = document.getElementById('inventory-file-input');
                          if(fileInput) fileInput.value = '';
+                         return false; // Indicar fallo
                     }
                 };
                 reader.onerror = (e) => {
                      _showModal('Error', 'No se pudo leer el archivo seleccionado.');
                 };
                 reader.readAsArrayBuffer(file);
-            }, 'Sí, Importar y Distribuir');
+            }, 'Sí, Importar y Distribuir', null, true); // triggerConfirmLogic = true
     }
 
 
     // --- [FIN] Lógica de Limpieza y Gestión de Datos ---
-
-    // --- Lógica del Mapa de Clientes (ya existente, sin cambios necesarios aquí) ---
-    // ... (funciones showClientMapView, loadAndDisplayMap, setupMapSearch) ...
 
 
     // Exponer funciones públicas al objeto window
@@ -1736,4 +2146,3 @@
     };
 
 })();
-
