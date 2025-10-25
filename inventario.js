@@ -576,23 +576,27 @@
 
                             <!-- Precios y Venta -->
                             <div class="border-t pt-4">
-                                <div class="flex justify-between items-center">
-                                    <div>
-                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
-                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4">
-                                        <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja envases retornables (vacíos)</span></label>
+                                <div>
+                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
                                     </div>
                                 </div>
                                 <!-- Contenedor para Unidades por empaque -->
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
                                 <!-- Contenedor para Precios -->
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
+                                
+                                <!-- CAMBIO: Manejo de Vacíos -->
+                                <div class="mt-4">
+                                    <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
+                                </div>
+                                <div id="vaciosOpcionesContainer" class="mt-4 pl-6 hidden">
+                                    <!-- Opciones de vacío se insertarán aquí dinámicamente -->
+                                </div>
+                                <!-- FIN CAMBIO -->
                             </div>
 
                             <!-- Stock e IVA -->
@@ -630,6 +634,8 @@
         const ventaPorContainer = document.getElementById('ventaPorContainer');
         const preciosContainer = document.getElementById('preciosContainer');
         const empaquesContainer = document.getElementById('empaquesContainer');
+        const manejaVaciosCheckbox = document.getElementById('manejaVacios');
+        const vaciosOpcionesContainer = document.getElementById('vaciosOpcionesContainer');
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
@@ -659,6 +665,23 @@
             
             empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
+
+            // --- CAMBIO: Lógica dinámica para Vacíos ---
+            if (manejaVaciosCheckbox.checked) {
+                vaciosOpcionesContainer.innerHTML = `
+                    <label class="block text-sm font-medium text-gray-700">Tipo de Vacío:</label>
+                    <div class="flex flex-col sm:flex-row sm:space-x-4">
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="1/4 - 1/3" class="h-4 w-4" required> <span class="ml-2">1/4 - 1/3</span></label>
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 350 ml" class="h-4 w-4"> <span class="ml-2">ret 350 ml</span></label>
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 1.25 Lts" class="h-4 w-4"> <span class="ml-2">ret 1.25 Lts</span></label>
+                    </div>
+                `;
+                vaciosOpcionesContainer.classList.remove('hidden');
+            } else {
+                vaciosOpcionesContainer.innerHTML = '';
+                vaciosOpcionesContainer.classList.add('hidden');
+            }
+            // --- FIN CAMBIO ---
 
             // Lógica para actualizar el dropdown de "Cantidad cargada en"
             const unidadCargadaSelect = document.getElementById('unidadCargada');
@@ -691,6 +714,7 @@
         };
         
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
+        manejaVaciosCheckbox.addEventListener('change', updateDynamicInputs); // <-- CAMBIO: Añadido listener
         
         document.getElementById('productoForm').addEventListener('submit', agregarProducto);
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
@@ -741,6 +765,17 @@
              cantidadTotalUnidades = parseInt(document.getElementById('cantidadUnidades')?.value, 10) || 0;
         }
 
+        // --- CAMBIO: Leer el tipo de vacío ---
+        const manejaVaciosChecked = document.getElementById('manejaVacios').checked;
+        let tipoVacio = null;
+        if (manejaVaciosChecked) {
+            const tipoVacioRadio = document.querySelector('input[name="tipoVacio"]:checked');
+            if (tipoVacioRadio) {
+                tipoVacio = tipoVacioRadio.value;
+            }
+        }
+        // --- FIN CAMBIO ---
+
         return {
             rubro: document.getElementById('rubro').value,
             segmento: document.getElementById('segmento').value,
@@ -753,7 +788,8 @@
                 paq: document.getElementById('ventaPorPaq').checked,
                 cj: document.getElementById('ventaPorCj').checked,
             },
-            manejaVacios: document.getElementById('manejaVacios').checked,
+            manejaVacios: manejaVaciosChecked, // <-- CAMBIO
+            tipoVacio: tipoVacio, // <-- NUEVO
             precios: precios,
             precioPorUnidad: precioFinalPorUnidad,
             cantidadUnidades: cantidadTotalUnidades,
@@ -776,6 +812,12 @@
             _showModal('Error', 'Debes seleccionar al menos una forma de venta (Und, Paq, o Cj).');
             return;
         }
+        // --- CAMBIO: Validación de tipo de vacío ---
+        if (producto.manejaVacios && !producto.tipoVacio) {
+            _showModal('Error', 'Si "Maneja vacío" está seleccionado, debes elegir un tipo de vacío.');
+            return;
+        }
+        // --- FIN CAMBIO ---
 
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
@@ -1049,21 +1091,24 @@
                                 <div><label for="presentacion" class="block text-gray-700 font-medium mb-1">Presentación:</label><input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required></div>
                             </div>
                             <div class="border-t pt-4">
-                                <div class="flex justify-between items-center">
-                                    <div>
-                                        <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
-                                        <div id="ventaPorContainer" class="flex items-center space-x-4">
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
-                                            <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4">
-                                        <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja envases retornables (vacíos)</span></label>
+                                <div>
+                                    <label class="block text-gray-700 font-medium mb-2">Venta por:</label>
+                                    <div id="ventaPorContainer" class="flex items-center space-x-4">
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4"> <span class="ml-2">Und.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4"> <span class="ml-2">Paq.</span></label>
+                                        <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4"> <span class="ml-2">Cj.</span></label>
                                     </div>
                                 </div>
                                 <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div>
                                 <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div>
+                                <!-- CAMBIO: Manejo de Vacíos -->
+                                <div class="mt-4">
+                                    <label class="flex items-center"><input type="checkbox" id="manejaVacios" class="h-4 w-4"> <span class="ml-2 font-medium">Maneja vacío</span></label>
+                                </div>
+                                <div id="vaciosOpcionesContainer" class="mt-4 pl-6 hidden">
+                                    <!-- Opciones de vacío se insertarán aquí dinámicamente -->
+                                </div>
+                                <!-- FIN CAMBIO -->
                             </div>
                             <div class="border-t pt-4">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1089,6 +1134,8 @@
         const ventaPorContainer = document.getElementById('ventaPorContainer');
         const preciosContainer = document.getElementById('preciosContainer');
         const empaquesContainer = document.getElementById('empaquesContainer');
+        const manejaVaciosCheckbox = document.getElementById('manejaVacios'); // <-- CAMBIO
+        const vaciosOpcionesContainer = document.getElementById('vaciosOpcionesContainer'); // <-- CAMBIO
 
         const updateDynamicInputs = () => {
             empaquesContainer.innerHTML = '';
@@ -1114,6 +1161,23 @@
             
             empaquesContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', () => handlePrecioChange({ target: preciosContainer.querySelector('input[data-source]') })));
             preciosContainer.querySelectorAll('input').forEach(input => input.addEventListener('input', handlePrecioChange));
+
+            // --- CAMBIO: Lógica dinámica para Vacíos ---
+            if (manejaVaciosCheckbox.checked) {
+                vaciosOpcionesContainer.innerHTML = `
+                    <label class="block text-sm font-medium text-gray-700">Tipo de Vacío:</label>
+                    <div class="flex flex-col sm:flex-row sm:space-x-4">
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="1/4 - 1/3" class="h-4 w-4" required> <span class="ml-2">1/4 - 1/3</span></label>
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 350 ml" class="h-4 w-4"> <span class="ml-2">ret 350 ml</span></label>
+                        <label class="flex items-center"><input type="radio" name="tipoVacio" value="ret 1.25 Lts" class="h-4 w-4"> <span class="ml-2">ret 1.25 Lts</span></label>
+                    </div>
+                `;
+                vaciosOpcionesContainer.classList.remove('hidden');
+            } else {
+                vaciosOpcionesContainer.innerHTML = '';
+                vaciosOpcionesContainer.classList.add('hidden');
+            }
+            // --- FIN CAMBIO ---
         };
 
         const handlePrecioChange = (e) => {
@@ -1164,10 +1228,21 @@
                 document.getElementById('ventaPorPaq').checked = producto.ventaPor.paq;
                 document.getElementById('ventaPorCj').checked = producto.ventaPor.cj;
             }
+            
+            // --- CAMBIO: Poblar datos de Vacíos ---
             if (producto.manejaVacios) {
                 document.getElementById('manejaVacios').checked = true;
             }
+            
             updateDynamicInputs(); // Generate dynamic fields
+
+            if (producto.manejaVacios && producto.tipoVacio) {
+                const tipoVacioRadio = document.querySelector(`input[name="tipoVacio"][value="${producto.tipoVacio}"]`);
+                if (tipoVacioRadio) {
+                    tipoVacioRadio.checked = true;
+                }
+            }
+            // --- FIN CAMBIO ---
 
             // Populate dynamic fields with data
             if (producto.ventaPor.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
@@ -1185,6 +1260,7 @@
         }, 200);
 
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
+        manejaVaciosCheckbox.addEventListener('change', updateDynamicInputs); // <-- CAMBIO: Añadido listener
         document.getElementById('editProductoForm').addEventListener('submit', (e) => handleUpdateProducto(e, productId));
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     };
@@ -1195,6 +1271,13 @@
     async function handleUpdateProducto(e, productId) {
         e.preventDefault();
         const updatedData = getProductoDataFromForm();
+
+        // --- CAMBIO: Validación de tipo de vacío ---
+        if (updatedData.manejaVacios && !updatedData.tipoVacio) {
+            _showModal('Error', 'Si "Maneja vacío" está seleccionado, debes elegir un tipo de vacío.');
+            return;
+        }
+        // --- FIN CAMBIO ---
 
         try {
             await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData);
