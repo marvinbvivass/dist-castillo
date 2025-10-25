@@ -2,25 +2,29 @@
 
 (function() {
     // Variables locales del módulo
-    // --- Añadir dependencias Firestore ---
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _showMainMenu, _showModal;
     let _collection, _getDocs, _doc, _setDoc, _getDoc, _writeBatch, _query, _where, _deleteDoc;
-    // --- Fin Añadir ---
     let _obsequioProductId = null; // Para guardar el ID seleccionado
 
     /**
      * Inicializa el módulo con las dependencias necesarias.
      */
     window.initAdmin = function(dependencies) {
+        // Validar dependencias básicas
+        if (!dependencies.db || !dependencies.mainContent || !dependencies.showMainMenu || !dependencies.showModal) {
+            console.error("Admin Init Error: Missing critical dependencies (db, mainContent, showMainMenu, showModal)");
+            // Podríamos lanzar un error o mostrar un modal aquí si fuera necesario
+            return; // Detener inicialización si faltan dependencias críticas
+        }
+
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole;
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
-        _floatingControls = dependencies.floatingControls; // Guardar referencia
+        _floatingControls = dependencies.floatingControls; // Guardar referencia (puede ser null/undefined si no se encuentra en index.html)
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
-        // --- Añadir dependencias Firestore ---
         _collection = dependencies.collection;
         _getDocs = dependencies.getDocs;
         _doc = dependencies.doc;
@@ -29,9 +33,13 @@
         _writeBatch = dependencies.writeBatch;
         _query = dependencies.query;
         _where = dependencies.where;
-        _deleteDoc = dependencies.deleteDoc; // Necesario para propagar eliminaciones
-        // --- Fin Añadir ---
-         console.log("Admin module initialized. floatingControls valid:", !!_floatingControls); // Log para verificar
+        _deleteDoc = dependencies.deleteDoc;
+
+        // Verificar si floatingControls se pasó correctamente
+        if (!_floatingControls) {
+            console.warn("Admin Init Warning: floatingControls element was not provided or found. Floating buttons might not function correctly.");
+        }
+        console.log("Admin module initialized.");
     };
 
     /**
@@ -39,10 +47,11 @@
      */
     window.showAdminOrProfileView = function() {
         // --- INICIO CORRECCIÓN ---
+        // Verificar si _floatingControls existe antes de usarlo
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showAdminOrProfileView");
+            console.warn("showAdminOrProfileView: floatingControls not available."); // Advertir en lugar de error
         }
         // --- FIN CORRECCIÓN ---
         if (_userRole === 'admin') {
@@ -58,7 +67,7 @@
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showAdminSubMenuView");
+            console.warn("showAdminSubMenuView: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
          _mainContent.innerHTML = `
@@ -92,7 +101,7 @@
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showUserManagementView");
+            console.warn("showUserManagementView: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
@@ -218,7 +227,7 @@
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showUserProfileView");
+            console.warn("showUserProfileView: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
@@ -313,7 +322,7 @@
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showObsequioConfigView");
+            console.warn("showObsequioConfigView: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
@@ -347,6 +356,8 @@
 
     /**
      * Carga el inventario del admin y popula el select de producto obsequio.
+     * Nota: Asume que el admin que ejecuta esto es el que define la configuración.
+     * En un sistema multi-admin, esto debería leer/escribir una configuración central.
      */
     async function loadAndPopulateObsequioSelect() {
         const selectElement = document.getElementById('obsequioProductSelect');
@@ -354,8 +365,6 @@
 
         try {
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            // Filtrar directamente en Firestore si es posible, o filtrar en cliente
-            // Aquí filtramos en cliente después de obtener todos
             const snapshot = await _getDocs(inventarioRef);
             const productosValidos = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
@@ -423,6 +432,8 @@
 
 
     // --- [INICIO] Lógica de Sincronización Manual de Admin ---
+    // Nota: Esta sección es intensiva en operaciones de Firestore y puede ser lenta/costosa.
+    // Considerar alternativas como Cloud Functions para operaciones masivas si el rendimiento es un problema.
 
     /**
      * Muestra la vista para que el admin sincronice datos con otros usuarios (MANUALMENTE).
@@ -432,7 +443,7 @@
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showSyncDataView");
+            console.warn("showSyncDataView: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
          _mainContent.innerHTML = `
@@ -544,6 +555,7 @@
 
         _showModal('Confirmar Sincronización Manual', confirmationMessage, async () => {
             _showModal('Progreso', `Sincronizando desde ${sourceUserEmail}...`);
+            let errorsOccurred = false;
 
             try {
                 // 1. Obtener los datos fuente del usuario seleccionado
@@ -565,16 +577,27 @@
                      count++;
                      _showModal('Progreso', `2/3: Aplicando a usuario ${count}/${targetUserIds.length}...`);
                      console.log(`Sincronizando para: ${targetId}`);
-                    // Copiar categorías primero (sobrescribir)
-                    for(const cat of ['rubros', 'segmentos', 'marcas']) {
-                        await copyDataToUser(targetId, cat, sourceData[cat]);
-                    }
-                    // Luego, fusionar inventario conservando cantidades
-                    await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
+                     try {
+                         // Copiar categorías primero (sobrescribir)
+                         for(const cat of ['rubros', 'segmentos', 'marcas']) {
+                             await copyDataToUser(targetId, cat, sourceData[cat]);
+                         }
+                         // Luego, fusionar inventario conservando cantidades
+                         await mergeDataForUser(targetId, 'inventario', sourceData['inventario'], 'cantidadUnidades');
+                     } catch (userSyncError) {
+                         console.error(`Error sincronizando para usuario ${targetId}:`, userSyncError);
+                         errorsOccurred = true;
+                         // Podríamos decidir continuar con el siguiente usuario o detener todo
+                         // Por ahora, continuamos y notificamos al final
+                     }
                 }
 
                  _showModal('Progreso', `3/3: Finalizando...`);
-                _showModal('Éxito', 'La sincronización manual se ha completado correctamente para todos los usuarios seleccionados.');
+                 if (errorsOccurred) {
+                     _showModal('Advertencia', 'La sincronización manual se completó, pero ocurrieron errores para uno o más usuarios. Revisa la consola para detalles.');
+                 } else {
+                     _showModal('Éxito', 'La sincronización manual se ha completado correctamente para todos los usuarios seleccionados.');
+                 }
                 showAdminSubMenuView(); // Volver al submenú
 
             } catch (error) {
@@ -584,7 +607,7 @@
         }, 'Sí, Sincronizar');
     }
 
-
+    /** Helper: Fusiona datos (inventario) preservando un campo */
     async function mergeDataForUser(targetUserId, collectionName, sourceItems, fieldToPreserve) {
         if (!sourceItems || sourceItems.length === 0) {
              console.log(` - No hay ${collectionName} fuente para ${targetUserId}, omitiendo merge.`);
@@ -593,8 +616,17 @@
 
         const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
         const targetRef = _collection(_db, targetPath);
-        const targetSnapshot = await _getDocs(targetRef);
-        const targetMap = new Map(targetSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        let targetMap = new Map(); // Mapa para guardar datos existentes del destino
+
+        // Leer datos de destino UNA VEZ para eficiencia
+        try {
+            const targetSnapshot = await _getDocs(targetRef);
+            targetMap = new Map(targetSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        } catch (readError) {
+             console.warn(`No se pudo leer ${collectionName} existente para ${targetUserId}. Se crearán/sobrescribirán todos los items.`, readError);
+             // Continuar con targetMap vacío
+        }
+
 
         const batch = _writeBatch(_db);
         let operations = 0;
@@ -607,19 +639,19 @@
                  continue;
             }
 
-            const { id, ...data } = item;
+            const { id, ...data } = item; // Datos sin el ID
             const targetDocRef = _doc(_db, targetPath, itemId);
 
+            // Preservar valor si el item existe en el destino
+            let preservedValue = (fieldToPreserve === 'saldoVacios' ? {} : 0); // Valor por defecto
             if (targetMap.has(itemId)) {
                  const existingData = targetMap.get(itemId);
-                 const preservedValue = existingData?.[fieldToPreserve] ?? (fieldToPreserve === 'saldoVacios' ? {} : 0);
-                 data[fieldToPreserve] = preservedValue;
-                 targetMap.delete(itemId); // Remove from map to track orphans
-            } else {
-                 data[fieldToPreserve] = (fieldToPreserve === 'saldoVacios' ? {} : 0);
+                 preservedValue = existingData?.[fieldToPreserve] ?? preservedValue; // Usar valor existente o el por defecto
+                 targetMap.delete(itemId); // Remover del mapa para rastrear huérfanos
             }
+            data[fieldToPreserve] = preservedValue;
 
-            batch.set(targetDocRef, data);
+            batch.set(targetDocRef, data); // set crea o sobrescribe
             operations++;
 
              if (operations >= MAX_OPS_PER_BATCH) {
@@ -629,9 +661,10 @@
              }
         }
 
-        // Option to delete items only present in target (orphans)
+        // Opción para eliminar items que solo existen en el destino (huérfanos)
          const deleteOrphans = true;
-         if (deleteOrphans) {
+         if (deleteOrphans && targetMap.size > 0) {
+             console.log(` - Eliminando ${targetMap.size} items huérfanos de ${collectionName} para ${targetUserId}`);
              for (const orphanId of targetMap.keys()) {
                  batch.delete(_doc(_db, targetPath, orphanId));
                  operations++;
@@ -649,26 +682,35 @@
          console.log(` - Merge de ${collectionName} completado para ${targetUserId}`);
     }
 
-
+    /** Helper: Copia datos (categorías) sobrescribiendo */
     async function copyDataToUser(targetUserId, collectionName, sourceItems) {
          const targetPath = `artifacts/${_appId}/users/${targetUserId}/${collectionName}`;
          const targetCollectionRef = _collection(_db, targetPath);
 
         // 1. Borrar datos antiguos en el destino
-         _showModal('Progreso', `Limpiando ${collectionName} anterior para ${targetUserId}...`);
-         const oldSnapshot = await _getDocs(targetCollectionRef);
-         if (!oldSnapshot.empty) {
-             const deleteBatch = _writeBatch(_db);
-             let deleteOps = 0;
-             const MAX_OPS_PER_BATCH = 490;
-             oldSnapshot.docs.forEach(doc => {
-                 deleteBatch.delete(doc.ref);
-                 deleteOps++;
-                 // Commit partial deletes if needed (unlikely for categories)
-                 // if (deleteOps >= MAX_OPS_PER_BATCH) { await deleteBatch.commit(); deleteBatch = _writeBatch(_db); deleteOps = 0; }
-             });
-              await deleteBatch.commit();
+         // _showModal('Progreso', `Limpiando ${collectionName} anterior para ${targetUserId}...`); // Quitar modal aquí, puede ser molesto
+         console.log(` - Limpiando ${collectionName} anterior para ${targetUserId}...`);
+         try {
+             const oldSnapshot = await _getDocs(targetCollectionRef);
+             if (!oldSnapshot.empty) {
+                 const deleteBatch = _writeBatch(_db);
+                 let deleteOps = 0;
+                 const MAX_OPS_PER_BATCH = 490;
+                 oldSnapshot.docs.forEach(doc => {
+                     deleteBatch.delete(doc.ref);
+                     deleteOps++;
+                     // Commit parciales si hay muchísimos (poco probable para categorías)
+                     // if (deleteOps >= MAX_OPS_PER_BATCH) { await deleteBatch.commit(); deleteBatch = _writeBatch(_db); deleteOps = 0; }
+                 });
+                  await deleteBatch.commit();
+                  console.log(`   - ${deleteOps} items eliminados de ${collectionName} para ${targetUserId}.`);
+             }
+         } catch (deleteError) {
+             console.error(`Error limpiando ${collectionName} para ${targetUserId}:`, deleteError);
+             // Considerar si continuar o detener la sincronización para este usuario
+             throw new Error(`Fallo al limpiar ${collectionName}: ${deleteError.message}`);
          }
+
 
         // 2. Escribir nuevos datos si existen
          if (!sourceItems || sourceItems.length === 0) {
@@ -676,30 +718,35 @@
              return;
          }
 
-         _showModal('Progreso', `Copiando ${collectionName} (${sourceItems.length} items) a ${targetUserId}...`);
+         // _showModal('Progreso', `Copiando ${collectionName} (${sourceItems.length} items) a ${targetUserId}...`);
+         console.log(` - Copiando ${sourceItems.length} items de ${collectionName} a ${targetUserId}...`);
 
         const writeBatch = _writeBatch(_db);
         let writeOps = 0;
         const MAX_OPS_PER_BATCH = 490;
 
         sourceItems.forEach(item => {
-             const itemId = item.id;
+             const itemId = item.id; // ID original del documento fuente (puede ser undefined si no se exportó con ID)
              const { id, ...data } = item; // Datos sin el ID
 
              // Determinar la referencia del documento destino
-             const targetDocRef = itemId
-                 ? _doc(_db, targetPath, itemId) // Usar ID original si existe
-                 : _doc(targetCollectionRef); // Generar nuevo ID si no existe
+             // Usar ID original si existe Y ES VÁLIDO (no vacío), si no, Firestore genera uno nuevo
+             const targetDocRef = (itemId && typeof itemId === 'string' && itemId.trim() !== '')
+                 ? _doc(_db, targetPath, itemId)
+                 : _doc(targetCollectionRef); // Generar nuevo ID si falta o es inválido
 
              writeBatch.set(targetDocRef, data); // Añadir/Sobrescribir
              writeOps++;
-             // Commit partial writes if needed
+             // Commit parciales si es necesario (poco probable para categorías)
              // if (writeOps >= MAX_OPS_PER_BATCH) { await writeBatch.commit(); writeBatch = _writeBatch(_db); writeOps = 0; }
         });
 
          await writeBatch.commit();
          console.log(` - Copia de ${collectionName} completada para ${targetUserId}`);
     }
+
+
+    // --- [FIN] Lógica de Sincronización Manual ---
 
 
     // --- [INICIO] Funciones de Propagación Automática ---
@@ -724,8 +771,9 @@
 
     /**
      * Propaga un cambio (añadir/actualizar/eliminar) de un producto a todos los demás usuarios.
+     * MÁS EFICIENTE: No lee el stock de cada usuario, simplemente escribe la definición.
      * @param {string} productId - El ID del documento del producto.
-     * @param {object|null} productData - Los datos completos del producto para añadir/actualizar, o null para eliminar. INCLUYE cantidadUnidades = 0 para nuevos.
+     * @param {object|null} productData - Los datos COMPLETOS de definición del producto para añadir/actualizar (con cantidadUnidades = 0), o null para eliminar.
      */
     async function propagateProductChange(productId, productData) {
         if (!productId) {
@@ -754,29 +802,15 @@
                 if (productData === null) { // --- Eliminación ---
                     console.log(` - Deleting product ${productId} for user ${targetUserId}`);
                     batch.delete(targetProductRef);
-                } else { // --- Añadir / Actualizar ---
-                    let currentQuantity = 0;
-                    try {
-                        // Leer la cantidad actual ANTES de sobrescribir
-                        const targetDocSnap = await _getDoc(targetProductRef);
-                        if (targetDocSnap.exists()) {
-                            currentQuantity = targetDocSnap.data().cantidadUnidades || 0;
-                            console.log(` - Preserving quantity ${currentQuantity} for product ${productId}, user ${targetUserId}`);
-                        } else {
-                             console.log(` - Product ${productId} is new for user ${targetUserId}, setting quantity to 0`);
-                        }
-                    } catch (readError) {
-                         console.warn(` - Could not read existing product ${productId} for user ${targetUserId} before update. Setting quantity to 0. Error:`, readError);
-                         currentQuantity = 0; // Asumir 0 si no se pudo leer
-                    }
+                } else { // --- Añadir / Actualizar (Definición) ---
+                    // IMPORTANTE: Preparamos los datos a escribir.
+                    // Excluimos cantidadUnidades para usar `merge: true` y no sobrescribirlo.
+                    const { cantidadUnidades, ...definitionData } = productData;
 
-                    // Datos a guardar: estructura nueva/actualizada + cantidad preservada/inicial
-                    const dataToSet = {
-                        ...productData, // Datos pasados (ya deberían tener cantidad 0 si es nuevo)
-                        cantidadUnidades: currentQuantity // Sobrescribir siempre con la cantidad leída o 0
-                    };
-                    console.log(` - Setting product ${productId} data for user ${targetUserId} (qty: ${currentQuantity})`);
-                    batch.set(targetProductRef, dataToSet); // set sobrescribe o crea
+                    console.log(` - Setting/Merging product definition ${productId} for user ${targetUserId}`);
+                    // Usar set con merge: true para crear si no existe o actualizar solo los campos
+                    // de definición, preservando `cantidadUnidades` si ya existía.
+                    batch.set(targetProductRef, definitionData, { merge: true });
                 }
 
                 operations++;
@@ -799,7 +833,9 @@
              const modalContainer = document.getElementById('modalContainer');
              const modalTitle = modalContainer?.querySelector('h3')?.textContent;
              if(modalContainer && modalTitle?.startsWith('Progreso')) {
-                  modalContainer.classList.add('hidden');
+                  // Opcional: Mostrar éxito breve antes de cerrar
+                  // _showModal('Éxito', 'Cambios del producto propagados.');
+                  modalContainer.classList.add('hidden'); // Cerrar modal de progreso
              }
              console.log(`Propagation complete for product ${productId}.`);
 
@@ -807,17 +843,12 @@
         } catch (error) {
             errorsOccurred = true; // Marcar que hubo error
             console.error("Error propagando cambio de producto:", error);
-             // Intentar revertir el batch actual si falló? writeBatch no tiene rollback fácil.
-             // Mostrar error al usuario.
             _showModal('Error', `Error al propagar cambio de producto: ${error.message}. Es posible que algunos usuarios no se hayan actualizado.`);
         } finally {
-             // Mostrar un mensaje de éxito solo si no hubo errores durante la propagación
-             if (!errorsOccurred && !modalContainer.classList.contains('hidden') && modalContainer?.querySelector('h3')?.textContent?.startsWith('Progreso')) {
-                  // Si el modal de progreso sigue abierto y no hubo errores, mostrar éxito
-                  _showModal('Éxito', 'Cambios del producto propagados correctamente.');
-             } else if (!errorsOccurred && modalContainer.classList.contains('hidden')) {
-                  // Si no hubo error pero el modal ya se cerró (porque _showModal('Éxito') lo cerró antes), no mostrar nada más.
-             }
+             // Comentado para evitar doble modal de éxito
+             // if (!errorsOccurred && modalContainer?.classList.contains('hidden')) {
+                  // console.log("Propagation succeeded, modal already closed.");
+             // }
         }
     }
 
@@ -877,7 +908,8 @@
          } catch (error) {
              errorsOccurred = true;
              console.error(`Error propagando cambio de categoría ${collectionName} (${itemId}):`, error);
-             _showModal('Error Propagación', `Error al actualizar categoría '${itemData?.name || itemId}' para otros usuarios: ${error.message}`);
+             // Mostrar error solo si es significativo (evitar saturar con modales)
+             _showModal('Error Propagación', `Error al actualizar categoría '${itemData?.name || itemId}' para otros usuarios.`);
          }
      }
 
@@ -887,8 +919,8 @@
       * @param {string[]} orderedIds - Array de IDs en el nuevo orden.
       */
      async function propagateCategoryOrderChange(collectionName, orderedIds) {
-          if (!collectionName || !orderedIds) { // Permitir array vacío
-              console.error("propagateCategoryOrderChange: collectionName or orderedIds missing.");
+          if (!collectionName || !Array.isArray(orderedIds)) { // Verificar que sea un array
+              console.error("propagateCategoryOrderChange: collectionName or orderedIds (array) missing.");
               return;
           }
 
@@ -905,19 +937,20 @@
           let errorsOccurred = false;
 
           try {
+              // Mapa ID -> Índice (orden) basado en la lista del admin
+              const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
+              let maxOrderInAdminList = orderedIds.length - 1; // Para items no presentes
+
               for (const targetUserId of otherUserIds) {
                   let batch = _writeBatch(_db);
                   let operations = 0;
                   console.log(` - Updating order of ${collectionName} for ${targetUserId}`);
 
-                  // Mapa ID -> Índice (orden) basado en la lista del admin
-                  const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
-
                   // Obtener TODOS los documentos de la categoría para el usuario destino
                   const targetCollectionRef = _collection(_db, `artifacts/${_appId}/users/${targetUserId}/${collectionName}`);
                   const snapshot = await _getDocs(targetCollectionRef);
 
-                  let maxOrder = orderedIds.length -1; // Para items no presentes en la lista ordenada del admin
+                  let userSpecificMaxOrder = maxOrderInAdminList; // Copia para este usuario
 
                   for (const docSnap of snapshot.docs) {
                       const itemId = docSnap.id;
@@ -929,16 +962,16 @@
                           // Si el item está en la lista ordenada del admin, usar ese orden
                           newOrder = orderMap.get(itemId);
                       } else {
-                           // Si el item NO está en la lista ordenada del admin (pudo ser filtrado por rubro al ordenar)
-                           // Le asignamos un orden alto para ponerlo al final.
-                           maxOrder++;
-                           newOrder = maxOrder;
+                           // Si el item NO está en la lista ordenada del admin
+                           // Le asignamos un orden alto incremental para ponerlo al final.
+                           userSpecificMaxOrder++;
+                           newOrder = userSpecificMaxOrder;
                            console.warn(`   - Item ${itemId} (${currentData.name}) not in admin's ordered list. Assigning order ${newOrder} for ${targetUserId}.`);
                       }
 
                       // Solo actualizar si el orden necesita cambiar
                       if (currentOrder !== newOrder) {
-                          const targetItemRef = _doc(targetCollectionRef, itemId); // Usar ref de la colección
+                          const targetItemRef = docSnap.ref; // Usar la referencia del snapshot
                           batch.update(targetItemRef, { orden: newOrder });
                           operations++;
                           console.log(`   - Updating order for ${itemId} (${currentData.name}) to ${newOrder} for ${targetUserId}`);
