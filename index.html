@@ -160,6 +160,10 @@
     <script src="catalogo.js"></script>
     <script src="clientes.js"></script>
     <script src="ventas.js"></script>
+    <!-- NUEVO: Incluir script de obsequios -->
+    <script src="obsequios.js"></script>
+    <!-- FIN NUEVO -->
+
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -253,7 +257,9 @@
                 submitButton.textContent = 'Verificando...';
 
                 try {
-                    const collectionRef = collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
+                    // Determinar si la ruta es pública o privada basada en el nombre
+                    const path = collectionName.includes('/') ? collectionName : `artifacts/${appId}/users/${userId}/${collectionName}`;
+                    const collectionRef = collection(db, path);
                     
                     // Obtener todos los documentos para verificar duplicados sin distinción de mayúsculas/minúsculas
                     const snapshot = await getDocs(collectionRef);
@@ -285,23 +291,29 @@
             });
         }
         
-        function populateDropdown(collectionName, elementId, itemName, selectedValue = null) {
+        function populateDropdown(collectionPathOrName, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) return;
 
             // **CORRECCIÓN:** Determinar si la ruta es pública o privada
-            const path = collectionName.includes('/')
-                ? collectionName
-                : `artifacts/${appId}/users/${userId}/${collectionName}`;
+            const path = collectionPathOrName.includes('/')
+                ? collectionPathOrName // Ya es una ruta completa
+                : `artifacts/${appId}/users/${userId}/${collectionPathOrName}`; // Es solo el nombre, construir ruta privada
 
             const collectionRef = collection(db, path);
             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                 const items = snapshot.docs.map(doc => doc.data().name).sort();
+                const currentValue = selectElement.value; // Guardar valor actual si existe
                 selectElement.innerHTML = `<option value="">Seleccione un ${itemName}</option>`;
                 items.forEach(item => {
-                    const selected = item === selectedValue ? ' selected' : '';
-                    selectElement.innerHTML += `<option value="${item}"${selected}>${item}</option>`;
+                    selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
+                // Intentar restaurar el valor seleccionado
+                if ([...selectElement.options].some(opt => opt.value === selectedValue)) {
+                     selectElement.value = selectedValue;
+                } else if ([...selectElement.options].some(opt => opt.value === currentValue)) {
+                     selectElement.value = currentValue; // Restaurar valor previo si el nuevo seleccionado no está
+                }
             });
             activeListeners.push(unsubscribe);
         }
@@ -329,7 +341,7 @@
                     createdAt: new Date()
                 });
             } catch (error) {
-                registerMessage.textContent = 'Error al registrar. Inténtelo de nuevo.';
+                registerMessage.textContent = `Error al registrar: ${error.message}`;
             }
         }
 
@@ -349,11 +361,17 @@
             window.isLoggingOut = true; // Activar la bandera
             cleanupListeners();
             await signOut(auth);
+            // Asegurarse de que el usuario vea la pantalla de login
+             showLoginView();
+             // Recargar la página para una limpieza completa (opcional pero recomendado)
+             // window.location.reload();
         }
         
         function cleanupListeners() {
             console.log(`Limpiando ${activeListeners.length} listener(s) activo(s)...`); // Log para depuración
-            activeListeners.forEach(unsubscribe => unsubscribe());
+            activeListeners.forEach(unsubscribe => {
+                try { unsubscribe(); } catch (e) { console.warn("Error al desuscribir listener:", e); }
+            });
             activeListeners = [];
         }
 
@@ -378,10 +396,27 @@
         }
 
         async function preloadAllData() {
+             if (!userId) return; // Asegurarse de que userId esté definido
             const collectionsToPreload = ['inventario', 'clientes', 'ventas', 'rubros', 'segmentos', 'marcas', 'sectores'];
-            const preloadPromises = collectionsToPreload.map(colName => getDocs(collection(db, `artifacts/${appId}/users/${userId}/${colName}`)));
+            const preloadPromises = collectionsToPreload.map(colName => {
+                let path;
+                // Determinar ruta correcta (pública o privada)
+                if (['clientes', 'sectores'].includes(colName)) {
+                    // Usar el Project ID directamente aquí es más robusto que appId si difieren
+                     path = `artifacts/ventas-9a210/public/data/${colName}`;
+                } else {
+                     path = `artifacts/${appId}/users/${userId}/${colName}`;
+                }
+                 console.log(`Preloading ${path}`); // Debug
+                 return getDocs(collection(db, path)).catch(err => {
+                     console.warn(`Failed to preload ${colName}:`, err.message); // Log de advertencia
+                     return null; // Continuar incluso si una colección falla
+                 });
+            });
             await Promise.all(preloadPromises);
+             console.log("Preload complete (or attempted)."); // Debug
         }
+
 
         async function showMainView(currentUser) {
             userId = currentUser.uid;
@@ -392,7 +427,8 @@
             if (userDoc.exists()) {
                 userRole = userDoc.data().role || 'user';
             } else {
-                // If user exists in Auth but not in 'users' collection (e.g., legacy users)
+                // Si el usuario existe en Auth pero no en 'users' (puede pasar si se borra manual), crearlo.
+                console.warn(`User document for ${userId} not found. Creating with default 'user' role.`);
                 await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() });
                 userRole = 'user';
             }
@@ -405,7 +441,10 @@
             try {
                 await preloadAllData();
             } catch (error) {
-                showModal('Error de Sincronización', 'No se pudieron cargar todos los datos.');
+                console.error("Critical error during preload:", error);
+                showModal('Error Crítico', 'No se pudieron cargar los datos iniciales. Intenta recargar la página.');
+                // Podríamos intentar mostrar un menú básico o simplemente dejar el mensaje de error.
+                return; // Detener la ejecución si el preload falla críticamente
             }
             
             // Inicializar los módulos externos
@@ -420,6 +459,13 @@
             window.initCatalogo(dependencies);
             window.initClientes(dependencies);
             window.initVentas(dependencies);
+            // --- NUEVO: Inicializar módulo de obsequios ---
+             if (typeof window.initObsequios === 'function') {
+                 window.initObsequios(dependencies);
+             } else {
+                 console.warn("initObsequios no está definido. Asegúrate de que obsequios.js esté cargado.");
+             }
+            // --- FIN NUEVO ---
 
             showMainMenu();
         }
@@ -432,6 +478,14 @@
                 if (!statusEl) return;
                 statusEl.textContent = snapshot.metadata.fromCache ? "SIN CONEXIÓN" : "EN LÍNEA";
                 statusEl.className = `text-xs font-bold px-3 py-2 rounded-full shadow-lg ${snapshot.metadata.fromCache ? 'bg-yellow-400 text-yellow-900' : 'bg-green-400 text-green-900'}`;
+            }, (error) => {
+                 // Manejar error del listener de estado de conexión
+                 console.warn("Error en listener de estado de conexión:", error.message);
+                 const statusEl = document.getElementById('connectionStatus');
+                 if (statusEl) {
+                     statusEl.textContent = "ERROR CONEX.";
+                     statusEl.className = 'text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-500 text-white';
+                 }
             });
             activeListeners.push(unsubscribe);
             
@@ -445,27 +499,30 @@
                                 <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Inventario</button>
                                 <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Clientes</button>
                                 <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Ventas</button>
+                                <!-- NUEVO: Botón de Obsequios (condicional) -->
+                                ${userRole === 'user' ? `
+                                <button id="obsequiosBtn" class="w-full px-6 py-3 bg-pink-500 text-white font-semibold rounded-lg shadow-md hover:bg-pink-600">Gestión de Obsequios</button>
+                                ` : ''}
+                                <!-- FIN NUEVO -->
                                 <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Catálogo</button>
-                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">${userRole === 'admin' ? 'Gestión de Usuarios' : 'Mi Perfil'}</button>
+                                <!-- Botón Data solo para admin -->
+                                ${userRole === 'admin' ? `
+                                <button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800">Data</button>
+                                ` : ''}
+                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">${userRole === 'admin' ? 'Administración' : 'Mi Perfil'}</button>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-            
-            if (userRole === 'admin') {
-                const menuContainer = document.getElementById('main-menu-buttons');
-                const dataButton = document.createElement('button');
-                dataButton.id = 'dataBtn';
-                dataButton.className = 'w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800';
-                dataButton.textContent = 'Data';
-                const profileAdminButton = document.getElementById('profileAdminBtn');
-                menuContainer.insertBefore(dataButton, profileAdminButton);
-            }
-
 
             const navigateTo = (viewFunction) => {
+                 if (typeof viewFunction !== 'function') {
+                     console.error("Error: La función de vista no está definida.");
+                     _showModal("Error", "No se puede navegar a la vista solicitada.");
+                     return;
+                 }
                 cleanupListeners();
                 viewFunction();
             };
@@ -476,9 +533,22 @@
             document.getElementById('catalogoBtn').addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
             document.getElementById('profileAdminBtn').addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
             
+            // --- NUEVO: Event listeners condicionales ---
             if(userRole === 'admin') {
-                document.getElementById('dataBtn').addEventListener('click', () => navigateTo(window.showDataView));
+                document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
             }
+             if(userRole === 'user') {
+                 document.getElementById('obsequiosBtn')?.addEventListener('click', () => {
+                     // Asegurarse de que la función exista antes de llamarla
+                     if (typeof window.showGestionObsequiosView === 'function') {
+                         navigateTo(window.showGestionObsequiosView);
+                     } else {
+                          console.error("showGestionObsequiosView no está definida.");
+                         _showModal("Error", "La función de gestión de obsequios no está disponible.");
+                     }
+                 });
+             }
+            // --- FIN NUEVO ---
         }
 
         // --- INICIALIZACIÓN DE LA APP ---
@@ -489,13 +559,14 @@
             setLogLevel('debug');
             try {
                 await enableIndexedDbPersistence(db);
+                console.log("Persistencia habilitada.");
             } catch (err) {
                 console.warn("Error al habilitar la persistencia:", err.code);
             }
             onAuthStateChanged(auth, (user) => {
                 if(user) {
                     showMainView(user);
-                } else {
+                } else if (!window.isLoggingOut) { // Evitar mostrar login si se está cerrando sesión
                     showLoginView();
                 }
             });
