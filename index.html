@@ -304,7 +304,11 @@
                     const addItemMessage = document.getElementById('addItemMessage');
                     const submitButton = e.target.querySelector('button[type="submit"]');
 
-                    if (!newItemName) { /* ... validation ... */ return; }
+                    if (!newItemName) {
+                        addItemMessage.textContent = 'El nombre no puede estar vacío.';
+                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                        return;
+                    }
                     const newItemNameUpper = newItemName.toUpperCase();
 
                     addItemMessage.textContent = '';
@@ -316,90 +320,457 @@
                         const q = query(collectionRef, where("name", "==", newItemNameUpper), limit(1));
                         const snapshot = await getDocs(q);
 
-                        if (!snapshot.empty) { /* ... handle duplicate ... */ }
-                        else {
+                        if (!snapshot.empty) {
+                            addItemMessage.textContent = `"${newItemName}" ya existe.`;
+                            addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                            newItemInput.select();
+                         } else {
                             const newItemData = { name: newItemNameUpper };
                             await addDoc(collectionRef, newItemData);
-                            /* ... show success message ... */
+                            addItemMessage.textContent = `¡"${newItemNameUpper}" agregado!`;
+                            addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
+                            newItemInput.value = '';
+                            newItemInput.focus();
+                            setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
                         }
-                    } catch (err) { /* ... handle error ... */ }
-                    finally { /* ... re-enable button ... */ }
+                    } catch (err) {
+                        console.error(`Error al agregar ${itemName}:`, err);
+                        addItemMessage.textContent = `Error al guardar. Intenta de nuevo.`;
+                        addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                     } finally {
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Agregar';
+                    }
                 });
             }
         }
 
         function populateDropdown(collectionPath, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
-            if (!selectElement) { /* ... handle element not found ... */ return; }
+            if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return; }
 
             const placeholderText = `Seleccione un ${itemName}`;
             let placeholder = selectElement.querySelector('option[value=""]');
-            if (!placeholder) { /* ... create placeholder ... */ }
+            if (!placeholder) {
+                 placeholder = document.createElement('option');
+                 placeholder.value = "";
+                 selectElement.prepend(placeholder);
+            }
             placeholder.textContent = placeholderText;
             Array.from(selectElement.options).forEach(option => {
                 if (option.value !== "") selectElement.removeChild(option);
             });
+            selectElement.disabled = true; // Disable while loading
 
-             const collectionRef = collection(db, collectionPath);
-             const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
-                 const currentSelection = selectedValue || selectElement.value;
-                 Array.from(selectElement.options).forEach(option => {
-                      if (option.value !== "") selectElement.removeChild(option);
-                 });
+            const collectionRef = collection(db, collectionPath);
+            const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+                const currentSelection = selectedValue || selectElement.value;
+                Array.from(selectElement.options).forEach(option => {
+                     if (option.value !== "") selectElement.removeChild(option);
+                });
 
-                 const items = snapshot.docs
-                                    .map(doc => ({ id: doc.id, name: doc.data().name }))
-                                    .filter(item => item.name)
-                                    .sort((a, b) => a.name.localeCompare(b.name));
+                const items = snapshot.docs
+                                   .map(doc => ({ id: doc.id, name: doc.data().name }))
+                                   .filter(item => item.name) // Ensure name exists
+                                   .sort((a, b) => a.name.localeCompare(b.name));
 
-                 let foundSelected = false;
-                 items.forEach(item => {
-                      const option = document.createElement('option');
-                      option.value = item.name;
-                      option.textContent = item.name;
-                      if (item.name === currentSelection) {
-                          option.selected = true;
-                          foundSelected = true;
-                      }
-                      selectElement.appendChild(option);
-                 });
+                let foundSelected = false;
+                items.forEach(item => {
+                     const option = document.createElement('option');
+                     option.value = item.name;
+                     option.textContent = item.name;
+                     if (item.name === currentSelection) {
+                         option.selected = true;
+                         foundSelected = true;
+                     }
+                     selectElement.appendChild(option);
+                });
 
-                 if (!foundSelected && currentSelection !== "") { selectElement.value = ""; }
-                  selectElement.disabled = false;
+                if (!foundSelected && currentSelection !== "") { selectElement.value = ""; }
+                 selectElement.disabled = false; // Re-enable dropdown
 
-             }, (error) => { /* ... handle error ... */ });
+            }, (error) => {
+                 console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
+                 selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
+                 selectElement.disabled = true;
+                 // Stop listening on error
+                 try { unsubscribe(); } catch(e) {}
+                 activeListeners = activeListeners.filter(l => l !== unsubscribe);
+            });
 
-             activeListeners.push(unsubscribe);
+            activeListeners.push(unsubscribe);
         }
 
 
         // --- AUTHENTICATION AND VIEW LOGIC ---
-        async function handleRegister(e) { /* ... registration logic ... */ }
-        async function handleLogin(e) { /* ... login logic ... */ }
-        async function handleLogout() { /* ... logout logic ... */ }
-        function cleanupListeners() { /* ... cleanup logic ... */ }
-        function showLoginView() { /* ... show login view ... */ }
-        function showRegisterView() { /* ... show register view ... */ }
-        async function preloadAllData() { /* ... preload data logic ... */ }
-        async function showMainView(currentUser) { /* ... show main view logic ... */ }
-        window.showMainMenu = function() { /* ... show main menu logic ... */ }
+        /** Handles user registration */
+        async function handleRegister(e) {
+             e.preventDefault();
+             console.log("Attempting registration..."); // Log inicio
+             const email = document.getElementById('registerEmailInput').value;
+             const password = document.getElementById('registerPasswordInput').value;
+             const confirmPassword = document.getElementById('confirmPasswordInput').value;
+             registerMessage.textContent = '';
+
+             if (password !== confirmPassword) {
+                 registerMessage.textContent = 'Las contraseñas no coinciden.';
+                 return;
+             }
+             if (password.length < 6) {
+                 registerMessage.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+                 return;
+             }
+
+             const registerButton = e.target.querySelector('button[type="submit"]');
+             registerButton.disabled = true;
+             registerButton.textContent = 'Registrando...';
+
+             try {
+                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                 const user = userCredential.user;
+                 console.log("User created in Auth:", user.uid);
+                 const userDocRef = doc(db, "users", user.uid);
+                 await setDoc(userDocRef, {
+                     email: user.email,
+                     role: 'user',
+                     createdAt: new Date()
+                 });
+                 console.log("User document created in Firestore.");
+                 // onAuthStateChanged handles UI update
+             } catch (error) {
+                 console.error("Registration error:", error.code, error.message); // Log full error
+                 if (error.code === 'auth/email-already-in-use') {
+                     registerMessage.textContent = 'Este correo electrónico ya está registrado.';
+                 } else if (error.code === 'auth/weak-password') {
+                     registerMessage.textContent = 'La contraseña es demasiado débil (mínimo 6 caracteres).';
+                 } else {
+                     registerMessage.textContent = 'Error al registrar. Verifica el correo e inténtalo de nuevo.';
+                 }
+                  registerButton.disabled = false;
+                  registerButton.textContent = 'Registrar';
+             }
+        }
+
+        /** Handles user login */
+        async function handleLogin(e) {
+            e.preventDefault();
+            console.log("Attempting login..."); // Log inicio
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            authMessage.textContent = '';
+            const loginButton = e.target.querySelector('button[type="submit"]');
+            loginButton.disabled = true;
+            loginButton.textContent = 'Ingresando...';
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                console.log("signInWithEmailAndPassword successful (waiting for onAuthStateChanged).");
+                // onAuthStateChanged handles UI update and button re-enabling indirectly
+            } catch (error) {
+                console.error("Login error:", error.code, error.message); // Log full error
+                 if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                     authMessage.textContent = 'Correo electrónico o contraseña incorrectos.';
+                 } else if (error.code === 'auth/too-many-requests') {
+                      authMessage.textContent = 'Demasiados intentos fallidos. Intenta más tarde o restablece tu contraseña.';
+                 } else {
+                     authMessage.textContent = 'Error al iniciar sesión. Verifica tus credenciales.';
+                 }
+                 // Re-enable button on error
+                 loginButton.disabled = false;
+                 loginButton.textContent = 'Ingresar';
+            }
+        }
+
+
+        /** Handles user logout */
+        async function handleLogout() {
+             console.log("Attempting logout...");
+             window.isLoggingOut = true;
+             cleanupListeners(); // Clean up Firestore listeners first
+             try {
+                 await signOut(auth);
+                 console.log("User signed out successfully.");
+                 // onAuthStateChanged handles showing the login view
+             } catch (error) {
+                 console.error("Logout error:", error);
+                 window.isLoggingOut = false; // Reset flag on error
+                 _showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
+             }
+        }
+
+        /** Detaches all active Firestore listeners */
+        function cleanupListeners() {
+            console.log(`Cleaning up ${activeListeners.length} active listener(s)...`);
+            activeListeners.forEach(unsubscribe => {
+                try {
+                    unsubscribe();
+                } catch (e) { console.warn("Error unsubscribing listener:", e); }
+            });
+            activeListeners = [];
+        }
+
+        /** Displays the login view */
+        function showLoginView() {
+            console.log("Showing Login View");
+            window.isLoggingOut = false;
+            cleanupListeners(); // Ensure listeners are clean
+            floatingControls.classList.add('hidden');
+            mainContent.classList.add('hidden');
+            registerContent.classList.add('hidden');
+            loginContent.classList.remove('hidden');
+            loginForm?.reset(); // Check if form exists before reset
+             if(authMessage) authMessage.textContent = ''; // Check if element exists
+             // Ensure login button is enabled when showing the view
+             const loginButton = loginForm?.querySelector('button[type="submit"]');
+             if(loginButton){
+                 loginButton.disabled = false;
+                 loginButton.textContent = 'Ingresar';
+             }
+            document.body.classList.remove('catalogo-active');
+            document.body.style.removeProperty('--catalogo-bg-image');
+        }
+
+        /** Displays the registration view */
+        function showRegisterView() {
+            console.log("Showing Register View");
+            floatingControls.classList.add('hidden');
+            mainContent.classList.add('hidden');
+            loginContent.classList.add('hidden');
+            registerContent.classList.remove('hidden');
+            registerForm?.reset();
+             if(registerMessage) registerMessage.textContent = '';
+             const registerButton = registerForm?.querySelector('button[type="submit"]');
+             if(registerButton){
+                 registerButton.disabled = false;
+                 registerButton.textContent = 'Registrar';
+             }
+        }
+
+        /** Preloads essential data collections for offline use */
+        async function preloadAllData() {
+             // ... (preload logic - no changes needed for login issue) ...
+              const startTime = performance.now();
+              const collectionsToPreload = [
+                  { path: `artifacts/${appId}/users/${userId}/inventario`, name: 'Inventario' },
+                  { path: `artifacts/${appId}/users/${userId}/rubros`, name: 'Rubros' },
+                  { path: `artifacts/${appId}/users/${userId}/segmentos`, name: 'Segmentos' },
+                  { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
+                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
+                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
+                  { path: `artifacts/${appId}/users/${userId}/config/obsequio`, name: 'Config Obsequio' }
+              ];
+              console.log("Preloading data for offline use...");
+              const results = await Promise.allSettled(
+                  collectionsToPreload.map(col => getDocs(collection(db, col.path)).catch(err => {
+                       // Catch errors during getDocs specifically for preloading
+                       console.warn(`Preload failed for ${col.name} (${col.path}):`, err.code || err.message);
+                       return { failed: true, reason: err }; // Return an object indicating failure
+                  }))
+              );
+              results.forEach((result, index) => {
+                  const colInfo = collectionsToPreload[index];
+                  if (result.status === 'fulfilled' && !result.value.failed) {
+                      console.log(` - Preloaded ${colInfo.name}: ${result.value.size} docs`);
+                  } else if (result.status === 'fulfilled' && result.value.failed) {
+                      // Already logged the warning inside catch
+                  } else { // status === 'rejected' (shouldn't happen with the .catch)
+                       console.error(` - Unexpected rejection preloading ${colInfo.name}: ${result.reason}`);
+                  }
+              });
+              const endTime = performance.now();
+              console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
+        }
+
+
+        /** Displays the main application view after authentication */
+        async function showMainView(currentUser) {
+            userId = currentUser.uid;
+            console.log("Showing Main View for user:", userId);
+
+            // Fetch user role
+            const userDocRef = doc(db, "users", userId);
+             console.log("Fetching user role...");
+            try {
+                const userDoc = await getDoc(userDocRef);
+                if (userDoc.exists()) {
+                    userRole = userDoc.data().role || 'user';
+                    console.log("User role fetched:", userRole);
+                } else {
+                     console.warn(`User document for ${userId} not found in Firestore. Creating default.`);
+                    await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true });
+                    userRole = 'user';
+                }
+            } catch (error) {
+                 console.error("CRITICAL: Error fetching user role:", error);
+                 _showModal("Error Crítico", "No se pudo verificar tu rol de usuario. La aplicación podría no funcionar correctamente. Intenta recargar.");
+                 userRole = 'user'; // Fallback, but app might be broken
+                 // Consider preventing further execution if role is critical
+                 // return;
+            }
+
+            // Show loading state
+            loginContent.classList.add('hidden');
+            registerContent.classList.add('hidden');
+            mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando datos iniciales...</h2></div></div>`;
+            mainContent.classList.remove('hidden');
+            floatingControls.classList.add('hidden'); // Hide controls during preload
+
+            // Preload data
+             console.log("Starting data preload...");
+             await preloadAllData(); // Wait for preload to attempt completion
+             console.log("Preload attempted. Initializing modules...");
+
+
+            // Prepare dependencies
+            const dependencies = {
+                db, userId, appId, mainContent, floatingControls, activeListeners, userRole,
+                showMainMenu, showModal, showAddItemModal, populateDropdown,
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit
+            };
+
+            // Initialize modules, wrapping each in try-catch
+             let initSuccess = true;
+             const modules = [
+                 { name: 'Data', init: window.initData },
+                 { name: 'Admin', init: window.initAdmin },
+                 { name: 'Inventario', init: window.initInventario },
+                 { name: 'Catalogo', init: window.initCatalogo },
+                 { name: 'Clientes', init: window.initClientes },
+                 { name: 'Ventas', init: window.initVentas },
+                 { name: 'Obsequios', init: window.initObsequios },
+             ];
+
+             modules.forEach(m => {
+                 try {
+                     if (typeof m.init === 'function') {
+                         m.init(dependencies);
+                         console.log(` - Module ${m.name} initialized.`);
+                     } else {
+                          console.warn(` - Module ${m.name} init function not found.`);
+                     }
+                 } catch (e) {
+                      console.error(`CRITICAL: Error initializing module ${m.name}:`, e);
+                      initSuccess = false;
+                 }
+             });
+
+
+            if (!initSuccess) {
+                 _showModal("Error Crítico", "Algunos componentes de la aplicación no se pudieron inicializar. Intenta recargar la página.");
+                 // Optionally log out the user or prevent showing the main menu fully
+                 // return;
+            } else {
+                 console.log("All modules initialized (or attempted). Showing main menu.");
+                 showMainMenu(); // Show the main menu interface ONLY if init was successful
+            }
+        }
+
+        /** Displays the main menu buttons */
+        window.showMainMenu = function() {
+            console.log("Showing Main Menu");
+            cleanupListeners(); // Clean up previous listeners FIRST
+
+            // Connection Status Listener
+            // Use a simple, frequently accessed collection like 'rubros'
+            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
+            const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
+                 if (!connectionStatusEl) return;
+                 const isOffline = snapshot.metadata.fromCache;
+                 connectionStatusEl.textContent = isOffline ? "SIN CONEXIÓN" : "EN LÍNEA";
+                 connectionStatusEl.className = `block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300 ${isOffline ? 'bg-yellow-400 text-yellow-900 animate-pulse' : 'bg-green-400 text-green-900'}`;
+            }, (error) => {
+                 console.warn("Connection status listener error:", error.code);
+                 if (connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
+                      connectionStatusEl.textContent = "Error Conexión";
+                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                 }
+            });
+            activeListeners.push(unsubscribeStatus);
+
+            floatingControls.classList.remove('hidden');
+            mainContent.classList.remove('hidden');
+
+            const isAdmin = userRole === 'admin';
+            mainContent.innerHTML = `
+                <div class="p-4 pt-8">
+                    <div class="container mx-auto max-w-lg">
+                        <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                            <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
+                            <div id="main-menu-buttons" class="space-y-4">
+                                <button id="inventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-200">Inventario</button>
+                                <button id="clientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-200">Clientes</button>
+                                <button id="ventasBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-200">Ventas</button>
+                                ${!isAdmin ? `<button id="obsequiosBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600 transition duration-200">Gestión de Obsequios</button>` : ''}
+                                <button id="catalogoBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600 transition duration-200">Catálogo</button>
+                                <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-700 text-white font-semibold rounded-lg shadow-md hover:bg-gray-800 transition duration-200">${isAdmin ? 'Admin Panel' : 'Mi Perfil'}</button>
+                                ${isAdmin ? `<button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800 transition duration-200">Data</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const navigateTo = (viewFunction) => {
+                if (typeof viewFunction === 'function') {
+                    viewFunction();
+                } else { console.error("Navigation target is not a function:", viewFunction); }
+            };
+
+            document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
+            document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
+            document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
+            document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView));
+            document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
+            document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
+            document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
+        }
 
         // --- APP INITIALIZATION ---
         async function initializeAppAndListeners() {
             console.log("Initializing Firebase app...");
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            setLogLevel('warn');
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('warn'); // Use 'debug' for more verbose logs if needed
+                console.log("Firebase App, Firestore, Auth initialized.");
+            } catch (initError) {
+                 console.error("CRITICAL: Firebase initialization failed:", initError);
+                 showModal("Error Crítico", "No se pudo conectar con los servicios base. Recarga la página o revisa la configuración.");
+                 return; // Stop initialization if Firebase itself fails
+            }
 
-            try { /* ... enable persistence ... */ } catch (err) { /* ... handle persistence error ... */ }
 
+            // Attempt to enable offline persistence
+            try {
+                await enableIndexedDbPersistence(db);
+                console.log("Offline persistence enabled.");
+            } catch (err) {
+                 if (err.code == 'failed-precondition') {
+                     console.warn("Persistence failed: Multiple tabs open or unsupported environment.");
+                 } else if (err.code == 'unimplemented') {
+                      console.warn("Persistence failed: Browser does not support IndexedDB.");
+                 } else {
+                      console.warn("Error enabling persistence:", err.code);
+                 }
+            }
+
+            // Central Authentication State Observer
+             console.log("Attaching Auth listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners();
+                cleanupListeners(); // Clean up listeners from the previous state
                 if (user) {
-                    showMainView(user);
+                    // User is signed in. Proceed to show main view.
+                    showMainView(user).catch(err => {
+                         // Catch potential errors during showMainView execution
+                         console.error("CRITICAL: Error during showMainView execution:", err);
+                         _showModal("Error Crítico", "Ocurrió un error al cargar la aplicación principal. Intenta recargar.");
+                         // Optionally sign out the user if the main view fails catastrophically
+                         // handleLogout();
+                    });
                 } else {
+                    // User is signed out. Show the login view.
                     showLoginView();
                 }
             });
@@ -409,28 +780,25 @@
         // --- Load event listener ---
         window.addEventListener('load', async () => {
             console.log("Window loaded. Initializing app...");
-            await initializeAppAndListeners();
+            await initializeAppAndListeners(); // Initialize Firebase and attach auth listener
 
-            // Setup static listeners
-            loginForm.addEventListener('submit', handleLogin);
-            registerForm.addEventListener('submit', handleRegister);
-            document.getElementById('logoutBtn').addEventListener('click', () => {
+            // Setup static listeners (login, register, logout, etc.)
+            loginForm?.addEventListener('submit', handleLogin); // Add checks for element existence
+            registerForm?.addEventListener('submit', handleRegister);
+            document.getElementById('logoutBtn')?.addEventListener('click', () => {
                 showModal('Confirmar Cierre de Sesión', '¿Estás seguro de que deseas cerrar sesión?', handleLogout, 'Sí, Cerrar Sesión');
             });
-            document.getElementById('goToRegisterBtn').addEventListener('click', showRegisterView);
-            document.getElementById('goToLoginBtn').addEventListener('click', showLoginView);
+            document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
+            document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
 
             // Register service worker
             if ('serviceWorker' in navigator) {
                 console.log("Registering Service Worker...");
                 try {
-                    // --- Use relative path './' ---
-                    const registration = await navigator.serviceWorker.register('./service-worker.js');
+                    const registration = await navigator.serviceWorker.register('./service-worker.js'); // Relative path
                     console.log('ServiceWorker registered successfully. Scope:', registration.scope);
                 } catch (err) {
                      console.error('ServiceWorker registration failed:', err);
-                     // Display a user-friendly message?
-                     // showModal('Error PWA', 'No se pudo activar la funcionalidad offline.');
                 }
             } else {
                  console.log("Service Worker not supported in this browser.");
@@ -439,4 +807,3 @@
     </script>
 </body>
 </html>
-
