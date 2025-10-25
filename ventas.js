@@ -12,11 +12,15 @@
     let _ventasGlobal = [];
     let _segmentoOrderCacheVentas = null;
     let _rubroOrderCacheVentas = null;
-    let _ventaActual = { cliente: null, productos: {} };
+    let _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} }; // <-- CAMBIO: Añadido vaciosDevueltosPorTipo
     let _originalVentaForEdit = null;
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
+
+    // --- CAMBIO: Tipos de Vacío ---
+    const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    // --- FIN CAMBIO ---
 
     /**
      * Obtiene y cachea el mapa de orden de los rubros.
@@ -124,7 +128,11 @@
         _originalVentaForEdit = null;
         _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
-        _ventaActual = { cliente: null, productos: {} };
+        _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} }; // <-- CAMBIO: Reiniciar vacíos
+        // --- CAMBIO: Inicializar vaciosDevueltosPorTipo ---
+        TIPOS_VACIO.forEach(tipo => _ventaActual.vaciosDevueltosPorTipo[tipo] = 0);
+        // --- FIN CAMBIO ---
+
         _mainContent.innerHTML = `
             <div class="p-2 w-full">
                 <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
@@ -151,6 +159,23 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- CAMBIO: Sección de Vacíos Devueltos -->
+                    <div id="vacios-devueltos-section" class="mb-2 hidden">
+                         <h3 class="text-sm font-semibold text-cyan-700 mb-1">Vacíos Devueltos:</h3>
+                         <div class="grid grid-cols-3 gap-2">
+                            ${TIPOS_VACIO.map(tipo => `
+                                <div class="flex flex-col items-center">
+                                    <label for="vacios-${tipo.replace(/\s+/g, '-')}" class="text-xs font-medium text-gray-600 mb-1">${tipo}</label>
+                                    <input type="number" min="0" value="0" id="vacios-${tipo.replace(/\s+/g, '-')}"
+                                           class="w-16 p-1 text-center border rounded-md" 
+                                           data-tipo-vacio="${tipo}" oninput="window.ventasModule.handleTipoVacioChange(event)">
+                                </div>
+                            `).join('')}
+                         </div>
+                    </div>
+                    <!-- FIN CAMBIO -->
+
                     <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
                          <div id="rubro-filter-container" class="mb-2">
                              <label for="rubroFilter" class="text-xs font-medium">Filtrar por Rubro</label>
@@ -275,6 +300,7 @@
         document.getElementById('client-display-container').classList.remove('hidden');
         document.getElementById('inventarioTableContainer').classList.remove('hidden');
         document.getElementById('venta-footer-section').classList.remove('hidden');
+        document.getElementById('vacios-devueltos-section').classList.remove('hidden'); // <-- CAMBIO: Mostrar sección de vacíos
         renderVentasInventario();
     }
     
@@ -366,30 +392,18 @@
                 const row = document.createElement('tr');
                 row.classList.add('border-b', 'border-gray-200', 'hover:bg-gray-50');
                 
-                let vaciosInputHTML = '';
-                if (tipo === 'cj' && producto.manejaVacios) {
-                    const vaciosDevueltos = ventaActualProducto.vaciosDevueltos || 0;
-                    vaciosInputHTML = `
-                        <div class="mt-1 text-xs flex items-center">
-                            <label for="vacios-${producto.id}" class="mr-2 font-medium text-cyan-700">Vacíos Devueltos:</label>
-                            <input type="number" min="0" value="${vaciosDevueltos}" id="vacios-${producto.id}"
-                                   class="w-16 p-1 text-center border rounded-md" 
-                                   data-product-id="${producto.id}" oninput="window.ventasModule.handleVaciosChange(event)">
-                        </div>
-                    `;
-                }
-
+                // --- CAMBIO: Eliminar input de vacíos por producto ---
                 row.innerHTML = `
                     <td class="py-2 px-2 text-center align-middle">
                         <input type="number" min="0" max="${max}" value="${cant}" class="w-16 p-1 text-center border rounded-md" data-product-id="${producto.id}" data-tipo-venta="${tipo}" oninput="window.ventasModule.handleQuantityChange(event)">
                     </td>
                     <td class="py-2 px-2 text-left align-middle">
                         ${desc}
-                        ${vaciosInputHTML}
                     </td>
                     <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${formatPrice(precio)}</td>
                     <td class="py-2 px-2 text-center align-middle">${stock}</td>
                 `;
+                // --- FIN CAMBIO ---
                 inventarioTableBody.appendChild(row);
             };
 
@@ -459,32 +473,29 @@
 
         p.totalUnidadesVendidas = totalUnidadesVendidas;
 
-        if (p.totalUnidadesVendidas === 0 && (p.vaciosDevueltos || 0) === 0) {
-            delete _ventaActual.productos[productId];
+        // --- CAMBIO: Mantener el producto si hay vacíos devueltos ---
+        if (p.totalUnidadesVendidas === 0) { // Eliminar solo si no hay unidades Y no hay vacíos (la lógica de vacíos se movió)
+            // Ya no se borra aquí, se revisa al final en handleTipoVacioChange
         }
+        // --- FIN CAMBIO ---
         updateVentaTotal();
     };
 
     /**
-     * Actualiza la cantidad de vacíos devueltos en la venta actual.
+     * --- CAMBIO: Nueva función para manejar el cambio en los inputs de tipo de vacío ---
+     * Actualiza la cantidad de vacíos devueltos por tipo en la venta actual.
      */
-    function handleVaciosChange(event) {
+    function handleTipoVacioChange(event) {
         const input = event.target;
-        const productId = input.dataset.productId;
-        const producto = _inventarioCache.find(p => p.id === productId);
-        if (!producto) return;
+        const tipoVacio = input.dataset.tipoVacio;
+        const cantidad = parseInt(input.value, 10) || 0;
+
+        _ventaActual.vaciosDevueltosPorTipo[tipoVacio] = cantidad;
         
-        if (!_ventaActual.productos[productId]) {
-             _ventaActual.productos[productId] = { ...producto, cantCj: 0, cantPaq: 0, cantUnd: 0, totalUnidadesVendidas: 0 };
-        }
-
-        const p = _ventaActual.productos[productId];
-        p.vaciosDevueltos = parseInt(input.value, 10) || 0;
-
-        if ((p.totalUnidadesVendidas || 0) === 0 && p.vaciosDevueltos === 0) {
-            delete _ventaActual.productos[productId];
-        }
+        // Opcional: Podríamos agregar lógica aquí si un producto se eliminó pero aún tiene vacíos asociados a su tipo
+        // Por ahora, simplemente actualizamos el conteo global por tipo.
     }
+    // --- FIN CAMBIO ---
 
     /**
      * Calcula y muestra el total de la venta.
@@ -494,8 +505,9 @@
         if(!totalEl) return;
         
         const totalUSD = Object.values(_ventaActual.productos).reduce((sum, p) => {
-            if (!p.precios) return sum; // Si solo se devuelven vacíos, no hay precios.
+            // --- CAMBIO: Asegurarse de que p.precios exista ---
             const precios = p.precios || { und: p.precioPorUnidad || 0 };
+            // --- FIN CAMBIO ---
             const subtotal = 
                 (precios.cj || 0) * (p.cantCj || 0) +
                 (precios.paq || 0) * (p.cantPaq || 0) +
@@ -516,7 +528,7 @@
     /**
      * Crea el HTML para un ticket/factura (para compartir como imagen).
      */
-    function createTicketHTML(venta, productos, tipo = 'ticket') {
+    function createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo = 'ticket') { // <-- CAMBIO: Añadido vaciosDevueltosPorTipo
         const fecha = venta.fecha ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES');
         const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
         const clienteNombrePersonal = (venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '';
@@ -556,19 +568,20 @@
             `;
         });
 
+        // --- CAMBIO: Mostrar vacíos por tipo ---
         let vaciosHTML = '';
-        const productosConDevolucion = productos.filter(p => (p.vaciosDevueltos || 0) > 0);
-        if (productosConDevolucion.length > 0) {
+        const tiposConDevolucion = Object.entries(vaciosDevueltosPorTipo || {}).filter(([tipo, cant]) => cant > 0);
+        if (tiposConDevolucion.length > 0) {
             vaciosHTML += `
                 <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
                     <p>ENVASES DEVUELTOS:</p>
                     <table class="w-full text-3xl mt-2">
                         <tbody>`;
-            productosConDevolucion.forEach(p => {
+            tiposConDevolucion.forEach(([tipo, cant]) => {
                 vaciosHTML += `
                     <tr>
-                        <td class="py-1 pr-2 text-left" style="width: 70%;">${p.presentacion}</td>
-                        <td class="py-1 pl-2 text-right" style="width: 30%;">${p.vaciosDevueltos} CJ</td>
+                        <td class="py-1 pr-2 text-left" style="width: 70%;">${tipo}</td>
+                        <td class="py-1 pl-2 text-right" style="width: 30%;">${cant} CJ</td>
                     </tr>`;
             });
             vaciosHTML += `
@@ -576,6 +589,7 @@
                     </table>
                 </div>`;
         }
+        // --- FIN CAMBIO ---
 
 
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
@@ -618,7 +632,7 @@
     /**
      * Crea un string de texto plano para impresoras térmicas de 80mm.
      */
-    function createRawTextTicket(venta, productos) {
+    function createRawTextTicket(venta, productos, vaciosDevueltosPorTipo) { // <-- CAMBIO: Añadido vaciosDevueltosPorTipo
         const fecha = venta.cliente ? new Date().toLocaleDateString('es-ES') : venta.fecha.toDate().toLocaleDateString('es-ES');
         
         const toTitleCase = (str) => {
@@ -709,17 +723,18 @@
             });
         }
         
-        const productosConDevolucion = productos.filter(p => (p.vaciosDevueltos || 0) > 0);
-        if (productosConDevolucion.length > 0) {
+        // --- CAMBIO: Mostrar vacíos por tipo ---
+        const tiposConDevolucion = Object.entries(vaciosDevueltosPorTipo || {}).filter(([tipo, cant]) => cant > 0);
+        if (tiposConDevolucion.length > 0) {
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             ticket += center('ENVASES DEVUELTOS') + '\n';
-            productosConDevolucion.forEach(p => {
-                const productName = toTitleCase(p.presentacion);
-                const quantityText = `${p.vaciosDevueltos} CJ`;
-                const line = productName.padEnd(LINE_WIDTH - quantityText.length) + quantityText;
+            tiposConDevolucion.forEach(([tipo, cant]) => {
+                const quantityText = `${cant} CJ`;
+                const line = tipo.padEnd(LINE_WIDTH - quantityText.length) + quantityText;
                 ticket += line + '\n';
             });
         }
+        // --- FIN CAMBIO ---
 
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
@@ -801,7 +816,7 @@
     /**
      * Muestra un modal para elegir entre imprimir (texto) o compartir (imagen).
      */
-    function showSharingOptions(venta, productos, tipo, successCallback) {
+    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, successCallback) { // <-- CAMBIO: Añadido vaciosDevueltosPorTipo
         const modalContent = `
             <div class="text-center">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">¿Qué deseas hacer?</h3>
@@ -815,12 +830,12 @@
         _showModal('Elige una opción', modalContent, null, '');
 
         document.getElementById('printTextBtn').addEventListener('click', () => {
-            const rawTextTicket = createRawTextTicket(venta, productos);
+            const rawTextTicket = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); // <-- CAMBIO
             handleShareRawText(rawTextTicket, successCallback);
         });
 
         document.getElementById('shareImageBtn').addEventListener('click', () => {
-            const ticketHTML = createTicketHTML(venta, productos, tipo);
+            const ticketHTML = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); // <-- CAMBIO
             handleShareTicket(ticketHTML, successCallback);
         });
     }
@@ -834,10 +849,13 @@
             return;
         }
         const productosEnTransaccion = Object.values(_ventaActual.productos);
-        if (productosEnTransaccion.length === 0) {
+        // --- CAMBIO: Verificar si hay productos O vacíos devueltos ---
+        const hayVaciosDevueltos = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(cant => cant > 0);
+        if (productosEnTransaccion.length === 0 && !hayVaciosDevueltos) {
             _showModal('Error', 'Debe agregar al menos un producto o registrar una devolución de vacíos.');
             return;
         }
+        // --- FIN CAMBIO ---
 
         _showModal('Confirmar Transacción', '¿Deseas guardar esta transacción?', async () => {
             _showModal('Progreso', 'Procesando transacción...');
@@ -846,7 +864,7 @@
                 const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
                 let totalVenta = 0;
                 const itemsVenta = [];
-                const vaciosChanges = {};
+                const vaciosChangesPorTipo = {}; // <-- CAMBIO: Agrupar cambios por tipo
 
                 for (const p of productosEnTransaccion) {
                     const productoEnCache = _inventarioCache.find(item => item.id === p.id);
@@ -871,14 +889,15 @@
                         (precios.und || 0) * (p.cantUnd || 0);
                     totalVenta += subtotal;
 
-                    const vaciosDevueltos = p.vaciosDevueltos || 0;
-                    if (p.manejaVacios) {
+                    // --- CAMBIO: Calcular cambio neto de vacíos por TIPO ---
+                    if (productoEnCache.manejaVacios && productoEnCache.tipoVacio) {
+                        const tipoVacio = productoEnCache.tipoVacio;
                         const cajasVendidas = p.cantCj || 0;
-                        const netChange = cajasVendidas - vaciosDevueltos;
-                        if (netChange !== 0) {
-                            vaciosChanges[p.id] = netChange;
+                        if (cajasVendidas > 0) {
+                            vaciosChangesPorTipo[tipoVacio] = (vaciosChangesPorTipo[tipoVacio] || 0) + cajasVendidas;
                         }
                     }
+                    // --- FIN CAMBIO ---
 
                     itemsVenta.push({ 
                         id: p.id, 
@@ -898,11 +917,22 @@
                         totalUnidadesVendidas: p.totalUnidadesVendidas,
                         iva: p.iva ?? 0,
                         manejaVacios: p.manejaVacios || false,
-                        vaciosDevueltos: vaciosDevueltos
+                        tipoVacio: p.tipoVacio || null, // Guardar el tipo de vacío
+                        // vaciosDevueltos: vaciosDevueltos // Ya no se guarda por producto
                     });
                 }
 
-                if (Object.keys(vaciosChanges).length > 0) {
+                // --- CAMBIO: Incorporar vacíos devueltos al cálculo de cambios netos ---
+                for (const tipoVacio in _ventaActual.vaciosDevueltosPorTipo) {
+                    const devueltos = _ventaActual.vaciosDevueltosPorTipo[tipoVacio] || 0;
+                    if (devueltos > 0) {
+                        vaciosChangesPorTipo[tipoVacio] = (vaciosChangesPorTipo[tipoVacio] || 0) - devueltos;
+                    }
+                }
+                // --- FIN CAMBIO ---
+
+                // --- CAMBIO: Actualizar saldos del cliente por tipo ---
+                if (Object.values(vaciosChangesPorTipo).some(change => change !== 0)) {
                     const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _ventaActual.cliente.id);
                     await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
@@ -911,15 +941,18 @@
                         const clienteData = clienteDoc.data();
                         const saldoVacios = clienteData.saldoVacios || {};
                         
-                        for (const productoId in vaciosChanges) {
-                            const change = vaciosChanges[productoId];
-                            const saldoActual = saldoVacios[productoId] || 0;
-                            saldoVacios[productoId] = saldoActual + change;
+                        for (const tipoVacio in vaciosChangesPorTipo) {
+                            const change = vaciosChangesPorTipo[tipoVacio];
+                            if (change !== 0) {
+                                const saldoActual = saldoVacios[tipoVacio] || 0;
+                                saldoVacios[tipoVacio] = saldoActual + change;
+                            }
                         }
                         
                         transaction.update(clienteRef, { saldoVacios: saldoVacios });
                     });
                 }
+                // --- FIN CAMBIO ---
 
                 batch.set(ventaRef, { 
                     clienteId: _ventaActual.cliente.id, 
@@ -927,11 +960,14 @@
                     clienteNombrePersonal: _ventaActual.cliente.nombrePersonal, 
                     fecha: new Date(), 
                     total: totalVenta, 
-                    productos: itemsVenta 
+                    productos: itemsVenta,
+                    vaciosDevueltosPorTipo: _ventaActual.vaciosDevueltosPorTipo // <-- CAMBIO: Guardar vacíos devueltos
                 });
                 await batch.commit();
 
-                showSharingOptions(_ventaActual, productosEnTransaccion, 'Nota de Entrega', showNuevaVentaView);
+                // --- CAMBIO: Pasar vaciosDevueltosPorTipo a las opciones de compartición ---
+                showSharingOptions(_ventaActual, productosEnTransaccion, _ventaActual.vaciosDevueltosPorTipo, 'Nota de Entrega', showNuevaVentaView);
+                // --- FIN CAMBIO ---
 
             } catch (e) {
                 _showModal('Error', `Hubo un error al procesar la transacción: ${e.message}`);
@@ -1081,7 +1117,9 @@
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
-        const vaciosMovements = {};
+        // --- CAMBIO: Cambiar vaciosMovements por cliente y tipo ---
+        const vaciosMovementsPorTipo = {}; 
+        // --- FIN CAMBIO ---
         
         const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
@@ -1091,20 +1129,33 @@
             if (!clientData[clientName]) {
                 clientData[clientName] = { products: {}, totalValue: 0 };
             }
-             if(!vaciosMovements[clientName]) {
-                vaciosMovements[clientName] = {};
+            // --- CAMBIO: Inicializar vacíos por tipo para el cliente ---
+             if(!vaciosMovementsPorTipo[clientName]) {
+                vaciosMovementsPorTipo[clientName] = {};
+                TIPOS_VACIO.forEach(tipo => vaciosMovementsPorTipo[clientName][tipo] = { entregados: 0, devueltos: 0 });
             }
+            // --- FIN CAMBIO ---
             clientData[clientName].totalValue += venta.total;
             grandTotalValue += venta.total;
             
-            (venta.productos || []).forEach(p => {
-                if (p.manejaVacios) {
-                    if (!vaciosMovements[clientName][p.id]) {
-                        vaciosMovements[clientName][p.id] = { entregados: 0, devueltos: 0 };
-                    }
-                    vaciosMovements[clientName][p.id].entregados += p.cantidadVendida?.cj || 0;
-                    vaciosMovements[clientName][p.id].devueltos += p.vaciosDevueltos || 0;
+            // --- CAMBIO: Sumar vacíos devueltos por tipo para la venta ---
+            const vaciosDevueltosEnVenta = venta.vaciosDevueltosPorTipo || {};
+            for (const tipoVacio in vaciosDevueltosEnVenta) {
+                if (vaciosMovementsPorTipo[clientName][tipoVacio]) {
+                    vaciosMovementsPorTipo[clientName][tipoVacio].devueltos += vaciosDevueltosEnVenta[tipoVacio];
                 }
+            }
+            // --- FIN CAMBIO ---
+
+            (venta.productos || []).forEach(p => {
+                // --- CAMBIO: Sumar vacíos entregados por tipo ---
+                if (p.manejaVacios && p.tipoVacio) {
+                     const tipoVacio = p.tipoVacio;
+                    if (vaciosMovementsPorTipo[clientName][tipoVacio]) {
+                        vaciosMovementsPorTipo[clientName][tipoVacio].entregados += p.cantidadVendida?.cj || 0;
+                    }
+                }
+                // --- FIN CAMBIO ---
 
                 const productoCompleto = inventarioMap.get(p.id) || p;
                 const rubro = productoCompleto.rubro || 'Sin Rubro';
@@ -1113,7 +1164,7 @@
                 
                 if (!allProductsMap.has(p.id)) {
                     allProductsMap.set(p.id, {
-                        ...productoCompleto, // Copiar todos los datos del inventario
+                        ...productoCompleto, 
                         id: p.id,
                         rubro: rubro,
                         segmento: segmento,
@@ -1156,7 +1207,7 @@
             });
         });
 
-        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap };
+        return { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap }; // <-- CAMBIO: Devolver vaciosMovementsPorTipo
     }
     
     
@@ -1173,7 +1224,7 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(ventas); // <-- CAMBIO
 
         let headerRow1 = `<tr class="sticky top-0 z-20"><th rowspan="4" class="p-1 border bg-gray-200 sticky left-0 z-30">Cliente</th>`;
         let headerRow2 = `<tr class="sticky z-20" style="top: 25px;">`;
@@ -1271,8 +1322,11 @@
         });
         footerHTML += `<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
         
+        // --- CAMBIO: Reporte de Vacíos por Tipo ---
         let vaciosReportHTML = '';
-        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        const clientesConMovimientoVacios = Object.keys(vaciosMovementsPorTipo).filter(cliente => 
+            TIPOS_VACIO.some(tipo => (vaciosMovementsPorTipo[cliente][tipo]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cliente][tipo]?.devueltos || 0) > 0)
+        ).sort();
         
         if (clientesConMovimientoVacios.length > 0) {
             vaciosReportHTML = `
@@ -1282,7 +1336,7 @@
                         <thead class="bg-gray-200">
                             <tr>
                                 <th class="p-1 border text-left">Cliente</th>
-                                <th class="p-1 border text-left">Producto</th>
+                                <th class="p-1 border text-left">Tipo Vacío</th>
                                 <th class="p-1 border text-center">Entregados (Cajas)</th>
                                 <th class="p-1 border text-center">Devueltos (Cajas)</th>
                                 <th class="p-1 border text-center">Neto</th>
@@ -1291,26 +1345,26 @@
                         <tbody>`;
 
             clientesConMovimientoVacios.forEach(cliente => {
-                const movimientos = vaciosMovements[cliente];
-                for(const productoId in movimientos) {
-                    const mov = movimientos[productoId];
-                    const producto = allProductsMap.get(productoId);
-                    const neto = mov.entregados - mov.devueltos;
-                    if(mov.entregados > 0 || mov.devueltos > 0) {
-                         vaciosReportHTML += `
+                const movimientos = vaciosMovementsPorTipo[cliente];
+                TIPOS_VACIO.forEach(tipoVacio => {
+                    const mov = movimientos[tipoVacio] || { entregados: 0, devueltos: 0 };
+                    if (mov.entregados > 0 || mov.devueltos > 0) {
+                        const neto = mov.entregados - mov.devueltos;
+                        vaciosReportHTML += `
                             <tr class="hover:bg-blue-50">
                                 <td class="p-1 border">${cliente}</td>
-                                <td class="p-1 border">${producto ? producto.presentacion : 'Producto Desconocido'}</td>
+                                <td class="p-1 border">${tipoVacio}</td>
                                 <td class="p-1 border text-center">${mov.entregados}</td>
                                 <td class="p-1 border text-center">${mov.devueltos}</td>
                                 <td class="p-1 border text-center font-bold">${neto > 0 ? `+${neto}` : neto}</td>
                             </tr>
                         `;
                     }
-                }
+                });
             });
             vaciosReportHTML += '</tbody></table></div>';
         }
+        // --- FIN CAMBIO ---
 
         const reporteHTML = `
             <div class="text-left max-h-[80vh] overflow-auto">
@@ -1336,9 +1390,9 @@
             return;
         }
 
-        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovements, allProductsMap } = await processSalesDataForReport(ventas);
+        const { clientData, grandTotalValue, sortedClients, groupedProducts, finalProductOrder, sortedRubros, segmentoOrderMap, vaciosMovementsPorTipo, allProductsMap } = await processSalesDataForReport(ventas); // <-- CAMBIO
 
-        // --- Hoja 1: Reporte de Ventas ---
+        // --- Hoja 1: Reporte de Ventas --- (Sin cambios aquí)
         const dataForSheet1 = [];
         const merges1 = [];
         const headerRow1 = [""]; const headerRow2 = [""]; const headerRow3 = [""]; const headerRow4 = ["Cliente"];
@@ -1437,30 +1491,33 @@
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, 'Reporte de Cierre');
 
-        // --- Hoja 2: Reporte de Vacíos ---
-        const clientesConMovimientoVacios = Object.keys(vaciosMovements).filter(cliente => Object.keys(vaciosMovements[cliente]).length > 0).sort();
+        // --- CAMBIO: Hoja 2: Reporte de Vacíos por Tipo ---
+        const clientesConMovimientoVacios = Object.keys(vaciosMovementsPorTipo).filter(cliente => 
+            TIPOS_VACIO.some(tipo => (vaciosMovementsPorTipo[cliente][tipo]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cliente][tipo]?.devueltos || 0) > 0)
+        ).sort();
+        
         if (clientesConMovimientoVacios.length > 0) {
-            const dataForSheet2 = [['Cliente', 'Producto', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
+            const dataForSheet2 = [['Cliente', 'Tipo Vacío', 'Entregados (Cajas)', 'Devueltos (Cajas)', 'Neto']];
             clientesConMovimientoVacios.forEach(cliente => {
-                 const movimientos = vaciosMovements[cliente];
-                for(const productoId in movimientos) {
-                    const mov = movimientos[productoId];
-                    const producto = allProductsMap.get(productoId);
-                    const neto = mov.entregados - mov.devueltos;
+                 const movimientos = vaciosMovementsPorTipo[cliente];
+                TIPOS_VACIO.forEach(tipoVacio => {
+                    const mov = movimientos[tipoVacio] || { entregados: 0, devueltos: 0 };
                      if(mov.entregados > 0 || mov.devueltos > 0) {
+                        const neto = mov.entregados - mov.devueltos;
                         dataForSheet2.push([
                             cliente,
-                            producto ? producto.presentacion : 'Producto Desconocido',
+                            tipoVacio,
                             mov.entregados,
                             mov.devueltos,
                             neto
                         ]);
                     }
-                }
+                });
             });
             const ws2 = XLSX.utils.aoa_to_sheet(dataForSheet2);
             XLSX.utils.book_append_sheet(wb, ws2, 'Reporte de Vacíos');
         }
+        // --- FIN CAMBIO ---
         
         const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
@@ -1759,7 +1816,9 @@
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (venta) {
-            showSharingOptions(venta, venta.productos, 'Nota de Entrega', () => {});
+            // --- CAMBIO: Pasar vaciosDevueltosPorTipo ---
+            showSharingOptions(venta, venta.productos, venta.vaciosDevueltosPorTipo || {}, 'Nota de Entrega', () => {});
+            // --- FIN CAMBIO ---
         } else {
             _showModal('Error', 'No se encontró la venta seleccionada.');
         }
@@ -1795,45 +1854,62 @@
                 _showModal('Progreso', 'Eliminando venta y restaurando datos...');
                 try {
                     const batch = _writeBatch(_db);
-                    const vaciosAdjustments = {};
+                    const vaciosAdjustmentsPorTipo = {}; // <-- CAMBIO
 
                     for (const productoVendido of venta.productos) {
-                        const productoEnCache = await _getDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id));
+                        const productoEnCacheDoc = await _getDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id));
                         
-                        if (productoEnCache.exists()) {
+                        if (productoEnCacheDoc.exists()) {
+                            const productoEnCache = productoEnCacheDoc.data();
                             const unidadesADevolver = productoVendido.totalUnidadesVendidas || 0;
-                            const nuevoStockUnidades = (productoEnCache.data().cantidadUnidades || 0) + unidadesADevolver;
-                            batch.update(productoEnCache.ref, { cantidadUnidades: nuevoStockUnidades });
-                        }
+                            const nuevoStockUnidades = (productoEnCache.cantidadUnidades || 0) + unidadesADevolver;
+                            batch.update(productoEnCacheDoc.ref, { cantidadUnidades: nuevoStockUnidades });
 
-                        if (productoVendido.manejaVacios) {
-                            const cajasVendidas = productoVendido.cantidadVendida?.cj || 0;
-                            const devueltos = productoVendido.vaciosDevueltos || 0;
-                            const netChange = cajasVendidas - devueltos;
-                            if (netChange !== 0) {
-                                vaciosAdjustments[productoVendido.id] = -netChange;
+                            // --- CAMBIO: Calcular ajuste de vacíos por TIPO ---
+                            if (productoVendido.manejaVacios && productoVendido.tipoVacio) {
+                                const tipoVacio = productoVendido.tipoVacio;
+                                const cajasVendidas = productoVendido.cantidadVendida?.cj || 0;
+                                if (cajasVendidas > 0) {
+                                    vaciosAdjustmentsPorTipo[tipoVacio] = (vaciosAdjustmentsPorTipo[tipoVacio] || 0) - cajasVendidas; // Restar los entregados
+                                }
                             }
+                            // --- FIN CAMBIO ---
                         }
                     }
+                    
+                    // --- CAMBIO: Incorporar vacíos devueltos al ajuste ---
+                    const vaciosDevueltosEnVenta = venta.vaciosDevueltosPorTipo || {};
+                    for(const tipoVacio in vaciosDevueltosEnVenta) {
+                        const devueltos = vaciosDevueltosEnVenta[tipoVacio] || 0;
+                        if(devueltos > 0) {
+                             vaciosAdjustmentsPorTipo[tipoVacio] = (vaciosAdjustmentsPorTipo[tipoVacio] || 0) + devueltos; // Sumar los devueltos
+                        }
+                    }
+                    // --- FIN CAMBIO ---
 
-                    if (Object.keys(vaciosAdjustments).length > 0) {
+
+                    // --- CAMBIO: Actualizar saldos del cliente por TIPO ---
+                    if (Object.values(vaciosAdjustmentsPorTipo).some(adj => adj !== 0)) {
                          const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
                          await _runTransaction(_db, async (transaction) => {
                             const clienteDoc = await transaction.get(clienteRef);
-                            if (!clienteDoc.exists()) return;
+                            if (!clienteDoc.exists()) return; // Si el cliente no existe, no hacemos nada
                             
                             const clienteData = clienteDoc.data();
                             const saldoVacios = clienteData.saldoVacios || {};
                             
-                            for (const productoId in vaciosAdjustments) {
-                                const adjustment = vaciosAdjustments[productoId];
-                                const saldoActual = saldoVacios[productoId] || 0;
-                                saldoVacios[productoId] = saldoActual + adjustment;
+                            for (const tipoVacio in vaciosAdjustmentsPorTipo) {
+                                const adjustment = vaciosAdjustmentsPorTipo[tipoVacio];
+                                if (adjustment !== 0) {
+                                    const saldoActual = saldoVacios[tipoVacio] || 0;
+                                    saldoVacios[tipoVacio] = saldoActual + adjustment; // Aplicar el ajuste neto
+                                }
                             }
                             
                             transaction.update(clienteRef, { saldoVacios: saldoVacios });
                         });
                     }
+                    // --- FIN CAMBIO ---
 
                     const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
                     batch.delete(ventaRef);
@@ -1867,6 +1943,21 @@
                             <p class="text-gray-700"><span class="font-medium">Cliente:</span> <span class="font-bold">${venta.clienteNombre}</span></p>
                         </div>
                     </div>
+                    <!-- CAMBIO: Sección de Vacíos Devueltos (para edición) -->
+                    <div id="vacios-devueltos-section" class="mb-4">
+                         <h3 class="text-sm font-semibold text-cyan-700 mb-1">Vacíos Devueltos:</h3>
+                         <div class="grid grid-cols-3 gap-2">
+                            ${TIPOS_VACIO.map(tipo => `
+                                <div class="flex flex-col items-center">
+                                    <label for="vacios-${tipo.replace(/\s+/g, '-')}" class="text-xs font-medium text-gray-600 mb-1">${tipo}</label>
+                                    <input type="number" min="0" value="${venta.vaciosDevueltosPorTipo ? (venta.vaciosDevueltosPorTipo[tipo] || 0) : 0}" id="vacios-${tipo.replace(/\s+/g, '-')}"
+                                           class="w-16 p-1 text-center border rounded-md" 
+                                           data-tipo-vacio="${tipo}" oninput="window.ventasModule.handleTipoVacioChange(event)">
+                                </div>
+                            `).join('')}
+                         </div>
+                    </div>
+                    <!-- FIN CAMBIO -->
                     <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
                          <div class="mb-2">
                              <label for="rubroFilter" class="text-xs font-medium">Rubro</label>
@@ -1909,11 +2000,20 @@
                         cantPaq: cant.paq || 0,
                         cantUnd: cant.und || 0,
                         totalUnidadesVendidas: p.totalUnidadesVendidas,
-                        vaciosDevueltos: p.vaciosDevueltos || 0
+                        // vaciosDevueltos: p.vaciosDevueltos || 0 // Ya no se usa aquí
                     };
                     return acc;
-                }, {})
+                }, {}),
+                vaciosDevueltosPorTipo: venta.vaciosDevueltosPorTipo || {} // <-- CAMBIO: Cargar vacíos devueltos
             };
+            // --- CAMBIO: Asegurar que todos los tipos estén presentes ---
+            TIPOS_VACIO.forEach(tipo => {
+                 if (!_ventaActual.vaciosDevueltosPorTipo[tipo]) {
+                     _ventaActual.vaciosDevueltosPorTipo[tipo] = 0;
+                 }
+            });
+            // --- FIN CAMBIO ---
+
 
             document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
             populateRubroFilter();
@@ -1938,6 +2038,15 @@
             return;
         }
 
+        // --- CAMBIO: Verificar si hay productos O vacíos devueltos ---
+         const productosEnTransaccion = Object.values(_ventaActual.productos);
+        const hayVaciosDevueltos = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(cant => cant > 0);
+        if (productosEnTransaccion.length === 0 && !hayVaciosDevueltos) {
+            _showModal('Error', 'Debe haber al menos un producto o un vacío devuelto para guardar la venta.');
+            return;
+        }
+        // --- FIN CAMBIO ---
+
         _showModal('Confirmar Cambios', '¿Deseas guardar los cambios? El stock y los saldos de vacíos se ajustarán automáticamente.', async () => {
             _showModal('Progreso', 'Guardando cambios y ajustando datos...');
 
@@ -1947,61 +2056,83 @@
                 const newProducts = new Map(Object.values(_ventaActual.productos).map(p => [p.id, p]));
                 const allProductIds = new Set([...originalProducts.keys(), ...newProducts.keys()]);
 
-                const vaciosAdjustments = {};
+                const vaciosAdjustmentsPorTipo = {}; // <-- CAMBIO
 
+                // Calcular diferencia de stock por producto
                 for (const productId of allProductIds) {
-                    const originalProduct = originalProducts.get(productId);
-                    const newProduct = newProducts.get(productId);
+                    const originalProductVenta = originalProducts.get(productId);
+                    const newProductVenta = newProducts.get(productId);
                     const productoEnCache = _inventarioCache.find(p => p.id === productId);
 
                     if (!productoEnCache) continue;
                     
-                    const originalUnitsSold = originalProduct ? (originalProduct.totalUnidadesVendidas || 0) : 0;
-                    const newUnitsSold = newProduct ? (newProduct.totalUnidadesVendidas || 0) : 0;
-                    const unitDelta = originalUnitsSold - newUnitsSold;
+                    const originalUnitsSold = originalProductVenta ? (originalProductVenta.totalUnidadesVendidas || 0) : 0;
+                    const newUnitsSold = newProductVenta ? (newProductVenta.totalUnidadesVendidas || 0) : 0;
+                    const unitDelta = originalUnitsSold - newUnitsSold; // Diferencia a devolver/quitar del stock
 
                     if (unitDelta !== 0) {
                         const currentStockUnits = productoEnCache.cantidadUnidades || 0;
                         const finalStockUnits = currentStockUnits + unitDelta;
-                        if (finalStockUnits < 0) throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}".`);
+                        if (finalStockUnits < 0) throw new Error(`Stock insuficiente para "${productoEnCache.presentacion}" al intentar ajustar.`);
                         const productoRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId);
                         batch.update(productoRef, { cantidadUnidades: finalStockUnits });
                     }
+                }
+                
+                // --- CAMBIO: Calcular diferencia de vacíos por TIPO ---
+                const originalVaciosPorTipo = _originalVentaForEdit.vaciosDevueltosPorTipo || {};
+                const nuevosVaciosPorTipo = _ventaActual.vaciosDevueltosPorTipo || {};
+
+                // Inicializar ajustes
+                TIPOS_VACIO.forEach(tipo => vaciosAdjustmentsPorTipo[tipo] = 0);
+                
+                // Calcular cambios basados en productos entregados
+                 for (const productId of allProductIds) {
+                    const originalProductVenta = originalProducts.get(productId);
+                    const newProductVenta = newProducts.get(productId);
+                    const productoEnCache = _inventarioCache.find(p => p.id === productId);
+
+                    if (!productoEnCache || !productoEnCache.manejaVacios || !productoEnCache.tipoVacio) continue;
                     
-                    if(productoEnCache.manejaVacios){
-                        const originalCajas = originalProduct?.cantidadVendida?.cj || 0;
-                        const originalDevueltos = originalProduct?.vaciosDevueltos || 0;
-                        const originalNetChange = originalCajas - originalDevueltos;
+                    const tipoVacio = productoEnCache.tipoVacio;
+                    const originalCajasEntregadas = originalProductVenta?.cantidadVendida?.cj || 0;
+                    const nuevasCajasEntregadas = newProductVenta?.cantCj || 0;
+                    const deltaCajasEntregadas = nuevasCajasEntregadas - originalCajasEntregadas; // Cambio en entregados
 
-                        const newCajas = newProduct?.cantCj || 0;
-                        const newDevueltos = newProduct?.vaciosDevueltos || 0;
-                        const newNetChange = newCajas - newDevueltos;
-
-                        const adjustment = newNetChange - originalNetChange;
-                        if(adjustment !== 0){
-                            vaciosAdjustments[productId] = adjustment;
-                        }
-                    }
+                    vaciosAdjustmentsPorTipo[tipoVacio] += deltaCajasEntregadas;
                 }
 
-                if (Object.keys(vaciosAdjustments).length > 0) {
+                // Ajustar por cambios en devueltos
+                 TIPOS_VACIO.forEach(tipo => {
+                     const originalDevueltos = originalVaciosPorTipo[tipo] || 0;
+                     const nuevosDevueltos = nuevosVaciosPorTipo[tipo] || 0;
+                     const deltaDevueltos = nuevosDevueltos - originalDevueltos; // Cambio en devueltos
+                     vaciosAdjustmentsPorTipo[tipo] -= deltaDevueltos; // Restar el cambio en devueltos del neto
+                 });
+                // --- FIN CAMBIO ---
+
+                // --- CAMBIO: Actualizar saldos del cliente por TIPO ---
+                if (Object.values(vaciosAdjustmentsPorTipo).some(adj => adj !== 0)) {
                     const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _originalVentaForEdit.clienteId);
                      await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
-                        if (!clienteDoc.exists()) return;
+                        if (!clienteDoc.exists()) return; // Si el cliente no existe, no hacemos nada
                         
                         const clienteData = clienteDoc.data();
                         const saldoVacios = clienteData.saldoVacios || {};
                         
-                        for (const productoId in vaciosAdjustments) {
-                            const adjustment = vaciosAdjustments[productoId];
-                            const saldoActual = saldoVacios[productoId] || 0;
-                            saldoVacios[productoId] = saldoActual + adjustment;
+                        for (const tipoVacio in vaciosAdjustmentsPorTipo) {
+                            const adjustment = vaciosAdjustmentsPorTipo[tipoVacio];
+                            if (adjustment !== 0) {
+                                const saldoActual = saldoVacios[tipoVacio] || 0;
+                                saldoVacios[tipoVacio] = saldoActual + adjustment; // Aplicar el ajuste neto
+                            }
                         }
                         
                         transaction.update(clienteRef, { saldoVacios: saldoVacios });
                     });
                 }
+                // --- FIN CAMBIO ---
 
                 let nuevoTotal = 0;
                 const nuevosItemsVenta = Object.values(_ventaActual.productos).map(p => {
@@ -2032,7 +2163,8 @@
                         totalUnidadesVendidas: totalUnidadesVendidasRecalculado,
                         iva: p.iva ?? 0,
                         manejaVacios: p.manejaVacios || false,
-                        vaciosDevueltos: p.vaciosDevueltos || 0
+                        tipoVacio: p.tipoVacio || null, // Guardar tipo vacío
+                        // vaciosDevueltos ya no se guarda aquí
                     };
                 });
 
@@ -2040,6 +2172,7 @@
                 batch.update(ventaRef, {
                     productos: nuevosItemsVenta,
                     total: nuevoTotal,
+                    vaciosDevueltosPorTipo: _ventaActual.vaciosDevueltosPorTipo, // <-- CAMBIO: Guardar vacíos devueltos
                     fechaModificacion: new Date()
                 });
                 
@@ -2060,7 +2193,7 @@
     window.ventasModule = {
         toggleMoneda,
         handleQuantityChange,
-        handleVaciosChange,
+        handleTipoVacioChange, // <-- CAMBIO
         showPastSaleOptions,
         editVenta,
         deleteVenta,
