@@ -28,7 +28,12 @@
         _collection = dependencies.collection;
         _getDocs = dependencies.getDocs;
         _floatingControls = dependencies.floatingControls; // Guardar referencia
-        console.log("Catalogo module initialized. floatingControls valid:", !!_floatingControls); // Log
+
+        // Verificar si floatingControls se pasó correctamente
+        if (!_floatingControls) {
+            console.warn("Catalogo Init Warning: floatingControls element was not provided or found.");
+        }
+        console.log("Catalogo module initialized.");
     };
 
     /**
@@ -41,7 +46,10 @@
         if (window.inventarioModule && typeof window.inventarioModule.getSegmentoOrderMap === 'function') {
             try {
                 _segmentoOrderCacheCatalogo = await window.inventarioModule.getSegmentoOrderMap();
-                if (_segmentoOrderCacheCatalogo) return _segmentoOrderCacheCatalogo; // Usar si se obtuvo
+                if (_segmentoOrderCacheCatalogo) {
+                    console.log("Segment order map obtained from inventarioModule.");
+                    return _segmentoOrderCacheCatalogo; // Usar si se obtuvo
+                }
             } catch (e) {
                 console.warn("Error getting segment order map from inventarioModule:", e);
             }
@@ -50,6 +58,7 @@
         // Fallback: Leer directamente si falla lo anterior
         console.log("Falling back to direct segment order read in catalogo.js");
         const map = {};
+        // CORRECCIÓN: Usar la ruta del usuario actual para leer SU orden de segmentos
         const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
         try {
             const snapshot = await _getDocs(segmentosRef);
@@ -58,6 +67,7 @@
                 map[data.name] = (data.orden !== undefined && data.orden !== null) ? data.orden : 9999;
             });
             _segmentoOrderCacheCatalogo = map;
+            console.log("Segment order map loaded/cached via fallback:", _segmentoOrderCacheCatalogo);
             return map;
         } catch (e) {
             console.warn("No se pudo obtener el orden de los segmentos en catalogo.js (fallback failed):", e);
@@ -73,7 +83,7 @@
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
         } else {
-            console.error("Floating controls not available in showCatalogoSubMenu");
+            console.warn("showCatalogoSubMenu: floatingControls not available.");
         }
         // --- FIN CORRECCIÓN ---
         document.body.classList.remove('catalogo-active');
@@ -130,16 +140,13 @@
         if (_floatingControls) {
             _floatingControls.classList.add('hidden'); // Ocultar controles flotantes en el catálogo
         } else {
-            console.error("Floating controls not available in showCatalogoView");
+            console.warn("showCatalogoView: floatingControls not available.");
         }
          // Asegurarse de que _mainContent esté definido
          if (!_mainContent) {
-             console.error("Main content area not available in showCatalogoView");
-             // Podríamos intentar obtenerlo de nuevo, o mostrar un error fatal
-             // _mainContent = document.getElementById('mainContent');
-             // if (!_mainContent) return; // Salir si sigue sin encontrarse
+             console.error("CRITICAL: Main content area not available in showCatalogoView");
              alert("Error crítico: No se encuentra el área de contenido principal.");
-             return;
+             return; // Salir si no se encuentra
          }
         // --- FIN CORRECCIÓN ---
 
@@ -176,6 +183,7 @@
 
         const tasaInput = document.getElementById('catalogoTasaCopInput');
         if (tasaInput) {
+            // Mejora Potencial: Leer/Escribir tasa desde/hacia Firestore config en lugar de localStorage
             const savedTasa = localStorage.getItem('tasaCOP');
             if (savedTasa) {
                 _catalogoTasaCOP = parseFloat(savedTasa);
@@ -217,24 +225,14 @@
         container.innerHTML = `<p class="text-center text-gray-500 p-4">Cargando inventario...</p>`;
 
         try {
-            // Usar caché si ya está cargada, si no, cargarla
-            // Asumimos que initInventario ya ha cargado _inventarioCache
-            // Si no, necesitamos cargarla aquí explícitamente.
-            // Por simplicidad ahora, asumiremos que está cargada.
-            // if (_inventarioCache.length === 0) {
-            //     const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            //     const snapshot = await _getDocs(inventarioRef);
-            //     _inventarioCache = snapshot.docs.map(doc => doc.data());
-            // }
-
-            // O, si queremos asegurar datos frescos siempre para el catálogo:
+            // Obtener datos frescos del inventario del usuario actual para el catálogo
              console.log("Fetching fresh inventory for catalog...");
              const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
              const snapshot = await _getDocs(inventarioRef);
-             _inventarioCache = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})); // Guardar ID también por si acaso
-             console.log(`Inventory fetched: ${_inventarioCache.length} items.`);
+             _inventarioCache = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+             console.log(`Inventory fetched for catalog: ${_inventarioCache.length} items.`);
 
-            renderCatalogo(); // Renderizar con los datos cargados/cacheados
+            await renderCatalogo(); // Renderizar con los datos cargados
         } catch (error) {
             console.error("Error al cargar el inventario para el catálogo:", error);
             container.innerHTML = `<p class="text-center text-red-500 p-4">Error al cargar el inventario.</p>`;
@@ -303,7 +301,7 @@
                                 <tr>
                                     <th class="py-1 md:py-2 px-2 md:px-4 text-left font-semibold text-xs md:text-base border-b border-gray-300">PRESENTACIÓN (Segmento)</th>
                                     {/* Botón para cambiar moneda */}
-                                    <th class="py-1 md:py-2 px-2 md:px-4 text-right font-semibold text-xs md:text-base border-b border-gray-300 price-toggle" onclick="toggleCatalogoMoneda()" title="Clic para cambiar moneda">${monedaLabel}</th>
+                                    <th class="py-1 md:py-2 px-2 md:px-4 text-right font-semibold text-xs md:text-base border-b border-gray-300 price-toggle" onclick="window.toggleCatalogoMoneda()" title="Clic para cambiar moneda">${monedaLabel} <span class="text-gray-500 text-xs">⇆</span></th> {/* Añadido ícono */}
                                 </tr>
                             </thead>
                             <tbody>`;
@@ -319,13 +317,14 @@
                     let unitInfo = ''; // Información de unidades por empaque
 
                     // Determinar precio base y descripción según forma de venta principal
-                    if (ventaPor.cj && precios.cj > 0) {
+                    // Priorizar Caja, luego Paquete, luego Unidad
+                    if (ventaPor.cj && precios.cj > 0) { // Usar > 0 para asegurar que hay precio definido
                         precioBaseUSD = precios.cj;
                         unitInfo = `(Cj/${p.unidadesPorCaja || 1} und)`;
                     } else if (ventaPor.paq && precios.paq > 0) {
                         precioBaseUSD = precios.paq;
                         unitInfo = `(Paq/${p.unidadesPorPaquete || 1} und)`;
-                    } else { // Fallback a Und
+                    } else { // Fallback a Und (o si solo se vende por Und)
                         precioBaseUSD = precios.und || 0;
                          unitInfo = `(Und)`;
                     }
@@ -336,6 +335,7 @@
                          // Redondear al múltiplo de 100 más cercano hacia arriba
                         precioMostrado = `COP ${(Math.ceil((precioBaseUSD * _catalogoTasaCOP) / 100) * 100).toLocaleString('es-CO')}`;
                     } else {
+                        // Asegurar formato USD incluso si precioBaseUSD es 0
                         precioMostrado = `$${precioBaseUSD.toFixed(2)}`;
                     }
 
@@ -365,6 +365,8 @@
 
     /**
      * Genera una o varias imágenes del catálogo (dividido por páginas) y las comparte.
+     * Mejora Potencial: Considerar usar una librería diferente a html2canvas si el rendimiento es un problema,
+     * o generar PDF en el lado del servidor (Cloud Function) si la complejidad aumenta.
      */
     async function handleGenerateCatalogoImage() {
         const MAX_BRANDS_PER_PAGE = 5; // Ajustable según necesidad
@@ -406,7 +408,7 @@
                 brandsInPage.forEach(marca => {
                     contentHtml += `<table class="min-w-full bg-transparent text-lg print:text-sm">
                                 <thead class="text-black">
-                                    <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl">${marca}</th></tr>
+                                    <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl rounded-t-lg">${marca}</th></tr>
                                     <tr><th class="py-2 px-4 text-left font-semibold text-base border-b border-gray-300">PRESENTACIÓN (Segmento)</th><th class="py-2 px-4 text-right font-semibold text-base border-b border-gray-300">${monedaLabel}</th></tr>
                                 </thead><tbody>`;
                     const productosDeMarca = _productosAgrupadosCache[marca] || [];
@@ -435,7 +437,8 @@
                 contentHtml += '</div>';
 
                 // Crear HTML completo para la página actual
-                const title = document.querySelector('#catalogo-para-imagen h2')?.textContent || 'Catálogo'; // Safely get title
+                const titleElement = document.querySelector('#catalogo-para-imagen h2');
+                const title = titleElement ? titleElement.textContent.trim() : 'Catálogo'; // Obtener título dinámicamente
                 const fullPageHtml = `
                     <div class="bg-white p-8" style="width: 800px; /* Ancho fijo para consistencia */ box-shadow: none; border: 1px solid #eee;"> {/* Estilo base para imagen */}
                         <h2 class="text-4xl font-bold text-black mb-2 text-center">${title}</h2>
@@ -457,7 +460,8 @@
 
                 // Aplicar fondo si existe
                 if (_currentBgImage) {
-                    pageWrapper.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.75)), url('${_currentBgImage}')`; // Más opacidad
+                    // Usar gradiente más opaco para mejor legibilidad del texto
+                    pageWrapper.style.backgroundImage = `linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('${_currentBgImage}')`;
                     pageWrapper.style.backgroundSize = 'cover';
                     pageWrapper.style.backgroundPosition = 'center';
                 }
@@ -471,7 +475,9 @@
                 console.log(` - Blob created for page ${pageNum}, size: ${blob.size} bytes`);
 
                 document.body.removeChild(tempDiv); // Limpiar DOM
-                return new File([blob], `catalogo-${title.replace(/\s+/g, '_')}-p${pageNum}.png`, { type: "image/png" });
+                // Crear nombre de archivo más descriptivo
+                const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                return new File([blob], `catalogo_${safeTitle}_p${pageNum}.png`, { type: "image/png" });
             }));
 
             // Cerrar modal de progreso
@@ -480,40 +486,46 @@
 
 
             // Compartir archivos generados
-            if (navigator.share && imageFiles.length > 0) {
+            if (navigator.share && imageFiles.length > 0 && navigator.canShare && navigator.canShare({ files: imageFiles })) { // Verificar si se pueden compartir archivos
                  console.log(`Sharing ${imageFiles.length} catalog image(s)...`);
                  try {
                      await navigator.share({
                          files: imageFiles,
                          title: `Catálogo: ${title}`,
-                         text: `Catálogo de productos (${title})`
+                         text: `Catálogo de productos (${title}) - ${totalPages > 1 ? `${totalPages} páginas` : ''}`
                      });
                      console.log("Catalog shared successfully.");
                  } catch (shareError) {
                       // Manejar error si el usuario cancela o falla el share
                       console.warn("Sharing failed or was cancelled:", shareError);
                       // No mostrar error si el usuario canceló
-                      if (!shareError.message.includes('Abort due to cancellation')) {
+                      if (shareError.name !== 'AbortError') { // AbortError es común al cancelar
                           window.showModal('Error al Compartir', 'No se pudieron compartir las imágenes.');
                       }
                  }
             } else if (imageFiles.length > 0) {
-                 window.showModal('Imágenes Generadas', 'Las imágenes del catálogo se generaron, pero tu navegador no soporta la función de compartir archivos directamente. Busca las imágenes descargadas si tu navegador las descargó.');
-                 // Opcional: intentar descargar la primera imagen
-                 // const url = URL.createObjectURL(imageFiles[0]);
-                 // const a = document.createElement('a');
-                 // a.href = url;
-                 // a.download = imageFiles[0].name;
-                 // document.body.appendChild(a);
-                 // a.click();
-                 // document.body.removeChild(a);
-                 // URL.revokeObjectURL(url);
+                 window.showModal('Imágenes Generadas', 'Las imágenes del catálogo se generaron, pero tu navegador no soporta compartir archivos directamente. Intenta descargar o buscar las imágenes.');
+                 // Opcional: Intentar descargar la primera imagen como fallback
+                 try {
+                     const firstImage = imageFiles[0];
+                     const url = URL.createObjectURL(firstImage);
+                     const a = document.createElement('a');
+                     a.href = url;
+                     a.download = firstImage.name;
+                     document.body.appendChild(a);
+                     a.click();
+                     document.body.removeChild(a);
+                     URL.revokeObjectURL(url);
+                     console.log("Attempted to download the first image as fallback.");
+                 } catch (downloadError) {
+                     console.error("Failed to download image fallback:", downloadError);
+                 }
             } else {
                  window.showModal('Error', 'No se pudieron generar las imágenes del catálogo.');
             }
         } catch (error) {
             console.error("Error grave al generar imagen(es) del catálogo: ", error);
-             window.showModal('Error Grave', `No se pudo generar la imagen: ${error.message}`);
+             window.showModal('Error Grave', `No se pudo generar la imagen: ${error.message || error}`);
         } finally {
             // Restaurar UI
             if (shareButton) {
@@ -522,7 +534,7 @@
             }
             if (tasaInputContainer) tasaInputContainer.classList.remove('hidden');
             if (buttonsContainer) buttonsContainer.classList.remove('hidden');
-            // Cerrar modal de progreso si aún está abierto
+            // Asegurarse de cerrar modal de progreso si aún está abierto
              const modalContainer = document.getElementById('modalContainer');
              const modalTitle = modalContainer?.querySelector('h3')?.textContent;
              if(modalContainer && modalTitle?.startsWith('Progreso')) {
@@ -532,7 +544,7 @@
     }
 
 
-    // Exponer función para invalidar la caché
+    // Exponer función para invalidar la caché (si otros módulos necesitan hacerlo)
     window.catalogoModule = {
         invalidateCache: () => { _segmentoOrderCacheCatalogo = null; }
     };
