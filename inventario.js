@@ -21,7 +21,7 @@
         _userRole = dependencies.userRole; // Guardar el rol del usuario
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
-        _floatingControls = dependencies.floatingControls;
+        _floatingControls = dependencies.floatingControls; // Guardar referencia
         _activeListeners = dependencies.activeListeners;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
@@ -37,6 +37,11 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
+
+        if (!_floatingControls) {
+            console.warn("Inventario Init Warning: floatingControls not provided.");
+        }
+         console.log("Inventario module initialized.");
     };
 
     /**
@@ -44,13 +49,22 @@
      */
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
-            _inventarioListenerUnsubscribe(); // Detener listener anterior si existe
+            try {
+                _inventarioListenerUnsubscribe(); // Detener listener anterior si existe
+            } catch(e) { console.warn("Error unsubscribing previous inventory listener:", e); }
         }
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // Podríamos ordenar la caché aquí si siempre se necesita ordenada
-            if (callback) callback(); // Llama al callback para re-renderizar la vista actual
+            if (callback && typeof callback === 'function') { // Verificar si callback es una función
+                 try {
+                     callback(); // Llama al callback para re-renderizar la vista actual
+                 } catch (cbError) {
+                     console.error("Error executing inventory listener callback:", cbError);
+                 }
+            } else if (callback) {
+                 console.warn("Inventory listener callback provided is not a function:", callback);
+            }
         }, (error) => {
              console.error("Error en listener de inventario:", error);
              if (window.isLoggingOut && error.code === 'permission-denied') {
@@ -76,6 +90,7 @@
             window.catalogoModule.invalidateCache();
         }
         // El módulo de Data lee directamente, no necesita invalidación activa aquí.
+         console.log("Segment order cache invalidated.");
     }
 
     /**
@@ -83,7 +98,13 @@
      */
     window.showInventarioSubMenu = function() {
         invalidateSegmentOrderCache(); // Invalida al entrar al submenú por si hubo cambios
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showInventarioSubMenu: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -91,12 +112,11 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            {/* Ajuste de texto según rol */}
+                            <!-- CORRECCIÓN: Comentarios eliminados -->
                             <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Productos / ${isAdmin ? 'Modificar Def.' : 'Consultar Stock'}</button>
                             ${isAdmin ? `
                             <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
                             ` : ''}
-                            {/* Ajuste Masivo disponible para todos */}
                             <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
                              ${isAdmin ? `
                              <button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos (Visualización)</button>
@@ -134,12 +154,14 @@
             const snapshot = await _getDocs(segmentosRef);
             snapshot.docs.forEach(doc => {
                 const data = doc.data();
-                map[data.name] = (data.orden !== undefined && data.orden !== null) ? data.orden : 9999; // Usar 9999 si no hay orden
+                // Usar 9999 si 'orden' es undefined o null
+                map[data.name] = (data.orden !== undefined && data.orden !== null) ? data.orden : 9999;
             });
             _segmentoOrderCache = map; // Guardar en caché
+             console.log("Segment order map loaded/cached:", _segmentoOrderCache);
             return map;
         } catch (e) {
-            console.warn("No se pudo obtener el orden de los segmentos, se usará orden alfabético.", e);
+            console.warn("No se pudo obtener el orden de los segmentos, se usará orden por defecto.", e);
             return {}; // Devolver objeto vacío en caso de error
         }
     }
@@ -152,7 +174,13 @@
             _showModal('Acceso Denegado', 'Solo los administradores pueden ordenar segmentos.');
             return;
         }
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showOrdenarSegmentosView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-lg"> {/* Ancho consistente */}
@@ -198,22 +226,30 @@
             let snapshot = await _getDocs(segmentosRef);
             let allSegments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Inicializar orden si falta
+            // Inicializar orden si falta (Optimizado)
             const segmentsWithoutOrder = allSegments.filter(s => s.orden === undefined || s.orden === null);
             if (segmentsWithoutOrder.length > 0) {
-                 _showModal('Inicializando Orden', 'Detectando segmentos nuevos, asignando orden inicial...');
+                 _showModal('Progreso', 'Asignando orden inicial a segmentos nuevos...'); // Usar modal de progreso
                 const segmentsWithOrder = allSegments.filter(s => s.orden !== undefined && s.orden !== null);
-                const maxOrder = segmentsWithOrder.reduce((max, s) => Math.max(max, s.orden), -1);
+                const maxOrder = segmentsWithOrder.reduce((max, s) => Math.max(max, s.orden ?? -1), -1); // Considerar null/undefined
                 const batch = _writeBatch(_db);
+                // Ordenar alfabéticamente los nuevos para asignación inicial consistente
                 segmentsWithoutOrder.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                 segmentsWithoutOrder.forEach((seg, index) => {
                     const docRef = _doc(segmentosRef, seg.id);
-                    batch.update(docRef, { orden: maxOrder + 1 + index });
-                    seg.orden = maxOrder + 1 + index; // Actualizar localmente
+                    const newOrder = maxOrder + 1 + index;
+                    batch.update(docRef, { orden: newOrder });
+                    seg.orden = newOrder; // Actualizar localmente
                 });
                 await batch.commit();
                 allSegments = [...segmentsWithOrder, ...segmentsWithoutOrder]; // Recombinar
-                 _showModal('Éxito', 'Orden inicial asignado.'); // Cerrar modal
+                // Cerrar modal de progreso
+                const modalContainer = document.getElementById('modalContainer');
+                 const modalTitle = modalContainer?.querySelector('h3')?.textContent;
+                 if(modalContainer && modalTitle?.startsWith('Progreso')) {
+                      modalContainer.classList.add('hidden');
+                 }
+                console.log("Initial order assigned to new segments.");
             }
 
             // Filtrar si se seleccionó un rubro
@@ -222,11 +258,12 @@
                 const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
                 const q = _query(inventarioRef, _where("rubro", "==", rubro));
                 const inventarioSnapshot = await _getDocs(q);
+                // Usar un Set para eficiencia al buscar nombres de segmentos usados
                 const usedSegmentNames = new Set(inventarioSnapshot.docs.map(doc => doc.data().segmento).filter(Boolean));
                 segmentsToDisplay = allSegments.filter(s => s.name && usedSegmentNames.has(s.name));
             }
 
-            // Ordenar según el campo 'orden'
+            // Ordenar según el campo 'orden' (usar 9999 como fallback)
             segmentsToDisplay.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
 
             // Renderizar la lista
@@ -257,55 +294,102 @@
      */
     function addDragAndDropHandlers(container) {
         let draggedItem = null;
+        let placeholder = null; // Elemento visual para indicar dónde caerá
+
+        // Crear placeholder (elemento fantasma)
+        const createPlaceholder = () => {
+            if (!placeholder) {
+                placeholder = document.createElement('li');
+                placeholder.style.height = '40px'; // Altura similar a los items
+                placeholder.style.background = '#e0e7ff'; // Color azul claro
+                placeholder.style.border = '2px dashed #6366f1'; // Borde discontinuo índigo
+                placeholder.style.borderRadius = '0.375rem'; // rounded-lg
+                placeholder.style.margin = '0.5rem 0'; // space-y-2
+                placeholder.style.listStyleType = 'none'; // Quitar viñeta
+            }
+        };
+        createPlaceholder(); // Crear una vez
+
         container.addEventListener('dragstart', e => {
              if (e.target.tagName === 'LI') {
                  draggedItem = e.target;
-                 setTimeout(() => { if (draggedItem) draggedItem.style.opacity = '0.5'; }, 0);
+                 setTimeout(() => {
+                     if (draggedItem) {
+                         draggedItem.style.opacity = '0.5'; // Hacer semitransparente el original
+                         draggedItem.style.border = '2px dashed gray'; // Opcional: Borde discontinuo
+                     }
+                 }, 0);
                  e.dataTransfer.effectAllowed = 'move'; // Indicar que es una operación de mover
+                 e.dataTransfer.setData('text/plain', draggedItem.dataset.id); // Necesario para Firefox
              } else {
-                 e.preventDefault();
+                 e.preventDefault(); // Evitar arrastrar otros elementos
              }
         });
-        container.addEventListener('dragend', e => {
-            if (draggedItem) draggedItem.style.opacity = '1';
-            draggedItem = null;
-            // Limpiar indicadores visuales de drop target si los hubiera
-            container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-        });
-        container.addEventListener('dragover', e => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move'; // Cursor visual de mover
-            const afterElement = getDragAfterElement(container, e.clientY);
-             // Limpiar indicador anterior
-             container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-             // Añadir indicador visual (opcional, p.ej. borde superior)
-             if(afterElement) afterElement.classList.add('drag-over'); // O aplicar a 'container' si es el final
 
+        container.addEventListener('dragend', e => {
             if (draggedItem) {
-                if (afterElement == null) container.appendChild(draggedItem);
-                else container.insertBefore(draggedItem, afterElement);
+                 draggedItem.style.opacity = '1'; // Restaurar opacidad
+                 draggedItem.style.border = ''; // Quitar borde discontinuo
+            }
+            draggedItem = null;
+            if (placeholder && placeholder.parentNode) {
+                 placeholder.parentNode.removeChild(placeholder); // Eliminar placeholder
             }
         });
-        // Añadir dragleave para limpiar indicadores visuales
+
+        container.addEventListener('dragover', e => {
+            e.preventDefault(); // Necesario para permitir drop
+            e.dataTransfer.dropEffect = 'move'; // Cursor visual de mover
+            const afterElement = getDragAfterElement(container, e.clientY);
+
+             // Insertar placeholder antes del elemento 'afterElement' o al final
+            if (afterElement) {
+                container.insertBefore(placeholder, afterElement);
+            } else {
+                container.appendChild(placeholder);
+            }
+        });
+
+        container.addEventListener('drop', e => {
+             e.preventDefault(); // Prevenir comportamiento por defecto
+             if (draggedItem && placeholder && placeholder.parentNode) {
+                 // Mover el elemento arrastrado a la posición del placeholder
+                 container.insertBefore(draggedItem, placeholder);
+                 // Restaurar estilos (dragend puede no dispararse si el drop es rápido)
+                 draggedItem.style.opacity = '1';
+                 draggedItem.style.border = '';
+             }
+             if (placeholder && placeholder.parentNode) {
+                 placeholder.parentNode.removeChild(placeholder); // Eliminar placeholder
+             }
+             draggedItem = null; // Limpiar referencia
+        });
+
+        // Limpiar placeholder si se sale del contenedor
         container.addEventListener('dragleave', e => {
-             if (!container.contains(e.relatedTarget)) { // Solo si sale del contenedor
-                 container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+             // Verificar si el cursor salió realmente del contenedor
+             if (!container.contains(e.relatedTarget) && placeholder && placeholder.parentNode) {
+                 placeholder.parentNode.removeChild(placeholder);
              }
         });
 
+
         function getDragAfterElement(container, y) {
-            const draggableElements = [...container.querySelectorAll('li:not([style*="opacity: 0.5"])')];
+            // Obtener todos los LI excepto el placeholder y el que se está arrastrando (si ya está en el DOM)
+            const draggableElements = [...container.querySelectorAll('li:not([style*="height: 40px"])')].filter(el => el !== draggedItem);
+
             return draggableElements.reduce((closest, child) => {
                 const box = child.getBoundingClientRect();
                 const offset = y - box.top - box.height / 2;
-                if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
-                else return closest;
-            }, { offset: Number.NEGATIVE_INFINITY }).element;
+                // Si el offset es negativo (estamos por encima del centro del elemento)
+                // y es el más cercano hasta ahora (más cercano a 0 desde negativo)
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element; // Inicializar con offset muy negativo
         }
-        // Estilo opcional para el indicador visual
-        const style = document.createElement('style');
-        style.textContent = `.drag-over { border-top: 2px solid blue; }`;
-        document.head.appendChild(style);
     }
 
 
@@ -317,7 +401,13 @@
 
         const listItems = document.querySelectorAll('#segmentos-sortable-list li');
         if (listItems.length === 0) {
-            _showModal('Aviso', 'No hay segmentos visibles para ordenar.');
+            // Buscar si hay un mensaje indicando que no hay segmentos
+             const noSegmentsMsg = document.querySelector('#segmentos-sortable-list p');
+             if (noSegmentsMsg && noSegmentsMsg.textContent.includes('No hay segmentos')) {
+                 _showModal('Aviso', 'No hay segmentos visibles para guardar orden.');
+             } else {
+                  _showModal('Aviso', 'Lista de segmentos no cargada o vacía.');
+             }
             return;
         }
 
@@ -325,12 +415,30 @@
 
         const batch = _writeBatch(_db);
         const orderedIds = []; // Guardar IDs en el orden visual actual
+        let hasChanges = false; // Flag para detectar si hubo cambios reales
+
+        // Obtener el orden actual de la base de datos (o caché si está actualizada) para comparar
+         const currentOrderMap = await getSegmentoOrderMap(); // Re-fetch o usar caché
 
         listItems.forEach((item, index) => {
-            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, item.dataset.id);
-            batch.update(docRef, { orden: index }); // Actualizar orden del admin
-            orderedIds.push(item.dataset.id); // Guardar ID en orden
+            const docId = item.dataset.id;
+            const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, docId);
+            const segmentName = item.dataset.name; // Obtener nombre del dataset
+
+            // Comparar orden nuevo (index) con el orden actual
+             // Usar ?? 9999 para manejar casos donde 'orden' no existía
+             const currentDbOrder = currentOrderMap[segmentName] ?? 9999;
+             if (currentDbOrder !== index) {
+                 batch.update(docRef, { orden: index }); // Actualizar orden del admin solo si cambió
+                 hasChanges = true;
+             }
+            orderedIds.push(docId); // Guardar ID en orden visual
         });
+
+         if (!hasChanges) {
+             _showModal('Aviso', 'No se detectaron cambios en el orden.');
+             return;
+         }
 
         try {
             await batch.commit(); // Guardar cambios para el admin
@@ -343,6 +451,8 @@
                  await window.adminModule.propagateCategoryOrderChange('segmentos', orderedIds);
              } else {
                   console.warn("Función propagateCategoryOrderChange no encontrada en adminModule.");
+                  _showModal('Advertencia', 'Orden guardado localmente, pero no se pudo propagar a otros usuarios.');
+                  // No retornar aquí, permitir que se muestre el éxito local
              }
 
 
@@ -359,7 +469,13 @@
      * Muestra la vista para el ajuste masivo de cantidades (disponible para todos).
      */
     function showAjusteMasivoView() {
-        _floatingControls.classList.add('hidden');
+         // --- INICIO CORRECCIÓN ---
+         if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showAjusteMasivoView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -416,6 +532,7 @@
         // Ordenar
         const segmentoOrderMap = await getSegmentoOrderMap(); // Orden del usuario actual
         productos.sort((a, b) => {
+             // Usar ?? 9999 como fallback si el segmento no está en el mapa
             const orderA = segmentoOrderMap[a.segmento] ?? 9999;
             const orderB = segmentoOrderMap[b.segmento] ?? 9999;
             if (orderA !== orderB) return orderA - orderB;
@@ -441,10 +558,12 @@
                 currentSegmento = segmento;
                 currentMarca = null;
                 // Hacer la fila del segmento sticky
-                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(spacing.8))] z-10">${currentSegmento}</td></tr>`;
+                // Ajustar 'top' para que quede debajo del thead pegajoso
+                tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${currentSegmento}</td></tr>`; // Ajustar top y z-index
             }
             if (marca !== currentMarca) {
                 currentMarca = marca;
+                 // Fila de marca NO sticky, pero con estilo
                 tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-100 font-semibold text-gray-700 pl-8">${currentMarca}</td></tr>`;
             }
 
@@ -454,6 +573,7 @@
             let conversionFactor = 1;
             let currentStockInUnits = p.cantidadUnidades || 0;
 
+            // Priorizar Caja, luego Paquete, luego Unidad para mostrar
             if (ventaPor.cj) {
                 unitType = 'Cj';
                 conversionFactor = p.unidadesPorCaja || 1;
@@ -462,13 +582,16 @@
                 conversionFactor = p.unidadesPorPaquete || 1;
             }
 
+            // Asegurar que conversionFactor sea al menos 1 para evitar división por cero
+             conversionFactor = Math.max(1, conversionFactor);
+
             const currentStockInDisplayUnits = Math.floor(currentStockInUnits / conversionFactor);
 
             tableHTML += `
                 <tr class="hover:bg-gray-50">
                     <td class="py-2 px-4 border-b pl-12">
                         <p class="font-medium">${p.presentacion}</p>
-                        <p class="text-xs text-gray-500">Actual: ${currentStockInDisplayUnits} ${unitType}.</p>
+                        <p class="text-xs text-gray-500">Actual: ${currentStockInDisplayUnits} ${unitType}. (${currentStockInUnits} Und. base)</p> {/* Mostrar base */}
                     </td>
                     <td class="py-2 px-4 border-b text-center align-middle"> {/* Centrar verticalmente */}
                         <div class="flex items-center justify-center">
@@ -492,7 +615,13 @@
     async function handleGuardarAjusteMasivo() {
         const inputs = document.querySelectorAll('#ajusteListContainer input[data-doc-id]');
         if (inputs.length === 0) {
-            _showModal('Aviso', 'No hay productos visibles para ajustar.');
+             // Verificar si es porque no hay productos o por filtros
+             const container = document.getElementById('ajusteListContainer');
+             if (container && container.textContent.includes('No hay productos')) {
+                _showModal('Aviso', 'No hay productos que coincidan con los filtros para ajustar.');
+             } else {
+                 _showModal('Aviso', 'Lista de productos no cargada o vacía.');
+             }
             return;
         }
 
@@ -529,7 +658,10 @@
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
                     batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
                     changesCount++;
+                     console.log(`Updating ${docId} (${productoOriginal.presentacion}): ${productoOriginal.cantidadUnidades || 0} -> ${nuevaCantidadUnidades}`);
                 }
+            } else {
+                 console.warn(`Producto original no encontrado en caché para ID: ${docId}. No se puede guardar el cambio.`);
             }
         });
 
@@ -548,10 +680,7 @@
             try {
                 await batch.commit();
                 _showModal('Éxito', 'Las cantidades de tu inventario se han actualizado correctamente.');
-                // No necesariamente volver al submenú, quizás el usuario quiere seguir ajustando
-                // showInventarioSubMenu();
-                // Opcional: Re-renderizar la lista actual para reflejar cambios (aunque el listener ya debería hacerlo)
-                // renderAjusteMasivoList();
+                // La lista se actualizará automáticamente gracias al listener `startMainInventarioListener`
             } catch (error) {
                 console.error("Error al guardar ajuste masivo:", error);
                 _showModal('Error', 'Hubo un error al guardar los cambios.');
@@ -568,7 +697,13 @@
             _showModal('Acceso Denegado', 'Solo los administradores pueden modificar datos maestros.');
             return;
         }
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showModificarDatosView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -603,13 +738,15 @@
                         </div>
                         <div class="mt-8 flex flex-col sm:flex-row gap-4">
                             <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-                            {/* El botón de eliminar todos se movió a data.js */}
+                            {/* Botón eliminar todos los datos maestros */}
+                            <button id="deleteAllDatosMaestrosBtn" class="w-full px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Eliminar Todos los Datos Maestros</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        document.getElementById('deleteAllDatosMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros); // Listener añadido
         // Renderizar listas del admin actual
         renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
         renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
@@ -623,6 +760,8 @@
     function renderDataListForEditing(collectionName, containerId, itemName) {
         const container = document.getElementById(containerId);
         if (!container) return;
+        container.innerHTML = `<p class="text-gray-500 text-sm p-2">Cargando ${itemName.toLowerCase()}s...</p>`; // Loading state
+
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
         const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             // Ordenar alfabéticamente por nombre
@@ -635,9 +774,9 @@
                 <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-200">
                     <span class="text-gray-800 text-sm flex-grow mr-2">${item.name}</span>
                     <div class="flex-shrink-0 space-x-1"> {/* Contenedor para botones */}
-                        {/* Botón Editar (opcional) */}
+                        {/* No implementar edición aquí por simplicidad, se puede añadir luego */}
                         {/* <button onclick="window.inventarioModule.handleEditDataItem('${collectionName}', '${item.id}', '${item.name}', '${itemName}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">E</button> */}
-                        <button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}', '${item.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">X</button>
+                        <button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}', '${item.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" title="Eliminar">X</button>
                     </div>
                 </div>
             `).join('');
@@ -674,11 +813,12 @@
                     input.focus();
                     return false; // Indicar al modal que no se cierre
                 }
+                const newNameUpper = newName.toUpperCase(); // Normalizar a mayúsculas
 
                 try {
                     const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
                     // Verificar duplicados (insensible a mayúsculas/minúsculas)
-                    const q = _query(collectionRef, _where("name", "==", newName.toUpperCase())); // Normalizar a mayúsculas para comparación
+                    const q = _query(collectionRef, _where("name", "==", newNameUpper)); // Comparar con mayúsculas
                     const querySnapshot = await _getDocs(q);
 
                     if (!querySnapshot.empty) {
@@ -688,7 +828,13 @@
                     }
 
                     // Agregar la nueva categoría para el admin
-                    const newItemData = { name: newName.toUpperCase() }; // Guardar en mayúsculas
+                    const newItemData = { name: newNameUpper }; // Guardar en mayúsculas
+                     // Añadir orden inicial si es segmento (para evitar problemas al ordenar)
+                     if (collectionName === 'segmentos') {
+                         const currentSegmentsSnapshot = await _getDocs(collectionRef);
+                         const maxOrder = currentSegmentsSnapshot.docs.reduce((max, doc) => Math.max(max, doc.data().orden ?? -1), -1);
+                         newItemData.orden = maxOrder + 1;
+                     }
                     const docRef = await _addDoc(collectionRef, newItemData);
 
                     // Propagar a otros usuarios
@@ -696,10 +842,13 @@
                          _showModal('Progreso', 'Propagando nueva categoría...');
                          // Pasar ID y datos del nuevo documento
                         await window.adminModule.propagateCategoryChange(collectionName, docRef.id, newItemData);
-                        _showModal('Éxito', `"${newName.toUpperCase()}" agregado y propagado.`);
+                         _showModal('Éxito', `"${newNameUpper}" agregado y propagado.`); // Usar mayúsculas
                     } else {
-                         _showModal('Éxito', `"${newName.toUpperCase()}" agregado localmente (no se pudo propagar).`);
+                         _showModal('Éxito', `"${newNameUpper}" agregado localmente (no se pudo propagar).`); // Usar mayúsculas
                     }
+                     // Invalidar caché de orden si se agrega un segmento
+                     if (collectionName === 'segmentos') invalidateSegmentOrderCache();
+
                     return true; // Indicar al modal que se cierre
 
                 } catch (err) {
@@ -783,7 +932,13 @@
              _showModal('Acceso Denegado', 'Solo los administradores pueden agregar nuevos productos.');
              return;
         }
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showAgregarProductoView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-2xl"> {/* Ancho consistente */}
@@ -926,7 +1081,10 @@
 
             // Validar que al menos un precio sea requerido si su checkbox está marcado
              preciosContainer.querySelectorAll('input').forEach(input => {
-                 input.required = document.getElementById(`ventaPor${input.id.substring(6)}`).checked;
+                 // El input es requerido si el checkbox correspondiente está marcado
+                 const tipo = input.id.substring(6); // 'Und', 'Paq', 'Cj'
+                 const checkbox = document.getElementById(`ventaPor${tipo}`);
+                 input.required = checkbox ? checkbox.checked : false;
              });
         };
 
@@ -978,6 +1136,7 @@
 
         // Calcular precio por unidad (se usa en ventas si no hay precio específico)
         let precioFinalPorUnidad = 0;
+        // Priorizar Und, luego Paq, luego Cj para el cálculo base
         if (precios.und > 0) {
             precioFinalPorUnidad = precios.und;
         } else if (precios.paq > 0 && unidadesPorPaquete > 0) {
@@ -992,30 +1151,16 @@
         // --- CAMBIO: Manejo de Cantidad ---
         let cantidadTotalUnidades;
         if (isEditing) {
-            // En edición, leer del input específico (Und, Paq o Cj)
-            const cantidadCargadaInput = document.getElementById('cantidadCargada'); // Podría ser Cj o Paq
-            const cantidadUnidadesInput = document.getElementById('cantidadUnidades'); // Si es Und
-            const unidadCargadaSelect = document.getElementById('unidadCargada'); // Hidden select si es Cj o Paq
+            // En edición, LEEMOS la cantidad actual (solo lectura) y la MANTENEMOS.
+            // NO se usa ningún input editable de cantidad aquí.
+             const cantidadActualInput = document.getElementById('cantidadActual'); // El input readonly
+             cantidadTotalUnidades = cantidadActualInput ? (parseInt(cantidadActualInput.value, 10) || 0) : 0;
+             console.log("Editing product, preserving quantity:", cantidadTotalUnidades);
 
-            if (cantidadUnidadesInput) { // Si se edita en unidades
-                cantidadTotalUnidades = Math.max(0, parseInt(cantidadUnidadesInput.value, 10) || 0);
-            } else if (cantidadCargadaInput && unidadCargadaSelect) { // Si se edita en Cj o Paq
-                const cantidadCargada = Math.max(0, parseInt(cantidadCargadaInput.value, 10) || 0);
-                const unidadCargada = unidadCargadaSelect.value;
-                if (unidadCargada === 'paq') {
-                    cantidadTotalUnidades = cantidadCargada * unidadesPorPaquete;
-                } else if (unidadCargada === 'cj') {
-                    cantidadTotalUnidades = cantidadCargada * unidadesPorCaja;
-                } else { // Fallback a unidades si algo falla
-                    cantidadTotalUnidades = cantidadCargada;
-                }
-            } else { // Fallback si no se encuentran los inputs esperados
-                cantidadTotalUnidades = 0;
-                console.warn("No se pudo determinar la cantidad al editar.");
-            }
         } else {
             // Al agregar, la cantidad inicial siempre es 0
             cantidadTotalUnidades = 0;
+            console.log("Adding new product, initial quantity:", cantidadTotalUnidades);
         }
         // --- FIN CAMBIO ---
 
@@ -1057,7 +1202,7 @@
 
         const productoData = getProductoDataFromForm(false); // Obtener datos (false = no es edición)
 
-        // --- Validaciones ---
+        // --- Validaciones Mejoradas ---
         if (!productoData.rubro || !productoData.segmento || !productoData.marca || !productoData.presentacion) {
             _showModal('Error', 'Debes completar Rubro, Segmento, Marca y Presentación.');
             return;
@@ -1079,7 +1224,7 @@
          if (productoData.ventaPor.cj && productoData.precios.cj > 0) precioValidoIngresado = true;
          if (!precioValidoIngresado) {
               _showModal('Error', 'Debes ingresar al menos un precio válido (mayor a 0) correspondiente a la forma de venta seleccionada.');
-              // Enfocar el primer input de precio visible
+              // Enfocar el primer input de precio visible y requerido
               document.querySelector('#preciosContainer input[required]')?.focus();
               return;
          }
@@ -1088,18 +1233,13 @@
         _showModal('Progreso', 'Verificando y guardando producto...');
 
         try {
-            // Verificar duplicados en el inventario del admin
+            // Verificar duplicados en el inventario del admin (comparación exacta por ahora)
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const q = _query(inventarioRef,
                 _where("rubro", "==", productoData.rubro),
                 _where("segmento", "==", productoData.segmento),
                 _where("marca", "==", productoData.marca),
-                 // Comparación insensible a mayúsculas/minúsculas para presentación (requiere consulta adicional o normalización al guardar)
-                 // Por simplicidad, asumimos que la presentación se guarda normalizada (p.ej., mayúsculas) o comparamos exacto.
-                 // Para comparación exacta (sensible a mayúsculas):
                 _where("presentacion", "==", productoData.presentacion)
-                 // Para comparación insensible (más complejo, podría necesitar campo normalizado):
-                 // _where("presentacion_lower", "==", productoData.presentacion.toLowerCase()) // Si tuvieras ese campo
             );
             const querySnapshot = await _getDocs(q);
             if (!querySnapshot.empty) {
@@ -1107,13 +1247,14 @@
                 return; // Detener si es duplicado
             }
 
-            // Agregar el producto al inventario del admin
+            // Agregar el producto al inventario del admin (cantidadUnidades ya es 0)
             const docRef = await _addDoc(inventarioRef, productoData);
             const newProductId = docRef.id; // Obtener el ID del nuevo documento
 
             // Propagar el nuevo producto a otros usuarios
             if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
                  _showModal('Progreso', 'Propagando nuevo producto a otros usuarios...');
+                 // Pasar ID y datos (con cantidad 0)
                 await window.adminModule.propagateProductChange(newProductId, productoData);
                 _showModal('Éxito', 'Producto agregado y propagado correctamente.');
             } else {
@@ -1133,7 +1274,13 @@
      * Muestra la vista para modificar o eliminar un producto.
      */
     function showModifyDeleteView() {
-        _floatingControls.classList.add('hidden');
+         // --- INICIO CORRECCIÓN ---
+         if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("showModifyDeleteView: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1173,12 +1320,17 @@
      * Genera el HTML para los controles de filtro reutilizables.
      */
     function getFiltrosHTML(prefix) {
+        // Restaurar valores guardados
+         const currentSearch = _lastFilters.searchTerm || '';
+         const currentRubro = _lastFilters.rubro || '';
+         // Segmento y Marca se poblarán y seleccionarán dinámicamente
+
         return `
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-gray-50"> {/* Fondo ligero */}
-                <input type="text" id="${prefix}-search-input" placeholder="Buscar por Presentación, Marca, Segmento..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg text-sm" value="${_lastFilters.searchTerm}"> {/* Restaurar valor */}
+                <input type="text" id="${prefix}-search-input" placeholder="Buscar por Presentación, Marca, Segmento..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg text-sm" value="${currentSearch}"> {/* Restaurar valor */}
                 <div>
                     <label for="${prefix}-filter-rubro" class="block text-xs font-medium text-gray-600 mb-1">Rubro</label>
-                    <select id="${prefix}-filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select>
+                    <select id="${prefix}-filter-rubro" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> {/* El valor se restaura en setupFiltros */}
                 </div>
                  <div>
                     <label for="${prefix}-filter-segmento" class="block text-xs font-medium text-gray-600 mb-1">Segmento</label>
@@ -1237,10 +1389,10 @@
                  marcaFilter.disabled = true;
                  marcaFilter.value = currentMarcaValue; // Intentar restaurar/resetear
 
-                 // Solo habilitar si se seleccionó Rubro Y Segmento
-                 if (selectedRubro && selectedSegmento) {
+                 // Habilitar Marcas si se seleccionó Rubro (y opcionalmente Segmento)
+                 if (selectedRubro) {
                      const marcas = [...new Set(_inventarioCache
-                         .filter(p => p.rubro === selectedRubro && p.segmento === selectedSegmento && p.marca) // Filtrar por ambos y asegurar que marca exista
+                         .filter(p => p.rubro === selectedRubro && (!selectedSegmento || p.segmento === selectedSegmento) && p.marca) // Filtrar por rubro (y segmento si existe) y asegurar marca
                          .map(p => p.marca)
                      )].sort(); // Obtener marcas únicas y ordenar
 
@@ -1261,8 +1413,10 @@
              // Poblar y restaurar Segmento y Marca
              updateDependentFilters('init');
              // Llamar al renderCallback inicial después de restaurar filtros
-             renderCallback();
-        }, 150);
+             if (typeof renderCallback === 'function') {
+                 renderCallback();
+             }
+        }, 200); // Ligero aumento del delay
 
 
         // Función para aplicar y guardar filtros
@@ -1271,7 +1425,9 @@
             _lastFilters.rubro = rubroFilter.value || '';
             _lastFilters.segmento = segmentoFilter.value || '';
             _lastFilters.marca = marcaFilter.value || '';
-            renderCallback(); // Re-renderizar lista
+             if (typeof renderCallback === 'function') {
+                renderCallback(); // Re-renderizar lista
+             }
         };
 
         // Listeners para cambios
@@ -1360,7 +1516,7 @@
                 currentSegmento = segmento;
                 currentMarca = null;
                  // Fila de segmento sticky
-                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(spacing.8))] z-10">${currentSegmento}</td></tr>`;
+                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${currentSegmento}</td></tr>`; // Ajustar top y z-index
             }
             if (marca !== currentMarca) {
                 currentMarca = marca;
@@ -1376,20 +1532,22 @@
             let unitTypeStock = 'Und'; // Unidad para el tooltip
             let conversionFactorStock = 1; // Factor para el tooltip
 
-            if (ventaPor.cj && precios.cj !== undefined) {
+            // Priorizar Caja, luego Paquete, luego Und para mostrar PRECIO Y STOCK
+             if (ventaPor.cj) {
                  if (p.unidadesPorCaja) displayPresentacion += ` <span class="text-xs text-gray-500">(${p.unidadesPorCaja} und.)</span>`;
                  displayPrecio = `$${(precios.cj || 0).toFixed(2)}`;
-                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorCaja || 1))} Cj`;
+                 conversionFactorStock = Math.max(1, p.unidadesPorCaja || 1); // Asegurar > 0
+                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / conversionFactorStock)} Cj`;
                  unitTypeStock = 'Cj';
-                 conversionFactorStock = p.unidadesPorCaja || 1;
-            } else if (ventaPor.paq && precios.paq !== undefined) {
+            } else if (ventaPor.paq) {
                  if (p.unidadesPorPaquete) displayPresentacion += ` <span class="text-xs text-gray-500">(${p.unidadesPorPaquete} und.)</span>`;
                  displayPrecio = `$${(precios.paq || 0).toFixed(2)}`;
-                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / (p.unidadesPorPaquete || 1))} Paq`;
+                 conversionFactorStock = Math.max(1, p.unidadesPorPaquete || 1); // Asegurar > 0
+                 displayStock = `${Math.floor((p.cantidadUnidades || 0) / conversionFactorStock)} Paq`;
                  unitTypeStock = 'Paq';
-                 conversionFactorStock = p.unidadesPorPaquete || 1;
             } else { // Fallback a Und
                  displayPrecio = `$${(precios.und || 0).toFixed(2)}`;
+                 // conversionFactorStock y unitTypeStock ya son Und por defecto
             }
 
              // Tooltip con stock en unidades base
@@ -1430,8 +1588,13 @@
             return;
         }
 
-
-        _floatingControls.classList.add('hidden');
+        // --- INICIO CORRECCIÓN ---
+        if (_floatingControls) {
+            _floatingControls.classList.add('hidden');
+        } else {
+            console.warn("editProducto: floatingControls not available.");
+        }
+        // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-2xl"> {/* Ancho consistente */}
@@ -1596,13 +1759,19 @@
             updateDynamicInputs();
 
             // Poblar campos dinámicos (empaques y precios)
-            if (producto.ventaPor?.paq) document.getElementById('unidadesPorPaquete').value = producto.unidadesPorPaquete || 1;
-            if (producto.ventaPor?.cj) document.getElementById('unidadesPorCaja').value = producto.unidadesPorCaja || 1;
+            // Asegurar que los inputs existan antes de asignar valor
+            const undPaqInput = document.getElementById('unidadesPorPaquete');
+            if (undPaqInput && producto.ventaPor?.paq) undPaqInput.value = producto.unidadesPorPaquete || 1;
+            const undCjInput = document.getElementById('unidadesPorCaja');
+            if (undCjInput && producto.ventaPor?.cj) undCjInput.value = producto.unidadesPorCaja || 1;
 
              const preciosExistentes = producto.precios || { und: producto.precioPorUnidad || 0 }; // Usar objeto precios o fallback
-             if (document.getElementById('precioUnd')) document.getElementById('precioUnd').value = preciosExistentes.und || 0;
-             if (document.getElementById('precioPaq')) document.getElementById('precioPaq').value = preciosExistentes.paq || 0;
-             if (document.getElementById('precioCj')) document.getElementById('precioCj').value = preciosExistentes.cj || 0;
+             const precioUndInput = document.getElementById('precioUnd');
+             if (precioUndInput) precioUndInput.value = preciosExistentes.und || 0;
+             const precioPaqInput = document.getElementById('precioPaq');
+             if (precioPaqInput) precioPaqInput.value = preciosExistentes.paq || 0;
+             const precioCjInput = document.getElementById('precioCj');
+             if (precioCjInput) precioCjInput.value = preciosExistentes.cj || 0;
 
 
             // Poblar sección Maneja Vacío
@@ -1634,6 +1803,10 @@
 
         const updatedData = getProductoDataFromForm(true); // Obtener datos (true = es edición)
         const productoOriginal = _inventarioCache.find(p => p.id === productId);
+        if (!productoOriginal) {
+             _showModal('Error', 'No se encontró el producto original para comparar.');
+             return;
+        }
 
         // --- Validaciones (similares a agregar) ---
         if (!updatedData.rubro || !updatedData.segmento || !updatedData.marca || !updatedData.presentacion) {
@@ -1646,6 +1819,7 @@
         }
          if (updatedData.manejaVacios && !updatedData.tipoVacio) {
              _showModal('Error', 'Si el producto maneja vacío, debes seleccionar el tipo.');
+             document.getElementById('tipoVacioSelect')?.focus();
              return;
          }
          let precioValidoIngresado = false;
@@ -1654,11 +1828,12 @@
          if (updatedData.ventaPor.cj && updatedData.precios.cj > 0) precioValidoIngresado = true;
          if (!precioValidoIngresado) {
               _showModal('Error', 'Debes ingresar al menos un precio válido (> 0) para la forma de venta.');
+              document.querySelector('#preciosContainer input[required]')?.focus();
               return;
          }
 
-        // Mantener la cantidad de unidades original (no se edita aquí)
-        updatedData.cantidadUnidades = productoOriginal?.cantidadUnidades || 0;
+        // Mantener la cantidad de unidades original (ya está en updatedData por getProductoDataFromForm(true))
+        // updatedData.cantidadUnidades = productoOriginal?.cantidadUnidades || 0; // No es necesario si getProductoDataFromForm lo hace bien
 
         _showModal('Progreso', 'Guardando cambios para admin...');
 
@@ -1748,12 +1923,21 @@
                 // Propagar eliminación
                 if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
                      _showModal('Progreso', `Propagando eliminación de ${productIdsToDelete.length} productos...`);
+                     let propagationErrors = 0;
                      // Propagar la eliminación de cada producto individualmente
-                     // Esto podría ser lento si hay muchos productos. Considerar Cloud Function para eficiencia.
                      for (const productId of productIdsToDelete) {
-                         await window.adminModule.propagateProductChange(productId, null);
+                          try {
+                              await window.adminModule.propagateProductChange(productId, null);
+                          } catch (propError) {
+                              console.error(`Error propagating deletion for product ${productId}:`, propError);
+                              propagationErrors++;
+                          }
                      }
-                     _showModal('Éxito', 'Todos los productos han sido eliminados y la eliminación propagada.');
+                     if (propagationErrors > 0) {
+                          _showModal('Advertencia', `Todos los productos eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`);
+                     } else {
+                          _showModal('Éxito', 'Todos los productos han sido eliminados y la eliminación propagada.');
+                     }
                 } else {
                      _showModal('Éxito', 'Todos los productos eliminados localmente (no se pudo propagar).');
                 }
@@ -1772,38 +1956,73 @@
     async function handleDeleteAllDatosMaestros() {
          if (_userRole !== 'admin') return;
 
-         _showModal('Confirmación Extrema', `<p class="text-red-600 font-bold">¡ADVERTENCIA MAYOR!</p><p>¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Verifica que ningún producto los use. Esta acción se propagará y es irreversible.</p>`, async () => {
+         _showModal('Confirmar Borrado Datos Maestros', `<p class="text-red-600 font-bold">¡ADVERTENCIA MAYOR!</p><p>¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Verifica que ningún producto los use. Esta acción se propagará y es irreversible.</p>`, async () => {
             _showModal('Progreso', 'Eliminando datos maestros para admin...');
             try {
                 const collectionsToDelete = ['rubros', 'segmentos', 'marcas'];
-                const deletedIdsMap = { rubros: [], segmentos: [], marcas: [] }; // Para propagación
+                const deletedItemsMap = { rubros: [], segmentos: [], marcas: [] }; // Para propagación {id, name}
 
-                for (const collectionName of collectionsToDelete) {
-                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
-                    const snapshot = await _getDocs(collectionRef);
-                    if (!snapshot.empty) {
-                        const batch = _writeBatch(_db);
-                        snapshot.docs.forEach(doc => {
-                             batch.delete(doc.ref);
-                             deletedIdsMap[collectionName].push(doc.id); // Guardar ID para propagar
-                        });
-                        await batch.commit();
-                    }
+                // Verificar uso ANTES de eliminar
+                 _showModal('Progreso', 'Verificando uso de datos maestros...');
+                 let itemsInUse = [];
+                 const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
+                 const allProducts = inventarioSnapshot.docs.map(d => d.data());
+
+                 for (const colName of collectionsToDelete) {
+                     const field = colName === 'rubros' ? 'rubro' : (colName === 'segmentos' ? 'segmento' : 'marca');
+                     const catSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/${colName}`));
+                     catSnapshot.docs.forEach(doc => {
+                         const itemName = doc.data().name;
+                         if (allProducts.some(p => p[field] === itemName)) {
+                             itemsInUse.push(`'${itemName}' (${colName.slice(0,-1)})`);
+                         } else {
+                              deletedItemsMap[colName].push({ id: doc.id, name: itemName }); // Guardar para eliminar/propagar
+                         }
+                     });
+                 }
+
+                 if (itemsInUse.length > 0) {
+                      _showModal('Error', `No se pueden eliminar todos los datos maestros. Los siguientes están en uso: ${itemsInUse.join(', ')}. Reasigna o elimina los productos asociados primero.`);
+                      return;
+                 }
+
+                // Proceder con la eliminación
+                _showModal('Progreso', 'Eliminando datos maestros no usados para admin...');
+                const batchAdmin = _writeBatch(_db);
+                let adminDeleteCount = 0;
+                for (const colName in deletedItemsMap) {
+                    deletedItemsMap[colName].forEach(item => {
+                         const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/${colName}`, item.id);
+                         batchAdmin.delete(docRef);
+                         adminDeleteCount++;
+                    });
                 }
+                await batchAdmin.commit();
+                 console.log(`${adminDeleteCount} datos maestros eliminados para admin.`);
 
                  // Propagar eliminaciones
                  if (window.adminModule && typeof window.adminModule.propagateCategoryChange === 'function') {
                       _showModal('Progreso', 'Propagando eliminaciones de categorías...');
                       let propagatedCount = 0;
-                      for (const collectionName in deletedIdsMap) {
-                          for (const itemId of deletedIdsMap[collectionName]) {
-                              await window.adminModule.propagateCategoryChange(collectionName, itemId, null);
-                              propagatedCount++;
+                      let propagationErrors = 0;
+                      for (const colName in deletedItemsMap) {
+                          for (const item of deletedItemsMap[colName]) {
+                               try {
+                                   await window.adminModule.propagateCategoryChange(colName, item.id, null);
+                                   propagatedCount++;
+                               } catch (propError) {
+                                   console.error(`Error propagating deletion for ${colName}/${item.id} (${item.name}):`, propError);
+                                   propagationErrors++;
+                               }
                           }
                       }
-                      _showModal('Éxito', `Todos los datos maestros (${propagatedCount} items) han sido eliminados y la eliminación propagada.`);
+                      if (propagationErrors > 0) {
+                           _showModal('Advertencia', `Datos maestros eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`);
+                      } else {
+                           _showModal('Éxito', `Todos los datos maestros no usados (${propagatedCount} items) han sido eliminados y la eliminación propagada.`);
+                      }
                  } else {
-                      _showModal('Éxito', 'Todos los datos maestros eliminados localmente (no se pudo propagar).');
+                      _showModal('Éxito', 'Todos los datos maestros no usados eliminados localmente (no se pudo propagar).');
                  }
                   invalidateSegmentOrderCache(); // Limpiar caché de orden
 
@@ -1811,7 +2030,7 @@
                 console.error("Error al eliminar todos los datos maestros:", error);
                 _showModal('Error', `Hubo un error al eliminar los datos maestros: ${error.message}`);
             }
-        }, 'Sí, Eliminar Todo');
+        }, 'Sí, Eliminar No Usados');
     }
 
     // --- Exponer funciones públicas ---
@@ -1825,4 +2044,3 @@
     };
 
 })();
-
