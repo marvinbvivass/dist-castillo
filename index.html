@@ -11,10 +11,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Leaflet CSS for maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
-    <!-- PWA Manifest and Theme Color -->
     <meta name="theme-color" content="#ffffff"/>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
@@ -88,14 +86,10 @@
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col bg-gray-100"> <!-- Default body background -->
-    <div id="app" class="flex flex-col min-h-screen">
-        <!-- Main content area -->
+<body class="min-h-screen flex flex-col bg-gray-100"> <div id="app" class="flex flex-col min-h-screen">
         <main id="mainContent" class="flex-grow hidden">
-            <!-- Page content inserted dynamically -->
-        </main>
+            </main>
 
-        <!-- Login view area -->
         <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -107,8 +101,7 @@
                     <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                         Ingresar
                     </button>
-                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
-                </form>
+                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> </form>
                  <p class="mt-6 text-sm text-gray-800">
                     ¿No tienes una cuenta?
                     <button id="goToRegisterBtn" class="font-semibold text-blue-600 hover:underline">Regístrate aquí</button>
@@ -116,7 +109,6 @@
             </div>
         </main>
 
-        <!-- Registration view area -->
         <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
@@ -130,8 +122,7 @@
                     <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
                         Registrar
                     </button>
-                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
-                </form>
+                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> </form>
                 <p class="mt-6 text-sm text-gray-800">
                     ¿Ya tienes una cuenta?
                     <button id="goToLoginBtn" class="font-semibold text-blue-600 hover:underline">Inicia sesión</button>
@@ -140,15 +131,12 @@
         </main>
 
 
-        <!-- Modal container -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden animate-fade-in p-4">
             <div id="modalContent" class="bg-white p-6 md:p-8 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                <!-- Content injected dynamically -->
-            </div>
+                </div>
         </div>
 
 
-        <!-- Floating Controls -->
         <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-40 hidden">
              <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300"></span>
             <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center transform hover:scale-110" title="Cerrar Sesión">
@@ -159,10 +147,8 @@
         </div>
     </div>
 
-    <!-- Leaflet JS for maps -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Load module scripts -->
     <script src="data.js"></script>
     <script src="admin.js"></script>
     <script src="inventario.js"></script>
@@ -208,7 +194,7 @@
         const registerContent = document.getElementById('registerContent');
         const registerForm = document.getElementById('registerForm');
         const registerMessage = document.getElementById('registerMessage');
-        const floatingControls = document.getElementById('floating-controls');
+        const floatingControls = document.getElementById('floating-controls'); // Mantener la referencia
         const connectionStatusEl = document.getElementById('connectionStatus');
 
 
@@ -417,8 +403,14 @@
              const confirmPassword = document.getElementById('confirmPasswordInput').value;
              registerMessage.textContent = '';
 
-             if (password !== confirmPassword) { /* ... validation ... */ return; }
-             if (password.length < 6) { /* ... validation ... */ return; }
+             if (password !== confirmPassword) {
+                 registerMessage.textContent = 'Las contraseñas no coinciden.';
+                 return;
+             }
+             if (password.length < 6) {
+                 registerMessage.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+                 return;
+             }
 
              const registerButton = e.target.querySelector('button[type="submit"]');
              registerButton.disabled = true;
@@ -435,9 +427,16 @@
                      createdAt: new Date()
                  });
                  console.log("User document created in Firestore.");
+                 // El onAuthStateChanged se encargará de mostrar la vista principal
              } catch (error) {
                  console.error("Registration error:", error.code, error.message);
-                 /* ... handle specific errors ... */
+                 if (error.code === 'auth/email-already-in-use') {
+                     registerMessage.textContent = 'El correo electrónico ya está registrado.';
+                 } else if (error.code === 'auth/weak-password') {
+                     registerMessage.textContent = 'La contraseña es demasiado débil.';
+                 } else {
+                     registerMessage.textContent = `Error de registro: ${error.message}`;
+                 }
                   registerButton.disabled = false;
                   registerButton.textContent = 'Registrar';
              }
@@ -457,9 +456,16 @@
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 console.log("signInWithEmailAndPassword successful (waiting for onAuthStateChanged).");
+                 // No es necesario habilitar el botón aquí, onAuthStateChanged manejará la vista
             } catch (error) {
                 console.error("Login error:", error.code, error.message);
-                 /* ... handle specific errors ... */
+                 if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                     authMessage.textContent = 'Correo o contraseña incorrectos.';
+                 } else if (error.code === 'auth/invalid-email') {
+                     authMessage.textContent = 'El formato del correo es inválido.';
+                 } else {
+                     authMessage.textContent = `Error de inicio de sesión: ${error.message}`;
+                 }
                  loginButton.disabled = false;
                  loginButton.textContent = 'Ingresar';
             }
@@ -474,6 +480,7 @@
              try {
                  await signOut(auth);
                  console.log("User signed out successfully.");
+                 // onAuthStateChanged se encargará de mostrar la vista de login
              } catch (error) {
                  console.error("Logout error:", error);
                  window.isLoggingOut = false;
@@ -497,7 +504,13 @@
             console.log("Showing Login View");
             window.isLoggingOut = false;
             cleanupListeners();
-            floatingControls.classList.add('hidden');
+            // --- INICIO CORRECCIÓN ---
+            if (floatingControls) {
+                floatingControls.classList.add('hidden');
+            } else {
+                console.warn("floatingControls element not found when trying to hide in showLoginView");
+            }
+            // --- FIN CORRECCIÓN ---
             mainContent.classList.add('hidden');
             registerContent.classList.add('hidden');
             loginContent.classList.remove('hidden');
@@ -515,7 +528,13 @@
         /** Displays the registration view */
         function showRegisterView() {
             console.log("Showing Register View");
-            floatingControls.classList.add('hidden');
+             // --- INICIO CORRECCIÓN ---
+             if (floatingControls) {
+                floatingControls.classList.add('hidden');
+            } else {
+                console.warn("floatingControls element not found when trying to hide in showRegisterView");
+            }
+            // --- FIN CORRECCIÓN ---
             mainContent.classList.add('hidden');
             loginContent.classList.add('hidden');
             registerContent.classList.remove('hidden');
@@ -531,17 +550,15 @@
         /** Preloads essential data collections for offline use */
         async function preloadAllData() {
               const startTime = performance.now();
-              // --- CORRECTION: Remove config/obsequio from preload ---
               const collectionsToPreload = [
                   { path: `artifacts/${appId}/users/${userId}/inventario`, name: 'Inventario' },
                   { path: `artifacts/${appId}/users/${userId}/rubros`, name: 'Rubros' },
                   { path: `artifacts/${appId}/users/${userId}/segmentos`, name: 'Segmentos' },
                   { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
-                  // { path: `artifacts/${appId}/users/${userId}/config/obsequio`, name: 'Config Obsequio' } // REMOVED
+                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' }, // CORRECCIÓN: Usar Project ID
+                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' } // CORRECCIÓN: Usar Project ID
+                  // Config obsequio removida
               ];
-              // --- FIN CORRECTION ---
               console.log("Preloading data for offline use...");
               const results = await Promise.allSettled(
                   collectionsToPreload.map(col => getDocs(collection(db, col.path)).catch(err => {
@@ -549,7 +566,13 @@
                        return { failed: true, reason: err };
                   }))
               );
-              results.forEach((result, index) => { /* ... log preload results ... */ });
+              results.forEach((result, index) => {
+                  if (result.status === 'fulfilled' && !result.value.failed) {
+                       console.log(` - ${collectionsToPreload[index].name}: Preloaded successfully.`);
+                  } else if (result.status === 'rejected' || result.value.failed) {
+                       console.warn(` - ${collectionsToPreload[index].name}: Preload failed.`);
+                  }
+              });
               const endTime = performance.now();
               console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
         }
@@ -584,7 +607,13 @@
             registerContent.classList.add('hidden');
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando datos iniciales...</h2></div></div>`;
             mainContent.classList.remove('hidden');
-            floatingControls.classList.add('hidden');
+            // --- INICIO CORRECCIÓN ---
+            if (floatingControls) {
+                floatingControls.classList.add('hidden'); // Ocultar mientras carga
+            } else {
+                console.warn("floatingControls element not found when trying to hide in showMainView (loading state)");
+            }
+            // --- FIN CORRECCIÓN ---
 
             // Preload data
              console.log("Starting data preload...");
@@ -603,25 +632,46 @@
 
             // Initialize modules
              let initSuccess = true;
-             const modules = [ /* ... module list ... */ ];
-             modules.forEach(m => { /* ... initialize modules ... */ });
+             const modules = [
+                 { name: 'Data', init: window.initData },
+                 { name: 'Admin', init: window.initAdmin },
+                 { name: 'Inventario', init: window.initInventario },
+                 { name: 'Catalogo', init: window.initCatalogo },
+                 { name: 'Clientes', init: window.initClientes },
+                 { name: 'Ventas', init: window.initVentas },
+                 { name: 'Obsequios', init: window.initObsequios }
+             ];
+             modules.forEach(m => {
+                 if (typeof m.init === 'function') {
+                     try {
+                         m.init(dependencies);
+                         console.log(`${m.name} module initialized.`);
+                     } catch (e) {
+                         console.error(`Error initializing ${m.name} module:`, e);
+                         initSuccess = false;
+                     }
+                 } else {
+                     console.warn(`${m.name} module init function not found.`);
+                      // Considerar si esto debe marcar initSuccess como false
+                 }
+             });
 
             if (!initSuccess) {
-                 window.showModal("Error Crítico", "Componentes no inicializados. Recarga."); // Use window.showModal
+                 window.showModal("Error Crítico", "Uno o más componentes de la aplicación no pudieron inicializarse. Por favor, recarga la página."); // Use window.showModal
             } else {
                  console.log("Modules initialized. Showing main menu.");
-                 showMainMenu();
+                 showMainMenu(); // Esto mostrará los controles flotantes si floatingControls existe
             }
         }
 
         /** Displays the main menu buttons */
         window.showMainMenu = function() {
-            // ... (main menu logic - no changes needed for error handling) ...
             console.log("Showing Main Menu");
             cleanupListeners(); // Clean up previous listeners FIRST
 
             // Connection Status Listener
-            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/rubros`);
+            // --- CORRECCIÓN: Usar una colección que siempre exista para el usuario, como su propio inventario ---
+            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`); // Usar inventario del usuario
             const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
                  if (!connectionStatusEl) return;
                  const isOffline = snapshot.metadata.fromCache;
@@ -636,8 +686,15 @@
             });
             activeListeners.push(unsubscribeStatus);
 
-            floatingControls.classList.remove('hidden');
-            mainContent.classList.remove('hidden');
+            // --- INICIO CORRECCIÓN ---
+            // Mostrar los controles flotantes SOLO si el elemento existe
+            if (floatingControls) {
+                floatingControls.classList.remove('hidden');
+            } else {
+                console.error("floatingControls element not found when trying to show in showMainMenu. Controls will be missing.");
+            }
+            // --- FIN CORRECCIÓN ---
+            mainContent.classList.remove('hidden'); // Asegurar que el contenido principal sea visible
 
             const isAdmin = userRole === 'admin';
             mainContent.innerHTML = `
@@ -661,17 +718,36 @@
 
             const navigateTo = (viewFunction) => {
                 if (typeof viewFunction === 'function') {
-                    viewFunction();
-                } else { console.error("Navigation target is not a function:", viewFunction); }
+                    // --- INICIO CORRECCIÓN ---
+                    // Ocultar controles flotantes ANTES de navegar, si existen
+                    if (floatingControls) {
+                        floatingControls.classList.add('hidden');
+                    } else {
+                        console.warn("floatingControls not found before navigating to view. This might cause issues in the target view if it expects controls to be hidden.");
+                    }
+                    // --- FIN CORRECCIÓN ---
+                    try {
+                        viewFunction(); // Ejecutar la función de la vista
+                    } catch (navError) {
+                        console.error("Error navigating to view:", navError);
+                         window.showModal("Error de Navegación", `No se pudo abrir la sección solicitada: ${navError.message}`);
+                         // Mostrar menú principal de nuevo si falla la navegación
+                         showMainMenu();
+                    }
+                } else {
+                    console.error("Navigation target is not a function:", viewFunction);
+                    window.showModal("Error Interno", "La acción solicitada no está disponible.");
+                }
             };
 
+            // Asegurarse de que las funciones globales existan antes de añadir listeners
             document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
             document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
             document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
-            document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView));
+            document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); // Solo existe si !isAdmin
             document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
             document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
-            document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
+            document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); // Solo existe si isAdmin
         }
 
         // --- APP INITIALIZATION ---
@@ -691,19 +767,28 @@
 
 
             // Attempt to enable offline persistence
-            try { /* ... enable persistence ... */ } catch (err) { /* ... handle persistence error ... */ }
+            try {
+                await enableIndexedDbPersistence(db);
+                console.log("Offline persistence enabled.");
+            } catch (err) {
+                if (err.code == 'failed-precondition') {
+                    console.warn("Persistence failed: Multiple tabs open?");
+                } else if (err.code == 'unimplemented') {
+                    console.warn("Persistence failed: Browser not supported.");
+                } else {
+                     console.error("Persistence error:", err);
+                }
+            }
 
             // Central Authentication State Observer
              console.log("Attaching Auth listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners();
+                cleanupListeners(); // Limpiar listeners anteriores al cambiar estado
                 if (user) {
                     showMainView(user).catch(err => {
                          console.error("CRITICAL: Error during showMainView execution:", err);
-                         // --- CORRECTION: Use window.showModal ---
                          window.showModal("Error Crítico", "Ocurrió un error al cargar la aplicación principal. Intenta recargar.");
-                         // --- FIN CORRECTION ---
                     });
                 } else {
                     showLoginView();
@@ -727,10 +812,17 @@
             document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
 
             // Register service worker
-            if ('serviceWorker' in navigator) { /* ... register service worker ... */ }
-            else { console.log("Service Worker not supported."); }
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registration = await navigator.serviceWorker.register('./service-worker.js');
+                    console.log('Service Worker registered with scope:', registration.scope);
+                } catch (error) {
+                    console.error('Service Worker registration failed:', error);
+                }
+            } else {
+                console.log("Service Worker not supported.");
+            }
         });
     </script>
 </body>
 </html>
-
