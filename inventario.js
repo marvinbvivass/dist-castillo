@@ -38,10 +38,11 @@
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
 
-        if (!_floatingControls) {
-            console.warn("Inventario Init Warning: floatingControls not provided.");
-        }
-         console.log("Inventario module initialized.");
+        // Comentario eliminado: console.warn si floatingControls no está disponible
+        // if (!_floatingControls) {
+        //     console.warn("Inventario Init Warning: floatingControls not available.");
+        // }
+         // Comentario eliminado: console.log("Inventario module initialized.");
     };
 
     /**
@@ -51,7 +52,7 @@
         if (_inventarioListenerUnsubscribe) {
             try {
                 _inventarioListenerUnsubscribe(); // Detener listener anterior si existe
-            } catch(e) { console.warn("Error unsubscribing previous inventory listener:", e); }
+            } catch(e) { console.warn("Error unsubscribing previous inventory listener:", e); } // Mantener este warn
         }
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
@@ -60,17 +61,17 @@
                  try {
                      callback(); // Llama al callback para re-renderizar la vista actual
                  } catch (cbError) {
-                     console.error("Error executing inventory listener callback:", cbError);
+                     console.error("Error executing inventory listener callback:", cbError); // Mantener este error
                  }
             } else if (callback) {
-                 console.warn("Inventory listener callback provided is not a function:", callback);
+                 console.warn("Inventory listener callback provided is not a function:", callback); // Mantener este warn
             }
         }, (error) => {
-             console.error("Error en listener de inventario:", error);
+             console.error("Error en listener de inventario:", error); // Mantener este error
              if (window.isLoggingOut && error.code === 'permission-denied') {
-                 console.log("Listener de inventario detenido por cierre de sesión.");
+                 // Comentario eliminado: console.log("Listener de inventario detenido por cierre de sesión.");
              } else if (error.code !== 'cancelled') { // Ignorar errores de cancelación
-                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario en tiempo real. Revisa tu conexión.');
+                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario en tiempo real. Revisa tu conexión.'); // Mantener modal de error
              }
         });
         _activeListeners.push(_inventarioListenerUnsubscribe); // Añadir a la lista global para limpieza
@@ -90,7 +91,7 @@
             window.catalogoModule.invalidateCache();
         }
         // El módulo de Data lee directamente, no necesita invalidación activa aquí.
-         console.log("Segment order cache invalidated.");
+         // Comentario eliminado: console.log("Segment order cache invalidated.");
     }
 
     /**
@@ -101,9 +102,7 @@
         // --- INICIO CORRECCIÓN ---
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showInventarioSubMenu: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
@@ -112,7 +111,7 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Inventario</h1>
                         <div class="space-y-4">
-                            <!-- CORRECCIÓN: Comentarios eliminados -->
+                            {/* Comentarios HTML eliminados */}
                             <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Productos / ${isAdmin ? 'Modificar Def.' : 'Consultar Stock'}</button>
                             ${isAdmin ? `
                             <button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>
@@ -158,10 +157,10 @@
                 map[data.name] = (data.orden !== undefined && data.orden !== null) ? data.orden : 9999;
             });
             _segmentoOrderCache = map; // Guardar en caché
-             console.log("Segment order map loaded/cached:", _segmentoOrderCache);
+             // Comentario eliminado: console.log("Segment order map loaded/cached:", _segmentoOrderCache);
             return map;
         } catch (e) {
-            console.warn("No se pudo obtener el orden de los segmentos, se usará orden por defecto.", e);
+            console.warn("No se pudo obtener el orden de los segmentos, se usará orden por defecto.", e); // Mantener warn
             return {}; // Devolver objeto vacío en caso de error
         }
     }
@@ -171,15 +170,13 @@
      */
     function showOrdenarSegmentosView() {
         if (_userRole !== 'admin') {
-            _showModal('Acceso Denegado', 'Solo los administradores pueden ordenar segmentos.');
+            _showModal('Acceso Denegado', 'Solo los administradores pueden ordenar segmentos.'); // Mantener modal
             return;
         }
         // --- INICIO CORRECCIÓN ---
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showOrdenarSegmentosView: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -229,7 +226,8 @@
             // Inicializar orden si falta (Optimizado)
             const segmentsWithoutOrder = allSegments.filter(s => s.orden === undefined || s.orden === null);
             if (segmentsWithoutOrder.length > 0) {
-                 _showModal('Progreso', 'Asignando orden inicial a segmentos nuevos...'); // Usar modal de progreso
+                 // MODIFICACIÓN: No mostrar modal aquí, solo log
+                 console.log('Assigning initial order to new segments...');
                 const segmentsWithOrder = allSegments.filter(s => s.orden !== undefined && s.orden !== null);
                 const maxOrder = segmentsWithOrder.reduce((max, s) => Math.max(max, s.orden ?? -1), -1); // Considerar null/undefined
                 const batch = _writeBatch(_db);
@@ -243,13 +241,7 @@
                 });
                 await batch.commit();
                 allSegments = [...segmentsWithOrder, ...segmentsWithoutOrder]; // Recombinar
-                // Cerrar modal de progreso
-                const modalContainer = document.getElementById('modalContainer');
-                 const modalTitle = modalContainer?.querySelector('h3')?.textContent;
-                 if(modalContainer && modalTitle?.startsWith('Progreso')) {
-                      modalContainer.classList.add('hidden');
-                 }
-                console.log("Initial order assigned to new segments.");
+                console.log("Initial order assigned to new segments."); // Mantener log de finalización
             }
 
             // Filtrar si se seleccionó un rubro
@@ -284,7 +276,7 @@
             addDragAndDropHandlers(container); // Activar drag & drop
 
         } catch (error) {
-            console.error("Error al renderizar la lista de segmentos:", error);
+            console.error("Error al renderizar la lista de segmentos:", error); // Mantener error
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar los segmentos.</p>`;
         }
     }
@@ -404,14 +396,15 @@
             // Buscar si hay un mensaje indicando que no hay segmentos
              const noSegmentsMsg = document.querySelector('#segmentos-sortable-list p');
              if (noSegmentsMsg && noSegmentsMsg.textContent.includes('No hay segmentos')) {
-                 _showModal('Aviso', 'No hay segmentos visibles para guardar orden.');
+                 _showModal('Aviso', 'No hay segmentos visibles para guardar orden.'); // Mantener modal informativo
              } else {
-                  _showModal('Aviso', 'Lista de segmentos no cargada o vacía.');
+                  _showModal('Aviso', 'Lista de segmentos no cargada o vacía.'); // Mantener modal informativo
              }
             return;
         }
 
-        _showModal('Progreso', 'Guardando nuevo orden para admin...');
+        // MODIFICACIÓN: Mostrar modal solo si hay cambios reales
+        // _showModal('Progreso', 'Guardando nuevo orden para admin...'); // Quitar modal inicial
 
         const batch = _writeBatch(_db);
         const orderedIds = []; // Guardar IDs en el orden visual actual
@@ -436,9 +429,12 @@
         });
 
          if (!hasChanges) {
-             _showModal('Aviso', 'No se detectaron cambios en el orden.');
+             _showModal('Aviso', 'No se detectaron cambios en el orden.'); // Mantener modal informativo
              return;
          }
+
+        // Mostrar modal de progreso AHORA, solo si hay cambios
+        _showModal('Progreso', 'Guardando nuevo orden para admin...');
 
         try {
             await batch.commit(); // Guardar cambios para el admin
@@ -446,21 +442,21 @@
 
             // Propagar el orden a otros usuarios
              if (window.adminModule && typeof window.adminModule.propagateCategoryOrderChange === 'function') {
-                  _showModal('Progreso', 'Propagando orden a otros usuarios...');
+                  _showModal('Progreso', 'Propagando orden a otros usuarios...'); // Actualizar modal
                  // Pasar 'segmentos' y la lista de IDs ordenados
                  await window.adminModule.propagateCategoryOrderChange('segmentos', orderedIds);
              } else {
-                  console.warn("Función propagateCategoryOrderChange no encontrada en adminModule.");
-                  _showModal('Advertencia', 'Orden guardado localmente, pero no se pudo propagar a otros usuarios.');
+                  console.warn("Función propagateCategoryOrderChange no encontrada en adminModule."); // Mantener warn
+                  _showModal('Advertencia', 'Orden guardado localmente, pero no se pudo propagar a otros usuarios.'); // Mantener advertencia
                   // No retornar aquí, permitir que se muestre el éxito local
              }
 
 
-            _showModal('Éxito', 'El orden de los segmentos ha sido guardado y propagado.');
+            _showModal('Éxito', 'El orden de los segmentos ha sido guardado y propagado.'); // Mantener modal de éxito
             showInventarioSubMenu(); // Volver al submenú
         } catch (error) {
-            console.error("Error guardando/propagando el orden de los segmentos:", error);
-            _showModal('Error', `Hubo un error al guardar el nuevo orden: ${error.message}`);
+            console.error("Error guardando/propagando el orden de los segmentos:", error); // Mantener error
+            _showModal('Error', `Hubo un error al guardar el nuevo orden: ${error.message}`); // Mantener modal de error
         }
     }
 
@@ -472,9 +468,7 @@
          // --- INICIO CORRECCIÓN ---
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showAjusteMasivoView: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -618,9 +612,9 @@
              // Verificar si es porque no hay productos o por filtros
              const container = document.getElementById('ajusteListContainer');
              if (container && container.textContent.includes('No hay productos')) {
-                _showModal('Aviso', 'No hay productos que coincidan con los filtros para ajustar.');
+                _showModal('Aviso', 'No hay productos que coincidan con los filtros para ajustar.'); // Mantener modal
              } else {
-                 _showModal('Aviso', 'Lista de productos no cargada o vacía.');
+                 _showModal('Aviso', 'Lista de productos no cargada o vacía.'); // Mantener modal
              }
             return;
         }
@@ -642,7 +636,7 @@
             // Validar si el input está vacío o no es un número entero >= 0
             if (newValueInDisplayUnitsStr === '' || isNaN(newValueInDisplayUnits) || !Number.isInteger(newValueInDisplayUnits) || newValueInDisplayUnits < 0) {
                  if (newValueInDisplayUnitsStr !== '') { // Solo marcar error si no está vacío pero es inválido
-                     console.warn(`Valor inválido ingresado para ${productoOriginal?.presentacion}: ${newValueInDisplayUnitsStr}`);
+                     // Comentario eliminado: console.warn(`Valor inválido ingresado para ${productoOriginal?.presentacion}: ${newValueInDisplayUnitsStr}`);
                      input.classList.add('border-red-500', 'ring-1', 'ring-red-500');
                      invalidValues = true;
                  }
@@ -658,32 +652,32 @@
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
                     batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
                     changesCount++;
-                     console.log(`Updating ${docId} (${productoOriginal.presentacion}): ${productoOriginal.cantidadUnidades || 0} -> ${nuevaCantidadUnidades}`);
+                     // Comentario eliminado: console.log(`Updating ${docId} (${productoOriginal.presentacion}): ${productoOriginal.cantidadUnidades || 0} -> ${nuevaCantidadUnidades}`);
                 }
             } else {
-                 console.warn(`Producto original no encontrado en caché para ID: ${docId}. No se puede guardar el cambio.`);
+                 console.warn(`Producto original no encontrado en caché para ID: ${docId}. No se puede guardar el cambio.`); // Mantener warn
             }
         });
 
         if (invalidValues) {
-             _showModal('Error de Entrada', 'Se encontraron valores inválidos (no numéricos o negativos) en algunos campos. Por favor, corrígelos antes de guardar.');
+             _showModal('Error de Entrada', 'Se encontraron valores inválidos (no numéricos o negativos) en algunos campos. Por favor, corrígelos antes de guardar.'); // Mantener modal de error
              return; // No proceder si hay errores
         }
 
         if (changesCount === 0) {
-            _showModal('Aviso', 'No se detectaron cambios en las cantidades.');
+            _showModal('Aviso', 'No se detectaron cambios en las cantidades.'); // Mantener modal
             return;
         }
 
         _showModal('Confirmar Cambios', `Estás a punto de actualizar ${changesCount} producto(s) en tu inventario. ¿Deseas continuar?`, async () => {
-             _showModal('Progreso', 'Guardando cambios...');
+             // MODIFICACIÓN: No mostrar modal de progreso aquí, el _showModal lo cierra automáticamente al terminar
             try {
                 await batch.commit();
-                _showModal('Éxito', 'Las cantidades de tu inventario se han actualizado correctamente.');
+                _showModal('Éxito', 'Las cantidades de tu inventario se han actualizado correctamente.'); // Mantener modal de éxito
                 // La lista se actualizará automáticamente gracias al listener `startMainInventarioListener`
             } catch (error) {
-                console.error("Error al guardar ajuste masivo:", error);
-                _showModal('Error', 'Hubo un error al guardar los cambios.');
+                console.error("Error al guardar ajuste masivo:", error); // Mantener error
+                _showModal('Error', 'Hubo un error al guardar los cambios.'); // Mantener modal de error
             }
         });
     }
@@ -694,15 +688,13 @@
      */
     function showModificarDatosView() {
         if (_userRole !== 'admin') {
-            _showModal('Acceso Denegado', 'Solo los administradores pueden modificar datos maestros.');
+            _showModal('Acceso Denegado', 'Solo los administradores pueden modificar datos maestros.'); // Mantener modal
             return;
         }
         // --- INICIO CORRECCIÓN ---
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showModificarDatosView: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -781,7 +773,7 @@
                 </div>
             `).join('');
         }, (error) => {
-             console.error(`Error en listener de ${collectionName}:`, error);
+             console.error(`Error en listener de ${collectionName}:`, error); // Mantener error
              if (!window.isLoggingOut || error.code !== 'permission-denied') {
                   container.innerHTML = `<p class="text-red-500 text-center p-2">Error al cargar ${itemName.toLowerCase()}s.</p>`;
              }
@@ -839,12 +831,15 @@
 
                     // Propagar a otros usuarios
                     if (window.adminModule && typeof window.adminModule.propagateCategoryChange === 'function') {
-                         _showModal('Progreso', 'Propagando nueva categoría...');
+                         // MODIFICACIÓN: No mostrar modal aquí, solo log
+                         console.log('Propagating new category...');
                          // Pasar ID y datos del nuevo documento
                         await window.adminModule.propagateCategoryChange(collectionName, docRef.id, newItemData);
-                         _showModal('Éxito', `"${newNameUpper}" agregado y propagado.`); // Usar mayúsculas
+                         // MODIFICACIÓN: Mostrar éxito solo en consola
+                         console.log(`"${newNameUpper}" added and propagated.`);
                     } else {
-                         _showModal('Éxito', `"${newNameUpper}" agregado localmente (no se pudo propagar).`); // Usar mayúsculas
+                         // MODIFICACIÓN: Mostrar éxito solo en consola
+                         console.log(`"${newNameUpper}" added locally (propagation not available).`);
                     }
                      // Invalidar caché de orden si se agrega un segmento
                      if (collectionName === 'segmentos') invalidateSegmentOrderCache();
@@ -852,7 +847,7 @@
                     return true; // Indicar al modal que se cierre
 
                 } catch (err) {
-                    console.error(`Error al agregar ${itemName}:`, err);
+                    console.error(`Error al agregar ${itemName}:`, err); // Mantener error
                     messageP.textContent = 'Error al guardar.';
                     return false; // No cerrar modal
                 }
@@ -871,55 +866,63 @@
      */
     async function handleDeleteDataItem(collectionName, itemName, itemType, itemId) {
         if (_userRole !== 'admin') {
-            _showModal('Acceso Denegado', 'Esta función es solo para administradores.');
+            _showModal('Acceso Denegado', 'Esta función es solo para administradores.'); // Mantener modal
             return;
         }
 
         const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' };
         const fieldName = fieldMap[collectionName];
         if (!fieldName) {
-             _showModal('Error Interno', 'Tipo de dato maestro no reconocido.');
+             _showModal('Error Interno', 'Tipo de dato maestro no reconocido.'); // Mantener modal
              return;
         }
 
         // 1. Verificar uso en el inventario del ADMIN
-        _showModal('Progreso', `Verificando uso de "${itemName}"...`);
+        // MODIFICACIÓN: No mostrar modal de progreso aquí
+        console.log(`Verifying usage of "${itemName}"...`);
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         const q = _query(inventarioRef, _where(fieldName, "==", itemName));
         try {
             const usageSnapshot = await _getDocs(q);
             if (!usageSnapshot.empty) {
-                _showModal('Error al Eliminar', `No se puede eliminar ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s) en tu inventario. Reasigna o elimina esos productos primero.`);
+                _showModal('Error al Eliminar', `No se puede eliminar ${itemType.toLowerCase()} "${itemName}" porque está siendo utilizado por ${usageSnapshot.size} producto(s) en tu inventario. Reasigna o elimina esos productos primero.`); // Mantener modal de error
                 return; // Detener si está en uso
             }
 
             // 2. Confirmar eliminación
             _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar ${itemType.toLowerCase()} "${itemName}"? Esta acción se propagará a todos los usuarios y NO SE PUEDE DESHACER.`, async () => {
-                _showModal('Progreso', `Eliminando "${itemName}" para admin...`);
+                // MODIFICACIÓN: No mostrar modal de progreso
+                console.log(`Deleting "${itemName}" for admin...`);
                  try {
                      // 3. Eliminar para el admin
                      await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemId));
 
                      // 4. Propagar eliminación a otros usuarios
                      if (window.adminModule && typeof window.adminModule.propagateCategoryChange === 'function') {
-                          _showModal('Progreso', 'Propagando eliminación a otros usuarios...');
+                          // MODIFICACIÓN: No mostrar modal de progreso
+                          console.log('Propagating deletion to other users...');
                          // Pasar null como datos para indicar eliminación
                          await window.adminModule.propagateCategoryChange(collectionName, itemId, null);
-                         _showModal('Éxito', `${itemType} "${itemName}" eliminado y propagado.`);
+                         // MODIFICACIÓN: Mostrar éxito solo en consola
+                         console.log(`${itemType} "${itemName}" deleted and propagated.`);
                      } else {
-                          _showModal('Advertencia', 'Eliminado localmente, pero no se pudo propagar automáticamente. Otros usuarios podrían seguir viéndolo.');
+                          // MODIFICACIÓN: Mostrar advertencia solo en consola
+                          console.warn('Deleted locally, but propagation not available.');
                      }
                       // Invalidar caché relevante si aplica (p.ej., segmentos)
                      if (collectionName === 'segmentos') invalidateSegmentOrderCache();
 
+                     // MODIFICACIÓN: Mostrar modal de éxito al final
+                     _showModal('Éxito', `${itemType} "${itemName}" eliminado.`);
+
                  } catch (deleteError) {
-                      console.error(`Error al eliminar/propagar ${itemName}:`, deleteError);
-                      _showModal('Error', `Ocurrió un error durante la eliminación: ${deleteError.message}`);
+                      console.error(`Error al eliminar/propagar ${itemName}:`, deleteError); // Mantener error
+                      _showModal('Error', `Ocurrió un error durante la eliminación: ${deleteError.message}`); // Mantener modal de error
                  }
             }, 'Sí, Eliminar'); // Botón de confirmación
 
         } catch (error) {
-            _showModal('Error', `Ocurrió un error al verificar el uso del item: ${error.message}`);
+            _showModal('Error', `Ocurrió un error al verificar el uso del item: ${error.message}`); // Mantener modal de error
         }
     }
 
@@ -929,15 +932,13 @@
      */
     function showAgregarProductoView() {
         if (_userRole !== 'admin') {
-             _showModal('Acceso Denegado', 'Solo los administradores pueden agregar nuevos productos.');
+             _showModal('Acceso Denegado', 'Solo los administradores pueden agregar nuevos productos.'); // Mantener modal
              return;
         }
         // --- INICIO CORRECCIÓN ---
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showAgregarProductoView: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1155,12 +1156,12 @@
             // NO se usa ningún input editable de cantidad aquí.
              const cantidadActualInput = document.getElementById('cantidadActual'); // El input readonly
              cantidadTotalUnidades = cantidadActualInput ? (parseInt(cantidadActualInput.value, 10) || 0) : 0;
-             console.log("Editing product, preserving quantity:", cantidadTotalUnidades);
+             // Comentario eliminado: console.log("Editing product, preserving quantity:", cantidadTotalUnidades);
 
         } else {
             // Al agregar, la cantidad inicial siempre es 0
             cantidadTotalUnidades = 0;
-            console.log("Adding new product, initial quantity:", cantidadTotalUnidades);
+            // Comentario eliminado: console.log("Adding new product, initial quantity:", cantidadTotalUnidades);
         }
         // --- FIN CAMBIO ---
 
@@ -1204,16 +1205,16 @@
 
         // --- Validaciones Mejoradas ---
         if (!productoData.rubro || !productoData.segmento || !productoData.marca || !productoData.presentacion) {
-            _showModal('Error', 'Debes completar Rubro, Segmento, Marca y Presentación.');
+            _showModal('Error', 'Debes completar Rubro, Segmento, Marca y Presentación.'); // Mantener modal
             return;
         }
         if (!productoData.ventaPor.und && !productoData.ventaPor.paq && !productoData.ventaPor.cj) {
-            _showModal('Error', 'Debes seleccionar al menos una forma de venta (Und, Paq, o Cj).');
+            _showModal('Error', 'Debes seleccionar al menos una forma de venta (Und, Paq, o Cj).'); // Mantener modal
             return;
         }
          // Validar que se haya seleccionado un tipo de vacío si "Maneja Vacío" está marcado
          if (productoData.manejaVacios && !productoData.tipoVacio) {
-             _showModal('Error', 'Si el producto maneja vacío, debes seleccionar el tipo de vacío.');
+             _showModal('Error', 'Si el producto maneja vacío, debes seleccionar el tipo de vacío.'); // Mantener modal
              document.getElementById('tipoVacioSelect')?.focus(); // Enfocar el select problemático
              return;
          }
@@ -1223,14 +1224,15 @@
          if (productoData.ventaPor.paq && productoData.precios.paq > 0) precioValidoIngresado = true;
          if (productoData.ventaPor.cj && productoData.precios.cj > 0) precioValidoIngresado = true;
          if (!precioValidoIngresado) {
-              _showModal('Error', 'Debes ingresar al menos un precio válido (mayor a 0) correspondiente a la forma de venta seleccionada.');
+              _showModal('Error', 'Debes ingresar al menos un precio válido (mayor a 0) correspondiente a la forma de venta seleccionada.'); // Mantener modal
               // Enfocar el primer input de precio visible y requerido
               document.querySelector('#preciosContainer input[required]')?.focus();
               return;
          }
 
 
-        _showModal('Progreso', 'Verificando y guardando producto...');
+        // MODIFICACIÓN: No mostrar modal de progreso aquí
+        console.log('Verifying and saving product...');
 
         try {
             // Verificar duplicados en el inventario del admin (comparación exacta por ahora)
@@ -1243,7 +1245,7 @@
             );
             const querySnapshot = await _getDocs(q);
             if (!querySnapshot.empty) {
-                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.');
+                _showModal('Producto Duplicado', 'Ya existe un producto con el mismo Rubro, Segmento, Marca y Presentación.'); // Mantener modal
                 return; // Detener si es duplicado
             }
 
@@ -1253,19 +1255,24 @@
 
             // Propagar el nuevo producto a otros usuarios
             if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
-                 _showModal('Progreso', 'Propagando nuevo producto a otros usuarios...');
+                 // MODIFICACIÓN: No mostrar modal de progreso
+                 console.log('Propagating new product to other users...');
                  // Pasar ID y datos (con cantidad 0)
                 await window.adminModule.propagateProductChange(newProductId, productoData);
-                _showModal('Éxito', 'Producto agregado y propagado correctamente.');
+                 // MODIFICACIÓN: Mostrar éxito solo en consola
+                 console.log('Product added and propagated successfully.');
             } else {
-                 _showModal('Éxito', 'Producto agregado localmente (no se pudo propagar).');
+                 // MODIFICACIÓN: Mostrar éxito solo en consola
+                 console.log('Product added locally (propagation not available).');
             }
 
+            // MODIFICACIÓN: Mostrar modal de éxito al final
+            _showModal('Éxito', 'Producto agregado correctamente.');
 
             showAgregarProductoView(); // Limpiar y resetear formulario para agregar otro
         } catch (err) {
-            console.error("Error al agregar producto:", err);
-            _showModal('Error', `Hubo un error al guardar el producto: ${err.message}`);
+            console.error("Error al agregar producto:", err); // Mantener error
+            _showModal('Error', `Hubo un error al guardar el producto: ${err.message}`); // Mantener modal de error
         }
     }
 
@@ -1277,9 +1284,7 @@
          // --- INICIO CORRECCIÓN ---
          if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("showModifyDeleteView: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
@@ -1579,21 +1584,19 @@
      */
     function editProducto(productId) {
         if (_userRole !== 'admin') {
-             _showModal('Acceso Denegado', 'Solo los administradores pueden editar la definición de productos.');
+             _showModal('Acceso Denegado', 'Solo los administradores pueden editar la definición de productos.'); // Mantener modal
              return;
         }
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) {
-            _showModal('Error', 'Producto no encontrado.');
+            _showModal('Error', 'Producto no encontrado.'); // Mantener modal
             return;
         }
 
         // --- INICIO CORRECCIÓN ---
         if (_floatingControls) {
             _floatingControls.classList.add('hidden');
-        } else {
-            console.warn("editProducto: floatingControls not available.");
-        }
+        } // Comentario eliminado: console.warn si floatingControls no está disponible
         // --- FIN CORRECCIÓN ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1804,21 +1807,21 @@
         const updatedData = getProductoDataFromForm(true); // Obtener datos (true = es edición)
         const productoOriginal = _inventarioCache.find(p => p.id === productId);
         if (!productoOriginal) {
-             _showModal('Error', 'No se encontró el producto original para comparar.');
+             _showModal('Error', 'No se encontró el producto original para comparar.'); // Mantener modal
              return;
         }
 
         // --- Validaciones (similares a agregar) ---
         if (!updatedData.rubro || !updatedData.segmento || !updatedData.marca || !updatedData.presentacion) {
-            _showModal('Error', 'Debes completar Rubro, Segmento, Marca y Presentación.');
+            _showModal('Error', 'Debes completar Rubro, Segmento, Marca y Presentación.'); // Mantener modal
             return;
         }
         if (!updatedData.ventaPor.und && !updatedData.ventaPor.paq && !updatedData.ventaPor.cj) {
-            _showModal('Error', 'Debes seleccionar al menos una forma de venta.');
+            _showModal('Error', 'Debes seleccionar al menos una forma de venta.'); // Mantener modal
             return;
         }
          if (updatedData.manejaVacios && !updatedData.tipoVacio) {
-             _showModal('Error', 'Si el producto maneja vacío, debes seleccionar el tipo.');
+             _showModal('Error', 'Si el producto maneja vacío, debes seleccionar el tipo.'); // Mantener modal
              document.getElementById('tipoVacioSelect')?.focus();
              return;
          }
@@ -1827,7 +1830,7 @@
          if (updatedData.ventaPor.paq && updatedData.precios.paq > 0) precioValidoIngresado = true;
          if (updatedData.ventaPor.cj && updatedData.precios.cj > 0) precioValidoIngresado = true;
          if (!precioValidoIngresado) {
-              _showModal('Error', 'Debes ingresar al menos un precio válido (> 0) para la forma de venta.');
+              _showModal('Error', 'Debes ingresar al menos un precio válido (> 0) para la forma de venta.'); // Mantener modal
               document.querySelector('#preciosContainer input[required]')?.focus();
               return;
          }
@@ -1835,7 +1838,8 @@
         // Mantener la cantidad de unidades original (ya está en updatedData por getProductoDataFromForm(true))
         // updatedData.cantidadUnidades = productoOriginal?.cantidadUnidades || 0; // No es necesario si getProductoDataFromForm lo hace bien
 
-        _showModal('Progreso', 'Guardando cambios para admin...');
+        // MODIFICACIÓN: No mostrar modal de progreso aquí
+        console.log('Saving changes for admin...');
 
         try {
             // Actualizar el producto para el admin
@@ -1843,18 +1847,24 @@
 
             // Propagar la actualización a otros usuarios
             if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
-                 _showModal('Progreso', 'Propagando cambios a otros usuarios...');
+                 // MODIFICACIÓN: No mostrar modal de progreso
+                 console.log('Propagating changes to other users...');
                 // Pasar el ID y los datos actualizados (que incluyen la cantidad original preservada)
                 await window.adminModule.propagateProductChange(productId, updatedData);
-                _showModal('Éxito', 'Producto modificado y propagado exitosamente.');
+                 // MODIFICACIÓN: Mostrar éxito solo en consola
+                 console.log('Product modified and propagated successfully.');
             } else {
-                 _showModal('Éxito', 'Producto modificado localmente (no se pudo propagar).');
+                 // MODIFICACIÓN: Mostrar éxito solo en consola
+                 console.log('Product modified locally (propagation not available).');
             }
+
+            // MODIFICACIÓN: Mostrar modal de éxito al final
+            _showModal('Éxito', 'Producto modificado exitosamente.');
 
             showModifyDeleteView(); // Volver a la lista
         } catch (err) {
-            console.error("Error al modificar producto:", err);
-            _showModal('Error', `Hubo un error al modificar el producto: ${err.message}`);
+            console.error("Error al modificar producto:", err); // Mantener error
+            _showModal('Error', `Hubo un error al modificar el producto: ${err.message}`); // Mantener modal de error
         }
     }
 
@@ -1864,35 +1874,41 @@
      */
     function deleteProducto(productId) {
         if (_userRole !== 'admin') {
-             _showModal('Acceso Denegado', 'Solo los administradores pueden eliminar productos.');
+             _showModal('Acceso Denegado', 'Solo los administradores pueden eliminar productos.'); // Mantener modal
              return;
         }
         const producto = _inventarioCache.find(p => p.id === productId);
         if (!producto) {
-            _showModal('Error', 'Producto no encontrado.');
+            _showModal('Error', 'Producto no encontrado.'); // Mantener modal
             return;
         }
 
         _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar "${producto.presentacion}"? Esta acción se propagará a todos los usuarios y NO SE PUEDE DESHACER.`, async () => {
-             _showModal('Progreso', `Eliminando "${producto.presentacion}" para admin...`);
+             // MODIFICACIÓN: No mostrar modal de progreso
+             console.log(`Deleting "${producto.presentacion}" for admin...`);
             try {
                 // Eliminar para el admin
                 await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId));
 
                 // Propagar eliminación
                 if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
-                     _showModal('Progreso', 'Propagando eliminación a otros usuarios...');
+                     // MODIFICACIÓN: No mostrar modal de progreso
+                     console.log('Propagating deletion to other users...');
                      // Pasar ID y null para indicar eliminación
                     await window.adminModule.propagateProductChange(productId, null);
-                    _showModal('Éxito', 'Producto eliminado y propagado correctamente.');
+                     // MODIFICACIÓN: Mostrar éxito solo en consola
+                     console.log('Product deleted and propagated successfully.');
                 } else {
-                     _showModal('Éxito', 'Producto eliminado localmente (no se pudo propagar).');
+                     // MODIFICACIÓN: Mostrar éxito solo en consola
+                     console.log('Product deleted locally (propagation not available).');
                 }
+                // MODIFICACIÓN: Mostrar modal de éxito al final
+                _showModal('Éxito', 'Producto eliminado correctamente.');
                 // La lista se actualizará automáticamente por el listener onSnapshot en showModifyDeleteView
 
             } catch (e) {
-                 console.error("Error al eliminar producto:", e);
-                 _showModal('Error', `Hubo un error al eliminar el producto: ${e.message}`);
+                 console.error("Error al eliminar producto:", e); // Mantener error
+                 _showModal('Error', `Hubo un error al eliminar el producto: ${e.message}`); // Mantener modal de error
             }
         }, 'Sí, Eliminar');
     };
@@ -1904,12 +1920,13 @@
         if (_userRole !== 'admin') return;
 
         _showModal('Confirmación Extrema', `<p class="text-red-600 font-bold">¡ADVERTENCIA MAYOR!</p><p>¿Estás SEGURO de que quieres eliminar TODOS los productos del inventario? Esta acción se propagará a todos los usuarios y es irreversible.</p>`, async () => {
-            _showModal('Progreso', 'Eliminando productos para admin...');
+            // MODIFICACIÓN: No mostrar modal de progreso aquí
+            console.log('Deleting all products for admin...');
             try {
                 const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
                 const snapshot = await _getDocs(collectionRef);
                 if (snapshot.empty) {
-                    _showModal('Aviso', 'No hay productos para eliminar.');
+                    _showModal('Aviso', 'No hay productos para eliminar.'); // Mantener modal
                     return;
                 }
 
@@ -1922,30 +1939,31 @@
 
                 // Propagar eliminación
                 if (window.adminModule && typeof window.adminModule.propagateProductChange === 'function') {
-                     _showModal('Progreso', `Propagando eliminación de ${productIdsToDelete.length} productos...`);
+                     // MODIFICACIÓN: No mostrar modal de progreso aquí, solo log
+                     console.log(`Propagating deletion of ${productIdsToDelete.length} products...`);
                      let propagationErrors = 0;
                      // Propagar la eliminación de cada producto individualmente
                      for (const productId of productIdsToDelete) {
                           try {
                               await window.adminModule.propagateProductChange(productId, null);
                           } catch (propError) {
-                              console.error(`Error propagating deletion for product ${productId}:`, propError);
+                              console.error(`Error propagating deletion for product ${productId}:`, propError); // Mantener error
                               propagationErrors++;
                           }
                      }
                      if (propagationErrors > 0) {
-                          _showModal('Advertencia', `Todos los productos eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`);
+                          _showModal('Advertencia', `Todos los productos eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`); // Mantener modal
                      } else {
-                          _showModal('Éxito', 'Todos los productos han sido eliminados y la eliminación propagada.');
+                          _showModal('Éxito', 'Todos los productos han sido eliminados y la eliminación propagada.'); // Mantener modal
                      }
                 } else {
-                     _showModal('Éxito', 'Todos los productos eliminados localmente (no se pudo propagar).');
+                     _showModal('Éxito', 'Todos los productos eliminados localmente (no se pudo propagar).'); // Mantener modal
                 }
 
 
             } catch (error) {
-                console.error("Error al eliminar todos los productos:", error);
-                _showModal('Error', `Hubo un error al eliminar los productos: ${error.message}`);
+                console.error("Error al eliminar todos los productos:", error); // Mantener error
+                _showModal('Error', `Hubo un error al eliminar los productos: ${error.message}`); // Mantener modal
             }
         }, 'Sí, Eliminar Todos');
     }
@@ -1957,13 +1975,15 @@
          if (_userRole !== 'admin') return;
 
          _showModal('Confirmar Borrado Datos Maestros', `<p class="text-red-600 font-bold">¡ADVERTENCIA MAYOR!</p><p>¿Estás SEGURO de que quieres eliminar TODOS los Rubros, Segmentos y Marcas? Verifica que ningún producto los use. Esta acción se propagará y es irreversible.</p>`, async () => {
-            _showModal('Progreso', 'Eliminando datos maestros para admin...');
+            // MODIFICACIÓN: No mostrar modal de progreso aquí
+            console.log('Deleting master data for admin...');
             try {
                 const collectionsToDelete = ['rubros', 'segmentos', 'marcas'];
                 const deletedItemsMap = { rubros: [], segmentos: [], marcas: [] }; // Para propagación {id, name}
 
                 // Verificar uso ANTES de eliminar
-                 _showModal('Progreso', 'Verificando uso de datos maestros...');
+                 // MODIFICACIÓN: No mostrar modal de progreso
+                 console.log('Verifying master data usage...');
                  let itemsInUse = [];
                  const inventarioSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
                  const allProducts = inventarioSnapshot.docs.map(d => d.data());
@@ -1982,12 +2002,13 @@
                  }
 
                  if (itemsInUse.length > 0) {
-                      _showModal('Error', `No se pueden eliminar todos los datos maestros. Los siguientes están en uso: ${itemsInUse.join(', ')}. Reasigna o elimina los productos asociados primero.`);
+                      _showModal('Error', `No se pueden eliminar todos los datos maestros. Los siguientes están en uso: ${itemsInUse.join(', ')}. Reasigna o elimina los productos asociados primero.`); // Mantener modal
                       return;
                  }
 
                 // Proceder con la eliminación
-                _showModal('Progreso', 'Eliminando datos maestros no usados para admin...');
+                // MODIFICACIÓN: No mostrar modal de progreso
+                console.log('Deleting unused master data for admin...');
                 const batchAdmin = _writeBatch(_db);
                 let adminDeleteCount = 0;
                 for (const colName in deletedItemsMap) {
@@ -1998,11 +2019,12 @@
                     });
                 }
                 await batchAdmin.commit();
-                 console.log(`${adminDeleteCount} datos maestros eliminados para admin.`);
+                 console.log(`${adminDeleteCount} master data items deleted for admin.`); // Mantener log
 
                  // Propagar eliminaciones
                  if (window.adminModule && typeof window.adminModule.propagateCategoryChange === 'function') {
-                      _showModal('Progreso', 'Propagando eliminaciones de categorías...');
+                      // MODIFICACIÓN: No mostrar modal de progreso
+                      console.log('Propagating category deletions...');
                       let propagatedCount = 0;
                       let propagationErrors = 0;
                       for (const colName in deletedItemsMap) {
@@ -2011,24 +2033,24 @@
                                    await window.adminModule.propagateCategoryChange(colName, item.id, null);
                                    propagatedCount++;
                                } catch (propError) {
-                                   console.error(`Error propagating deletion for ${colName}/${item.id} (${item.name}):`, propError);
+                                   console.error(`Error propagating deletion for ${colName}/${item.id} (${item.name}):`, propError); // Mantener error
                                    propagationErrors++;
                                }
                           }
                       }
                       if (propagationErrors > 0) {
-                           _showModal('Advertencia', `Datos maestros eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`);
+                           _showModal('Advertencia', `Datos maestros eliminados localmente, pero ${propagationErrors} eliminaciones no pudieron propagarse.`); // Mantener modal
                       } else {
-                           _showModal('Éxito', `Todos los datos maestros no usados (${propagatedCount} items) han sido eliminados y la eliminación propagada.`);
+                           _showModal('Éxito', `Todos los datos maestros no usados (${propagatedCount} items) han sido eliminados y la eliminación propagada.`); // Mantener modal
                       }
                  } else {
-                      _showModal('Éxito', 'Todos los datos maestros no usados eliminados localmente (no se pudo propagar).');
+                      _showModal('Éxito', 'Todos los datos maestros no usados eliminados localmente (no se pudo propagar).'); // Mantener modal
                  }
                   invalidateSegmentOrderCache(); // Limpiar caché de orden
 
             } catch (error) {
-                console.error("Error al eliminar todos los datos maestros:", error);
-                _showModal('Error', `Hubo un error al eliminar los datos maestros: ${error.message}`);
+                console.error("Error al eliminar todos los datos maestros:", error); // Mantener error
+                _showModal('Error', `Hubo un error al eliminar los datos maestros: ${error.message}`); // Mantener modal
             }
         }, 'Sí, Eliminar No Usados');
     }
