@@ -197,7 +197,7 @@
         let userId;
         let userRole = 'user';
         let activeListeners = [];
-        window.isLoggingOut = false;
+        window.isLoggingOut = false; // Flag to indicate logout process
 
         // DOM element references
         const mainContent = document.getElementById('mainContent');
@@ -253,14 +253,19 @@
                            const closeButton = document.getElementById('closeModalBtn'); // Get close button again
                            if(closeButton) closeButton.disabled = true;
                           try {
+                               // Await the onConfirm function if it's async
                                const shouldClose = await onConfirm();
+                               // Close modal only if onConfirm doesn't explicitly return false
                                if (shouldClose !== false) {
                                    closeModal();
                                }
+                               // If onConfirm returned false, the modal stays open,
+                               // and the finally block will re-enable buttons.
                           } catch(e) {
                               console.error("Error in modal onConfirm (triggerConfirmLogic):", e);
                                // Use window.showModal here as it's guaranteed to be global
                                window.showModal("Error", `Ocurrió un error: ${e.message}`);
+                               // Don't close modal on error, keep buttons disabled initially
                           } finally {
                               // Re-enable buttons only if modal is still visible
                               if (modalContainer && !modalContainer.classList.contains('hidden')) {
@@ -273,11 +278,10 @@
                               }
                           }
                       } else {
-                          // Only close modal if onConfirm doesn't return false explicitly
+                          // Non-async confirm logic (simple)
                           if(onConfirm() !== false) {
                             closeModal();
                           }
-                          // try { onConfirm(); } catch (e) { console.error("Error in modal onConfirm:", e); } // Already called
                       }
                  });
              }
@@ -463,6 +467,7 @@
                  const user = userCredential.user;
                  console.log("User created in Auth:", user.uid);
                  const userDocRef = doc(db, "users", user.uid);
+                 // Create user document with default role 'user'
                  await setDoc(userDocRef, {
                      email: user.email,
                      role: 'user', // Default role
@@ -535,18 +540,23 @@
         function cleanupListeners() {
             console.log(`Cleaning up ${activeListeners.length} active listener(s)...`);
             activeListeners.forEach(unsubscribe => {
-                try {
-                    unsubscribe();
-                } catch (e) { console.warn("Error unsubscribing listener:", e); }
+                if (typeof unsubscribe === 'function') {
+                    try {
+                        unsubscribe();
+                    } catch (e) { console.warn("Error unsubscribing listener:", e); }
+                } else {
+                     console.warn("Attempted to unsubscribe a non-function listener:", unsubscribe);
+                }
             });
-            activeListeners = [];
+            activeListeners = []; // Clear the array
+            console.log("Listeners cleaned up.");
         }
 
         /** Displays the login view */
         function showLoginView() {
             console.log("Showing Login View");
-            window.isLoggingOut = false; // Reset flag
-            cleanupListeners(); // Clean up any lingering listeners
+            window.isLoggingOut = false; // Reset flag (safe here as cleanup is done)
+            // **MODIFIED:** cleanupListeners() is called by onAuthStateChanged *before* this.
             if (floatingControls) {
                 floatingControls.classList.add('hidden');
             } else {
@@ -596,21 +606,40 @@
                   { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' }
+                  // Add config/obsequio if needed for offline access by users
+                   ,{ path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' }
               ];
               console.log("Preloading data for offline use...");
               // Usar Promise.allSettled para continuar incluso si alguna falla
               const results = await Promise.allSettled(
-                  collectionsToPreload.map(col => getDocs(collection(db, col.path)).catch(err => {
-                       // Log specific error but don't throw, let allSettled handle it
-                       console.warn(`Preload failed for ${col.name} (${col.path}):`, err.code || err.message);
-                       return { failed: true, reason: err }; // Return structured error info
-                  }))
+                  collectionsToPreload.map(col => {
+                      if (col.path.includes('/config/obsequio')) {
+                           // For single documents, use getDoc
+                           const docRef = doc(db, col.path); // Use _doc directly
+                           return getDoc(docRef).catch(err => {
+                               console.warn(`Preload failed for ${col.name} (${col.path}):`, err.code || err.message);
+                               return { failed: true, reason: err };
+                           });
+                      } else {
+                          // For collections, use getDocs
+                          return getDocs(collection(db, col.path)).catch(err => {
+                               console.warn(`Preload failed for ${col.name} (${col.path}):`, err.code || err.message);
+                               return { failed: true, reason: err };
+                          });
+                      }
+                  })
               );
               results.forEach((result, index) => {
                   const colInfo = collectionsToPreload[index];
-                  if (result.status === 'fulfilled' && !result.value.failed) {
+                  if (result.status === 'fulfilled' && result.value && !result.value.failed) {
                        // Optional: Log success details if needed
-                       // console.log(` - ${colInfo.name}: Preloaded successfully (${result.value.size} docs).`);
+                        if(result.value.docs) { // Check if it was a getDocs result
+                           // console.log(` - ${colInfo.name}: Preloaded successfully (${result.value.size} docs).`);
+                        } else if (result.value.exists && result.value.exists()) { // Check if it was a getDoc result and exists
+                             // console.log(` - ${colInfo.name}: Preloaded successfully (single doc).`);
+                        } else {
+                            // console.log(` - ${colInfo.name}: Preloaded successfully (single doc, but doesn't exist).`);
+                        }
                   } else {
                        // Log only the failed ones
                        console.warn(` - ${colInfo.name}: Preload failed.`);
@@ -857,7 +886,7 @@
              console.log("Attaching Auth listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners(); // Clean up listeners on any auth state change
+                cleanupListeners(); // **CRITICAL: Cleanup listeners here**
                 if (user) {
                     showMainView(user).catch(err => {
                          console.error("CRITICAL: Error during showMainView execution:", err);
@@ -866,7 +895,7 @@
                          // handleLogout();
                     });
                 } else {
-                    showLoginView();
+                    showLoginView(); // Show login view AFTER cleaning up listeners
                 }
             });
             console.log("Auth listener attached.");
