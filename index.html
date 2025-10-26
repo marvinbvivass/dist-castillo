@@ -176,7 +176,8 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // CORRECCIÓN: Importar startAfter además de limit
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase configuration
         const firebaseConfig = {
@@ -513,24 +514,21 @@
         }
 
 
-        /** Handles user logout */
+        /** Handles user logout - Simplified: just signs out */
         async function handleLogout() {
              console.log("Attempting logout...");
-             window.isLoggingOut = true;
-             cleanupListeners(); // Initiate listener cleanup
-
-             // Introduce a small delay before signing out
-             setTimeout(async () => {
-                 try {
-                     await signOut(auth);
-                     console.log("User signed out successfully.");
-                     // onAuthStateChanged will handle showing the login view automatically
-                 } catch (error) {
-                     console.error("Logout error:", error);
-                     window.isLoggingOut = false; // Reset flag on error
-                     window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
-                 }
-             }, 100); // Delay of 100 milliseconds (adjust if needed)
+             window.isLoggingOut = true; // Set flag
+             // Removed cleanupListeners() call from here
+             // Removed setTimeout
+             try {
+                 await signOut(auth);
+                 console.log("User signed out successfully.");
+                 // onAuthStateChanged will handle cleanup and showing the login view automatically
+             } catch (error) {
+                 console.error("Logout error:", error);
+                 window.isLoggingOut = false; // Reset flag on error
+                 window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
+             }
         }
 
         /** Detaches all active Firestore listeners */
@@ -672,12 +670,14 @@
 
 
             // Prepare dependencies
+            // CORRECCIÓN: Añadir startAfter al objeto dependencies
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners, userRole,
                 showMainMenu, // Pass showMainMenu itself
                 showModal: window.showModal, // Pass the globally defined showModal
                 showAddItemModal, populateDropdown,
-                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit,
+                // Firebase functions passed directly
+                collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter,
                 firebaseConfig: firebaseConfig // Pasar firebaseConfig
             };
 
@@ -709,7 +709,8 @@
              modules.forEach(m => {
                  if (typeof m.init === 'function') { // Check if the init property is a function
                      try {
-                         m.init(dependencies); // Call the init function
+                         // Pass the CORRECT dependencies object
+                         m.init(dependencies);
                          console.log(`${m.name} module initialized.`);
                      } catch (e) {
                          console.error(`Error initializing ${m.name} module:`, e);
