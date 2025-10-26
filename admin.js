@@ -55,7 +55,6 @@
                         <div class="space-y-4">
                             <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Gestión de Usuarios</button>
                             <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700">Configurar Obsequio</button>
-                            {/* Botón de Sincronización Manual Eliminado */}
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
                     </div>
@@ -340,10 +339,6 @@
             _showModal('Error', 'Hubo un error al guardar la configuración.');
         }
     }
-
-    // --- Funciones de Sincronización Manual Eliminadas ---
-    // showSyncDataView, handleAdminSync, mergeDataForUser, copyDataToUser
-    // ya no existen.
 
     async function _getAllOtherUserIds() {
         try {
