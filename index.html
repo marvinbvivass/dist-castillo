@@ -517,16 +517,20 @@
         async function handleLogout() {
              console.log("Attempting logout...");
              window.isLoggingOut = true;
-             cleanupListeners();
-             try {
-                 await signOut(auth);
-                 console.log("User signed out successfully.");
-                 // onAuthStateChanged will handle showing the login view
-             } catch (error) {
-                 console.error("Logout error:", error);
-                 window.isLoggingOut = false;
-                 window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo."); // Use window.showModal
-             }
+             cleanupListeners(); // Initiate listener cleanup
+
+             // Introduce a small delay before signing out
+             setTimeout(async () => {
+                 try {
+                     await signOut(auth);
+                     console.log("User signed out successfully.");
+                     // onAuthStateChanged will handle showing the login view automatically
+                 } catch (error) {
+                     console.error("Logout error:", error);
+                     window.isLoggingOut = false; // Reset flag on error
+                     window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
+                 }
+             }, 100); // Delay of 100 milliseconds (adjust if needed)
         }
 
         /** Detaches all active Firestore listeners */
