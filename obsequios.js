@@ -14,6 +14,8 @@
 
     // Constante para tipos de vacío (debe coincidir con inventario.js)
     const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    // Definir ruta pública para la configuración
+    const OBSEQUIO_CONFIG_PATH = `artifacts/${'ventas-9a210'}/public/data/config/obsequio`; // Usar ID de proyecto hardcoded
 
     /**
      * Inicializa el módulo de obsequios.
@@ -22,7 +24,7 @@
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole; // Aunque la vista es para 'user', guardamos por si acaso
-        _appId = dependencies.appId;
+        _appId = dependencies.appId; // Se obtiene appId aquí
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
@@ -125,37 +127,24 @@
     };
 
     /**
-     * Carga la configuración del producto de obsequio desde el admin.
-     * Busca al admin y luego lee su configuración.
+     * Carga la configuración del producto de obsequio desde la ruta pública.
      * También carga los datos del producto desde el inventario del usuario actual.
      */
     async function _loadObsequioProduct() {
         try {
-            // 1. Encontrar al administrador
-            const usersRef = _collection(_db, "users");
-            const qAdmin = _query(usersRef, _where("role", "==", "admin"));
-            const adminSnapshot = await _getDocs(qAdmin);
-            let adminUserId = null;
-            if (!adminSnapshot.empty) {
-                // Tomar el primer admin encontrado
-                adminUserId = adminSnapshot.docs[0].id;
-            } else {
-                throw new Error("No se encontró ningún usuario administrador.");
-            }
-
-            // 2. Leer la configuración del administrador
-            const configRef = _doc(_db, `artifacts/${_appId}/users/${adminUserId}/config/obsequio`);
+            // 1. Leer la configuración pública directamente
+            const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH); // Usa la ruta pública definida
             const configSnap = await _getDoc(configRef);
 
             if (configSnap.exists()) {
                 _obsequioConfig.productoId = configSnap.data().productoId;
 
-                // 3. Buscar el producto en el inventario del usuario actual
+                // 2. Buscar el producto en el inventario del usuario actual (esto permanece igual)
                 const productoDataEnInventario = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
 
                 if (productoDataEnInventario) {
                     _obsequioConfig.productoData = productoDataEnInventario;
-                     // Validar que maneje vacíos y sea por caja
+                     // Validar que maneje vacíos y sea por caja (esto permanece igual)
                      if (!productoDataEnInventario.manejaVacios || !productoDataEnInventario.ventaPor?.cj) {
                          throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no maneja vacíos o no se vende por caja.`);
                      }
@@ -163,10 +152,11 @@
                     throw new Error("El producto configurado como obsequio no se encontró en tu inventario.");
                 }
             } else {
-                throw new Error("No se ha configurado un producto de obsequio.");
+                throw new Error("No se ha configurado un producto de obsequio en la ruta pública.");
             }
 
         } catch (error) {
+            // Log original (línea ~170)
             console.error("Error al cargar configuración de obsequio:", error);
             _obsequioConfig = { productoId: null, productoData: null }; // Resetear si hay error
              // El mensaje de error se mostrará en showGestionObsequiosView
@@ -189,6 +179,7 @@
     /** Carga los clientes desde la colección pública */
     async function _loadClientes() {
         try {
+            // Usa el ID de proyecto hardcoded para la colección pública
             const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const snapshot = await _getDocs(clientesRef);
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -325,6 +316,7 @@
 
                 // Actualizar saldo de vacíos del cliente (si se recibieron)
                 if (vaciosRecibidos > 0) {
+                    // Usa el ID de proyecto hardcoded para la colección pública de clientes
                     const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _obsequioActual.cliente.id);
                     await _runTransaction(_db, async (transaction) => {
                         const clienteDoc = await transaction.get(clienteRef);
