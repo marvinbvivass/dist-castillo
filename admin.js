@@ -3,6 +3,10 @@
     let _collection, _getDocs, _doc, _setDoc, _getDoc, _writeBatch, _query, _where, _deleteDoc;
     let _obsequioProductId = null;
 
+    // Definir ruta pública para la configuración de obsequio
+    // Usar el ID de proyecto hardcoded 'ventas-9a210' para datos públicos
+    const OBSEQUIO_CONFIG_PATH = `artifacts/${'ventas-9a210'}/public/data/config/obsequio`;
+
     window.initAdmin = function(dependencies) {
         if (!dependencies.db || !dependencies.mainContent || !dependencies.showMainMenu || !dependencies.showModal) {
             console.error("Admin Init Error: Missing critical dependencies (db, mainContent, showMainMenu, showModal)");
@@ -11,7 +15,7 @@
         _db = dependencies.db;
         _userId = dependencies.userId;
         _userRole = dependencies.userRole;
-        _appId = dependencies.appId;
+        _appId = dependencies.appId; // AppId del entorno actual (puede ser diferente de 'ventas-9a210')
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
@@ -63,7 +67,6 @@
         `;
          document.getElementById('userManagementBtn').addEventListener('click', showUserManagementView);
          document.getElementById('obsequioConfigBtn').addEventListener('click', showObsequioConfigView);
-         // Listener para syncDataBtn eliminado
          document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
@@ -215,6 +218,8 @@
                 document.getElementById('profileApellido').value = data.apellido || '';
                 document.getElementById('profileCamion').value = data.camion || '';
             } else {
+                 // Si el documento no existe, crearlo con datos básicos
+                 const auth = getAuth(); // Asegúrate de tener acceso a 'auth'
                  await _setDoc(userDocRef, { email: auth.currentUser.email, role: 'user', createdAt: new Date() });
                  console.log("Documento de perfil de usuario creado.");
             }
@@ -283,11 +288,12 @@
         if (!selectElement) return;
 
         try {
+            // Cargar productos desde el inventario del ADMIN actual (_userId)
             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snapshot = await _getDocs(inventarioRef);
             const productosValidos = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() }))
-                .filter(p => p.manejaVacios && p.ventaPor?.cj)
+                .filter(p => p.manejaVacios && p.ventaPor?.cj) // Filtrar por manejo de vacíos y venta por caja
                 .sort((a, b) => `${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
 
             selectElement.innerHTML = '<option value="">-- Seleccione un Producto --</option>';
@@ -303,7 +309,8 @@
                  selectElement.disabled = false;
                   const saveBtn = document.getElementById('saveObsequioConfigBtn');
                   if (saveBtn) saveBtn.disabled = false;
-                 const configRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/obsequio`);
+                 // Leer la configuración actual DESDE LA RUTA PÚBLICA
+                 const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH);
                  const configSnap = await _getDoc(configRef);
                  if (configSnap.exists()) {
                      _obsequioProductId = configSnap.data().productoId;
@@ -329,10 +336,11 @@
         }
         _showModal('Progreso', 'Guardando configuración...');
         try {
-            const configRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/obsequio`);
+            // Guardar la configuración EN LA RUTA PÚBLICA
+            const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH);
             await _setDoc(configRef, { productoId: selectedProductId });
             _obsequioProductId = selectedProductId;
-            _showModal('Éxito', 'Producto de obsequio configurado correctamente.');
+            _showModal('Éxito', 'Producto de obsequio configurado correctamente (en ruta pública).');
             showAdminSubMenuView();
         } catch (error) {
             console.error("Error guardando configuración de obsequio:", error);
@@ -340,7 +348,10 @@
         }
     }
 
+    // --- Funciones de Propagación (sin cambios) ---
+
     async function _getAllOtherUserIds() {
+        // ... (código sin cambios)
         try {
             const usersRef = _collection(_db, "users");
             const snapshot = await _getDocs(usersRef);
@@ -355,6 +366,7 @@
     }
 
     async function propagateProductChange(productId, productData) {
+        // ... (código sin cambios)
         if (!productId) { console.error("propagateProductChange: productId is missing."); return; }
         const otherUserIds = await _getAllOtherUserIds();
         if (otherUserIds.length === 0) { console.log("propagateProductChange: No other users."); return; }
@@ -400,6 +412,7 @@
     }
 
      async function propagateCategoryChange(collectionName, itemId, itemData) {
+         // ... (código sin cambios)
          if (!collectionName || !itemId) { console.error("propagateCategoryChange: collectionName or itemId missing."); return; }
          const otherUserIds = await _getAllOtherUserIds();
          if (otherUserIds.length === 0) { console.log("propagateCategoryChange: No other users."); return; }
@@ -431,6 +444,7 @@
      }
 
      async function propagateCategoryOrderChange(collectionName, orderedIds) {
+          // ... (código sin cambios)
           if (!collectionName || !Array.isArray(orderedIds)) { console.error("propagateCategoryOrderChange: collectionName or orderedIds (array) missing."); return; }
           const otherUserIds = await _getAllOtherUserIds();
           if (otherUserIds.length === 0) { console.log("propagateCategoryOrderChange: No other users."); return; }
