@@ -4,7 +4,8 @@
     // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction;
+    // CORRECCIÓN: Asegurarse de que _getDocs está declarado
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction, _limit; // Añadido _limit si se necesita en el futuro
 
     let _clientesCache = []; // Caché local para búsquedas y ediciones rápidas
     let _clientesParaImportar = []; // Caché para la data del Excel a importar
@@ -39,11 +40,13 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _deleteDoc = dependencies.deleteDoc;
+        // CORRECCIÓN: Asignar getDocs a _getDocs
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
         _writeBatch = dependencies.writeBatch;
         _runTransaction = dependencies.runTransaction;
+        _limit = dependencies.limit; // Añadido por si acaso para deleteSector
 
         // *** AÑADIR LOG DE CONFIRMACIÓN ***
         // console.log("window.initClientes definido y ejecutado correctamente en clientes.js"); // Opcional
@@ -513,10 +516,10 @@
                 const qCEP = codigoCEP && codigoCEP.toLowerCase() !== 'n/a' ? _query(clientesRef, _where("codigoCEP", "==", codigoCEP)) : null;
 
                 const [snapComercial, snapPersonal, snapTel, snapCEP] = await Promise.all([
-                     getDocs(qComercial),
-                     getDocs(qPersonal),
-                     getDocs(qTel),
-                     qCEP ? getDocs(qCEP) : { empty: true }
+                     _getDocs(qComercial), // Use _getDocs here
+                     _getDocs(qPersonal),
+                     _getDocs(qTel),
+                     qCEP ? _getDocs(qCEP) : { empty: true }
                 ]);
 
                 if (!snapComercial.empty) { duplicado = { id: snapComercial.docs[0].id, ...snapComercial.docs[0].data() }; motivo = "nombre comercial"; }
@@ -642,20 +645,19 @@
     }
 
     function setupFiltros(containerId) {
-        // CORRECCIÓN: Usar getDocs para el dropdown de sectores en filtros
         const selectElement = document.getElementById('filter-sector');
         if (selectElement) {
             const collectionRef = _collection(_db, SECTORES_COLLECTION_PATH);
-             getDocs(collectionRef).then(snapshot => { // Usar getDocs
+            // CORRECCIÓN: Usar _getDocs en lugar de getDocs
+             _getDocs(collectionRef).then(snapshot => {
                 const items = snapshot.docs.map(doc => doc.data().name).sort();
-                const currentValue = selectElement.value; // Guardar valor actual
+                const currentValue = selectElement.value;
                 selectElement.innerHTML = `<option value="">Todos</option>`;
                 items.forEach(item => {
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
                 });
-                selectElement.value = currentValue; // Restaurar valor si es posible
+                selectElement.value = currentValue;
              }).catch(error => {
-                 // MODIFICACIÓN: Ignorar error de permisos al cerrar sesión
                 if (window.isLoggingOut && error.code === 'permission-denied') {
                     console.log("Error carga dropdown sectores ignorado durante logout.");
                     return;
@@ -664,7 +666,6 @@
                  selectElement.innerHTML = `<option value="">Error</option>`;
                  selectElement.disabled = true;
              });
-            // No hay listener onSnapshot que añadir a _activeListeners aquí
         } else {
              console.warn("Elemento 'filter-sector' no encontrado.");
         }
@@ -675,8 +676,7 @@
         const clearBtn = document.getElementById('clear-filters-btn');
         const incompletosFilter = document.getElementById('filter-incompletos');
 
-        // Apply filters function (calls renderClientesList)
-        const applyFilters = () => renderClientesList(containerId, false); // Pass containerId and readOnly
+        const applyFilters = () => renderClientesList(containerId, false);
 
         searchInput?.addEventListener('input', applyFilters);
         sectorFilter?.addEventListener('change', applyFilters);
@@ -690,6 +690,7 @@
         });
     }
 
+
     function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
         const container = document.getElementById(elementId);
         if (!container) return;
@@ -699,7 +700,6 @@
         const incompletosFilter = document.getElementById('filter-incompletos')?.checked;
 
         const filteredClients = _clientesCache.filter(cliente => {
-            // Robustez: Asegurarse de que las propiedades existen antes de llamar a toLowerCase
             const nombreComercialLower = (cliente.nombreComercial || '').toLowerCase();
             const nombrePersonalLower = (cliente.nombrePersonal || '').toLowerCase();
             const codigoCEPLower = (cliente.codigoCEP || '').toLowerCase();
@@ -945,14 +945,14 @@
                 const collectionRef = _collection(_db, collectionPath);
                 // Check for existence using query
                 const q = _query(collectionRef, _where("name", "==", newItemName));
-                const snapshot = await _getDocs(q);
+                const snapshot = await _getDocs(q); // Use _getDocs
 
                 if (!snapshot.empty) {
                     addItemMessage.classList.add('text-red-600');
                     addItemMessage.textContent = `"${newItemName}" ya existe.`;
                     newItemInput.select();
                 } else {
-                    await _addDoc(collectionRef, { name: newItemName });
+                    await _addDoc(collectionRef, { name: newItemName }); // Use _addDoc
                     addItemMessage.classList.add('text-green-600');
                     addItemMessage.textContent = `¡"${newItemName}" agregado!`;
                     newItemInput.value = '';
@@ -1035,25 +1035,25 @@
             try {
                 // Check if new name already exists
                 const q = _query(_collection(_db, SECTORES_COLLECTION_PATH), _where("name", "==", nuevoNombreMayus));
-                const querySnapshot = await _getDocs(q);
+                const querySnapshot = await _getDocs(q); // Use _getDocs
                 if (!querySnapshot.empty && querySnapshot.docs[0].id !== sectorId) { // Check if it's not the same doc
                     _showModal('Error', `El sector "${nuevoNombreMayus}" ya existe.`);
                     return;
                 }
 
                 // Update the sector name
-                await _setDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId), { name: nuevoNombreMayus });
+                await _setDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId), { name: nuevoNombreMayus }); // Use _setDoc, _doc
 
                 // Find and update clients using the old name
                 const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
                 const clientesQuery = _query(clientesRef, _where("sector", "==", currentName));
-                const clientesSnapshot = await _getDocs(clientesQuery);
+                const clientesSnapshot = await _getDocs(clientesQuery); // Use _getDocs
                 let updatedClientsCount = 0;
 
                 if (!clientesSnapshot.empty) {
                      updatedClientsCount = clientesSnapshot.size;
                      _showModal('Progreso', `Actualizando ${updatedClientsCount} cliente(s)...`);
-                    const batch = _writeBatch(_db);
+                    const batch = _writeBatch(_db); // Use _writeBatch
                     clientesSnapshot.docs.forEach(doc => {
                         batch.update(doc.ref, { sector: nuevoNombreMayus });
                     });
@@ -1074,10 +1074,11 @@
     async function deleteSector(sectorId, sectorName) {
          _showModal('Progreso', `Verificando uso del sector "${sectorName}"...`);
         const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
-        const q = _query(clientesRef, _where("sector", "==", sectorName), limit(1)); // Only need to know if at least one exists
+        // CORRECCIÓN: Usar _limit
+        const q = _query(clientesRef, _where("sector", "==", sectorName), _limit(1)); // Only need to know if at least one exists
 
         try {
-            const usageSnapshot = await _getDocs(q);
+            const usageSnapshot = await _getDocs(q); // Use _getDocs
             if (!usageSnapshot.empty) {
                 _showModal('Error al Eliminar', `No se puede eliminar el sector "${sectorName}" porque está siendo utilizado por al menos un cliente.`);
                 return;
@@ -1086,7 +1087,7 @@
             _showModal('Confirmar Eliminación', `¿Estás seguro de que deseas eliminar el sector "${sectorName}"? Esta acción no se puede deshacer.`, async () => {
                  _showModal('Progreso', `Eliminando sector "${sectorName}"...`);
                  try {
-                     await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId));
+                     await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId)); // Use _deleteDoc, _doc
                      _showModal('Éxito', `El sector "${sectorName}" ha sido eliminado.`);
                  } catch (deleteError) {
                       console.error("Error al eliminar sector:", deleteError);
@@ -1106,7 +1107,7 @@
             _showModal('Progreso', 'Eliminando todos los clientes...');
             try {
                 const collectionRef = _collection(_db, CLIENTES_COLLECTION_PATH);
-                const snapshot = await _getDocs(collectionRef);
+                const snapshot = await _getDocs(collectionRef); // Use _getDocs
                 if (snapshot.empty) {
                     _showModal('Aviso', 'No hay clientes para eliminar.');
                     return;
@@ -1114,7 +1115,7 @@
 
                 // Delete in batches
                 const BATCH_LIMIT = 490;
-                let batch = _writeBatch(_db);
+                let batch = _writeBatch(_db); // Use _writeBatch
                 let count = 0;
                 let totalDeleted = 0;
 
@@ -1400,3 +1401,4 @@
     };
 
 })();
+
