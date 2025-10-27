@@ -103,6 +103,26 @@
             border: 1px dashed #6366f1; /* indigo */
             margin: 0.25rem 0;
         }
+        /* Styles for the offline toggle */
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #ef4444; /* red-500 */
+        }
+        .toggle-checkbox:checked + .toggle-label::after {
+            transform: translateX(100%);
+            border-color: white;
+        }
+        .toggle-label::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 1.25rem; /* h-5 */
+            height: 1.25rem; /* w-5 */
+            background-color: white;
+            border-radius: 9999px; /* rounded-full */
+            border: 1px solid #e5e7eb; /* border-gray-200 */
+            transition: transform 0.2s ease-in-out;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col bg-gray-100"> <!-- Default body background -->
@@ -193,7 +213,8 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // *** MODIFICADO: Añadir enableNetwork, disableNetwork ***
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter, enableNetwork, disableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase configuration
         const firebaseConfig = {
@@ -211,7 +232,7 @@
         let db;
         let auth;
         let userId;
-        window.userRole = 'user'; // CORRECCIÓN 1: Hacer userRole global
+        window.userRole = 'user'; // *** MODIFICADO: Hacer global ***
         let activeListeners = [];
         window.isLoggingOut = false; // Flag to indicate logout process
         // NUEVO: Definir TIPOS_VACIO globalmente para consistencia
@@ -346,7 +367,7 @@
                         addItemMessage.textContent = `"${newItemName}" ya existe.`;
                         addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                         newItemInput.select();
-                     } else { // CORRECCIÓN 3: Reemplazar este bloque else
+                     } else {
                         const newItemData = { name: newItemNameUpper };
 
                         // MODIFICADO: Guardar la referencia del nuevo documento
@@ -432,7 +453,6 @@
             });
         }
 
-
         // --- AUTHENTICATION AND VIEW LOGIC ---
         async function handleRegister(e) {
              e.preventDefault();
@@ -477,10 +497,9 @@
              console.log("Attempting logout...");
              window.isLoggingOut = true; // Set flag
              try {
-                 // MODIFICADO: Eliminar la llamada a cleanupListeners() aquí.
-                 // onAuthStateChanged se encargará de limpiar cuando el usuario sea null.
-                 // cleanupListeners(); // <--- Línea eliminada
-                 // console.log("Listeners cleaned up before sign out."); // <--- Línea eliminada (opcional)
+                 // MODIFICADO: NO llamar cleanupListeners() aquí.
+                 // onAuthStateChanged se encargará cuando user sea null.
+                 // cleanupListeners(); // <--- Línea eliminada/comentada
 
                  await signOut(auth);
                  console.log("User signed out successfully.");
@@ -557,20 +576,10 @@
             const userDocRef = doc(db, "users", userId); console.log("Fetching user role...");
             try {
                 const userDoc = await getDoc(userDocRef);
-                if (userDoc.exists()) {
-                     window.userRole = userDoc.data().role || 'user'; // CORRECCIÓN 2: Actualizar global
-                }
-                else {
-                    console.warn(`User doc ${userId} not found. Creating default.`);
-                    await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true });
-                    window.userRole = 'user'; // CORRECCIÓN 2: Actualizar global
-                 }
-            } catch (error) {
-                 console.error("CRITICAL: Error fetching/setting user role:", error);
-                 window.showModal("Error Crítico", "No se pudo verificar tu rol.");
-                 window.userRole = 'user'; // CORRECCIÓN 2: Actualizar global
-            }
-            console.log("User role:", window.userRole);
+                if (userDoc.exists()) { window.userRole = userDoc.data().role || 'user'; } // *** MODIFICADO: Actualizar global ***
+                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); window.userRole = 'user'; } // *** MODIFICADO: Actualizar global ***
+            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); window.userRole = 'user'; } // *** MODIFICADO: Actualizar global ***
+            console.log("User role:", window.userRole); // *** MODIFICADO: Leer global ***
 
             loginContent.classList.add('hidden'); registerContent.classList.add('hidden');
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando...</h2></div></div>`;
@@ -578,7 +587,7 @@
 
              console.log("Starting data preload..."); try { await preloadAllData(); } catch (preloadError) { console.error("Error preloadAllData:", preloadError); } console.log("Preload attempted. Initializing modules...");
 
-            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig };
+            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig }; // *** MODIFICADO: Pasar global userRole ***
             let initSuccess = true;
              const modules = [ { name: 'Data', init: window.initData }, { name: 'Admin', init: window.initAdmin }, { name: 'Inventario', init: window.initInventario }, { name: 'Catalogo', init: window.initCatalogo }, { name: 'Clientes', init: window.initClientes }, { name: 'Ventas', init: window.initVentas }, { name: 'Obsequios', init: window.initObsequios } ];
              modules.forEach(m => { if (typeof m.init === 'function') { try { m.init(dependencies); console.log(`${m.name} initialized.`); } catch (e) { console.error(`Error init ${m.name}:`, e); initSuccess = false; } } else { console.error(`CRITICAL: ${m.name} init function not found.`); initSuccess = false; } });
@@ -587,16 +596,81 @@
             else { console.log("Modules initialized. Showing main menu."); showMainMenu(); }
         }
 
+        // --- NUEVO: Función para manejar el interruptor offline ---
+        function handleOfflineToggle(event) {
+            const isOffline = event.target.checked;
+            const toggleLabel = document.getElementById('offline-toggle-label');
+            const toggleText = document.getElementById('offline-toggle-text');
+
+            if (isOffline) {
+                console.log("Modo Offline: Desactivando red de Firestore...");
+                disableNetwork(db).then(() => {
+                    console.log("Red de Firestore desactivada.");
+                    localStorage.setItem('manualOfflineMode', 'true');
+                    if(toggleLabel) toggleLabel.classList.add('bg-red-500'); // Estilo rojo
+                    if(toggleText) toggleText.textContent = 'Trabajando Sin Conexión';
+                    window.showModal(
+                        'Modo Sin Conexión Activado',
+                        'Estás trabajando sin conexión. Cualquier dato o actualización no se guardará en la nube hasta que te vuelvas a conectar manualmente.',
+                        null, 'Entendido'
+                    );
+                    // Actualizar estado visual en floating controls (opcional)
+                    if(connectionStatusEl) {
+                        connectionStatusEl.textContent = "OFFLINE (Manual)";
+                        connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                    }
+                }).catch(error => {
+                    console.error("Error al desactivar la red:", error);
+                    window.showModal('Error', 'No se pudo desactivar la conexión de red.');
+                    event.target.checked = false; // Revertir el interruptor
+                });
+            } else {
+                console.log("Modo Online: Activando red de Firestore...");
+                enableNetwork(db).then(() => {
+                    console.log("Red de Firestore activada.");
+                    localStorage.removeItem('manualOfflineMode');
+                    if(toggleLabel) toggleLabel.classList.remove('bg-red-500'); // Estilo normal
+                    if(toggleText) toggleText.textContent = 'Forzar Sin Conexión';
+                    // El listener de onSnapshot actualizará el estado visual en floating controls
+                }).catch(error => {
+                    console.error("Error al activar la red:", error);
+                    window.showModal('Error', 'No se pudo reactivar la conexión de red.');
+                    event.target.checked = true; // Revertir el interruptor
+                });
+            }
+        }
+
         /** Displays the main menu buttons */
         window.showMainMenu = function() {
             console.log("Showing Main Menu"); cleanupListeners(); // Clean up previous listeners FIRST
+
+            // Listener de estado de conexión (basado en Firestore)
             const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`); // Use user's inventory
-            const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => { if (!connectionStatusEl) return; const isOffline = snapshot.metadata.fromCache; connectionStatusEl.textContent = isOffline ? "SIN CONEXIÓN" : "EN LÍNEA"; connectionStatusEl.className = `block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300 ${isOffline ? 'bg-yellow-400 text-yellow-900 animate-pulse' : 'bg-green-400 text-green-900'}`; }, (error) => { console.warn("Connection status listener error:", error.code); if (connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) { connectionStatusEl.textContent = "Error Conexión"; connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900'; } });
+            const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
+                if (!connectionStatusEl) return;
+                // *** MODIFICADO: Considerar el modo offline manual ***
+                const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                if (manualOffline) {
+                     connectionStatusEl.textContent = "OFFLINE (Manual)";
+                     connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                } else {
+                    const isOffline = snapshot.metadata.fromCache;
+                    connectionStatusEl.textContent = isOffline ? "SIN CONEXIÓN" : "EN LÍNEA";
+                    connectionStatusEl.className = `block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300 ${isOffline ? 'bg-yellow-400 text-yellow-900 animate-pulse' : 'bg-green-400 text-green-900'}`;
+                }
+            }, (error) => {
+                console.warn("Connection status listener error:", error.code);
+                if (connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
+                    connectionStatusEl.textContent = "Error Conexión";
+                    connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                }
+            });
             activeListeners.push(unsubscribeStatus);
+
             if (floatingControls) floatingControls.classList.remove('hidden'); else console.error("floatingControls not found in showMainMenu.");
             mainContent.classList.remove('hidden');
 
-            const isAdmin = window.userRole === 'admin'; // Usar la variable global
+            const isAdmin = window.userRole === 'admin'; // *** MODIFICADO: Leer global userRole ***
             mainContent.innerHTML = `
                 <div class="p-4 pt-8"> <div class="container mx-auto max-w-lg"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                     <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
@@ -609,8 +683,38 @@
                         <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-700 text-white rounded-lg shadow-md hover:bg-gray-800">${isAdmin ? 'Admin Panel' : 'Mi Perfil'}</button>
                         ${isAdmin ? `<button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Data</button>` : ''}
                     </div>
+
+                    <!-- *** INICIO: Interruptor Offline *** -->
+                    <div class="mt-8 pt-4 border-t border-gray-300 flex items-center justify-center space-x-3">
+                        <span id="offline-toggle-text" class="text-sm font-medium text-gray-700">Forzar Sin Conexión</span>
+                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="offline-toggle" id="offline-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer opacity-0 z-10 peer"/>
+                            <label for="offline-toggle" id="offline-toggle-label" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer transition-colors duration-200 ease-in-out peer-checked:bg-red-500"></label>
+                        </div>
+                    </div>
+                     <!-- *** FIN: Interruptor Offline *** -->
+
                 </div> </div> </div>
             `;
+
+            // Configurar estado inicial del interruptor basado en localStorage
+            const offlineToggle = document.getElementById('offline-toggle');
+            const toggleLabel = document.getElementById('offline-toggle-label');
+            const toggleText = document.getElementById('offline-toggle-text');
+            const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+            if (offlineToggle) {
+                offlineToggle.checked = manualOffline;
+                 // Aplicar estilo inicial
+                if(manualOffline) {
+                    if(toggleLabel) toggleLabel.classList.add('bg-red-500');
+                    if(toggleText) toggleText.textContent = 'Trabajando Sin Conexión';
+                } else {
+                     if(toggleLabel) toggleLabel.classList.remove('bg-red-500');
+                     if(toggleText) toggleText.textContent = 'Forzar Sin Conexión';
+                }
+                offlineToggle.addEventListener('change', handleOfflineToggle); // Adjuntar listener
+            }
+
 
             const navigateTo = (viewFunction) => {
                 const fName = Object.keys(window).find(key => window[key] === viewFunction); console.log(`Navigating to: ${fName || 'Unknown'}`);
@@ -634,6 +738,18 @@
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app); auth = getAuth(app); setLogLevel('warn');
                 console.log("Firebase App, Firestore, Auth initialized.");
+
+                // *** INICIO: Aplicar estado offline al inicio si está guardado ***
+                const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                if (manualOffline) {
+                    console.log("Modo Offline Manual detectado al inicio. Desactivando red...");
+                    await disableNetwork(db).catch(err => console.error("Error inicial desactivando red:", err));
+                } else {
+                    console.log("Modo Online detectado al inicio. Asegurando red activa...");
+                    await enableNetwork(db).catch(err => console.error("Error inicial activando red:", err)); // Asegura que esté activa si no hay preferencia offline
+                }
+                // *** FIN: Aplicar estado offline al inicio ***
+
             } catch (initError) { console.error("CRITICAL: Firebase init failed:", initError); alert("Error Crítico: No se pudo conectar. Recarga."); return; }
             try { await enableIndexedDbPersistence(db); console.log("Offline persistence enabled."); }
             catch (err) { if(err.code=='failed-precondition')console.warn("Persistence failed: Multiple tabs?"); else if(err.code=='unimplemented')console.warn("Persistence failed: Browser not supported."); else console.error("Persistence error:", err); }
