@@ -241,8 +241,18 @@
         document.getElementById('backToImportExportBtn').addEventListener('click', showImportExportInventarioView);
     }
 
+    // MODIFICADO: Añadida comprobación robusta de archivos
     function handleFileUploadInventario(event) {
-        const file = event.target.files[0]; if (!file) return; _inventarioParaImportar = [];
+        // --- CORRECCIÓN: Comprobación más robusta ---
+        if (!event.target || !event.target.files || event.target.files.length === 0) {
+            console.warn("handleFileUploadInventario llamado sin archivo.");
+            renderPreviewTableInventario([]); // Limpiar previsualización si se cancela
+            return;
+        }
+        const file = event.target.files[0];
+        // --- FIN CORRECCIÓN ---
+
+        _inventarioParaImportar = [];
         const reader = new FileReader(); reader.onload = function(e) { const data = e.target.result; let jsonData = []; try { const wb = XLSX.read(data, {type:'binary'}); const ws = wb.Sheets[wb.SheetNames[0]]; jsonData = XLSX.utils.sheet_to_json(ws, {header:1}); } catch (readError) { _showModal('Error Lectura', `Error: ${readError.message}`); return; }
             if (jsonData.length < 2) { _showModal('Error', 'Archivo vacío.'); renderPreviewTableInventario([]); return; }
             const headers = jsonData[0].map(h=>(h?h.toString().toLowerCase().trim().replace(/\s+/g,''):''));
@@ -449,7 +459,7 @@
                   itemsUser.sort((a,b)=> (a.data.name || '').localeCompare(b.data.name || ''));
                   for (const item of itemsUser) { if (!oMap.has(item.id)) { uMaxOrd++; const nOrd = uMaxOrd; const cOrd = item.data.orden; if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
                   if (ops > 0) await batch.commit();
-              } const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Order propagation complete for ${collectionName}.`);
+              } const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for ${collectionName}.`);
           } catch (error) { errors = true; console.error(`Error propagando orden ${collectionName}:`, error); window.showModal('Error Propagación', `Error: ${error.message}`); }
      }
 
