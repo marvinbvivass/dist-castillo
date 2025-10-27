@@ -160,7 +160,7 @@
         if(_monedaActual==='COP'&&_tasaCOP>0)tEl.textContent=`Total: COP ${(Math.ceil((tUSD*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; else if(_monedaActual==='Bs'&&_tasaBs>0)tEl.textContent=`Total: Bs.S ${(tUSD*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; else tEl.textContent=`Total: $${tUSD.toFixed(2)}`;
     }
 
-    // Funciones de Ticket (createTicketHTML, createRawTextTicket, etc.) y Generación/Guardado (generarTicket) sin cambios funcionales mayores
+    // Funciones de Ticket
     function createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo = 'ticket') {
         const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
         const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
@@ -168,40 +168,202 @@
         let total = 0;
         let productosHTML = '';
         const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || (p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) ));
-        productosVendidos.forEach(p => { /* ... (igual que antes) ... */ });
-        let vaciosHTML = ''; const tiposConDev = Object.entries(vaciosDevueltosPorTipo || {}).filter(([t, c]) => c > 0);
-        if (tiposConDev.length > 0) { /* ... (igual que antes) ... */ }
+
+        productosVendidos.forEach(p => {
+            const precios = p.precios || { und: p.precioPorUnidad || 0 };
+            const cant = p.cantidadVendida || { cj: p.cantCj || 0, paq: p.cantPaq || 0, und: p.cantUnd || 0 };
+            const uCj = p.unidadesPorCaja || 1;
+            const uPaq = p.unidadesPorPaquete || 1;
+            let desc = `${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`;
+            let qtyText = '', priceText = '', subtotal = 0;
+
+            if (cant.cj > 0) {
+                subtotal = (precios.cj || 0) * cant.cj;
+                qtyText = `${cant.cj} CJ`;
+                priceText = `$${(precios.cj || 0).toFixed(2)}`;
+            } else if (cant.paq > 0) {
+                subtotal = (precios.paq || 0) * cant.paq;
+                qtyText = `${cant.paq} PAQ`;
+                priceText = `$${(precios.paq || 0).toFixed(2)}`;
+            } else if (cant.und > 0) {
+                subtotal = (precios.und || 0) * cant.und;
+                qtyText = `${cant.und} UND`;
+                priceText = `$${(precios.und || 0).toFixed(2)}`;
+            } else {
+                return; // No mostrar si no hay cantidad
+            }
+            total += subtotal;
+
+            productosHTML += `
+                 <tr class="align-top">
+                    <td class="py-2 pr-2 text-left" style="width: 55%;"><div style="line-height: 1.2;">${desc}</div></td>
+                    <td class="py-2 px-2 text-center" style="width: 15%;">${qtyText}</td>
+                    <td class="py-2 px-2 text-right" style="width: 15%;">${priceText}</td>
+                    <td class="py-2 pl-2 text-right font-bold" style="width: 15%;">$${subtotal.toFixed(2)}</td>
+                </tr>
+            `;
+        });
+
+        let vaciosHTML = '';
+        const tiposConDev = Object.entries(vaciosDevueltosPorTipo || {}).filter(([t, c]) => c > 0);
+        if (tiposConDev.length > 0) {
+            vaciosHTML = `<div class="text-3xl mt-6 border-t border-black border-dashed pt-4"> <p>ENVASES DEVUELTOS:</p> <table class="w-full text-3xl mt-2"><tbody>`;
+            tiposConDev.forEach(([t, c]) => {
+                vaciosHTML += `<tr><td class="py-1 pr-2 text-left" style="width: 70%;">${t}</td><td class="py-1 pl-2 text-right" style="width: 30%;">${c} CJ</td></tr>`;
+            });
+            vaciosHTML += `</tbody></table></div>`;
+        }
+
         const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
+
         return `
             <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
-                <!-- ... (contenido HTML del ticket igual que antes) ... -->
+                <div class="text-center">
+                    <h2 class="text-4xl uppercase">${titulo}</h2>
+                    <p class="text-3xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+                </div>
+                <div class="text-3xl mt-8">
+                    <p>FECHA: ${fecha}</p>
+                    <p>CLIENTE: ${clienteNombre}</p>
+                </div>
+                <table class="w-full text-3xl mt-6">
+                    <thead>
+                        <tr>
+                            <th class="pb-2 text-left">DESCRIPCION</th>
+                            <th class="pb-2 text-center">CANT</th>
+                            <th class="pb-2 text-right">PRECIO</th>
+                            <th class="pb-2 text-right">SUBTOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${productosHTML}
+                    </tbody>
+                </table>
+                <div class="text-right text-3xl mt-4 pr-2">
+                    <p class="border-t border-black pt-2 font-bold">TOTAL: $${total.toFixed(2)}</p>
+                </div>
+                ${vaciosHTML}
+                <div class="text-center mt-16">
+                    <p class="border-t border-black w-96 mx-auto"></p>
+                    <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
+                </div>
+                <hr class="border-dashed border-black mt-6">
             </div>`;
     }
 
     function createRawTextTicket(venta, productos, vaciosDevueltosPorTipo) {
         const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
-        const toTitleCase = (str) => { /* ... (igual que antes) ... */ };
+        const toTitleCase = (str) => { if (!str) return ''; return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()); };
         const clienteNombre = toTitleCase(venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
         const clienteNombrePersonal = toTitleCase((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
         const LINE_WIDTH = 48; let total = 0; let ticket = '';
         const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
-        const wordWrap = (text, maxWidth) => { /* ... (igual que antes) ... */ };
-        ticket += center('Distribuidora Castillo Yañez') + '\n'; ticket += center('Nota de Entrega') + '\n'; ticket += center('(no valido como factura fiscal)') + '\n\n';
-        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH); wrappedClientName.forEach(line => { ticket += line + '\n'; }); ticket += `Fecha: ${fecha}\n`;
+        const wordWrap = (text, maxWidth) => { const lines = []; if (!text) return lines; let currentLine = ''; const words = text.split(' '); for (const word of words) { if ((currentLine + ' ' + word).trim().length > maxWidth) { if(currentLine.length > 0) lines.push(currentLine.trim()); currentLine = word; } else { currentLine = (currentLine + ' ' + word).trim(); } } if (currentLine) lines.push(currentLine.trim()); return lines; };
+
+        ticket += center('Distribuidora Castillo Yañez') + '\n';
+        ticket += center('Nota de Entrega') + '\n';
+        ticket += center('(no valido como factura fiscal)') + '\n\n';
+
+        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH);
+        wrappedClientName.forEach(line => { ticket += line + '\n'; });
+        ticket += `Fecha: ${fecha}\n`;
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+
         const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || (p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) ));
-        if (productosVendidos.length > 0) { /* ... (igual que antes) ... */ }
+
+        if (productosVendidos.length > 0) {
+            ticket += 'Producto'.padEnd(26) + 'Cant'.padStart(6) + 'Precio'.padStart(8) + 'Subt'.padStart(8) + '\n';
+            productosVendidos.forEach(p => {
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                const cant = p.cantidadVendida || { cj: p.cantCj || 0, paq: p.cantPaq || 0, und: p.cantUnd || 0 };
+                let desc = toTitleCase(`${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`);
+                let qtyText = '', priceText = '', subtotal = 0;
+
+                if (cant.cj > 0) {
+                    subtotal = (precios.cj || 0) * cant.cj;
+                    qtyText = `${cant.cj} CJ`;
+                    priceText = `$${(precios.cj || 0).toFixed(2)}`;
+                } else if (cant.paq > 0) {
+                    subtotal = (precios.paq || 0) * cant.paq;
+                    qtyText = `${cant.paq} PQ`;
+                    priceText = `$${(precios.paq || 0).toFixed(2)}`;
+                } else if (cant.und > 0) {
+                    subtotal = (precios.und || 0) * cant.und;
+                    qtyText = `${cant.und} UN`;
+                    priceText = `$${(precios.und || 0).toFixed(2)}`;
+                } else { return; }
+                total += subtotal;
+
+                const wrappedDesc = wordWrap(desc, 25); // Max width for description column
+                wrappedDesc.forEach((line, index) => {
+                    const qtyStr = index === wrappedDesc.length - 1 ? qtyText : '';
+                    const priceStr = index === wrappedDesc.length - 1 ? priceText : '';
+                    const subtStr = index === wrappedDesc.length - 1 ? `$${subtotal.toFixed(2)}` : '';
+                    ticket += line.padEnd(26) + qtyStr.padStart(6) + priceStr.padStart(8) + subtStr.padStart(8) + '\n';
+                });
+            });
+        }
+
         const tiposConDev = Object.entries(vaciosDevueltosPorTipo || {}).filter(([t, c]) => c > 0);
-        if (tiposConDev.length > 0) { /* ... (igual que antes) ... */ }
-        ticket += '-'.repeat(LINE_WIDTH) + '\n'; const totalString = `TOTAL: $${total.toFixed(2)}`; ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
-        ticket += '\n\n\n\n'; ticket += center('________________________') + '\n'; ticket += center(clienteNombrePersonal) + '\n\n'; ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        if (tiposConDev.length > 0) {
+            ticket += '-'.repeat(LINE_WIDTH) + '\n';
+            ticket += center('ENVASES DEVUELTOS') + '\n';
+            tiposConDev.forEach(([t, c]) => {
+                const tipoStr = t; const cantStr = `${c} CJ`;
+                ticket += tipoStr.padEnd(LINE_WIDTH - cantStr.length) + cantStr + '\n';
+            });
+        }
+
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
+        const totalString = `TOTAL: $${total.toFixed(2)}`;
+        ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
+        ticket += '\n\n\n\n';
+        ticket += center('________________________') + '\n';
+        ticket += center(clienteNombrePersonal) + '\n\n';
+        ticket += '-'.repeat(LINE_WIDTH) + '\n';
         return ticket;
     }
 
-    async function handleShareTicket(htmlContent, successCallback) { /* ... (igual que antes) ... */ }
-    async function handleShareRawText(textContent, successCallback) { /* ... (igual que antes) ... */ }
-    function copyToClipboard(textContent, successCallback) { /* ... (igual que antes) ... */ }
-    function legacyCopyToClipboard(textContent, successCallback) { /* ... (igual que antes) ... */ }
-    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, successCallback) { /* ... (igual que antes) ... */ }
+    async function handleShareTicket(htmlContent, successCallback) {
+         _showModal('Progreso', 'Generando imagen...');
+        const tempDiv = document.createElement('div'); tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.innerHTML = htmlContent; document.body.appendChild(tempDiv);
+        const ticketElement = document.getElementById('temp-ticket-for-image');
+        if (!ticketElement) { _showModal('Error', 'No se pudo encontrar elemento ticket.'); document.body.removeChild(tempDiv); successCallback(); return; }
+        try { await new Promise(resolve => setTimeout(resolve, 100)); const canvas = await html2canvas(ticketElement, { scale: 3 }); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (navigator.share && blob) { await navigator.share({ files: [new File([blob], "venta.png", { type: "image/png" })], title: "Ticket de Venta" }); _showModal('Éxito', 'Venta registrada. Imagen compartida.', successCallback); }
+            else { _showModal('Error', 'Función compartir no disponible.', successCallback); }
+        } catch(e) { _showModal('Error', `No se pudo generar/compartir: ${e.message}`, successCallback); }
+        finally { document.body.removeChild(tempDiv); }
+    }
+
+    async function handleShareRawText(textContent, successCallback) {
+         if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); _showModal('Éxito', 'Venta registrada. Ticket listo para imprimir.', successCallback); } catch (err) { _showModal('Aviso', 'No se compartió ticket. Venta registrada.', successCallback); } }
+         else { try { legacyCopyToClipboard(textContent, successCallback); } catch (copyErr) { _showModal('Error', 'No se pudo compartir ni copiar. Venta registrada.', successCallback); } }
+    }
+
+    function copyToClipboard(textContent, successCallback) { // Usa Clipboard API si está disponible
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(textContent)
+                .then(() => _showModal('Copiado', 'Texto copiado. Pégalo en tu app de impresión.', successCallback))
+                .catch(err => legacyCopyToClipboard(textContent, successCallback)); // Fallback
+        } else {
+            legacyCopyToClipboard(textContent, successCallback); // Fallback directo
+        }
+    }
+
+    function legacyCopyToClipboard(textContent, successCallback) { // Fallback con execCommand
+        const textArea = document.createElement("textarea"); textArea.value = textContent; textArea.style.position = "fixed"; textArea.style.left = "-9999px"; document.body.appendChild(textArea); textArea.select();
+        try { document.execCommand('copy'); _showModal('Copiado', 'Texto copiado. Pégalo en tu app de impresión.', successCallback); }
+        catch (err) { console.error('Fallback copy failed:', err); _showModal('Error', 'No se pudo copiar el texto.', successCallback); }
+        finally { document.body.removeChild(textArea); }
+    }
+
+    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, successCallback) {
+        const modalContent = `<div class="text-center"><h3 class="text-xl font-bold mb-4">Generar ${tipo}</h3><p class="mb-6">Elige formato.</p><div class="space-y-4"><button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Imprimir (Texto)</button><button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">Compartir (Imagen)</button></div></div>`;
+        _showModal('Elige opción', modalContent, null, '');
+        document.getElementById('printTextBtn').addEventListener('click', () => { const rawText = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); handleShareRawText(rawText, successCallback); });
+        document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, successCallback); });
+    }
 
     async function generarTicket() {
         if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
@@ -232,7 +394,7 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                 <div class="space-y-4">
                     <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                    <button id="ordenarCierreBtn" class="w-full px-6 py-3 bg-purple-500 text-white rounded-lg shadow-md hover:bg-purple-600">Orden Reportes</button>
+                    <!-- *** Botón Ordenar Reportes ELIMINADO *** -->
                     <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
                 </div>
                 <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -240,7 +402,7 @@
         `;
         document.getElementById('ventasActualesBtn').addEventListener('click', showVentasActualesView);
         document.getElementById('cierreVentasBtn').addEventListener('click', showCierreSubMenuView);
-        document.getElementById('ordenarCierreBtn').addEventListener('click', showOrdenarCierreView);
+        // *** Listener de Ordenar Reportes ELIMINADO ***
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
     }
 
@@ -301,7 +463,7 @@
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin/user actual
             let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
             let bHTML=''; sortedClients.forEach(cli=>{bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;}); bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;});
             let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fHTML+=`<td class="p-1 border text-center">${dT}</td>`;}); fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
@@ -314,7 +476,7 @@
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID admin
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID user actual
             const dSheet1 = []; const hRow = ["Cliente"]; finalProductOrder.forEach(p => { hRow.push(p.presentacion || 'N/A'); }); hRow.push("Total Cliente"); dSheet1.push(hRow);
             sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
             const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
@@ -332,23 +494,78 @@
             try {
                  _showModal('Progreso', 'Generando Excel...'); await exportCierreToExcel(ventas);
                  _showModal('Progreso', 'Archivando y eliminando...'); const cierreData = { fecha: new Date(), ventas: ventas.map(({id,...rest})=>rest), total: ventas.reduce((s,v)=>s+(v.total||0),0) }; let cDocRef;
-                 if (_userRole === 'user') { const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{}; cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); cierreData.vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''}; await _setDoc(cDocRef, cierreData); }
-                 else { cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`)); await _setDoc(cDocRef, cierreData); }
+                 // Guardar cierre en colección pública si es usuario normal, privada si es admin
+                 if (window.userRole === 'user') {
+                     const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
+                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); // Colección pública para cierres de vendedores
+                     cierreData.vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
+                     await _setDoc(cDocRef, cierreData);
+                     console.log("Cierre de vendedor guardado en colección pública.");
+                 } else { // Si es admin, guardar en su colección privada
+                     cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
+                     await _setDoc(cDocRef, cierreData);
+                     console.log("Cierre de admin guardado en colección privada.");
+                 }
+                 // Eliminar ventas activas
                  const batch = _writeBatch(_db); ventas.forEach(v => batch.delete(_doc(ventasRef, v.id))); await batch.commit();
                 _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas archivadas/eliminadas.', showVentasTotalesView); return true;
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
     }
 
-    function showOrdenarCierreView() { /* ... sin cambios ... */ }
-    async function renderRubrosForOrdering() { /* ... sin cambios ... */ }
-    async function renderSegmentosForOrderingGlobal() { /* ... sin cambios ... */ }
-    function addDragAndDropHandlers(container) { /* ... sin cambios ... */ }
-    async function handleGuardarOrdenCierre() { /* ... sin cambios ... */ }
+    // *** Funciones de Ordenar Reportes ELIMINADAS ***
+    // function showOrdenarCierreView() { ... }
+    // async function renderRubrosForOrdering() { ... }
+    // async function renderSegmentosForOrderingGlobal() { ... }
+    // function addDragAndDropHandlers(container) { ... }
+    // async function handleGuardarOrdenCierre() { ... }
 
-    function showPastSaleOptions(ventaId, tipo = 'ticket') { /* ... sin cambios ... */ }
-    function editVenta(ventaId) { /* ... sin cambios ... */ }
-    function deleteVenta(ventaId) { /* ... sin cambios ... */ }
+    function showPastSaleOptions(ventaId, tipo = 'ticket') {
+        console.log("showPastSaleOptions called with ID:", ventaId); // *** Log de depuración ***
+        const venta = _ventasGlobal.find(v => v.id === ventaId);
+        if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
+        // Asegurarse de que los productos tengan la estructura esperada por las funciones de ticket
+        const productosFormateados = (venta.productos || []).map(p => ({
+            ...p, // Copia todas las propiedades existentes
+            // Asegura que cantidadVendida exista, tomando datos de la estructura si es necesario
+             cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
+             // Calcula totalUnidadesVendidas si falta (opcional, pero bueno tenerlo)
+             totalUnidadesVendidas: p.totalUnidadesVendidas ||
+                ((p.cantidadVendida?.cj || 0) * (p.unidadesPorCaja || 1)) +
+                ((p.cantidadVendida?.paq || 0) * (p.unidadesPorPaquete || 1)) +
+                (p.cantidadVendida?.und || 0),
+            // Asegura precios
+            precios: p.precios || { und: 0, paq: 0, cj: 0 }
+        }));
+        showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
+    }
+
+    function editVenta(ventaId) {
+        console.log("editVenta called with ID:", ventaId); // *** Log de depuración ***
+        const venta = _ventasGlobal.find(v => v.id === ventaId);
+        if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
+         _originalVentaForEdit = JSON.parse(JSON.stringify(venta)); // Deep copy para comparar cambios
+        showEditVentaView(venta);
+    }
+
+    function deleteVenta(ventaId) {
+        console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
+         const venta = _ventasGlobal.find(v => v.id === ventaId);
+         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
+
+        _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? Esta acción es IRREVERSIBLE y NO ajustará stock ni saldos.`, async () => {
+            _showModal('Progreso', 'Eliminando venta...');
+            try {
+                const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
+                await _deleteDoc(ventaRef);
+                _showModal('Éxito', 'Venta eliminada.');
+                // La lista se actualizará automáticamente por el listener onSnapshot
+            } catch (error) {
+                console.error("Error eliminando venta:", error);
+                _showModal('Error', `No se pudo eliminar la venta: ${error.message}`);
+            }
+        }, 'Sí, Eliminar', null, true);
+    }
 
     async function showEditVentaView(venta) {
         _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
@@ -388,7 +605,7 @@
              const curHVal = prod[fSortKey] || `Sin ${fSortKey}`; if (curHVal !== lastHKey) { lastHKey = curHVal; const hRow=document.createElement('tr'); hRow.innerHTML=`<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold sticky top-[calc(theme(height.10))] z-[9]">${lastHKey}</td>`; body.appendChild(hRow); }
              const vPor=prod.ventaPor||{und:true}, vActProd=_ventaActual.productos[prod.id]||{}, origVProd=_originalVentaForEdit.productos.find(p=>p.id===prod.id), precios=prod.precios||{und:prod.precioPorUnidad||0};
              const fPrice = (v) => { if (isNaN(v)) v=0; if (_monedaActual==='COP'&&_tasaCOP>0) return `COP ${(Math.ceil((v*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; if (_monedaActual==='Bs'&&_tasaBs>0) return `Bs.S ${(v*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; return `$${v.toFixed(2)}`; };
-             const cERow = (t, cC, pT, descT) => { const cStockU=prod.cantidadUnidades||0, origUSoldT=origVProd?.cantidadVendida?.[t]||0; let factor=t==='cj'?(prod.unidadesPorCaja||1):t==='paq'?(prod.unidadesPorPaquete||1):1; const maxUAvail=cStockU+(origUSoldT*factor); const maxInp=Math.floor(maxUAvail/factor); const stockDispT=Math.floor(cStockU/factor); const r=document.createElement('tr'); r.className='border-b hover:bg-gray-50'; r.innerHTML=`<td class="py-2 px-1 text-center align-middle"> <input type="number" min="0" max="${maxInp}" value="${cC}" class="w-16 p-1 text-center border rounded-md" data-product-id="${prod.id}" data-tipo-venta="${t}" oninput="window.ventasModule.handleQuantityChange(event)"> </td> <td class="py-2 px-2 text-left align-middle">${descT} <span class="text-xs text-gray-500">${prod.marca||'S/M'}</span></td> <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${fPrice(pT)}</td> <td class="py-2 px-1 text-center align-middle">${stockDispT} ${t.toUpperCase()}</td>`; body.appendChild(r); };
+             const cERow = (t, cC, pT, descT) => { const cStockU=prod.cantidadUnidades||0, origQtySold = origVProd?.cantidadVendida?.[t] ?? 0; let factor=t==='cj'?(prod.unidadesPorCaja||1):t==='paq'?(prod.unidadesPorPaquete||1):1; const maxUAvail=cStockU+(origQtySold*factor); const maxInp=Math.floor(maxUAvail/factor); const stockDispT=Math.floor(cStockU/factor); const r=document.createElement('tr'); r.className='border-b hover:bg-gray-50'; r.innerHTML=`<td class="py-2 px-1 text-center align-middle"> <input type="number" min="0" max="${maxInp}" value="${cC}" class="w-16 p-1 text-center border rounded-md" data-product-id="${prod.id}" data-tipo-venta="${t}" oninput="window.ventasModule.handleQuantityChange(event)"> </td> <td class="py-2 px-2 text-left align-middle">${descT} <span class="text-xs text-gray-500">${prod.marca||'S/M'}</span></td> <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${fPrice(pT)}</td> <td class="py-2 px-1 text-center align-middle">${stockDispT} ${t.toUpperCase()}</td>`; body.appendChild(r); };
              if (vPor.cj) { const uCj=prod.unidadesPorCaja||1; cERow('cj', vActProd.cantCj||0, precios.cj||0, `${prod.presentacion} (Cj/${uCj} und)`); }
              if (vPor.paq) { const uPaq=prod.unidadesPorPaquete||1; cERow('paq', vActProd.cantPaq||0, precios.paq||0, `${prod.presentacion} (Paq/${uPaq} und)`); }
              if (vPor.und) { cERow('und', vActProd.cantUnd||0, precios.und||0, `${prod.presentacion} (Und)`); }
@@ -397,17 +614,22 @@
 
     async function handleGuardarVentaEditada() {
         if (!_originalVentaForEdit) { _showModal('Error', 'Venta original no encontrada.'); return; }
-        const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0); const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c=>c>0);
-        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Venta editada sin productos o vacíos.'); return; }
+        const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0);
+        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo || {}).some(c => c > 0);
+        // Permitir guardar aunque no haya productos si hay vacíos (o viceversa), pero no si ambos están vacíos
+        if (prods.length === 0 && !hayVac && Object.values(_originalVentaForEdit.vaciosDevueltosPorTipo || {}).every(c => c === 0)) {
+            _showModal('Error', 'La venta editada no puede quedar completamente vacía.'); return;
+        }
+
         _showModal('Confirmar Cambios', '¿Guardar cambios? Stock y saldos se ajustarán.', async () => {
             _showModal('Progreso', 'Guardando y ajustando...');
             try {
                 const batch=_writeBatch(_db); const origProds=new Map((_originalVentaForEdit.productos||[]).map(p=>[p.id,p])); const newProds=new Map(Object.values(_ventaActual.productos).map(p=>[p.id,p])); const allPIds=new Set([...origProds.keys(),...newProds.keys()]); const vaciosAdj={}; TIPOS_VACIO.forEach(t=>vaciosAdj[t]=0);
-                for(const pId of allPIds){ const origP=origProds.get(pId), newP=newProds.get(pId), pCache=_inventarioCache.find(p=>p.id===pId); if(!pCache)continue; const origU=origP?(origP.totalUnidadesVendidas||0):0, newU=newP?(newP.totalUnidadesVendidas||0):0, deltaU=origU-newU;
-                    if(deltaU!==0){ const cStockU=pCache.cantidadUnidades||0, fStockU=cStockU+deltaU; if(fStockU<0)throw new Error(`Stock insuficiente "${pCache.presentacion}".`); const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,pId); batch.update(pRef,{cantidadUnidades:fStockU}); }
-                    if(pCache.manejaVacios&&pCache.tipoVacio){ const tV=pCache.tipoVacio, origCj=origP?.cantidadVendida?.cj||0, newCj=newP?.cantCj||0, deltaCj=newCj-origCj; if(vaciosAdj.hasOwnProperty(tV))vaciosAdj[tV]+=deltaCj; } }
-                const origVac=_originalVentaForEdit.vaciosDevueltosPorTipo||{}, newVac=_ventaActual.vaciosDevueltosPorTipo||{}; TIPOS_VACIO.forEach(t=>{const origD=origVac[t]||0, newD=newVac[t]||0, deltaD=newD-origD; if(vaciosAdj.hasOwnProperty(t))vaciosAdj[t]-=deltaD;});
-                if(Object.values(vaciosAdj).some(a=>a!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId); try{await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())return; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosAdj){const adj=vaciosAdj[tV]; if(adj!==0&&sVac.hasOwnProperty(tV))sVac[tV]=(sVac[tV]||0)+adj;} t.update(cliRef,{saldoVacios:sVac});});} catch(transErr){console.error(`Error ajustando vacíos cli ${_originalVentaForEdit.clienteId}:`,transErr); _showModal('Advertencia','No se ajustaron saldos vacíos.');}}
+                for(const pId of allPIds){ const origP=origProds.get(pId), newP=newProds.get(pId), pCache=_inventarioCache.find(p=>p.id===pId); if(!pCache)continue; const origU=origP?(origP.totalUnidadesVendidas||0):0, newU=newP?(newP.totalUnidadesVendidas||0):0, deltaU=origU-newU; // deltaU > 0 significa que se devolvió stock
+                    if(deltaU!==0){ const cStockU=pCache.cantidadUnidades||0, fStockU=cStockU+deltaU; if(fStockU<0)throw new Error(`Stock insuficiente "${pCache.presentacion}" (${fStockU} unidades). Ajuste requerido: ${deltaU}.`); const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,pId); batch.update(pRef,{cantidadUnidades:fStockU}); }
+                    if(pCache.manejaVacios&&pCache.tipoVacio){ const tV=pCache.tipoVacio, origCj=origP?.cantidadVendida?.cj||0, newCj=newP?.cantCj||0, deltaCj=newCj-origCj; if(vaciosAdj.hasOwnProperty(tV))vaciosAdj[tV]+=deltaCj; } } // deltaCj > 0 significa que se entregaron más vacíos (aumenta deuda)
+                const origVac=_originalVentaForEdit.vaciosDevueltosPorTipo||{}, newVac=_ventaActual.vaciosDevueltosPorTipo||{}; TIPOS_VACIO.forEach(t=>{const origD=origVac[t]||0, newD=newVac[t]||0, deltaD=newD-origD; if(vaciosAdj.hasOwnProperty(t))vaciosAdj[t]-=deltaD;}); // deltaD > 0 significa que se recibieron más vacíos (disminuye deuda)
+                if(Object.values(vaciosAdj).some(a=>a!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId); try{await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())return; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosAdj){const adj=vaciosAdj[tV]; if(adj!==0) sVac[tV]=(sVac[tV]||0)+adj;} t.update(cliRef,{saldoVacios:sVac});});} catch(transErr){console.error(`Error ajustando vacíos cli ${_originalVentaForEdit.clienteId}:`,transErr); _showModal('Advertencia','No se pudieron ajustar los saldos de vacíos del cliente.');}} // Continuar aunque falle ajuste de saldo
                 let nTotal=0; const nItems=Object.values(_ventaActual.productos).filter(p=>p.totalUnidadesVendidas>0).map(p=>{ const pr=p.precios||{und:p.precioPorUnidad||0}; const sub=(pr.cj||0)*(p.cantCj||0)+(pr.paq||0)*(p.cantPaq||0)+(pr.und||0)*(p.cantUnd||0); nTotal+=sub; const uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; const totURecalc=(p.cantCj||0)*uCj+(p.cantPaq||0)*uPaq+(p.cantUnd||0); return { id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null, precios:p.precios, ventaPor:p.ventaPor, unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja, cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0}, totalUnidadesVendidas:totURecalc, iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null }; });
                 const vRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/ventas`,_originalVentaForEdit.id); batch.update(vRef,{productos:nItems, total:nTotal, vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo, fechaModificacion:new Date()});
                 await batch.commit(); _originalVentaForEdit=null; _showModal('Éxito','Venta actualizada.',showVentasActualesView);
@@ -425,4 +647,3 @@
         invalidateCache: () => { /* No action needed */ }
     };
 })();
-
