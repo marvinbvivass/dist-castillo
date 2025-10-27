@@ -211,7 +211,7 @@
         let db;
         let auth;
         let userId;
-        let userRole = 'user';
+        window.userRole = 'user'; // CORRECCIÓN 1: Hacer userRole global
         let activeListeners = [];
         window.isLoggingOut = false; // Flag to indicate logout process
         // NUEVO: Definir TIPOS_VACIO globalmente para consistencia
@@ -346,11 +346,36 @@
                         addItemMessage.textContent = `"${newItemName}" ya existe.`;
                         addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                         newItemInput.select();
-                     } else {
+                     } else { // CORRECCIÓN 3: Reemplazar este bloque else
                         const newItemData = { name: newItemNameUpper };
-                        await addDoc(collectionRef, newItemData);
+
+                        // MODIFICADO: Guardar la referencia del nuevo documento
+                        const newDocRef = await addDoc(collectionRef, newItemData);
+
                         addItemMessage.textContent = `¡"${newItemNameUpper}" agregado!`;
                         addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
+
+                        // --- INICIO DE LA CORRECCIÓN ---
+                        // Si el usuario es admin y el módulo de admin existe, propagar el cambio.
+                        if (window.userRole === 'admin' && window.adminModule?.propagateCategoryChange) {
+                            addItemMessage.textContent = 'Agregado. Propagando...';
+                            try {
+                                // Obtenemos los datos completos del nuevo doc para propagar
+                                const newDocSnap = await getDoc(newDocRef);
+                                if (newDocSnap.exists()) {
+                                    await window.adminModule.propagateCategoryChange(collectionName, newDocRef.id, newDocSnap.data());
+                                    addItemMessage.textContent = `¡Agregado y propagado!`;
+                                } else {
+                                    throw new Error("No se pudo leer el nuevo documento para propagar.");
+                                }
+                            } catch (propError) {
+                                console.error("Error al propagar:", propError);
+                                addItemMessage.textContent = `Agregado, pero ¡Error al propagar!`;
+                                addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
+                            }
+                        }
+                        // --- FIN DE LA CORRECCIÓN ---
+
                         newItemInput.value = '';
                         newItemInput.focus();
                         const relatedDropdownId = collectionName.slice(0,-1);
@@ -531,10 +556,20 @@
             const userDocRef = doc(db, "users", userId); console.log("Fetching user role...");
             try {
                 const userDoc = await getDoc(userDocRef);
-                if (userDoc.exists()) { userRole = userDoc.data().role || 'user'; }
-                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); userRole = 'user'; }
-            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); userRole = 'user'; }
-            console.log("User role:", userRole);
+                if (userDoc.exists()) {
+                     window.userRole = userDoc.data().role || 'user'; // CORRECCIÓN 2: Actualizar global
+                }
+                else {
+                    console.warn(`User doc ${userId} not found. Creating default.`);
+                    await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true });
+                    window.userRole = 'user'; // CORRECCIÓN 2: Actualizar global
+                 }
+            } catch (error) {
+                 console.error("CRITICAL: Error fetching/setting user role:", error);
+                 window.showModal("Error Crítico", "No se pudo verificar tu rol.");
+                 window.userRole = 'user'; // CORRECCIÓN 2: Actualizar global
+            }
+            console.log("User role:", window.userRole);
 
             loginContent.classList.add('hidden'); registerContent.classList.add('hidden');
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando...</h2></div></div>`;
@@ -542,7 +577,7 @@
 
              console.log("Starting data preload..."); try { await preloadAllData(); } catch (preloadError) { console.error("Error preloadAllData:", preloadError); } console.log("Preload attempted. Initializing modules...");
 
-            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig };
+            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig };
             let initSuccess = true;
              const modules = [ { name: 'Data', init: window.initData }, { name: 'Admin', init: window.initAdmin }, { name: 'Inventario', init: window.initInventario }, { name: 'Catalogo', init: window.initCatalogo }, { name: 'Clientes', init: window.initClientes }, { name: 'Ventas', init: window.initVentas }, { name: 'Obsequios', init: window.initObsequios } ];
              modules.forEach(m => { if (typeof m.init === 'function') { try { m.init(dependencies); console.log(`${m.name} initialized.`); } catch (e) { console.error(`Error init ${m.name}:`, e); initSuccess = false; } } else { console.error(`CRITICAL: ${m.name} init function not found.`); initSuccess = false; } });
@@ -560,7 +595,7 @@
             if (floatingControls) floatingControls.classList.remove('hidden'); else console.error("floatingControls not found in showMainMenu.");
             mainContent.classList.remove('hidden');
 
-            const isAdmin = userRole === 'admin';
+            const isAdmin = window.userRole === 'admin'; // Usar la variable global
             mainContent.innerHTML = `
                 <div class="p-4 pt-8"> <div class="container mx-auto max-w-lg"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                     <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
@@ -625,4 +660,3 @@
     </script>
 </body>
 </html>
-
