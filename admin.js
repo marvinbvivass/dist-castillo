@@ -317,65 +317,191 @@
     async function handleConfirmInventarioImport() {
         const itemsToProcess = _inventarioParaImportar;
         if (itemsToProcess.length === 0) { _showModal('Aviso', 'No hay productos válidos para procesar.'); return; }
-        _showModal('Progreso', `Verificando ${itemsToProcess.length} productos con inventario actual...`);
-        try {
-            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const snap = await _getDocs(invRef); const curInvMap = new Map();
-            snap.docs.forEach(d=>{const data=d.data(); const key=`${data.rubro||''}|${data.segmento||''}|${data.marca||''}|${data.presentacion||''}`.toUpperCase(); curInvMap.set(key, d.id);});
 
-            _showModal('Progreso', 'Preparando adición de productos nuevos...');
-            const batch = _writeBatch(_db); let addedCount = 0; let skippedCount = 0; const addedProductsData = [];
+        _showModal('Progreso', `Verificando ${itemsToProcess.length} productos con inventario actual...`);
+
+        try {
+            // --- INICIO: Lógica para identificar y agregar nuevas categorías ---
+            const categoriasNuevas = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
+            itemsToProcess.forEach(item => {
+                if (item.rubro) categoriasNuevas.rubros.add(item.rubro);
+                if (item.segmento) categoriasNuevas.segmentos.add(item.segmento);
+                if (item.marca) categoriasNuevas.marcas.add(item.marca);
+            });
+
+            const categoriasParaAgregar = { rubros: [], segmentos: [], marcas: [] };
+
+            for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
+                const nombresNuevos = Array.from(categoriasNuevas[tipoCategoria]);
+                if (nombresNuevos.length > 0) {
+                    _showModal('Progreso', `Verificando ${tipoCategoria} existentes...`);
+                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
+                    const snapshot = await _getDocs(collectionRef);
+                    const nombresExistentes = new Set(snapshot.docs.map(doc => doc.data().name));
+                    nombresNuevos.forEach(nombre => {
+                        if (!nombresExistentes.has(nombre)) {
+                            categoriasParaAgregar[tipoCategoria].push({ name: nombre });
+                        }
+                    });
+                }
+            }
+            // --- FIN: Lógica para identificar nuevas categorías ---
+
+            // Verificar productos existentes (igual que antes)
+            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const snap = await _getDocs(invRef);
+            const curInvMap = new Map();
+            snap.docs.forEach(d => {
+                const data = d.data();
+                const key = `${data.rubro || ''}|${data.segmento || ''}|${data.marca || ''}|${data.presentacion || ''}`.toUpperCase();
+                curInvMap.set(key, d.id);
+            });
+
+            // Preparar batch para productos NUEVOS
+            const batchProductos = _writeBatch(_db);
+            let addedProductCount = 0;
+            let skippedProductCount = 0;
+            const addedProductsData = []; // Para propagación
 
             itemsToProcess.forEach(item => {
                 const key = item.key;
                 if (!curInvMap.has(key)) {
-                    const { isValid, key: itemKey, originalRow, ...newProductData } = item;
-                    newProductData.cantidadUnidades = 0; // Cantidad 0
-                    const newDocRef = _doc(invRef);
-                    batch.set(newDocRef, newProductData);
-                    addedCount++;
+                    // Excluir propiedades temporales antes de guardar
+                    const { isValid, key: itemKey, originalRow, error, ...newProductData } = item;
+                    newProductData.cantidadUnidades = 0; // Añadir con cantidad 0
+                    const newDocRef = _doc(invRef); // Generar ID localmente
+                    batchProductos.set(newDocRef, newProductData);
+                    addedProductCount++;
+                    // Guardar datos + ID para propagación posterior
                     addedProductsData.push({ id: newDocRef.id, data: newProductData });
                     console.log(`Adding new product: ${item.presentacion}`);
                 } else {
-                    skippedCount++;
+                    skippedProductCount++;
                     console.log(`Skipping existing product: ${item.presentacion}`);
                 }
             });
 
-            if (addedCount === 0) {
-                 _showModal('Aviso', `No se añadieron productos nuevos. ${skippedCount > 0 ? `${skippedCount} producto(s) del archivo ya existían y fueron ignorados.` : ''}`);
-                 showImportExportInventarioView(); return;
+            // Contar categorías nuevas
+            const addedRubroCount = categoriasParaAgregar.rubros.length;
+            const addedSegmentoCount = categoriasParaAgregar.segmentos.length;
+            const addedMarcaCount = categoriasParaAgregar.marcas.length;
+            const totalCategoriasNuevas = addedRubroCount + addedSegmentoCount + addedMarcaCount;
+
+            // Mensaje de confirmación
+            let confirmMsg = '';
+            if (addedProductCount > 0) confirmMsg += `Se añadirán ${addedProductCount} producto(s) nuevo(s) (stock 0). `;
+            if (skippedProductCount > 0) confirmMsg += `${skippedProductCount} producto(s) existentes serán ignorados. `;
+            if (totalCategoriasNuevas > 0) confirmMsg += `Se añadirán ${totalCategoriasNuevas} categorías nuevas (${addedRubroCount}R/${addedSegmentoCount}S/${addedMarcaCount}M). `;
+            if (!confirmMsg) {
+                 _showModal('Aviso', 'No hay productos ni categorías nuevas para importar.');
+                 showImportExportInventarioView();
+                 return;
             }
+            confirmMsg += '¿Continuar?';
 
-            _showModal('Confirmar Importación', `Se añadirán ${addedCount} producto(s) nuevo(s) con cantidad 0. ${skippedCount > 0 ? `${skippedCount} producto(s) existentes serán ignorados.` : ''} ¿Continuar?`, async () => {
-                _showModal('Progreso', `Añadiendo ${addedCount} productos...`);
+            _showModal('Confirmar Importación', confirmMsg, async () => {
+                _showModal('Progreso', 'Guardando cambios...');
                 try {
-                    await batch.commit();
-                    _showModal('Progreso', `Productos añadidos localmente. Propagando a otros usuarios...`);
+                    // --- INICIO: Guardar categorías nuevas ---
+                    let batchCategorias = _writeBatch(_db);
+                    let catOps = 0;
+                    const BATCH_LIMIT = 490;
+                    const addedCategoriesData = []; // Para propagación
 
-                    if (window.adminModule?.propagateProductChange && addedProductsData.length > 0) {
-                        let propErrors = 0;
-                        for (const prodInfo of addedProductsData) {
-                             try { await window.adminModule.propagateProductChange(prodInfo.id, prodInfo.data); }
-                             catch (propError) { console.error(`Error propagando nuevo producto ${prodInfo.id}:`, propError); propErrors++; }
+                    for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
+                        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
+                        for (const catData of categoriasParaAgregar[tipoCategoria]) {
+                            const newCatRef = _doc(collectionRef); // Generar ID
+                            batchCategorias.set(newCatRef, catData);
+                            addedCategoriesData.push({ collectionName: tipoCategoria, id: newCatRef.id, data: catData }); // Guardar para propagar
+                            catOps++;
+                            if (catOps >= BATCH_LIMIT) {
+                                await batchCategorias.commit();
+                                batchCategorias = _writeBatch(_db);
+                                catOps = 0;
+                            }
                         }
-                        _showModal(propErrors > 0 ? 'Advertencia' : 'Éxito', `Se añadieron ${addedCount} producto(s) nuevo(s).${propErrors > 0 ? ` Ocurrieron ${propErrors} errores al propagar.` : ' Propagado correctamente.'}`, showImportExportInventarioView);
-                    } else if (addedProductsData.length > 0) {
-                         _showModal('Advertencia', `Se añadieron ${addedCount} producto(s) nuevo(s) localmente, pero la función de propagación no está disponible.`, showImportExportInventarioView);
-                    } else {
-                         _showModal('Éxito', 'Proceso completado (sin adiciones propagadas).', showImportExportInventarioView);
                     }
+                    if (catOps > 0) {
+                        await batchCategorias.commit();
+                        console.log(`Added ${totalCategoriasNuevas} new categories locally.`);
+                    }
+                    // --- FIN: Guardar categorías nuevas ---
+
+                    // --- INICIO: Guardar productos nuevos ---
+                    if (addedProductCount > 0) {
+                        await batchProductos.commit();
+                        console.log(`Added ${addedProductCount} new products locally.`);
+                    }
+                    // --- FIN: Guardar productos nuevos ---
+
+                    // --- INICIO: Propagación ---
+                    _showModal('Progreso', 'Propagando cambios a otros usuarios...');
+                    let propErrors = 0;
+
+                    // Propagar categorías nuevas
+                    if (addedCategoriesData.length > 0 && window.adminModule?.propagateCategoryChange) {
+                        for (const catInfo of addedCategoriesData) {
+                            try {
+                                await window.adminModule.propagateCategoryChange(catInfo.collectionName, catInfo.id, catInfo.data);
+                            } catch (propError) {
+                                console.error(`Error propagating new category ${catInfo.collectionName}/${catInfo.id}:`, propError);
+                                propErrors++;
+                            }
+                        }
+                    } else if (addedCategoriesData.length > 0) {
+                        console.warn('Propagate category function not found, skipping category propagation.');
+                        // Opcional: Mostrar advertencia al usuario
+                    }
+
+                    // Propagar productos nuevos
+                    if (addedProductsData.length > 0 && window.adminModule?.propagateProductChange) {
+                        for (const prodInfo of addedProductsData) {
+                            try {
+                                await window.adminModule.propagateProductChange(prodInfo.id, prodInfo.data);
+                            } catch (propError) {
+                                console.error(`Error propagating new product ${prodInfo.id}:`, propError);
+                                propErrors++;
+                            }
+                        }
+                    } else if (addedProductsData.length > 0) {
+                         console.warn('Propagate product function not found, skipping product propagation.');
+                         // Opcional: Mostrar advertencia al usuario
+                    }
+                    // --- FIN: Propagación ---
+
+                    // Mostrar resultado final
+                    let finalMsg = '';
+                    if (addedProductCount > 0) finalMsg += `Se añadieron ${addedProductCount} producto(s). `;
+                    if (totalCategoriasNuevas > 0) finalMsg += `Se añadieron ${totalCategoriasNuevas} categoría(s). `;
+                    if (propErrors > 0) {
+                         _showModal('Advertencia', `${finalMsg} Ocurrieron ${propErrors} errores al propagar.`, showImportExportInventarioView);
+                    } else {
+                         _showModal('Éxito', `${finalMsg} Propagado correctamente.`, showImportExportInventarioView);
+                    }
+                    // Invalidar caché local de categorías si existe (ej. en inventario.js)
+                    if (window.inventarioModule?.invalidateSegmentOrderCache) {
+                         window.inventarioModule.invalidateSegmentOrderCache(); // Esto también limpia caché de marcas
+                    }
+
+
                 } catch (commitError) {
-                    console.error("Error committing new products:", commitError);
-                    _showModal('Error', `Error al guardar productos nuevos: ${commitError.message}`);
+                    console.error("Error committing changes:", commitError);
+                    _showModal('Error', `Error al guardar cambios: ${commitError.message}`);
                 }
-            }, 'Sí, Añadir Nuevos');
+            }, 'Sí, Importar');
 
         } catch (error) {
-            console.error("Error during inventory import process:", error);
-            _showModal('Error', `Error durante la importación: ${error.message}`);
+            console.error("Error during inventory import preparation:", error);
+            _showModal('Error', `Error durante la preparación de la importación: ${error.message}`);
         }
-        finally { _inventarioParaImportar=[]; }
+        finally {
+             // Limpiar caché de importación independientemente del resultado
+            _inventarioParaImportar = [];
+            // Resetear input de archivo
+            const uploader = document.getElementById('inventario-excel-uploader');
+            if (uploader) uploader.value = '';
+        }
     }
 
 
