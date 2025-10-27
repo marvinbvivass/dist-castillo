@@ -10,37 +10,62 @@
 
     window.initAdmin = function(dependencies) {
         if (!dependencies.db || !dependencies.mainContent || !dependencies.showMainMenu || !dependencies.showModal) {
-            console.error("Admin Init Error: Missing critical dependencies"); return;
+            console.error("Admin Init Error: Faltan dependencias críticas");
+            return;
         }
-        _db = dependencies.db; _userId = dependencies.userId; _userRole = dependencies.userRole; _appId = dependencies.appId;
-        _mainContent = dependencies.mainContent; _floatingControls = dependencies.floatingControls; _showMainMenu = dependencies.showMainMenu;
-        _showModal = dependencies.showModal; _collection = dependencies.collection; _getDocs = dependencies.getDocs;
-        _doc = dependencies.doc; _getDoc = dependencies.getDoc; _setDoc = dependencies.setDoc; _writeBatch = dependencies.writeBatch;
-        _query = dependencies.query; _where = dependencies.where; _deleteDoc = dependencies.deleteDoc;
-        limit = dependencies.limit; startAfter = dependencies.startAfter;
-        if (!_floatingControls) console.warn("Admin Init Warning: floatingControls not found.");
-        if (typeof limit !== 'function' || typeof startAfter !== 'function') console.error("CRITICAL Admin Init Error: Firestore limit/startAfter not provided.");
+        _db = dependencies.db;
+        _userId = dependencies.userId; // ID del Admin
+        _userRole = dependencies.userRole;
+        _appId = dependencies.appId;
+        _mainContent = dependencies.mainContent;
+        _floatingControls = dependencies.floatingControls;
+        _showMainMenu = dependencies.showMainMenu;
+        _showModal = dependencies.showModal;
+        _collection = dependencies.collection;
+        _getDocs = dependencies.getDocs;
+        _doc = dependencies.doc;
+        _getDoc = dependencies.getDoc;
+        _setDoc = dependencies.setDoc;
+        _writeBatch = dependencies.writeBatch;
+        _query = dependencies.query;
+        _where = dependencies.where;
+        _deleteDoc = dependencies.deleteDoc;
+        limit = dependencies.limit;
+        startAfter = dependencies.startAfter;
+        if (!_floatingControls) {
+            console.warn("Admin Init Warning: floatingControls no encontrado.");
+        }
+        if (typeof limit !== 'function' || typeof startAfter !== 'function') {
+            console.error("CRITICAL Admin Init Error: Funciones Firestore 'limit' o 'startAfter' no proveídas.");
+        }
     };
 
     window.showAdminOrProfileView = function() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
-        if (_userRole === 'admin') showAdminSubMenuView();
-        else showUserProfileView();
+        if (_userRole === 'admin') {
+            showAdminSubMenuView();
+        } else {
+            showUserProfileView();
+        }
     };
 
     function showAdminSubMenuView() {
         _floatingControls?.classList.add('hidden');
         _mainContent.innerHTML = `
-            <div class="p-4 pt-8"> <div class="container mx-auto max-w-md"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                <h1 class="text-3xl font-bold text-gray-800 mb-6">Panel Admin</h1>
-                <div class="space-y-4">
-                    <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700">Gestión Usuarios</button>
-                    <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700">Config Obsequio</button>
-                    <button id="importExportInventarioBtn" class="w-full px-6 py-3 bg-teal-600 text-white rounded-lg shadow-md hover:bg-teal-700">Importar/Exportar Inventario</button>
-                    <button id="deepCleanBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Limpieza Profunda</button>
-                    <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver Menú</button>
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-md">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Panel Admin</h1>
+                        <div class="space-y-4">
+                            <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700">Gestión Usuarios</button>
+                            <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700">Config Obsequio</button>
+                            <button id="importExportInventarioBtn" class="w-full px-6 py-3 bg-teal-600 text-white rounded-lg shadow-md hover:bg-teal-700">Importar/Exportar Inventario</button>
+                            <button id="deepCleanBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Limpieza Profunda</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver Menú</button>
+                        </div>
+                    </div>
                 </div>
-            </div> </div> </div>
+            </div>
         `;
         document.getElementById('userManagementBtn').addEventListener('click', showUserManagementView);
         document.getElementById('obsequioConfigBtn').addEventListener('click', showObsequioConfigView);
@@ -49,24 +74,138 @@
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
-    // --- Funciones Limpieza Profunda ---
-    function showDeepCleanView() { /* ... (código sin cambios) ... */ }
-    function handleBackupPromptBeforeClean() { /* ... (código sin cambios) ... */ }
-    async function handleBackupBeforeClean() { /* ... (código sin cambios) ... */ }
-    function handleDeepCleanConfirmation() { /* ... (código sin cambios) ... */ }
-    async function executeDeepClean() { /* ... (código sin cambios) ... */ }
-    async function deleteCollection(collectionPath) { /* ... (código sin cambios) ... */ }
+    function showDeepCleanView() {
+        _floatingControls?.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-red-600 mb-4 text-center">⚠️ Limpieza Profunda ⚠️</h1>
+                        <p class="text-center text-red-700 mb-6 font-semibold">
+                            ¡ADVERTENCIA! Eliminará permanentemente datos de TODOS los usuarios. NO SE PUEDE DESHACER. Descarga respaldo.
+                        </p>
+                        <div class="space-y-4 text-left mb-6 border p-4 rounded-lg bg-gray-50">
+                            <label class="flex items-center space-x-3">
+                                <input type="checkbox" id="cleanInventario" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                <span>Inventario y Categorías (Todos los Usuarios)</span>
+                            </label>
+                            <label class="flex items-center space-x-3">
+                                <input type="checkbox" id="cleanClientes" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                <span>Clientes y Sectores (Público)</span>
+                            </label>
+                            <label class="flex items-center space-x-3">
+                                <input type="checkbox" id="cleanVentas" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                <span>Ventas y Cierres (Privados de Todos y Públicos)</span>
+                            </label>
+                             <label class="flex items-center space-x-3">
+                                <input type="checkbox" id="cleanObsequios" class="h-5 w-5 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                                <span>Config. y Registros Obsequios (Privados y Públicos)</span>
+                            </label>
+                        </div>
+                        <div class="mb-6">
+                            <label for="confirmCleanText" class="block text-sm font-medium text-gray-700 mb-1">Escribe "BORRAR DATOS":</label>
+                            <input type="text" id="confirmCleanText" class="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-red-500 focus:border-red-500" placeholder="BORRAR DATOS">
+                        </div>
+                        <div class="space-y-4">
+                            <button id="executeCleanBtn" class="w-full px-6 py-3 bg-red-700 text-white font-semibold rounded-lg shadow-md hover:bg-red-800 disabled:opacity-50" disabled>Iniciar Limpieza...</button>
+                            <button id="backToAdminMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const confirmInput = document.getElementById('confirmCleanText');
+        const executeBtn = document.getElementById('executeCleanBtn');
+        confirmInput.addEventListener('input', () => { executeBtn.disabled = confirmInput.value !== 'BORRAR DATOS'; });
+        document.getElementById('executeCleanBtn').addEventListener('click', handleBackupPromptBeforeClean);
+        document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
+    }
+
+    function handleBackupPromptBeforeClean() {
+        const confirmInput = document.getElementById('confirmCleanText');
+        if (confirmInput.value !== 'BORRAR DATOS') { _showModal('Error', 'Escribe "BORRAR DATOS" para confirmar.'); return; }
+        const cleanInv = document.getElementById('cleanInventario').checked, cleanCli = document.getElementById('cleanClientes').checked, cleanVen = document.getElementById('cleanVentas').checked, cleanObs = document.getElementById('cleanObsequios').checked;
+        if (!cleanInv && !cleanCli && !cleanVen && !cleanObs) { _showModal('Aviso', 'No has seleccionado secciones.'); return; }
+
+        const modalBackupContent = `
+            <div class="text-center"> <h3 class="text-xl font-bold mb-4">Descargar Respaldo (Opcional)</h3> <p class="text-gray-600 mb-6">¿Deseas descargar un Excel de respaldo antes de eliminar?</p>
+                <div class="flex flex-col sm:flex-row justify-center gap-3 mt-6">
+                    <button id="backupAndContinueBtn" class="w-full sm:w-auto px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Descargar y Continuar</button>
+                    <button id="continueWithoutBackupBtn" class="w-full sm:w-auto px-5 py-2.5 bg-yellow-500 text-gray-800 rounded-lg hover:bg-yellow-600">Continuar SIN Respaldo</button>
+                    <button id="cancelCleanBtnModal" class="w-full sm:w-auto px-5 py-2.5 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400">Cancelar Limpieza</button>
+                </div> </div> `;
+        _showModal('Respaldo Opcional', modalBackupContent, null, '');
+
+        document.getElementById('backupAndContinueBtn').addEventListener('click', async () => { await handleBackupBeforeClean(); handleDeepCleanConfirmation(); });
+        document.getElementById('continueWithoutBackupBtn').addEventListener('click', handleDeepCleanConfirmation);
+        document.getElementById('cancelCleanBtnModal').addEventListener('click', () => document.getElementById('modalContainer').classList.add('hidden'));
+    }
+
+    async function handleBackupBeforeClean() {
+        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return false; }
+        _showModal('Progreso', 'Generando respaldo...');
+        const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
+        const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); const wb = XLSX.utils.book_new(); let sheetsAdded = 0;
+        try {
+            const fetchData = async (path) => { try { const snap = await _getDocs(_collection(_db, path)); return snap.docs.map(d => ({ id: d.id, ...d.data() })); } catch (err) { console.error(`Error backup ${path}:`, err); return []; } };
+            if (cleanInv) { const inv = await fetchData(`artifacts/${_appId}/users/${_userId}/inventario`), rub = await fetchData(`artifacts/${_appId}/users/${_userId}/rubros`), seg = await fetchData(`artifacts/${_appId}/users/${_userId}/segmentos`), mar = await fetchData(`artifacts/${_appId}/users/${_userId}/marcas`); if(inv.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(inv),'Inventario_Admin');sheetsAdded++;} if(rub.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rub),'Rubros_Admin');sheetsAdded++;} if(seg.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(seg),'Segmentos_Admin');sheetsAdded++;} if(mar.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(mar),'Marcas_Admin');sheetsAdded++;} }
+            if (cleanCli) { const cli = await fetchData(`artifacts/${pubProjId}/public/data/clientes`), sec = await fetchData(`artifacts/${pubProjId}/public/data/sectores`); if(cli.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cli),'Clientes_Public');sheetsAdded++;} if(sec.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sec),'Sectores_Public');sheetsAdded++;} }
+            if (cleanVen) { const vAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/ventas`), cAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/cierres`), cPub = await fetchData(`public_data/${_appId}/user_closings`); if(vAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(vAdm),'Ventas_Admin');sheetsAdded++;} if(cAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cAdm),'Cierres_Admin');sheetsAdded++;} if(cPub.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cPub),'Cierres_Vendedores');sheetsAdded++;} }
+            if (cleanObs) { const oAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/obsequios_entregados`); const admConfRef = _doc(_db,`artifacts/${_appId}/users/${_userId}/config/obsequio`); const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); const [admConfS, pubConfS] = await Promise.allSettled([_getDoc(admConfRef), _getDoc(pubConfRef)]); const confs=[]; if(admConfS.status==='fulfilled'&&admConfS.value.exists())confs.push({origen:'admin',...admConfS.value.data()}); if(pubConfS.status==='fulfilled'&&pubConfS.value.exists())confs.push({origen:'public',...pubConfS.value.data()}); if(oAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(oAdm),'Obsequios_Admin');sheetsAdded++;} if(confs.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(confs),'Config_Obsequio');sheetsAdded++;} }
+            if (sheetsAdded > 0) { XLSX.writeFile(wb, `Respaldo_Limpieza_${today}.xlsx`); _showModal('Respaldo Descargado', `Archivo "Respaldo_Limpieza_${today}.xlsx" generado.`, null, 'OK'); await new Promise(r=>setTimeout(r,1500)); return true; }
+            else { _showModal('Aviso', 'No se encontraron datos para respaldar.', null, 'OK'); await new Promise(r=>setTimeout(r,1500)); return true; }
+        } catch (error) { console.error("Error respaldo:", error); _showModal('Error Respaldo', `Error: ${error.message}. Limpieza cancelada.`); await new Promise(r=>setTimeout(r,1500)); return false; }
+        finally { const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); }
+    }
+
+    function handleDeepCleanConfirmation() {
+         _showModal('Confirmación Final Extrema', `<p class="text-red-600 font-bold">¡ÚLTIMA ADVERTENCIA!</p> Vas a borrar permanentemente las secciones seleccionadas para TODOS los usuarios. ¿Seguro?`, executeDeepClean, 'Sí, BORRAR DATOS');
+    }
+
+    async function executeDeepClean() {
+        _showModal('Progreso', 'Iniciando limpieza profunda...');
+        const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
+        const colsToDelPub = []; const pubProjId = 'ventas-9a210'; let allUserIds = [];
+        try { const uSnap = await _getDocs(_collection(_db, "users")); allUserIds = uSnap.docs.map(d => d.id); console.log(`Limpieza para ${allUserIds.length} usuarios.`); }
+        catch (uErr) { console.error("Error obteniendo usuarios:", uErr); _showModal('Error Crítico', `No se pudo obtener lista usuarios. Limpieza cancelada: ${uErr.message}`); return; }
+
+        if (cleanCli) { colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/clientes`, name: 'Clientes Públicos' }); colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/sectores`, name: 'Sectores Públicos' }); }
+        if (cleanVen) { colsToDelPub.push({ path: `public_data/${_appId}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
+        if (cleanObs) { const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); try { await _deleteDoc(pubConfRef); console.log("Deleted public obsequio config."); } catch(e){ console.warn("Could not delete public obsequio config:", e.code); } }
+
+        const privColsToClean = []; if(cleanInv){privColsToClean.push({sub:'inventario',n:'Inventario'}); privColsToClean.push({sub:'rubros',n:'Rubros'}); privColsToClean.push({sub:'segmentos',n:'Segmentos'}); privColsToClean.push({sub:'marcas',n:'Marcas'});} if(cleanVen){privColsToClean.push({sub:'ventas',n:'Ventas'}); privColsToClean.push({sub:'cierres',n:'Cierres'});} if(cleanObs){privColsToClean.push({sub:'obsequios_entregados',n:'Obsequios Entregados'}); privColsToClean.push({sub:'config/obsequio',n:'Config Obsequio Privada',isDoc:true});}
+        let errorsOccurred = false; let deletedDocCount = 0; let deletedColCount = 0;
+
+        for (const colInfo of colsToDelPub) { _showModal('Progreso', `Eliminando ${colInfo.name}...`); try { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(colInfo.path); console.log(`Deleted ${count} docs from ${colInfo.name}`); deletedDocCount+=count; deletedColCount++; } catch (error) { console.error(`Error public ${colInfo.name}:`, error); errorsOccurred=true; _showModal('Error Parcial', `Error ${colInfo.name}: ${error.message}. Continuando...`, null, 'OK'); await new Promise(r=>setTimeout(r,2000)); } }
+
+        for (const targetUserId of allUserIds) { _showModal('Progreso', `Limpiando ${targetUserId.substring(0,6)}... (${allUserIds.indexOf(targetUserId)+1}/${allUserIds.length})`); console.log(`--- Cleaning private for ${targetUserId} ---`);
+            for (const privCol of privColsToClean) { const fullPath = `artifacts/${_appId}/users/${targetUserId}/${privCol.sub}`; try { if (privCol.isDoc) { const docRef = _doc(_db, fullPath); await _deleteDoc(docRef); console.log(`  - Deleted doc ${privCol.n} (${fullPath})`); deletedDocCount++; } else { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(fullPath); console.log(`  - Deleted ${count} docs from ${privCol.n} (${fullPath})`); deletedDocCount+=count; } } catch (error) { if(error.code!=='not-found'&&error.code!=='permission-denied'){console.error(`  - Error ${privCol.n} for ${targetUserId}:`, error); errorsOccurred=true;} else if(error.code==='permission-denied'){console.warn(`  - Permission denied ${privCol.n} for ${targetUserId}.`); errorsOccurred=true;} else {console.log(`  - ${privCol.n} not found for ${targetUserId}.`);} } } }
+
+        _rubroOrderCacheAdmin=null; _segmentoOrderCacheAdmin=null; if(window.inventarioModule)window.inventarioModule.invalidateSegmentOrderCache(); if(window.catalogoModule)window.catalogoModule.invalidateCache(); if(window.ventasModule)window.ventasModule.invalidateCache();
+        _showModal(errorsOccurred?'Limpieza Completada (con errores)':'Limpieza Completada', `Intentado para ${allUserIds.length} usuarios. Docs/Configs eliminados: ${deletedDocCount}. ${errorsOccurred?'Ocurrieron errores. Revisa consola.':''}`, showAdminSubMenuView, 'OK');
+    }
+
+    async function deleteCollection(collectionPath) {
+        if (typeof limit !== 'function' || typeof startAfter !== 'function') throw new Error("limit/startAfter no disponibles.");
+        const batchSize = 400; const colRef = _collection(_db, collectionPath); let queryCursor = _query(colRef, limit(batchSize)); let deletedCount = 0; let lastVisible = null;
+        while (true) { const snap = await _getDocs(queryCursor); if (snap.size === 0) break; const batch = _writeBatch(_db); snap.docs.forEach(d => batch.delete(d.ref)); await batch.commit(); deletedCount += snap.size; if (snap.docs.length > 0) lastVisible = snap.docs[snap.docs.length - 1]; else break; queryCursor = _query(colRef, startAfter(lastVisible), limit(batchSize)); }
+        console.log(`Finished deleting ${deletedCount} docs from ${collectionPath}`); return deletedCount;
+    }
 
     // --- Funciones para Importar/Exportar Inventario ---
-    async function getRubroOrderMapAdmin() { /* ... (código sin cambios) ... */ }
-    async function getSegmentoOrderMapAdmin() { /* ... (código sin cambios) ... */ }
-
+    async function getRubroOrderMapAdmin() {
+        if (_rubroOrderCacheAdmin) return _rubroOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _rubroOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getRubroOrderMapAdmin:", e); return {}; }
+    }
+    async function getSegmentoOrderMapAdmin() {
+         if (_segmentoOrderCacheAdmin) return _segmentoOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _segmentoOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getSegmentoOrderMapAdmin:", e); return {}; }
+    }
     function showImportExportInventarioView() {
         _floatingControls?.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto max-w-lg"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                 <h1 class="text-3xl font-bold mb-6 text-center">Importar / Exportar Inventario</h1>
-                <p class="text-center text-gray-600 mb-6 text-sm"> Exporta a Excel. Importa para añadir productos NUEVOS (ignora cantidad) o actualizar cantidades existentes. </p>
+                <p class="text-center text-gray-600 mb-6 text-sm"> Exporta a Excel. Importa para añadir productos NUEVOS (ignora cantidad). </p>
                 <div class="space-y-4">
                     <button id="exportInventarioBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600">Exportar Inventario</button>
                     <button id="importInventarioBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Importar Inventario</button>
@@ -78,9 +217,15 @@
         document.getElementById('importInventarioBtn').addEventListener('click', showImportInventarioView);
         document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
     }
-
-    async function handleExportInventario() { /* ... (código sin cambios) ... */ }
-
+    async function handleExportInventario() {
+        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; } _showModal('Progreso', 'Generando Excel...');
+        try { const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); const rOMap = await getRubroOrderMapAdmin(); const sOMap = await getSegmentoOrderMapAdmin();
+            inv.sort((a,b)=>{ const rOA=rOMap[a.rubro]??9999, rOB=rOMap[b.rubro]??9999; if(rOA!==rOB) return rOA-rOB; const sOA=sOMap[a.segmento]??9999, sOB=sOMap[b.segmento]??9999; if(sOA!==sOB) return sOA-sOB; const mC=(a.marca||'').localeCompare(b.marca||''); if(mC!==0) return mC; return (a.presentacion||'').localeCompare(b.presentacion||''); });
+            const dExport = inv.map(p=>({'Rubro':p.rubro||'','Segmento':p.segmento||'','Marca':p.marca||'','Presentacion':p.presentacion||'','CantidadActualUnidades':p.cantidadUnidades||0,'VentaPorUnd':p.ventaPor?.und?'SI':'NO','VentaPorPaq':p.ventaPor?.paq?'SI':'NO','VentaPorCj':p.ventaPor?.cj?'SI':'NO','UnidadesPorPaquete':p.unidadesPorPaquete||'','UnidadesPorCaja':p.unidadesPorCaja||'','PrecioUnd':p.precios?.und||'','PrecioPaq':p.precios?.paq||'','PrecioCj':p.precios?.cj||'','ManejaVacios':p.manejaVacios?'SI':'NO','TipoVacio':p.tipoVacio||'','IVA':p.iva!==undefined?`${p.iva}%`:''}));
+            const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventario'); const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Inventario_${today}.xlsx`);
+            const modal = document.getElementById('modalContainer'); if(modal) modal.classList.add('hidden');
+        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error: ${error.message}`); }
+    }
     function showImportInventarioView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto max-w-4xl"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
@@ -96,14 +241,12 @@
         document.getElementById('backToImportExportBtn').addEventListener('click', showImportExportInventarioView);
     }
 
-    // MODIFICADO: Lee más columnas y no valida cantidad
     function handleFileUploadInventario(event) {
         const file = event.target.files[0]; if (!file) return; _inventarioParaImportar = [];
         const reader = new FileReader(); reader.onload = function(e) { const data = e.target.result; let jsonData = []; try { const wb = XLSX.read(data, {type:'binary'}); const ws = wb.Sheets[wb.SheetNames[0]]; jsonData = XLSX.utils.sheet_to_json(ws, {header:1}); } catch (readError) { _showModal('Error Lectura', `Error: ${readError.message}`); return; }
             if (jsonData.length < 2) { _showModal('Error', 'Archivo vacío.'); renderPreviewTableInventario([]); return; }
             const headers = jsonData[0].map(h=>(h?h.toString().toLowerCase().trim().replace(/\s+/g,''):''));
-            const reqHeaders=['rubro','segmento','marca','presentacion']; // Mínimos requeridos
-            // Opcionales (nombres de columna esperados en minúsculas y sin espacios)
+            const reqHeaders=['rubro','segmento','marca','presentacion'];
             const optHeaders=['ventaporund','ventaporpaq','ventaporcj','unidadesporpaquete','unidadesporcaja','preciound','preciopaq','preciocj','manejavacios','tipovacio','iva'];
             const hMap={}; let missing=false;
             reqHeaders.forEach(rh=>{ const i=headers.indexOf(rh); if(i!==-1)hMap[rh]=i; else{_showModal('Error',`Falta columna requerida: "${rh}"`); missing=true;}}); if(missing){renderPreviewTableInventario([]); return;}
@@ -115,9 +258,8 @@
                     segmento: (row[hMap['segmento']] || '').toString().trim().toUpperCase(),
                     marca: (row[hMap['marca']] || '').toString().trim().toUpperCase(),
                     presentacion: (row[hMap['presentacion']] || '').toString().trim(),
-                    // Leer opcionales (con valores por defecto si no existen o son inválidos)
                     ventaPor: {
-                        und: (row[hMap['ventaporund']] || 'SI').toString().trim().toUpperCase() === 'SI', // Default SI si no existe
+                        und: (row[hMap['ventaporund']] || 'SI').toString().trim().toUpperCase() === 'SI',
                         paq: (row[hMap['ventaporpaq']] || 'NO').toString().trim().toUpperCase() === 'SI',
                         cj: (row[hMap['ventaporcj']] || 'NO').toString().trim().toUpperCase() === 'SI'
                     },
@@ -130,56 +272,37 @@
                     },
                     manejaVacios: (row[hMap['manejavacios']] || 'NO').toString().trim().toUpperCase() === 'SI',
                     tipoVacio: (row[hMap['tipovacio']] || null)?.toString().trim() || null,
-                    // Leer IVA, quitando '%' si existe, default 16
                     iva: parseInt((row[hMap['iva']] || '16').toString().replace('%','').trim(), 10) || 16,
-                    isValid: true, // Asumir válido si los campos clave están
-                    key: '', // Se calculará después
-                    originalRow: row // Para la previsualización si es necesario
+                    isValid: true,
+                    key: '',
+                    originalRow: row
                 };
-
-                // Validar campos clave
-                if (!item.rubro || !item.segmento || !item.marca || !item.presentacion) {
-                     console.warn(`Fila ${rIdx+2}: Faltan Rubro/Segmento/Marca/Presentación. Fila ignorada.`);
-                     item.isValid = false;
-                     item.error = 'Faltan campos clave';
-                     return null; // Ignorar fila completamente si faltan claves
-                }
-
-                // Ajustar unidades si la ventaPor correspondiente no está marcada
+                if (!item.rubro || !item.segmento || !item.marca || !item.presentacion) { console.warn(`Fila ${rIdx+2}: Faltan campos clave. Fila ignorada.`); item.isValid = false; item.error = 'Faltan campos clave'; return null; }
                 if (!item.ventaPor.paq) item.unidadesPorPaquete = 1;
                 if (!item.ventaPor.cj) item.unidadesPorCaja = 1;
-                // Si ninguna ventaPor está marcada, forzar Und
                 if (!item.ventaPor.und && !item.ventaPor.paq && !item.ventaPor.cj) item.ventaPor.und = true;
-                // Si maneja vacíos pero no hay tipo, anular manejaVacios
                 if (item.manejaVacios && !item.tipoVacio) item.manejaVacios = false;
-                // Calcular precio por unidad base (similar a getProductoDataFromForm)
                 let pFinalUnd = 0; if (item.precios.und > 0) pFinalUnd = item.precios.und; else if (item.precios.paq > 0 && item.unidadesPorPaquete > 0) pFinalUnd = item.precios.paq / item.unidadesPorPaquete; else if (item.precios.cj > 0 && item.unidadesPorCaja > 0) pFinalUnd = item.precios.cj / item.unidadesPorCaja; item.precioPorUnidad = parseFloat(pFinalUnd.toFixed(2));
                 item.key = `${item.rubro}|${item.segmento}|${item.marca}|${item.presentacion}`.toUpperCase();
-
                 return item;
-            }).filter(item => item !== null); // Filtrar filas ignoradas
+            }).filter(item => item !== null);
 
             renderPreviewTableInventario(_inventarioParaImportar);
         }; reader.onerror = function(e){_showModal('Error Archivo','No se pudo leer.');renderPreviewTableInventario([]);}; reader.readAsBinaryString(file);
     }
 
-    // MODIFICADO: Muestra más detalles y no la cantidad
     function renderPreviewTableInventario(items) {
         const cont=document.getElementById('inventario-preview-container'), acts=document.getElementById('inventario-import-actions'), back=document.getElementById('backToImportExportBtn'), upInp=document.getElementById('inventario-excel-uploader'); if(!cont||!acts||!back||!upInp) return;
         if(items.length===0){cont.innerHTML=`<p class="text-center text-gray-500 p-4">No hay productos válidos.</p>`; acts.classList.add('hidden'); back.classList.remove('hidden'); return;}
-        const vCount=items.length; // Todos son válidos en términos de definición ahora
+        const vCount=items.length;
         let tableHTML=`<div class="p-4"><h3 class="font-bold text-lg mb-2">Vista Previa (${vCount} productos a procesar)</h3><p class="text-sm text-gray-600 mb-2">Los productos existentes se ignorarán. Los nuevos se añadirán con cantidad 0.</p><table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr><th>Rubro</th><th>Segmento</th><th>Marca</th><th>Presentación</th><th>Precio Und</th><th>Precio Paq</th><th>Precio Cj</th><th>IVA</th></tr></thead><tbody>`;
-        items.forEach(i=>{
-             // Simplificado para mostrar datos clave
-             tHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`;
-        });
+        items.forEach(i=>{ tHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`; });
         tHTML+='</tbody></table></div>'; cont.innerHTML=tHTML;
         acts.classList.remove('hidden'); back.classList.add('hidden'); document.getElementById('confirmInventarioImportBtn').onclick=handleConfirmInventarioImport; document.getElementById('cancelInventarioImportBtn').onclick=()=>{_inventarioParaImportar=[]; upInp.value=''; cont.innerHTML=''; acts.classList.add('hidden'); back.classList.remove('hidden');};
     }
 
-    // MODIFICADO: Añade productos nuevos, ignora existentes y cantidad
     async function handleConfirmInventarioImport() {
-        const itemsToProcess = _inventarioParaImportar; // Ya filtrados en handleFileUploadInventario
+        const itemsToProcess = _inventarioParaImportar;
         if (itemsToProcess.length === 0) { _showModal('Aviso', 'No hay productos válidos para procesar.'); return; }
         _showModal('Progreso', `Verificando ${itemsToProcess.length} productos con inventario actual...`);
         try {
@@ -188,20 +311,20 @@
             snap.docs.forEach(d=>{const data=d.data(); const key=`${data.rubro||''}|${data.segmento||''}|${data.marca||''}|${data.presentacion||''}`.toUpperCase(); curInvMap.set(key, d.id);});
 
             _showModal('Progreso', 'Preparando adición de productos nuevos...');
-            const batch = _writeBatch(_db); let addedCount = 0; let skippedCount = 0; const addedProductsData = []; // Para propagación
+            const batch = _writeBatch(_db); let addedCount = 0; let skippedCount = 0; const addedProductsData = [];
 
             itemsToProcess.forEach(item => {
-                const key = item.key; // Usar la clave precalculada
-                if (!curInvMap.has(key)) { // Si NO existe, añadirlo
-                    const { isValid, key: itemKey, originalRow, ...newProductData } = item; // Excluir campos auxiliares
-                    newProductData.cantidadUnidades = 0; // Establecer cantidad 0
-                    const newDocRef = _doc(invRef); // Generar nueva ID
+                const key = item.key;
+                if (!curInvMap.has(key)) {
+                    const { isValid, key: itemKey, originalRow, ...newProductData } = item;
+                    newProductData.cantidadUnidades = 0; // Cantidad 0
+                    const newDocRef = _doc(invRef);
                     batch.set(newDocRef, newProductData);
                     addedCount++;
-                    addedProductsData.push({ id: newDocRef.id, data: newProductData }); // Guardar para propagar
+                    addedProductsData.push({ id: newDocRef.id, data: newProductData });
                     console.log(`Adding new product: ${item.presentacion}`);
                 } else {
-                    skippedCount++; // Producto ya existe, se ignora
+                    skippedCount++;
                     console.log(`Skipping existing product: ${item.presentacion}`);
                 }
             });
@@ -217,7 +340,6 @@
                     await batch.commit();
                     _showModal('Progreso', `Productos añadidos localmente. Propagando a otros usuarios...`);
 
-                    // Propagar solo los productos NUEVOS
                     if (window.adminModule?.propagateProductChange && addedProductsData.length > 0) {
                         let propErrors = 0;
                         for (const prodInfo of addedProductsData) {
@@ -227,20 +349,20 @@
                         _showModal(propErrors > 0 ? 'Advertencia' : 'Éxito', `Se añadieron ${addedCount} producto(s) nuevo(s).${propErrors > 0 ? ` Ocurrieron ${propErrors} errores al propagar.` : ' Propagado correctamente.'}`, showImportExportInventarioView);
                     } else if (addedProductsData.length > 0) {
                          _showModal('Advertencia', `Se añadieron ${addedCount} producto(s) nuevo(s) localmente, pero la función de propagación no está disponible.`, showImportExportInventarioView);
-                    } else { // Esto no debería ocurrir si addedCount > 0, pero por si acaso
+                    } else {
                          _showModal('Éxito', 'Proceso completado (sin adiciones propagadas).', showImportExportInventarioView);
                     }
                 } catch (commitError) {
                     console.error("Error committing new products:", commitError);
                     _showModal('Error', `Error al guardar productos nuevos: ${commitError.message}`);
                 }
-            }, 'Sí, Añadir Nuevos'); // Texto del botón cambiado
+            }, 'Sí, Añadir Nuevos');
 
         } catch (error) {
             console.error("Error during inventory import process:", error);
             _showModal('Error', `Error durante la importación: ${error.message}`);
         }
-        finally { _inventarioParaImportar=[]; } // Limpiar caché siempre
+        finally { _inventarioParaImportar=[]; }
     }
 
 
