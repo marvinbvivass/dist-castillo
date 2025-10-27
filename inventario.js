@@ -5,7 +5,6 @@
 
     let _inventarioCache = [];
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
-    // ELIMINADO: _segmentoOrderCache ya no es necesario aquí
     let _inventarioListenerUnsubscribe = null;
 
     window.initInventario = function(dependencies) {
@@ -55,9 +54,7 @@
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
 
-    // MODIFICADO: Llama a la función global de invalidación
     function invalidateSegmentOrderCache() {
-        // Llama a la función exportada por catalogo.js para invalidar cachés globales
         if (window.catalogoModule?.invalidateCache) {
              window.catalogoModule.invalidateCache();
         } else {
@@ -66,7 +63,6 @@
     }
 
     window.showInventarioSubMenu = function() {
-        // No es necesario invalidar aquí, se invalida al guardar el orden
         if (_floatingControls) _floatingControls.classList.add('hidden');
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
@@ -93,7 +89,6 @@
         });
         if (isAdmin) {
             document.getElementById('agregarProductoBtn')?.addEventListener('click', showAgregarProductoView);
-            // MODIFICADO: La lógica de ordenar segmentos ahora también invalida la caché global
             document.getElementById('ordenarSegmentosBtn')?.addEventListener('click', showOrdenarSegmentosView);
             document.getElementById('modificarDatosBtn')?.addEventListener('click', showModificarDatosView);
         }
@@ -101,11 +96,6 @@
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
-    // ELIMINADO: getSegmentoOrderMap ya no se necesita
-
-    // La lógica de showOrdenarSegmentosView, renderSortableSegmentList, addDragAndDropHandlers
-    // y handleGuardarOrdenSegmentos permanece igual, pero handleGuardarOrdenSegmentos
-    // ahora llama a invalidateSegmentOrderCache que a su vez llama a la función global.
     function showOrdenarSegmentosView() {
         if (_userRole !== 'admin') {
             _showModal('Acceso Denegado', 'Solo administradores.');
@@ -271,19 +261,18 @@
         const batch = _writeBatch(_db);
         const orderedIds = [];
         let hasChanges = false;
-        // Se necesita cargar el mapa actual para comparar si realmente hubo cambios
         let currentOrderMapTemp = {};
         try {
             const segmentsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
             const snapshot = await _getDocs(segmentsRef);
             snapshot.docs.forEach(doc => { currentOrderMapTemp[doc.id] = doc.data().orden; });
-        } catch { /* Ignorar error de lectura, se procederá sin verificación de cambios */ }
+        } catch { /* Ignorar error de lectura */ }
 
         listItems.forEach((item, index) => {
             const docId = item.dataset.id;
             const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, docId);
             const currentDbOrder = currentOrderMapTemp[docId];
-             if (currentDbOrder === undefined || currentDbOrder !== index) { // Solo actualiza si cambió o no tenía orden
+             if (currentDbOrder === undefined || currentDbOrder !== index) {
                  batch.update(docRef, { orden: index });
                  hasChanges = true;
              }
@@ -341,7 +330,6 @@
         startMainInventarioListener(renderCallback);
     }
 
-    // MODIFICADO: Usa la función de ordenamiento global
     async function renderAjusteMasivoList() {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
@@ -358,10 +346,8 @@
              return textMatch && rubroMatch && segmentoMatch && marcaMatch;
         });
 
-        // --- NUEVO: Ordenamiento Global ---
         const sortFunction = await window.getGlobalProductSortFunction();
         productos.sort(sortFunction);
-        // --- FIN NUEVO ---
 
         if (productos.length === 0) {
             container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan.</p>`;
@@ -369,12 +355,12 @@
         }
 
         let tableHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-100 sticky top-0 z-10"><tr><th class="py-2 px-4 border-b text-left">Producto</th><th class="py-2 px-4 border-b text-center w-40">Cantidad Nueva</th></tr></thead><tbody>`;
-        let lastHeaderKey = null; // Para agrupar visualmente según el primer criterio de orden
-        const firstSortKey = _sortPreferenceCache ? _sortPreferenceCache[0] : 'segmento'; // Obtener primer criterio
+        let lastHeaderKey = null;
+        // CORREGIDO: Acceder a la caché a través de window
+        const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
 
         productos.forEach(p => {
             const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
-            // Añadir cabecera si cambia el valor del primer criterio de orden
             if (currentHeaderValue !== lastHeaderKey) {
                  lastHeaderKey = currentHeaderValue;
                  tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`;
@@ -462,12 +448,6 @@
         }, 'Sí, Actualizar', null, true);
     }
 
-    // La lógica de showModificarDatosView, renderDataListForEditing, showAddCategoryModal,
-    // handleDeleteDataItem, agregarProducto, showModifyDeleteView, getFiltrosHTML, setupFiltros,
-    // editProducto, handleUpdateProducto, deleteProducto, handleDeleteAllProductos y
-    // handleDeleteAllDatosMaestros permanece mayormente igual, pero las vistas que listan
-    // productos ahora usan el ordenamiento global.
-
     function showModificarDatosView() {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; }
         if (_floatingControls) _floatingControls.classList.add('hidden');
@@ -541,18 +521,15 @@
         _activeListeners.push(unsubscribe);
     }
 
-    // showAddCategoryModal ahora es global y está en admin.js, así que no se necesita aquí.
-    // Se deja una referencia por si se llama desde este archivo.
     function showAddCategoryModal(collectionName, itemName) {
          if (window.adminModule?.showAddCategoryModal) {
              window.adminModule.showAddCategoryModal(collectionName, itemName);
-         } else if (_showAddItemModal) { // Fallback a la versión básica si adminModule no está listo
+         } else if (_showAddItemModal) {
               _showAddItemModal(collectionName, itemName);
          } else {
              console.error("Función showAddCategoryModal no encontrada.");
          }
     }
-
 
     async function handleDeleteDataItem(collectionName, itemName, itemType, itemId) {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; }
@@ -781,7 +758,6 @@
         clearBtn.addEventListener('click', () => { searchInput.value = ''; rubroFilter.value = ''; updateDependentFilters('rubro'); applyAndSave(); });
     }
 
-    // MODIFICADO: Usa la función de ordenamiento global
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
@@ -795,10 +771,8 @@
              return txtMatch && rubroMatch && segMatch && marcaMatch;
         });
 
-        // --- NUEVO: Ordenamiento Global ---
         const sortFunction = await window.getGlobalProductSortFunction();
         productos.sort(sortFunction);
-        // --- FIN NUEVO ---
 
         if (productos.length === 0) {
             container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan.</p>`; return;
@@ -809,12 +783,12 @@
             <th class="py-2 px-3 border-b text-center">Stock</th> ${!readOnly ? `<th class="py-2 px-3 border-b text-center">Acciones</th>` : ''}
         </tr></thead><tbody>`;
 
-        let lastHeaderKey = null; // Agrupar visualmente según primer criterio
-        const firstSortKey = _sortPreferenceCache ? _sortPreferenceCache[0] : 'segmento';
+        let lastHeaderKey = null;
+        // CORREGIDO: Acceder a la caché a través de window
+        const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
 
         productos.forEach(p => {
             const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
-            // Añadir cabecera si cambia
             if (currentHeaderValue !== lastHeaderKey) {
                  lastHeaderKey = currentHeaderValue;
                  tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`;
@@ -903,18 +877,15 @@
                 document.getElementById('ventaPorPaq').checked = producto.ventaPor.paq || false;
                 document.getElementById('ventaPorCj').checked = producto.ventaPor.cj || false;
             } else { document.getElementById('ventaPorUnd').checked = true; }
-            updateDynInputs(); // Generar inputs antes de llenarlos
-            const undPaqInput = document.getElementById('unidadesPorPaquete');
-            if (undPaqInput && producto.ventaPor?.paq) undPaqInput.value = producto.unidadesPorPaquete || 1;
-            const undCjInput = document.getElementById('unidadesPorCaja');
-            if (undCjInput && producto.ventaPor?.cj) undCjInput.value = producto.unidadesPorCaja || 1;
+            updateDynInputs();
+            const undPaqInput = document.getElementById('unidadesPorPaquete'); if (undPaqInput && producto.ventaPor?.paq) undPaqInput.value = producto.unidadesPorPaquete || 1;
+            const undCjInput = document.getElementById('unidadesPorCaja'); if (undCjInput && producto.ventaPor?.cj) undCjInput.value = producto.unidadesPorCaja || 1;
             const pExist = producto.precios || { und: producto.precioPorUnidad || 0 };
             const pUndInput = document.getElementById('precioUnd'); if (pUndInput) pUndInput.value = pExist.und || 0;
             const pPaqInput = document.getElementById('precioPaq'); if (pPaqInput) pPaqInput.value = pExist.paq || 0;
             const pCjInput = document.getElementById('precioCj'); if (pCjInput) pCjInput.value = pExist.cj || 0;
-            if (producto.manejaVacios) {
-                 mVacioCheck.checked = true; tVacioCont.classList.remove('hidden'); tVacioSel.required = true; tVacioSel.value = producto.tipoVacio || '';
-             } else { mVacioCheck.checked = false; tVacioCont.classList.add('hidden'); tVacioSel.required = false; }
+            if (producto.manejaVacios) { mVacioCheck.checked = true; tVacioCont.classList.remove('hidden'); tVacioSel.required = true; tVacioSel.value = producto.tipoVacio || ''; }
+             else { mVacioCheck.checked = false; tVacioCont.classList.add('hidden'); tVacioSel.required = false; }
         }, 300);
         document.getElementById('editProductoForm').addEventListener('submit', (e) => handleUpdateProducto(e, productId));
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
@@ -931,7 +902,7 @@
         if (updatedData.manejaVacios && !updatedData.tipoVacio) { _showModal('Error', 'Si maneja vacío, selecciona tipo.'); document.getElementById('tipoVacioSelect')?.focus(); return; }
         let pValido = (updatedData.ventaPor.und && updatedData.precios.und > 0) || (updatedData.ventaPor.paq && updatedData.precios.paq > 0) || (updatedData.ventaPor.cj && updatedData.precios.cj > 0);
         if (!pValido) { _showModal('Error', 'Ingresa al menos un precio > 0.'); document.querySelector('#preciosContainer input[required]')?.focus(); return; }
-        updatedData.cantidadUnidades = productoOriginal.cantidadUnidades || 0; // Conservar stock
+        updatedData.cantidadUnidades = productoOriginal.cantidadUnidades || 0;
         _showModal('Progreso', 'Guardando y propagando...');
         try {
             await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData);
@@ -1014,20 +985,20 @@
                           for (const col in itemsToDelete) { for (const item of itemsToDelete[col]) { try { await window.adminModule.propagateCategoryChange(col, item.id, null); } catch (propErr) { console.error(`Error propagando ${col}/${item.id}:`, propErr); propErrors++; } } }
                           _showModal(propErrors > 0 ? 'Advertencia' : 'Éxito', `Eliminados localmente.${propErrors > 0 ? ` ${propErrors} errores al propagar.` : ' Propagado.'}`);
                       } else { _showModal('Advertencia', 'Eliminados localmente, propagación no disponible.'); }
-                      invalidateSegmentOrderCache(); // Invalida caché por si se eliminaron segmentos
+                      invalidateSegmentOrderCache();
                  }, 'Sí, Eliminar No Usados', null, true);
             } catch (error) { console.error("Error eliminando datos maestros:", error); _showModal('Error', `Error: ${error.message}`); }
         }, 'Sí, Eliminar No Usados', null, true);
     }
 
-    // Exportar funciones necesarias
     window.inventarioModule = {
         editProducto,
         deleteProducto,
         handleDeleteDataItem,
-        showAddCategoryModal, // Referencia a la función (que ahora puede llamar a la global)
-        // ELIMINADO: getSegmentoOrderMap ya no se exporta
-        invalidateSegmentOrderCache // Exporta la función que llama a la global
+        showAddCategoryModal,
+        // getSegmentoOrderMap removido de exportación
+        invalidateSegmentOrderCache
     };
 
 })();
+
