@@ -6,7 +6,7 @@
     let _inventarioCache = [];
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
     let _inventarioListenerUnsubscribe = null;
-    let _marcasCache = null; // Caché para nombres de marcas
+    let _marcasCache = null;
 
     window.initInventario = function(dependencies) {
         _db = dependencies.db;
@@ -51,9 +51,9 @@
     }
 
     function invalidateSegmentOrderCache() {
-        _marcasCache = null; // Invalidar caché de marcas también
+        _marcasCache = null;
         if (window.catalogoModule?.invalidateCache) {
-             window.catalogoModule.invalidateCache(); // Llama a la invalidación global en catalogo.js
+             window.catalogoModule.invalidateCache();
         } else {
             console.warn("Función invalidateCache de catalogoModule no encontrada.");
         }
@@ -71,7 +71,7 @@
                             <button id="verModificarBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Ver Productos / ${isAdmin ? 'Modificar Def.' : 'Consultar Stock'}</button>
                             ${isAdmin ? `<button id="agregarProductoBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Agregar Producto</button>` : ''}
                             <button id="ajusteMasivoBtn" class="w-full px-6 py-3 bg-teal-500 text-white font-semibold rounded-lg shadow-md hover:bg-teal-600">Ajuste Masivo de Cantidades</button>
-                            ${isAdmin ? `<button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos y Marcas</button>` : ''} {/* Texto del botón actualizado */}
+                            ${isAdmin ? `<button id="ordenarSegmentosBtn" class="w-full px-6 py-3 bg-purple-500 text-white font-semibold rounded-lg shadow-md hover:bg-purple-600">Ordenar Segmentos y Marcas</button>` : ''}
                             ${isAdmin ? `<button id="modificarDatosBtn" class="w-full px-6 py-3 bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:bg-yellow-600">Modificar Datos Maestros</button>` : ''}
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú Principal</button>
                         </div>
@@ -86,7 +86,7 @@
         });
         if (isAdmin) {
             document.getElementById('agregarProductoBtn')?.addEventListener('click', showAgregarProductoView);
-            document.getElementById('ordenarSegmentosBtn')?.addEventListener('click', showOrdenarSegmentosMarcasView); // Llama a la nueva función
+            document.getElementById('ordenarSegmentosBtn')?.addEventListener('click', showOrdenarSegmentosMarcasView);
             document.getElementById('modificarDatosBtn')?.addEventListener('click', showModificarDatosView);
         }
         document.getElementById('ajusteMasivoBtn').addEventListener('click', showAjusteMasivoView);
@@ -101,7 +101,7 @@
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
-                <div class="container mx-auto max-w-2xl"> {/* Ancho aumentado */}
+                <div class="container mx-auto max-w-2xl">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Ordenar Segmentos y Marcas (Visualización)</h2>
                         <p class="text-center text-gray-600 mb-6">Arrastra Segmentos para reordenarlos. Arrastra Marcas <span class="font-bold">dentro</span> de su Segmento.</p>
@@ -111,7 +111,6 @@
                                <option value="">Todos</option>
                            </select>
                         </div>
-                        {/* Contenedor principal para segmentos */}
                         <div id="segmentos-marcas-sortable-list" class="space-y-4 border rounded-lg p-4 max-h-[60vh] overflow-y-auto bg-gray-50">
                             <p class="text-gray-500 text-center">Cargando...</p>
                         </div>
@@ -124,11 +123,11 @@
             </div>
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenJerarquia); // Llama a la nueva función de guardado
+        document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenJerarquia);
         const rubroFilter = document.getElementById('ordenarRubroFilter');
         _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'ordenarRubroFilter', 'Rubro');
         rubroFilter.addEventListener('change', () => renderSortableHierarchy(rubroFilter.value));
-        renderSortableHierarchy(''); // Render inicial
+        renderSortableHierarchy('');
     }
 
     async function getAllMarcas() {
@@ -146,7 +145,6 @@
         if (!container) return;
         container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
         try {
-            // 1. Obtener todos los segmentos y asegurar orden inicial
             const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
             let segSnapshot = await _getDocs(segmentosRef);
             let allSegments = segSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -159,21 +157,13 @@
                  segsSinOrden.forEach((seg, index) => { const dRef = _doc(segmentosRef, seg.id); const nOrden = maxOrden + 1 + index; batch.update(dRef, { orden: nOrden }); seg.orden = nOrden; });
                  await batch.commit(); allSegments = [...segsConOrden, ...segsSinOrden];
              }
-            allSegments.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999)); // Ordenar segmentos
-
-            // 2. Obtener todas las marcas (usando caché)
+            allSegments.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
             const allMarcas = await getAllMarcas(); const marcasMap = new Map(allMarcas.map(m => [m.name, m.id]));
-
-            // 3. Obtener productos (filtrados por rubro si aplica)
             let prodsQuery = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); if (rubroFiltro) prodsQuery = _query(prodsQuery, _where("rubro", "==", rubroFiltro));
             const prodSnap = await _getDocs(prodsQuery); const prodsEnRubro = prodSnap.docs.map(d => d.data());
-
-            // 4. Determinar segmentos a mostrar
             let segsToShow = allSegments; if (rubroFiltro) { const uSegNames = new Set(prodsEnRubro.map(p => p.segmento).filter(Boolean)); segsToShow = allSegments.filter(s => s.name && uSegNames.has(s.name)); segsToShow.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999)); }
-
             container.innerHTML = ''; if (segsToShow.length === 0) { container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos ${rubroFiltro ? 'con productos' : ''}.</p>`; return; }
 
-            // 5. Renderizar cada segmento y sus marcas
             segsToShow.forEach(seg => {
                 const segCont = document.createElement('div'); segCont.className = 'segmento-container border border-gray-300 rounded-lg mb-3 bg-white shadow'; segCont.dataset.segmentoId = seg.id; segCont.dataset.segmentoName = seg.name; segCont.dataset.type = 'segmento';
                 const segTitle = document.createElement('div'); segTitle.className = 'segmento-title p-3 bg-gray-200 rounded-t-lg cursor-grab active:cursor-grabbing font-semibold flex justify-between items-center'; segTitle.draggable = true; segTitle.textContent = seg.name; segCont.appendChild(segTitle);
@@ -192,18 +182,17 @@
     function addDragAndDropHandlersHierarchy(container) {
         let draggedItem = null; let draggedItemElement = null; let draggedType = null; let sourceList = null; let placeholder = null;
 
-        const createPlaceholder = (type) => { if(placeholder) placeholder.remove(); placeholder = document.createElement(type === 'segmento' ? 'div' : 'li'); placeholder.className = type === 'segmento' ? 'segmento-placeholder' : 'marca-placeholder'; /* Apply styles via CSS or inline */ placeholder.style.height = type === 'segmento' ? '60px' : '30px'; placeholder.style.background = type === 'segmento' ? '#dbeafe' : '#e0e7ff'; placeholder.style.border = type === 'segmento' ? '2px dashed #3b82f6' : '1px dashed #6366f1'; placeholder.style.borderRadius = type === 'segmento' ? '0.5rem' : '0.25rem'; placeholder.style.margin = type === 'segmento' ? '1rem 0' : '0.25rem 0'; if(type === 'marca') placeholder.style.listStyleType = 'none'; };
+        const createPlaceholder = (type) => { if(placeholder) placeholder.remove(); placeholder = document.createElement(type === 'segmento' ? 'div' : 'li'); placeholder.className = type === 'segmento' ? 'segmento-placeholder' : 'marca-placeholder'; placeholder.style.height = type === 'segmento' ? '60px' : '30px'; placeholder.style.background = type === 'segmento' ? '#dbeafe' : '#e0e7ff'; placeholder.style.border = type === 'segmento' ? '2px dashed #3b82f6' : '1px dashed #6366f1'; placeholder.style.borderRadius = type === 'segmento' ? '0.5rem' : '0.25rem'; placeholder.style.margin = type === 'segmento' ? '1rem 0' : '0.25rem 0'; if(type === 'marca') placeholder.style.listStyleType = 'none'; };
 
         container.addEventListener('dragstart', e => {
-            draggedItemElement = e.target.closest('.segmento-container, .marca-item'); // Elemento HTML
+            draggedItemElement = e.target.closest('.segmento-container, .marca-item');
             if (!draggedItemElement) { e.preventDefault(); return; }
             draggedType = draggedItemElement.dataset.type;
-            draggedItem = draggedItemElement; // Referencia al elemento
-            sourceList = draggedItemElement.parentNode; // Lista de origen
+            draggedItem = draggedItemElement;
+            sourceList = draggedItemElement.parentNode;
             setTimeout(() => { if (draggedItemElement) draggedItemElement.classList.add('opacity-50'); }, 0);
             e.dataTransfer.effectAllowed = 'move';
             createPlaceholder(draggedType);
-            // e.dataTransfer.setData('text/plain', draggedType === 'segmento' ? draggedItemElement.dataset.segmentoId : draggedItemElement.dataset.marcaId);
         });
 
         container.addEventListener('dragend', e => {
