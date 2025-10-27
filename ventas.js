@@ -85,7 +85,7 @@
         document.getElementById('tasaCopInput').addEventListener('input', (e) => { _tasaCOP = parseFloat(e.target.value) || 0; localStorage.setItem('tasaCOP', _tasaCOP); if (_monedaActual === 'COP') { renderVentasInventario(); updateVentaTotal(); } });
         document.getElementById('tasaBsInput').addEventListener('input', (e) => { _tasaBs = parseFloat(e.target.value) || 0; localStorage.setItem('tasaBs', _tasaBs); if (_monedaActual === 'Bs') { renderVentasInventario(); updateVentaTotal(); } });
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
-        document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
+        document.getElementById('generarTicketBtn').addEventListener('click', generarTicket); // Llama a la nueva lógica
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
         loadDataForNewSale();
     }
@@ -160,7 +160,7 @@
         if(_monedaActual==='COP'&&_tasaCOP>0)tEl.textContent=`Total: COP ${(Math.ceil((tUSD*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; else if(_monedaActual==='Bs'&&_tasaBs>0)tEl.textContent=`Total: Bs.S ${(tUSD*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; else tEl.textContent=`Total: $${tUSD.toFixed(2)}`;
     }
 
-    // Funciones de Ticket
+    // Funciones de Ticket (sin cambios)
     function createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo = 'ticket') {
         const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
         const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
@@ -250,7 +250,6 @@
                 <hr class="border-dashed border-black mt-6">
             </div>`;
     }
-
     function createRawTextTicket(venta, productos, vaciosDevueltosPorTipo) {
         const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
         const toTitleCase = (str) => { if (!str) return ''; return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()); };
@@ -323,68 +322,179 @@
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         return ticket;
     }
-
-    async function handleShareTicket(htmlContent, successCallback) {
+    // Funciones handleShareTicket, handleShareRawText, copyToClipboard, legacyCopyToClipboard (sin cambios funcionales, solo reciben callback)
+    async function handleShareTicket(htmlContent, callbackDespuesDeCompartir) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div'); tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.innerHTML = htmlContent; document.body.appendChild(tempDiv);
         const ticketElement = document.getElementById('temp-ticket-for-image');
-        if (!ticketElement) { _showModal('Error', 'No se pudo encontrar elemento ticket.'); document.body.removeChild(tempDiv); successCallback(); return; }
+        if (!ticketElement) { _showModal('Error', 'No se pudo encontrar elemento ticket.'); document.body.removeChild(tempDiv); if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(false); return; }
         try { await new Promise(resolve => setTimeout(resolve, 100)); const canvas = await html2canvas(ticketElement, { scale: 3 }); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            if (navigator.share && blob) { await navigator.share({ files: [new File([blob], "venta.png", { type: "image/png" })], title: "Ticket de Venta" }); _showModal('Éxito', 'Venta registrada. Imagen compartida.', successCallback); }
-            else { _showModal('Error', 'Función compartir no disponible.', successCallback); }
-        } catch(e) { _showModal('Error', `No se pudo generar/compartir: ${e.message}`, successCallback); }
+            if (navigator.share && blob) { await navigator.share({ files: [new File([blob], "venta.png", { type: "image/png" })], title: "Ticket de Venta" }); }
+            else { _showModal('Error', 'Función compartir no disponible.'); }
+            if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(true);
+        } catch(e) { _showModal('Error', `No se pudo generar/compartir: ${e.message}`); if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(false); }
         finally { document.body.removeChild(tempDiv); }
     }
-
-    async function handleShareRawText(textContent, successCallback) {
-         if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); _showModal('Éxito', 'Venta registrada. Ticket listo para imprimir.', successCallback); } catch (err) { _showModal('Aviso', 'No se compartió ticket. Venta registrada.', successCallback); } }
-         else { try { legacyCopyToClipboard(textContent, successCallback); } catch (copyErr) { _showModal('Error', 'No se pudo compartir ni copiar. Venta registrada.', successCallback); } }
+    async function handleShareRawText(textContent, callbackDespuesDeCompartir) {
+        let success = false;
+         if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); success = true; } catch (err) { console.warn("Share API error:", err.name); } }
+         else { try { legacyCopyToClipboard(textContent); success = true; } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } }
+         if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(success);
     }
-
-    function copyToClipboard(textContent, successCallback) { // Usa Clipboard API si está disponible
+    function copyToClipboard(textContent, callbackDespuesDeCopia) {
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(textContent)
-                .then(() => _showModal('Copiado', 'Texto copiado. Pégalo en tu app de impresión.', successCallback))
-                .catch(err => legacyCopyToClipboard(textContent, successCallback)); // Fallback
+                .then(() => { _showModal('Copiado', 'Texto copiado.'); if(callbackDespuesDeCopia) callbackDespuesDeCopia(true); })
+                .catch(err => legacyCopyToClipboard(textContent, callbackDespuesDeCopia)); // Fallback
         } else {
-            legacyCopyToClipboard(textContent, successCallback); // Fallback directo
+            legacyCopyToClipboard(textContent, callbackDespuesDeCopia); // Fallback directo
+        }
+    }
+    function legacyCopyToClipboard(textContent, callbackDespuesDeCopia) {
+        const textArea = document.createElement("textarea"); textArea.value = textContent; textArea.style.position = "fixed"; textArea.style.left = "-9999px"; document.body.appendChild(textArea); textArea.select();
+        let success = false;
+        try { document.execCommand('copy'); _showModal('Copiado', 'Texto copiado.'); success = true;}
+        catch (err) { console.error('Fallback copy failed:', err); _showModal('Error', 'No se pudo copiar el texto.'); success = false;}
+        finally { document.body.removeChild(textArea); if(callbackDespuesDeCopia) callbackDespuesDeCopia(success); }
+    }
+    // *** MODIFICADO: showSharingOptions ahora recibe callbackFinal ***
+    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, callbackFinal) {
+        const modalContent = `<div class="text-center"><h3 class="text-xl font-bold mb-4">Generar ${tipo}</h3><p class="mb-6">Elige formato.</p><div class="space-y-4"><button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Imprimir (Texto)</button><button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">Compartir (Imagen)</button></div></div>`;
+        _showModal('Elige opción', modalContent, null, ''); // Sin botón 'Confirmar' por defecto
+        // Llama al callbackFinal *después* de intentar compartir/imprimir
+        document.getElementById('printTextBtn').addEventListener('click', () => { const rawText = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); handleShareRawText(rawText, callbackFinal); });
+        document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, callbackFinal); });
+    }
+
+    // *** MODIFICADO: _processAndSaveVenta ahora es la función que guarda ***
+    async function _processAndSaveVenta() {
+        console.log("Starting _processAndSaveVenta...");
+        // Esta función ahora contiene la lógica de guardado que estaba antes en handleSaveVentaAndAdjustments
+        try {
+            const batch = _writeBatch(_db);
+            const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
+            let totalVenta=0;
+            const itemsVenta=[];
+            const vaciosChanges={}; // tipoVacio: cambio_neto_para_saldo_cliente
+            const prodsParaGuardar = Object.values(_ventaActual.productos);
+
+            for(const p of prodsParaGuardar){
+                const pCache=_inventarioCache.find(i=>i.id===p.id);
+                if(!pCache) throw new Error(`Producto ${p.presentacion} no encontrado en caché.`);
+                const stockU=pCache.cantidadUnidades||0;
+                const restarU=p.totalUnidadesVendidas||0;
+                if(restarU < 0) throw new Error(`Cantidad inválida para ${p.presentacion}.`);
+                if(stockU < restarU) throw new Error(`Stock insuficiente para ${p.presentacion}. Disponible: ${stockU}, Vendido: ${restarU}`);
+                if(restarU > 0){
+                    const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,p.id);
+                    batch.update(pRef,{cantidadUnidades: stockU - restarU});
+                }
+                const precios=p.precios||{und:p.precioPorUnidad||0};
+                const sub=(precios.cj||0)*(p.cantCj||0)+(precios.paq||0)*(p.cantPaq||0)+(precios.und||0)*(p.cantUnd||0);
+                totalVenta+=sub;
+
+                if(pCache.manejaVacios && pCache.tipoVacio){
+                    const tV=pCache.tipoVacio;
+                    const cjV=p.cantCj||0;
+                    if(cjV > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) + cjV; // Aumenta deuda cliente
+                }
+
+                if(restarU > 0) {
+                     itemsVenta.push({
+                         id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null,
+                         precios:p.precios, ventaPor:p.ventaPor,
+                         unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja,
+                         cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0},
+                         totalUnidadesVendidas:p.totalUnidadesVendidas,
+                         iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null
+                     });
+                }
+            }
+
+            for(const tV in _ventaActual.vaciosDevueltosPorTipo){
+                const dev=_ventaActual.vaciosDevueltosPorTipo[tV]||0;
+                if(dev > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) - dev; // Disminuye deuda cliente
+            }
+
+            if(Object.values(vaciosChanges).some(c => c !== 0)){
+                const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_ventaActual.cliente.id);
+                await _runTransaction(_db,async(t)=>{
+                    const cliDoc=await t.get(cliRef);
+                    if(!cliDoc.exists()) throw "Cliente no existe.";
+                    const cliData=cliDoc.data();
+                    const sVac = cliData.saldoVacios || {};
+                    for(const tV in vaciosChanges){
+                        const ch=vaciosChanges[tV];
+                        if(ch !== 0) sVac[tV] = (sVac[tV] || 0) + ch;
+                    }
+                    t.update(cliRef,{saldoVacios: sVac});
+                });
+            }
+
+            const ventaDataToSave = {
+                clienteId:_ventaActual.cliente.id,
+                clienteNombre:_ventaActual.cliente.nombreComercial||_ventaActual.cliente.nombrePersonal,
+                clienteNombrePersonal:_ventaActual.cliente.nombrePersonal,
+                fecha:new Date(),
+                total:totalVenta,
+                productos:itemsVenta,
+                vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo
+            };
+
+             if (itemsVenta.length > 0 || Object.values(_ventaActual.vaciosDevueltosPorTipo).some(v => v > 0)) {
+                batch.set(ventaRef, ventaDataToSave);
+            } else {
+                 console.warn("No se guardó la venta: sin productos ni vacíos devueltos.");
+                 throw new Error("No hay productos ni vacíos devueltos para guardar."); // Lanzar error para que no continúe
+            }
+
+            await batch.commit();
+            console.log("_processAndSaveVenta finished successfully.");
+            // Devolver los datos guardados para usarlos en el ticket
+            return { venta: ventaDataToSave, productos: itemsVenta, vaciosDevueltosPorTipo: ventaDataToSave.vaciosDevueltosPorTipo };
+
+        } catch (e) {
+            console.error("Error in _processAndSaveVenta:", e);
+            throw e; // Relanzar el error para que sea capturado por generarTicket
         }
     }
 
-    function legacyCopyToClipboard(textContent, successCallback) { // Fallback con execCommand
-        const textArea = document.createElement("textarea"); textArea.value = textContent; textArea.style.position = "fixed"; textArea.style.left = "-9999px"; document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); _showModal('Copiado', 'Texto copiado. Pégalo en tu app de impresión.', successCallback); }
-        catch (err) { console.error('Fallback copy failed:', err); _showModal('Error', 'No se pudo copiar el texto.', successCallback); }
-        finally { document.body.removeChild(textArea); }
-    }
-
-    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, successCallback) {
-        const modalContent = `<div class="text-center"><h3 class="text-xl font-bold mb-4">Generar ${tipo}</h3><p class="mb-6">Elige formato.</p><div class="space-y-4"><button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Imprimir (Texto)</button><button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">Compartir (Imagen)</button></div></div>`;
-        _showModal('Elige opción', modalContent, null, '');
-        document.getElementById('printTextBtn').addEventListener('click', () => { const rawText = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); handleShareRawText(rawText, successCallback); });
-        document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, successCallback); });
-    }
-
+    // *** MODIFICADO: generarTicket ahora confirma, llama a _processAndSaveVenta, y LUEGO muestra opciones ***
     async function generarTicket() {
         if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
-        const prods = Object.values(_ventaActual.productos); const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c=>c>0);
-        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Agrega productos o vacíos.'); return; }
-        _showModal('Confirmar Transacción', '¿Guardar transacción?', async () => {
-            _showModal('Progreso', 'Procesando...');
+        const prods = Object.values(_ventaActual.productos);
+        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c => c > 0);
+        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Agrega productos o registra vacíos devueltos.'); return; }
+
+        // 1. Mostrar modal de confirmación para GUARDAR
+        _showModal('Confirmar Venta', '¿Guardar esta transacción?', async () => {
+            _showModal('Progreso', 'Guardando transacción...'); // Mostrar progreso mientras se guarda
             try {
-                const batch = _writeBatch(_db); const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
-                let totalVenta=0; const itemsVenta=[]; const vaciosChanges={};
-                for(const p of prods){ const pCache=_inventarioCache.find(i=>i.id===p.id); if(!pCache)throw new Error(`Producto ${p.presentacion} no encontrado.`); const stockU=pCache.cantidadUnidades||0, restarU=p.totalUnidadesVendidas||0; if(restarU<0)throw new Error(`Cantidad inválida ${p.presentacion}.`); if(stockU<restarU)throw new Error(`Stock insuficiente ${p.presentacion}.`); if(restarU>0){const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,p.id); batch.update(pRef,{cantidadUnidades:stockU-restarU});}
-                    const precios=p.precios||{und:p.precioPorUnidad||0}; const sub=(precios.cj||0)*(p.cantCj||0)+(precios.paq||0)*(p.cantPaq||0)+(precios.und||0)*(p.cantUnd||0); totalVenta+=sub;
-                    if(pCache.manejaVacios&&pCache.tipoVacio){const tV=pCache.tipoVacio, cjV=p.cantCj||0; if(cjV>0)vaciosChanges[tV]=(vaciosChanges[tV]||0)+cjV;}
-                    if(restarU>0)itemsVenta.push({ id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null, precios:p.precios, ventaPor:p.ventaPor, unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja, cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0}, totalUnidadesVendidas:p.totalUnidadesVendidas, iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null }); }
-                for(const tV in _ventaActual.vaciosDevueltosPorTipo){const dev=_ventaActual.vaciosDevueltosPorTipo[tV]||0; if(dev>0)vaciosChanges[tV]=(vaciosChanges[tV]||0)-dev;}
-                if(Object.values(vaciosChanges).some(c=>c!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_ventaActual.cliente.id); await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())throw "Cliente no existe."; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosChanges){const ch=vaciosChanges[tV]; if(ch!==0)sVac[tV]=(sVac[tV]||0)+ch;} t.update(cliRef,{saldoVacios:sVac});});}
-                batch.set(ventaRef,{ clienteId:_ventaActual.cliente.id, clienteNombre:_ventaActual.cliente.nombreComercial||_ventaActual.cliente.nombrePersonal, clienteNombrePersonal:_ventaActual.cliente.nombrePersonal, fecha:new Date(), total:totalVenta, productos:itemsVenta, vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo });
-                await batch.commit();
-                showSharingOptions({ cliente:_ventaActual.cliente, fecha:new Date() }, itemsVenta, _ventaActual.vaciosDevueltosPorTipo, 'Nota de Entrega', showNuevaVentaView);
-            } catch (e) { console.error("Error procesando:", e); _showModal('Error', `Error: ${e.message}`); }
-        }, 'Sí, Guardar', null, true);
+                // 2. Llamar a la función que guarda y ajusta
+                const savedData = await _processAndSaveVenta();
+
+                // 3. Si tuvo éxito, AHORA mostrar las opciones de ticket
+                // Pasar showNuevaVentaView como callback final
+                showSharingOptions(
+                    { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha }, // Datos básicos
+                    savedData.productos, // Productos guardados
+                    savedData.vaciosDevueltosPorTipo, // Vacíos guardados
+                    'Nota de Entrega',
+                    () => { // Callback que se ejecuta después de imprimir/compartir
+                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
+                    }
+                );
+
+            } catch (saveError) {
+                // Si _processAndSaveVenta falló, mostrar el error
+                console.error("Error al guardar venta:", saveError);
+                 const progressModal = document.getElementById('modalContainer'); // Cerrar modal de progreso si aún está visible
+                 if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                      progressModal.classList.add('hidden');
+                 }
+                _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
+            }
+        }, 'Sí, guardar', () => { /* No hacer nada si cancela la confirmación */ }, true); // True para indicar lógica de confirmación (mostrar progreso)
     }
 
     function showVentasTotalesView() {
@@ -394,7 +504,6 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                 <div class="space-y-4">
                     <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                    <!-- *** Botón Ordenar Reportes ELIMINADO *** -->
                     <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
                 </div>
                 <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -402,7 +511,6 @@
         `;
         document.getElementById('ventasActualesBtn').addEventListener('click', showVentasActualesView);
         document.getElementById('cierreVentasBtn').addEventListener('click', showCierreSubMenuView);
-        // *** Listener de Ordenar Reportes ELIMINADO ***
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
     }
 
@@ -446,7 +554,6 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
-
     async function processSalesDataForReport(ventas, userIdForInventario) {
         const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
@@ -458,7 +565,6 @@
         const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
         return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
-
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
@@ -472,7 +578,6 @@
             _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
         } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
-
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
         try {
@@ -485,7 +590,6 @@
             const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
         } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error Excel: ${error.message}`); throw error; }
     }
-
     async function ejecutarCierre() {
         _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
             _showModal('Progreso', 'Obteniendo ventas...');
@@ -512,34 +616,20 @@
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
     }
-
-    // *** Funciones de Ordenar Reportes ELIMINADAS ***
-    // function showOrdenarCierreView() { ... }
-    // async function renderRubrosForOrdering() { ... }
-    // async function renderSegmentosForOrderingGlobal() { ... }
-    // function addDragAndDropHandlers(container) { ... }
-    // async function handleGuardarOrdenCierre() { ... }
-
+    // *** MODIFICADO: showPastSaleOptions ahora pasa callback showVentasActualesView ***
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
-        console.log("showPastSaleOptions called with ID:", ventaId); // *** Log de depuración ***
+        console.log("showPastSaleOptions called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
-        // Asegurarse de que los productos tengan la estructura esperada por las funciones de ticket
         const productosFormateados = (venta.productos || []).map(p => ({
-            ...p, // Copia todas las propiedades existentes
-            // Asegura que cantidadVendida exista, tomando datos de la estructura si es necesario
-             cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
-             // Calcula totalUnidadesVendidas si falta (opcional, pero bueno tenerlo)
-             totalUnidadesVendidas: p.totalUnidadesVendidas ||
-                ((p.cantidadVendida?.cj || 0) * (p.unidadesPorCaja || 1)) +
-                ((p.cantidadVendida?.paq || 0) * (p.unidadesPorPaquete || 1)) +
-                (p.cantidadVendida?.und || 0),
-            // Asegura precios
+            ...p,
+            cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
+            totalUnidadesVendidas: p.totalUnidadesVendidas || /* calculation */ 0,
             precios: p.precios || { und: 0, paq: 0, cj: 0 }
         }));
+        // El callback ahora es showVentasActualesView para volver a la lista después de compartir
         showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
     }
-
     function editVenta(ventaId) {
         console.log("editVenta called with ID:", ventaId); // *** Log de depuración ***
         const venta = _ventasGlobal.find(v => v.id === ventaId);
@@ -547,7 +637,6 @@
          _originalVentaForEdit = JSON.parse(JSON.stringify(venta)); // Deep copy para comparar cambios
         showEditVentaView(venta);
     }
-
     function deleteVenta(ventaId) {
         console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
          const venta = _ventasGlobal.find(v => v.id === ventaId);
@@ -662,7 +751,6 @@
             }
         }, 'Sí, Eliminar y Revertir', null, true); // True para indicar lógica de confirmación
     }
-
     async function showEditVentaView(venta) {
         _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
         _mainContent.innerHTML = `
@@ -689,7 +777,6 @@
             renderEditVentasInventario(); updateVentaTotal(); document.getElementById('modalContainer').classList.add('hidden');
         } catch (error) { console.error("Error cargando edit:", error); _showModal('Error', `Error: ${error.message}`); showVentasActualesView(); }
     }
-
     async function renderEditVentasInventario() {
         const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
         const selRubro = rF.value; let invToShow = _inventarioCache.filter(p => _originalVentaForEdit.productos.some(oP => oP.id === p.id) || (p.cantidadUnidades || 0) > 0);
@@ -707,7 +794,6 @@
              if (vPor.und) { cERow('und', vActProd.cantUnd||0, precios.und||0, `${prod.presentacion} (Und)`); }
         }); updateVentaTotal();
     }
-
     async function handleGuardarVentaEditada() {
         if (!_originalVentaForEdit) { _showModal('Error', 'Venta original no encontrada.'); return; }
         const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0);
