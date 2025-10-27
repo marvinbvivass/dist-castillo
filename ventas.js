@@ -551,20 +551,116 @@
     function deleteVenta(ventaId) {
         console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
          const venta = _ventasGlobal.find(v => v.id === ventaId);
-         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
+         if (!venta) {
+            _showModal('Error', 'Venta no encontrada en la lista actual.');
+            return;
+         }
+         // Asegurar que _inventarioCache esté disponible
+         if (!_inventarioCache || _inventarioCache.length === 0) {
+            _showModal('Error', 'El inventario local no está cargado. No se puede ajustar stock. Intenta recargar la vista.');
+            return;
+         }
 
-        _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? Esta acción es IRREVERSIBLE y NO ajustará stock ni saldos.`, async () => {
-            _showModal('Progreso', 'Eliminando venta...');
+        _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
+            _showModal('Progreso', 'Eliminando venta y ajustando datos...');
             try {
+                // --- INICIO: Lógica de Reversión ---
                 const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
-                await _deleteDoc(ventaRef);
-                _showModal('Éxito', 'Venta eliminada.');
-                // La lista se actualizará automáticamente por el listener onSnapshot
+                const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
+
+                await _runTransaction(_db, async (transaction) => {
+                    // 1. Obtener datos actualizados de la venta (por si acaso) y del cliente
+                    const ventaDoc = await transaction.get(ventaRef);
+                    const clienteDoc = await transaction.get(clienteRef);
+
+                    if (!ventaDoc.exists()) {
+                        throw new Error("La venta ya no existe.");
+                    }
+                    if (!clienteDoc.exists()) {
+                        console.warn(`Cliente ${venta.clienteId} no encontrado para ajustar vacíos.`);
+                        // Podríamos decidir continuar sin ajustar vacíos o lanzar error. Continuemos por ahora.
+                    }
+
+                    const ventaData = ventaDoc.data();
+                    const clienteData = clienteDoc.exists() ? clienteDoc.data() : null;
+                    const productosVendidos = ventaData.productos || [];
+                    const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
+                    const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
+                    const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual }; // Copia para modificar
+
+                    // 2. Calcular ajustes de inventario
+                    const ajustesInventario = [];
+                    for (const productoVendido of productosVendidos) {
+                        const unidadesARestaurar = productoVendido.totalUnidadesVendidas || 0;
+                        if (unidadesARestaurar > 0) {
+                            const productoInventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
+                            ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar });
+                        }
+                    }
+
+                    // 3. Calcular ajustes de saldo de vacíos
+                    const ajustesVaciosNetos = {}; // tipoVacio: ajuste_a_aplicar_al_saldo
+
+                    // a) Vacíos entregados al cliente en esta venta (aumentaron su deuda, hay que restarlos para revertir)
+                    for (const productoVendido of productosVendidos) {
+                        if (productoVendido.manejaVacios && productoVendido.tipoVacio) {
+                            const tipo = productoVendido.tipoVacio;
+                            const cajasEntregadas = productoVendido.cantidadVendida?.cj || 0;
+                            if (cajasEntregadas > 0) {
+                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas; // Restar de la deuda
+                            }
+                        }
+                    }
+
+                    // b) Vacíos devueltos por el cliente en esta venta (disminuyeron su deuda, hay que sumarlos para revertir)
+                    for (const tipo in vaciosDevueltosEnVenta) {
+                        const cajasDevueltas = vaciosDevueltosEnVenta[tipo] || 0;
+                        if (cajasDevueltas > 0) {
+                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas; // Sumar a la deuda
+                        }
+                    }
+
+                    // 4. Aplicar ajustes de inventario en la transacción
+                    for (const ajuste of ajustesInventario) {
+                         // Leer inventario DENTRO de la transacción para evitar race conditions
+                         const invDoc = await transaction.get(ajuste.ref);
+                         const stockActual = invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
+                         const nuevoStock = stockActual + ajuste.cantidad;
+                         // Usar set con merge: true o update. Update es más seguro si el doc debe existir.
+                         // Si el producto pudo ser eliminado, set con merge es más flexible.
+                         //transaction.update(ajuste.ref, { cantidadUnidades: nuevoStock });
+                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true }); // Más seguro si el producto no existe
+                    }
+
+                    // 5. Aplicar ajustes de saldo de vacíos en la transacción (si el cliente existe)
+                    let saldoVaciosModificado = false;
+                    if (clienteDoc.exists()) {
+                        for (const tipo in ajustesVaciosNetos) {
+                            const ajuste = ajustesVaciosNetos[tipo];
+                            if (ajuste !== 0) {
+                                nuevosSaldoVaciosCliente[tipo] = (nuevosSaldoVaciosCliente[tipo] || 0) + ajuste;
+                                saldoVaciosModificado = true;
+                            }
+                        }
+                        if (saldoVaciosModificado) {
+                            transaction.update(clienteRef, { saldoVacios: nuevosSaldoVaciosCliente });
+                        }
+                    }
+
+                    // 6. Eliminar la venta en la transacción
+                    transaction.delete(ventaRef);
+                    // --- FIN: Lógica de Reversión ---
+                }); // Fin _runTransaction
+
+                _showModal('Éxito', 'Venta eliminada. Inventario y saldos de vacíos ajustados.');
+                // La lista se actualizará automáticamente por el listener onSnapshot al eliminar la venta.
+
             } catch (error) {
-                console.error("Error eliminando venta:", error);
-                _showModal('Error', `No se pudo eliminar la venta: ${error.message}`);
+                console.error("Error eliminando/revirtiendo venta:", error);
+                // Si falla la transacción, Firestore revierte todo automáticamente.
+                _showModal('Error', `No se pudo eliminar/revertir la venta: ${error.message}`);
             }
-        }, 'Sí, Eliminar', null, true);
+        }, 'Sí, Eliminar y Revertir', null, true); // True para indicar lógica de confirmación
     }
 
     async function showEditVentaView(venta) {
