@@ -1,7 +1,8 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch;
+    // MODIFICADO: Asegurar que _getDoc esté declarado
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
 
     let _inventarioCache = [];
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
@@ -30,6 +31,9 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
+        // --- CORRECCIÓN: Añadir la asignación faltante ---
+        _getDoc = dependencies.getDoc;
+        // --- FIN CORRECCIÓN ---
     };
 
     function startMainInventarioListener(callback) {
@@ -250,7 +254,11 @@
             await batch.commit(); invalidateSegmentOrderCache(); _showModal('Progreso', 'Propagando...'); let propSuccess = true;
             if (segOrderChanged && window.adminModule?.propagateCategoryOrderChange) { try { await window.adminModule.propagateCategoryOrderChange('segmentos', orderedSegIds); } catch (e) { propSuccess = false; console.error("Error prop seg order:", e); } }
             if (marcaOrderChanged && window.adminModule?.propagateCategoryChange) {
-                for (const segCont of segConts) { const segId=segCont.dataset.segmentoId; const marcaItems=segCont.querySelectorAll('.marcas-sortable-list .marca-item'); const newMarcaOrder=Array.from(marcaItems).map(item=>item.dataset.marcaName); try { const segRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/segmentos`,segId); const segSnap=await _getDoc(segRef); if(segSnap.exists()){ const segDataComp=segSnap.data(); segDataComp.marcaOrder=newMarcaOrder; await window.adminModule.propagateCategoryChange('segmentos', segId, segDataComp); } } catch (e) { propSuccess=false; console.error(`Error prop marca order seg ${segId}:`, e); } }
+                for (const segCont of segConts) { const segId=segCont.dataset.segmentoId; const marcaItems=segCont.querySelectorAll('.marcas-sortable-list .marca-item'); const newMarcaOrder=Array.from(marcaItems).map(item=>item.dataset.marcaName); try { const segRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/segmentos`,segId);
+                        // --- CORRECCIÓN: Usar _getDoc aquí ---
+                        const segSnap=await _getDoc(segRef);
+                        // --- FIN CORRECCIÓN ---
+                         if(segSnap.exists()){ const segDataComp=segSnap.data(); segDataComp.marcaOrder=newMarcaOrder; await window.adminModule.propagateCategoryChange('segmentos', segId, segDataComp); } } catch (e) { propSuccess=false; console.error(`Error prop marca order seg ${segId}:`, e); } }
             }
             _showModal(propSuccess ? 'Éxito' : 'Advertencia', `Orden guardado localmente.${propSuccess ? ' Propagado.' : ' Errores al propagar.'}`, showInventarioSubMenu);
         } catch (error) { console.error("Error guardando orden:", error); _showModal('Error', `Error: ${error.message}`); }
