@@ -477,9 +477,10 @@
              console.log("Attempting logout...");
              window.isLoggingOut = true; // Set flag
              try {
-                 // NUEVO: Limpiar listeners ANTES de cerrar sesión
-                 cleanupListeners();
-                 console.log("Listeners cleaned up before sign out.");
+                 // MODIFICADO: Eliminar la llamada a cleanupListeners() aquí.
+                 // onAuthStateChanged se encargará de limpiar cuando el usuario sea null.
+                 // cleanupListeners(); // <--- Línea eliminada
+                 // console.log("Listeners cleaned up before sign out."); // <--- Línea eliminada (opcional)
 
                  await signOut(auth);
                  console.log("User signed out successfully.");
