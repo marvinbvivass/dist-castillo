@@ -241,12 +241,11 @@
         document.getElementById('backToImportExportBtn').addEventListener('click', showImportExportInventarioView);
     }
 
-    // MODIFICADO: Añadida comprobación robusta de archivos
     function handleFileUploadInventario(event) {
         // --- CORRECCIÓN: Comprobación más robusta ---
         if (!event.target || !event.target.files || event.target.files.length === 0) {
             console.warn("handleFileUploadInventario llamado sin archivo.");
-            renderPreviewTableInventario([]); // Limpiar previsualización si se cancela
+            renderPreviewTableInventario([]);
             return;
         }
         const file = event.target.files[0];
@@ -305,9 +304,13 @@
         const cont=document.getElementById('inventario-preview-container'), acts=document.getElementById('inventario-import-actions'), back=document.getElementById('backToImportExportBtn'), upInp=document.getElementById('inventario-excel-uploader'); if(!cont||!acts||!back||!upInp) return;
         if(items.length===0){cont.innerHTML=`<p class="text-center text-gray-500 p-4">No hay productos válidos.</p>`; acts.classList.add('hidden'); back.classList.remove('hidden'); return;}
         const vCount=items.length;
+        // --- CORRECCIÓN: tHTML -> tableHTML ---
         let tableHTML=`<div class="p-4"><h3 class="font-bold text-lg mb-2">Vista Previa (${vCount} productos a procesar)</h3><p class="text-sm text-gray-600 mb-2">Los productos existentes se ignorarán. Los nuevos se añadirán con cantidad 0.</p><table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr><th>Rubro</th><th>Segmento</th><th>Marca</th><th>Presentación</th><th>Precio Und</th><th>Precio Paq</th><th>Precio Cj</th><th>IVA</th></tr></thead><tbody>`;
-        items.forEach(i=>{ tHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`; });
-        tHTML+='</tbody></table></div>'; cont.innerHTML=tHTML;
+        items.forEach(i=>{
+             tableHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`;
+        });
+        tableHTML+='</tbody></table></div>'; cont.innerHTML=tableHTML;
+        // --- FIN CORRECCIÓN ---
         acts.classList.remove('hidden'); back.classList.add('hidden'); document.getElementById('confirmInventarioImportBtn').onclick=handleConfirmInventarioImport; document.getElementById('cancelInventarioImportBtn').onclick=()=>{_inventarioParaImportar=[]; upInp.value=''; cont.innerHTML=''; acts.classList.add('hidden'); back.classList.remove('hidden');};
     }
 
@@ -459,7 +462,7 @@
                   itemsUser.sort((a,b)=> (a.data.name || '').localeCompare(b.data.name || ''));
                   for (const item of itemsUser) { if (!oMap.has(item.id)) { uMaxOrd++; const nOrd = uMaxOrd; const cOrd = item.data.orden; if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
                   if (ops > 0) await batch.commit();
-              } const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for ${collectionName}.`);
+              } const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Order propagation complete for ${collectionName}.`);
           } catch (error) { errors = true; console.error(`Error propagando orden ${collectionName}:`, error); window.showModal('Error Propagación', `Error: ${error.message}`); }
      }
 
