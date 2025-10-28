@@ -1,10 +1,10 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    // MODIFICADO: Asegurar que _getDoc esté declarado
     let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
 
     let _inventarioCache = [];
+    // *** MODIFICADO: Añadir marca a _lastFilters ***
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
     let _inventarioListenerUnsubscribe = null;
     let _marcasCache = null;
@@ -36,9 +36,7 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
-        // --- CORRECCIÓN: Añadir la asignación faltante ---
         _getDoc = dependencies.getDoc;
-        // --- FIN CORRECCIÓN ---
     };
 
     // --- Versión ANTERIOR del manejador de errores (antes del fix específico de logout) ---
@@ -168,6 +166,7 @@
         } catch (error) { console.error("Error cargando marcas:", error); return []; }
     }
 
+    // *** MODIFICADO: renderSortableHierarchy ya no filtra segmentos, solo los atenúa ***
     async function renderSortableHierarchy(rubroFiltro = '') {
         const container = document.getElementById('segmentos-marcas-sortable-list');
         if (!container) return;
@@ -176,97 +175,96 @@
             const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
             let segSnapshot = await _getDocs(segmentosRef);
             let allSegments = segSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
             // Asignar orden inicial si falta
             const segsSinOrden = allSegments.filter(s => s.orden === undefined || s.orden === null);
             if (segsSinOrden.length > 0) {
                  const segsConOrden = allSegments.filter(s => s.orden !== undefined && s.orden !== null);
                  const maxOrden = segsConOrden.reduce((max, s) => Math.max(max, s.orden ?? -1), -1);
                  const batch = _writeBatch(_db);
-                 segsSinOrden.sort((a, b) => (a.name || '').localeCompare(b.name || '')); // Ordenar alfabéticamente para asignar inicial
+                 segsSinOrden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                  segsSinOrden.forEach((seg, index) => {
                     const dRef = _doc(segmentosRef, seg.id);
                     const nOrden = maxOrden + 1 + index;
                     batch.update(dRef, { orden: nOrden });
-                    seg.orden = nOrden; // Actualizar localmente
+                    seg.orden = nOrden;
                  });
                  await batch.commit();
-                 allSegments = [...segsConOrden, ...segsSinOrden]; // Combinar listas
+                 allSegments = [...segsConOrden, ...segsSinOrden];
                  console.log("Orden inicial asignado a segmentos.");
              }
-             // Ordenar por el campo 'orden'
+             // Ordenar TODOS los segmentos por el campo 'orden'
             allSegments.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
 
-            const allMarcas = await getAllMarcas(); // Cargar todas las marcas una vez
-            const marcasMap = new Map(allMarcas.map(m => [m.name, m.id])); // Mapa para buscar ID de marca por nombre
+            const allMarcas = await getAllMarcas();
+            const marcasMap = new Map(allMarcas.map(m => [m.name, m.id]));
 
-            // Filtrar productos si se aplica filtro de rubro
+            // Obtener productos filtrados por rubro (si aplica) para saber qué atenuar y qué marcas mostrar
             let prodsQuery = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             if (rubroFiltro) {
                 prodsQuery = _query(prodsQuery, _where("rubro", "==", rubroFiltro));
             }
             const prodSnap = await _getDocs(prodsQuery);
             const prodsEnRubro = prodSnap.docs.map(d => d.data());
+            // Crear un Set con los nombres de segmentos que SÍ tienen productos en el rubro filtrado
+            const segmentsWithProductsInRubro = rubroFiltro ? new Set(prodsEnRubro.map(p => p.segmento).filter(Boolean)) : null;
 
-            // Determinar qué segmentos mostrar (todos o solo los presentes en el rubro filtrado)
-            let segsToShow = allSegments;
-            if (rubroFiltro) {
-                const uSegNames = new Set(prodsEnRubro.map(p => p.segmento).filter(Boolean));
-                segsToShow = allSegments.filter(s => s.name && uSegNames.has(s.name));
-                // Mantener el orden original de allSegments al filtrar
-                segsToShow.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
-            }
-
-            container.innerHTML = ''; // Limpiar contenedor
-            if (segsToShow.length === 0) {
-                container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos ${rubroFiltro ? 'con productos en este rubro' : 'definidos'}.</p>`;
+            container.innerHTML = '';
+            if (allSegments.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center">No hay segmentos definidos.</p>`;
                 return;
             }
 
-            // Renderizar cada segmento y sus marcas
-            segsToShow.forEach(seg => {
+            // Renderizar TODOS los segmentos
+            allSegments.forEach(seg => {
                 const segCont = document.createElement('div');
                 segCont.className = 'segmento-container border border-gray-300 rounded-lg mb-3 bg-white shadow';
                 segCont.dataset.segmentoId = seg.id;
                 segCont.dataset.segmentoName = seg.name;
-                segCont.dataset.type = 'segmento'; // Para D&D
+                segCont.dataset.type = 'segmento';
+
+                // Atenuar si hay filtro y este segmento no tiene productos en ese rubro
+                const segmentHasProductsInRubro = !segmentsWithProductsInRubro || segmentsWithProductsInRubro.has(seg.name);
+                if (rubroFiltro && !segmentHasProductsInRubro) {
+                    segCont.classList.add('opacity-50'); // Atenuar el contenedor completo
+                }
 
                 const segTitle = document.createElement('div');
                 segTitle.className = 'segmento-title p-3 bg-gray-200 rounded-t-lg cursor-grab active:cursor-grabbing font-semibold flex justify-between items-center';
                 segTitle.draggable = true;
                 segTitle.textContent = seg.name;
-                // Podríamos añadir un icono de "arrastrar" aquí si quisiéramos
                 segCont.appendChild(segTitle);
 
                 const marcasList = document.createElement('ul');
                 marcasList.className = 'marcas-sortable-list p-3 space-y-1 bg-white rounded-b-lg';
-                marcasList.dataset.segmentoParent = seg.id; // Vincular lista al segmento padre
+                marcasList.dataset.segmentoParent = seg.id;
 
-                // Obtener marcas únicas presentes en *este segmento* y *rubro filtrado*
+                // Obtener marcas únicas en este segmento Y en el rubro filtrado (si aplica)
                 const marcasEnSeg = [...new Set(prodsEnRubro
                     .filter(p => p.segmento === seg.name && p.marca)
                     .map(p => p.marca)
                 )];
 
-                // Ordenar marcas según la preferencia guardada en el segmento, o alfabéticamente
+                // Ordenar marcas según preferencia del segmento o alfabéticamente
                 const marcaOrderPref = seg.marcaOrder || [];
                 marcasEnSeg.sort((a, b) => {
                     const indexA = marcaOrderPref.indexOf(a);
                     const indexB = marcaOrderPref.indexOf(b);
-                    if (indexA !== -1 && indexB !== -1) return indexA - indexB; // Ambos tienen orden definido
-                    if (indexA !== -1) return -1; // Solo A tiene orden
-                    if (indexB !== -1) return 1;  // Solo B tiene orden
-                    return a.localeCompare(b);    // Ninguno tiene orden, usar alfabético
+                    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                    if (indexA !== -1) return -1;
+                    if (indexB !== -1) return 1;
+                    return a.localeCompare(b);
                 });
 
                 if (marcasEnSeg.length === 0) {
                     marcasList.innerHTML = `<li class="text-xs text-gray-500 italic pl-2">No hay marcas ${rubroFiltro ? 'en este rubro' : ''} para este segmento.</li>`;
                 } else {
                     marcasEnSeg.forEach(marcaName => {
-                        const marcaId = marcasMap.get(marcaName) || `temp_${marcaName.replace(/\s+/g,'_')}`; // Usar ID real o temporal
+                        const marcaId = marcasMap.get(marcaName) || `temp_${marcaName.replace(/\s+/g,'_')}`;
                         const li = document.createElement('li');
                         li.dataset.marcaId = marcaId;
                         li.dataset.marcaName = marcaName;
-                        li.dataset.type = 'marca'; // Para D&D
+                        li.dataset.type = 'marca';
                         li.className = 'marca-item p-2 bg-gray-50 rounded shadow-xs cursor-grab active:cursor-grabbing hover:bg-gray-100 text-sm';
                         li.textContent = marcaName;
                         li.draggable = true;
@@ -741,6 +739,7 @@
         // --- FIN CORRECCIÓN ---
     }
 
+    // *** MODIFICADO: getFiltrosHTML ahora incluye el select de Marca ***
     function getFiltrosHTML(prefix) {
         const currentSearch = _lastFilters.searchTerm || '';
         return `
@@ -769,14 +768,15 @@
         `;
     }
 
-
+    // *** MODIFICADO: setupFiltros ahora maneja el select de Marca ***
     function setupFiltros(prefix, renderCallback) {
         const searchInput=document.getElementById(`${prefix}-search-input`);
         const rubroFilter=document.getElementById(`${prefix}-filter-rubro`);
         const segmentoFilter=document.getElementById(`${prefix}-filter-segmento`);
-        const marcaFilter=document.getElementById(`${prefix}-filter-marca`);
+        const marcaFilter=document.getElementById(`${prefix}-filter-marca`); // Añadido
         const clearBtn=document.getElementById(`${prefix}-clear-filters-btn`);
 
+        // Verificación robusta de elementos
         if(!searchInput || !rubroFilter || !segmentoFilter || !marcaFilter || !clearBtn) {
             console.error(`Error: No se encontraron todos los elementos de filtro con prefijo ${prefix}.`);
             return;
@@ -785,14 +785,14 @@
         // Función para actualizar Segmentos y Marcas basado en Rubro/Segmento seleccionado
         function updateDependentDropdowns(trigger) {
             const selectedRubro = rubroFilter.value;
-            const selectedSegmento = segmentoFilter.value;
+            // Guardar valores actuales antes de limpiar para intentar restaurarlos
             const currentSegmentoValue = (trigger === 'init' || trigger === 'rubro') ? _lastFilters.segmento : segmentoFilter.value;
             const currentMarcaValue = (trigger === 'init' || trigger === 'rubro' || trigger === 'segmento') ? _lastFilters.marca : marcaFilter.value;
 
-            // Actualizar Segmentos
+            // --- Actualizar Segmentos ---
             segmentoFilter.innerHTML = '<option value="">Todos</option>';
             segmentoFilter.disabled = true;
-            segmentoFilter.value = ""; // Reset value first
+            segmentoFilter.value = ""; // Resetear valor
 
             if (selectedRubro) {
                 const segmentos = [...new Set(_inventarioCache
@@ -802,52 +802,51 @@
                 if (segmentos.length > 0) {
                     segmentos.forEach(s => {
                         const option = document.createElement('option');
-                        option.value = s;
-                        option.textContent = s;
-                         if (s === currentSegmentoValue) { option.selected = true; }
+                        option.value = s; option.textContent = s;
+                        if (s === currentSegmentoValue) { option.selected = true; } // Restaurar si es posible
                         segmentoFilter.appendChild(option);
                     });
                     segmentoFilter.disabled = false;
-                    segmentoFilter.value = currentSegmentoValue; // Set value after populating
+                    segmentoFilter.value = currentSegmentoValue; // Reasignar valor (puede ser "" si no se encontró)
                 }
             }
-             // Si el valor actual no existe en las nuevas opciones, resetear el filtro guardado
+             // Si el valor restaurado no coincide con el valor guardado (porque ya no existe), limpiar filtro guardado
             if (segmentoFilter.value !== currentSegmentoValue) { _lastFilters.segmento = ''; }
 
 
-            // Actualizar Marcas
+            // --- Actualizar Marcas ---
             marcaFilter.innerHTML = '<option value="">Todos</option>';
             marcaFilter.disabled = true;
-             marcaFilter.value = ""; // Reset value
+             marcaFilter.value = ""; // Resetear valor
 
-            if (selectedRubro) { // Marcas pueden depender solo de rubro o de rubro+segmento
+            // Las marcas dependen del rubro y opcionalmente del segmento seleccionado
+            if (selectedRubro) {
                 const marcas = [...new Set(_inventarioCache
-                    .filter(p => p.rubro === selectedRubro && (!segmentoFilter.value || p.segmento === segmentoFilter.value) && p.marca)
+                    .filter(p => p.rubro === selectedRubro && (!segmentoFilter.value || p.segmento === segmentoFilter.value) && p.marca) // Filtrar por rubro y segmento (si hay)
                     .map(p => p.marca))]
                     .sort();
                 if (marcas.length > 0) {
                     marcas.forEach(m => {
                          const option = document.createElement('option');
-                         option.value = m;
-                         option.textContent = m;
-                         if (m === currentMarcaValue) { option.selected = true; }
+                         option.value = m; option.textContent = m;
+                         if (m === currentMarcaValue) { option.selected = true; } // Restaurar si es posible
                          marcaFilter.appendChild(option);
                     });
                     marcaFilter.disabled = false;
-                    marcaFilter.value = currentMarcaValue; // Set value after populating
+                    marcaFilter.value = currentMarcaValue; // Reasignar valor
                 }
             }
-            // Si el valor actual no existe en las nuevas opciones, resetear el filtro guardado
+            // Si el valor restaurado no coincide, limpiar filtro guardado
             if (marcaFilter.value !== currentMarcaValue) { _lastFilters.marca = ''; }
         }
 
         // Restaurar estado inicial y popular filtros dependientes
-        // Usar setTimeout para asegurar que _inventarioCache esté poblado por el listener inicial
         setTimeout(() => {
             rubroFilter.value = _lastFilters.rubro || '';
-            updateDependentDropdowns('init'); // Llenar Segmento y Marca basado en rubro inicial
-            if (typeof renderCallback === 'function') renderCallback(); // Render inicial con filtros restaurados
-        }, 300); // Dar tiempo al listener onSnapshot
+            // Llamar a updateDependentDropdowns con 'init' para que restaure segmento Y marca
+            updateDependentDropdowns('init');
+            if (typeof renderCallback === 'function') renderCallback();
+        }, 300);
 
 
         // Función para aplicar y guardar filtros
@@ -855,59 +854,49 @@
             _lastFilters.searchTerm = searchInput.value || '';
             _lastFilters.rubro = rubroFilter.value || '';
             _lastFilters.segmento = segmentoFilter.value || '';
-            _lastFilters.marca = marcaFilter.value || '';
+            _lastFilters.marca = marcaFilter.value || ''; // Guardar filtro marca
             if (typeof renderCallback === 'function') renderCallback();
         };
 
         // Listeners
         searchInput.addEventListener('input', applyAndSaveChanges);
         rubroFilter.addEventListener('change', () => {
-             // Al cambiar rubro, reseteamos segmento y marca en _lastFilters y actualizamos dropdowns
-             _lastFilters.segmento = '';
-             _lastFilters.marca = '';
+             _lastFilters.segmento = ''; _lastFilters.marca = ''; // Resetear dependientes
             updateDependentDropdowns('rubro');
             applyAndSaveChanges();
         });
         segmentoFilter.addEventListener('change', () => {
-            // Al cambiar segmento, reseteamos marca en _lastFilters y actualizamos dropdown de marca
-            _lastFilters.marca = '';
+            _lastFilters.marca = ''; // Resetear marca
             updateDependentDropdowns('segmento');
             applyAndSaveChanges();
         });
-        marcaFilter.addEventListener('change', applyAndSaveChanges);
+        marcaFilter.addEventListener('change', applyAndSaveChanges); // Listener para marca
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             rubroFilter.value = '';
             // Resetear _lastFilters y actualizar dropdowns dependientes
-            _lastFilters.segmento = '';
-            _lastFilters.marca = '';
-            updateDependentDropdowns('rubro'); // 'rubro' trigger reseteará ambos dependientes
-            applyAndSaveChanges(); // Aplicar y renderizar
+            _lastFilters.segmento = ''; _lastFilters.marca = '';
+            updateDependentDropdowns('rubro'); // Trigger inicial
+            applyAndSaveChanges();
         });
     }
 
-
+    // *** MODIFICADO: renderProductosList ahora incluye columna Marca y filtro Marca ***
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
-        // --- CORRECCIÓN ADICIONAL: Verificar container al inicio ---
-        if (!container) {
-             // Ya no logueamos error aquí porque la llamada inicial puede ocurrir antes
-             // console.error(`Elemento ${elementId} no encontrado.`);
-             // Simplemente no hacer nada si el contenedor no existe aún
-             return;
-        }
-        // --- FIN CORRECCIÓN ADICIONAL ---
+        if (!container) { return; } // Salir si el contenedor no existe
 
         let productosFiltrados = [..._inventarioCache];
         productosFiltrados = productosFiltrados.filter(p => {
             const searchTermLower = (_lastFilters.searchTerm || '').toLowerCase();
+            // Búsqueda ahora incluye Marca
             const textMatch = !searchTermLower ||
                 (p.presentacion && p.presentacion.toLowerCase().includes(searchTermLower)) ||
                 (p.marca && p.marca.toLowerCase().includes(searchTermLower)) ||
                 (p.segmento && p.segmento.toLowerCase().includes(searchTermLower));
             const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
             const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
-            const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
+            const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca; // Añadido filtro por marca
             return textMatch && rubroMatch && segmentoMatch && marcaMatch;
         });
 
@@ -920,12 +909,14 @@
         }
 
         const isAdmin = _userRole === 'admin';
-        const cols = readOnly ? 3 : 4; // Número de columnas basado en si es admin
+        const cols = readOnly ? 4 : 5; // Aumentado el número de columnas
+
         let tableHTML = `
             <table class="min-w-full bg-white text-sm">
                 <thead class="bg-gray-200 sticky top-0 z-10">
                     <tr>
                         <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Presentación</th>
+                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Marca</th> <!-- Nueva Cabecera -->
                         <th class="py-2 px-3 text-right font-semibold text-gray-600 uppercase tracking-wider">Precio</th>
                         <th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Stock</th>
                         ${!readOnly ? `<th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>` : ''}
@@ -934,13 +925,13 @@
                 <tbody>`;
 
         let lastHeaderKey = null;
-        const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento'; // Usar primer criterio global
+        const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
 
         productosFiltrados.forEach(p => {
             const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
             if (currentHeaderValue !== lastHeaderKey) {
                 lastHeaderKey = currentHeaderValue;
-                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`;
+                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`; // Ajustar colspan
             }
 
             const ventaPor = p.ventaPor || {und:true};
@@ -971,6 +962,7 @@
             tableHTML += `
                 <tr class="hover:bg-gray-50 border-b">
                     <td class="py-2 px-3 text-gray-800">${displayPresentacion}</td>
+                    <td class="py-2 px-3 text-gray-700">${p.marca || 'S/M'}</td> <!-- Nueva Celda Marca -->
                     <td class="py-2 px-3 text-right font-medium text-gray-900">${displayPrecio}</td>
                     <td class="py-2 px-3 text-center font-medium text-gray-900" title="${stockUnidadesBaseTitle}">${displayStock}</td>
                     ${!readOnly ? `
@@ -1191,4 +1183,3 @@
     };
 
 })();
-
