@@ -41,13 +41,13 @@
         // --- FIN CORRECCIÓN ---
     };
 
-    // --- CORRECCIÓN MANEJADOR DE ERRORES ---
+    // --- Versión ANTERIOR del manejador de errores ---
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
             try { _inventarioListenerUnsubscribe(); } catch(e) { console.warn("Error unsubscribing previous listener:", e); }
         }
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        console.log("Starting main inventory listener..."); // Log inicio listener
+        console.log("Starting main inventory listener..."); // Log inicio listener (puede que no estuviera antes)
 
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -55,29 +55,20 @@
                  try { callback(); } catch (cbError) { console.error("Listener callback error:", cbError); }
             }
         }, (error) => {
-            // --- INICIO: CORRECCIÓN MANEJADOR DE ERRORES ---
-            console.warn(`Inventory listener error. Code: ${error.code}, Message: ${error.message}, isLoggingOut: ${window.isLoggingOut}`); // Log detallado
-
-            // Condición Modificada: Ignorar si estamos en proceso de logout Y el error es relacionado a permisos/autenticación
-            // Firestore puede lanzar 'permission-denied' o 'unauthenticated' en este escenario.
-            const isPermissionErrorDuringLogout = window.isLoggingOut && (error.code === 'permission-denied' || error.code === 'unauthenticated');
-
-            if (isPermissionErrorDuringLogout) {
-                console.log("Inventory listener error ignored during logout process.");
-                return; // No mostrar el modal si es un error esperado durante logout
-            }
-
-            // Para cualquier otro error, o si no estamos cerrando sesión, mostrar el modal
-            console.error("Error real en listener de inventario:", error); // Loguear como error real
-            // Evitar mostrar modal si el error es 'cancelled' (desuscripción manual)
-            if (error.code !== 'cancelled') {
+             // --- Lógica de error ANTERIOR ---
+             if (window.isLoggingOut && error.code === 'permission-denied') {
+                 // Intenta ignorar el error durante el logout, pero aún así puede mostrar el modal
+                 return;
+             }
+             console.error("Error en listener de inventario:", error);
+             if (error.code !== 'cancelled') { // Evitar modal si se cancela manualmente
                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario.');
-            }
-            // --- FIN: CORRECCIÓN MANEJADOR DE ERRORES ---
+             }
+             // --- FIN Lógica de error ANTERIOR ---
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
-    // --- FIN CORRECCIÓN MANEJADOR DE ERRORES ---
+    // --- FIN Versión ANTERIOR ---
 
     // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
@@ -974,7 +965,7 @@
     }
 
 
-    function editProducto(productId) {
+    async function editProducto(productId) {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores pueden editar definiciones.'); return; } const prod = _inventarioCache.find(p => p.id === productId); if (!prod) { _showModal('Error', 'Producto no encontrado en caché.'); return; } if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto max-w-2xl"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center"> <h2 class="text-2xl font-bold mb-6">Editar Producto</h2> <form id="editProductoForm" class="space-y-4 text-left"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="rubro">Rubro:</label> <div class="flex items-center space-x-2"> <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('rubros','Rubro')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="segmento">Segmento:</label> <div class="flex items-center space-x-2"> <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('segmentos','Segmento')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="marca">Marca:</label> <div class="flex items-center space-x-2"> <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('marcas','Marca')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="presentacion">Presentación:</label> <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required> </div> </div> <div class="border-t pt-4 mt-4"> <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"> <div> <label class="block mb-2 font-medium">Venta por:</label> <div id="ventaPorContainer" class="flex space-x-4"> <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Und.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Paq.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Cj.</span></label> </div> </div> <div class="mt-4 md:mt-0"> <label class="flex items-center cursor-pointer"> <input type="checkbox" id="manejaVaciosCheck" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2 font-medium">Maneja Vacío</span> </label> <div id="tipoVacioContainer" class="mt-2 hidden"> <label for="tipoVacioSelect" class="block text-sm font-medium">Tipo:</label> <select id="tipoVacioSelect" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-gray-50"> <option value="">Seleccione...</option> <option value="1/4 - 1/3">1/4 - 1/3</option> <option value="ret 350 ml">Ret 350 ml</option> <option value="ret 1.25 Lts">Ret 1.25 Lts</option> </select> </div> </div> </div> <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div> <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div> </div> <div class="border-t pt-4 mt-4"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="cantidadActual" class="block font-medium">Stock Actual (Und. Base):</label> <input type="number" id="cantidadActual" value="${prod.cantidadUnidades||0}" class="w-full mt-1 px-4 py-2 border rounded-lg bg-gray-100 text-gray-700" readonly title="La cantidad se modifica en 'Ajuste Masivo'"> <p class="text-xs text-gray-500 mt-1">Modificar en "Ajuste Masivo".</p> </div> <div> <label for="ivaTipo" class="block font-medium">IVA:</label> <select id="ivaTipo" class="w-full mt-1 px-4 py-2 border rounded-lg bg-white" required> <option value="16">16%</option> <option value="0">Exento 0%</option> </select> </div> </div> </div> <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-150">Guardar Cambios y Propagar</button> </form> <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-150">Volver</button> </div> </div> </div>`;
 
@@ -1101,4 +1092,3 @@
     };
 
 })();
-
