@@ -41,7 +41,7 @@
     };
 
     window.showVentasView = function() {
-        _floatingControls.classList.add('hidden');
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
@@ -59,7 +59,7 @@
 
     function showNuevaVentaView() {
         _originalVentaForEdit = null;
-        _floatingControls.classList.add('hidden');
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
         _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} };
         TIPOS_VACIO.forEach(tipo => _ventaActual.vaciosDevueltosPorTipo[tipo] = 0);
@@ -322,7 +322,7 @@
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         return ticket;
     }
-    // Funciones handleShareTicket, handleShareRawText, copyToClipboard, legacyCopyToClipboard (sin cambios funcionales, solo reciben callback)
+    // Funciones handleShareTicket, handleShareRawText, copyToClipboard, legacyCopyToClipboard (solo reciben callback)
     async function handleShareTicket(htmlContent, callbackDespuesDeCompartir) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div'); tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.innerHTML = htmlContent; document.body.appendChild(tempDiv);
@@ -338,8 +338,12 @@
     async function handleShareRawText(textContent, callbackDespuesDeCompartir) {
         let success = false;
          if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); success = true; } catch (err) { console.warn("Share API error:", err.name); } }
-         else { try { legacyCopyToClipboard(textContent); success = true; } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } }
-         if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(success);
+         else { try { legacyCopyToClipboard(textContent, (copySuccess) => { success = copySuccess; }); } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } } // Pasar callback a legacy
+         // Asegurarse de llamar al callback DESPUÉS de intentar, incluso si legacyCopyToClipboard es asíncrono en su modal
+         // Usar un pequeño timeout si legacyCopyToClipboard no retorna directamente el estado
+         setTimeout(() => {
+            if (callbackDespuesDeCompartir) callbackDespuesDeCompartir(success);
+         }, 100); // Pequeña espera por si el modal de legacyCopyToClipboard es lento
     }
     function copyToClipboard(textContent, callbackDespuesDeCopia) {
         if (navigator.clipboard && window.isSecureContext) {
@@ -498,7 +502,7 @@
     }
 
     function showVentasTotalesView() {
-        _floatingControls.classList.add('hidden');
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
@@ -515,7 +519,7 @@
     }
 
     function showVentasActualesView() {
-        _floatingControls.classList.add('hidden');
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-xl">
                 <div class="flex justify-between items-center mb-6"> <h2 class="text-2xl font-bold">Ventas Actuales</h2> <button id="backToVentasTotalesBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> </div>
@@ -644,7 +648,7 @@
             _showModal('Error', 'Venta no encontrada en la lista actual.');
             return;
          }
-         // Asegurar que _inventarioCache esté disponible
+         // Asegurar que _inventarioCache esté disponible (Aunque no lo usaremos para el stock en la transacción, es bueno tenerlo)
          if (!_inventarioCache || _inventarioCache.length === 0) {
             _showModal('Error', 'El inventario local no está cargado. No se puede ajustar stock. Intenta recargar la vista.');
             return;
@@ -653,75 +657,89 @@
         _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
             _showModal('Progreso', 'Eliminando venta y ajustando datos...');
             try {
-                // --- INICIO: Lógica de Reversión ---
                 const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
 
                 await _runTransaction(_db, async (transaction) => {
-                    // 1. Obtener datos actualizados de la venta (por si acaso) y del cliente
+                    // --- PASO 1: LEER TODO PRIMERO ---
+                    console.log("Transaction: Reading venta and cliente...");
                     const ventaDoc = await transaction.get(ventaRef);
                     const clienteDoc = await transaction.get(clienteRef);
 
-                    if (!ventaDoc.exists()) {
-                        throw new Error("La venta ya no existe.");
-                    }
-                    if (!clienteDoc.exists()) {
-                        console.warn(`Cliente ${venta.clienteId} no encontrado para ajustar vacíos.`);
-                        // Podríamos decidir continuar sin ajustar vacíos o lanzar error. Continuemos por ahora.
-                    }
+                    if (!ventaDoc.exists()) throw new Error("La venta ya no existe.");
 
                     const ventaData = ventaDoc.data();
                     const clienteData = clienteDoc.exists() ? clienteDoc.data() : null;
                     const productosVendidos = ventaData.productos || [];
-                    const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
-                    const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
-                    const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual }; // Copia para modificar
 
-                    // 2. Calcular ajustes de inventario
-                    const ajustesInventario = [];
+                    // Crear refs y leer todos los documentos de inventario necesarios
+                    const inventarioRefs = {};
+                    const productoIds = productosVendidos.map(p => p.id).filter(id => id); // Filtrar IDs nulos/vacíos
+                    console.log(`Transaction: Reading ${productoIds.length} inventory items...`);
+                    const inventarioDocsMap = new Map(); // Para guardar los docs leídos
+                    if (productoIds.length > 0) {
+                        const uniqueProductIds = [...new Set(productoIds)];
+                        const inventarioGetPromises = uniqueProductIds.map(id => {
+                            const ref = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
+                            inventarioRefs[id] = ref; // Guardar la ref para usarla después
+                            return transaction.get(ref);
+                        });
+                        const inventarioDocs = await Promise.all(inventarioGetPromises);
+                        inventarioDocs.forEach((docSnap, index) => {
+                            inventarioDocsMap.set(uniqueProductIds[index], docSnap); // Guardar doc por ID
+                        });
+                    }
+                    console.log("Transaction: All reads completed.");
+
+                    // --- PASO 2: CALCULAR AJUSTES ---
+                    const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
+                    const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual };
+                    const ajustesInventario = []; // { ref: docRef, cantidad: aRestaurar }
+                    const ajustesVaciosNetos = {}; // { tipoVacio: ajusteSaldo }
+
+                    // a) Calcular ajuste inventario y vacíos entregados
                     for (const productoVendido of productosVendidos) {
                         const unidadesARestaurar = productoVendido.totalUnidadesVendidas || 0;
                         if (unidadesARestaurar > 0) {
-                            const productoInventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productoVendido.id);
-                            ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar });
+                            const productoInventarioRef = inventarioRefs[productoVendido.id];
+                            if (productoInventarioRef) { // Asegurar que la ref existe
+                                ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar, id: productoVendido.id });
+                            } else {
+                                console.warn(`No se encontró ref de inventario para producto ${productoVendido.id} en la venta.`);
+                            }
                         }
-                    }
 
-                    // 3. Calcular ajustes de saldo de vacíos
-                    const ajustesVaciosNetos = {}; // tipoVacio: ajuste_a_aplicar_al_saldo
-
-                    // a) Vacíos entregados al cliente en esta venta (aumentaron su deuda, hay que restarlos para revertir)
-                    for (const productoVendido of productosVendidos) {
                         if (productoVendido.manejaVacios && productoVendido.tipoVacio) {
                             const tipo = productoVendido.tipoVacio;
                             const cajasEntregadas = productoVendido.cantidadVendida?.cj || 0;
                             if (cajasEntregadas > 0) {
-                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas; // Restar de la deuda
+                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas; // Restar de la deuda (revertir entrega)
                             }
                         }
                     }
 
-                    // b) Vacíos devueltos por el cliente en esta venta (disminuyeron su deuda, hay que sumarlos para revertir)
+                    // b) Calcular ajuste por vacíos devueltos en la venta
+                    const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
                     for (const tipo in vaciosDevueltosEnVenta) {
                         const cajasDevueltas = vaciosDevueltosEnVenta[tipo] || 0;
                         if (cajasDevueltas > 0) {
-                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas; // Sumar a la deuda
+                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas; // Sumar a la deuda (revertir devolución)
                         }
                     }
 
-                    // 4. Aplicar ajustes de inventario en la transacción
+                    // --- PASO 3: ESCRIBIR TODO ---
+                    console.log("Transaction: Starting writes...");
+
+                    // a) Escribir ajustes de inventario
                     for (const ajuste of ajustesInventario) {
-                         // Leer inventario DENTRO de la transacción para evitar race conditions
-                         const invDoc = await transaction.get(ajuste.ref);
-                         const stockActual = invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
+                         const invDoc = inventarioDocsMap.get(ajuste.id); // Obtener el doc LEÍDO PREVIAMENTE
+                         const stockActual = invDoc && invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
                          const nuevoStock = stockActual + ajuste.cantidad;
-                         // Usar set con merge: true o update. Update es más seguro si el doc debe existir.
-                         // Si el producto pudo ser eliminado, set con merge es más flexible.
-                         //transaction.update(ajuste.ref, { cantidadUnidades: nuevoStock });
-                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true }); // Más seguro si el producto no existe
+                         console.log(`Transaction: Updating inventory ${ajuste.id}. Old: ${stockActual}, Adjustment: ${ajuste.cantidad}, New: ${nuevoStock}`);
+                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true }); // Usar set + merge por si el producto ya no existe
                     }
 
-                    // 5. Aplicar ajustes de saldo de vacíos en la transacción (si el cliente existe)
+                    // b) Escribir ajustes de saldo de vacíos (si hubo cambios y el cliente existe)
                     let saldoVaciosModificado = false;
                     if (clienteDoc.exists()) {
                         for (const tipo in ajustesVaciosNetos) {
@@ -732,13 +750,21 @@
                             }
                         }
                         if (saldoVaciosModificado) {
+                            console.log("Transaction: Updating client empty balance.", nuevosSaldoVaciosCliente);
                             transaction.update(clienteRef, { saldoVacios: nuevosSaldoVaciosCliente });
+                        } else {
+                            console.log("Transaction: No client empty balance changes needed.");
                         }
+                    } else {
+                         console.warn("Transaction: Client doc does not exist, skipping empty balance update.");
                     }
 
-                    // 6. Eliminar la venta en la transacción
+
+                    // c) Eliminar la venta
+                    console.log("Transaction: Deleting sale document.");
                     transaction.delete(ventaRef);
-                    // --- FIN: Lógica de Reversión ---
+
+                    console.log("Transaction: All writes queued.");
                 }); // Fin _runTransaction
 
                 _showModal('Éxito', 'Venta eliminada. Inventario y saldos de vacíos ajustados.');
@@ -752,7 +778,7 @@
         }, 'Sí, Eliminar y Revertir', null, true); // True para indicar lógica de confirmación
     }
     async function showEditVentaView(venta) {
-        _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
+        if (_floatingControls) _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
         _mainContent.innerHTML = `
             <div class="p-2 sm:p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
                 <div id="venta-header-section" class="mb-4">
