@@ -641,6 +641,7 @@
          _originalVentaForEdit = JSON.parse(JSON.stringify(venta)); // Deep copy para comparar cambios
         showEditVentaView(venta);
     }
+    // *** MODIFICADO: deleteVenta ahora incluye ajuste de stock/vacíos en transacción ***
     function deleteVenta(ventaId) {
         console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
          const venta = _ventasGlobal.find(v => v.id === ventaId);
@@ -648,11 +649,8 @@
             _showModal('Error', 'Venta no encontrada en la lista actual.');
             return;
          }
-         // Asegurar que _inventarioCache esté disponible (Aunque no lo usaremos para el stock en la transacción, es bueno tenerlo)
-         if (!_inventarioCache || _inventarioCache.length === 0) {
-            _showModal('Error', 'El inventario local no está cargado. No se puede ajustar stock. Intenta recargar la vista.');
-            return;
-         }
+         // *** ELIMINADA: Verificación de _inventarioCache ***
+         // if (!_inventarioCache || _inventarioCache.length === 0) { ... }
 
         _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
             _showModal('Progreso', 'Eliminando venta y ajustando datos...');
