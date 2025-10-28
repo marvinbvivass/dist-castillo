@@ -13,7 +13,7 @@
     let _obsequioActual = { cliente: null, cantidadEntregada: 0, vaciosRecibidos: 0, observacion: '' };
 
     // Constante para tipos de vacío (debe coincidir con inventario.js)
-    const TIPOS_VACIO = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+    const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
     // Definir ruta pública para la configuración
     const OBSEQUIO_CONFIG_PATH = `artifacts/${'ventas-9a210'}/public/data/config/obsequio`; // Usar ID de proyecto hardcoded
 
@@ -37,7 +37,7 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _getDocs = dependencies.getDocs;
-        _writeBatch = dependencies.writeBatch;
+        _writeBatch = dependencies.writeBatch; // Aunque no lo usemos directamente, lo mantenemos por si acaso
         _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
@@ -53,7 +53,7 @@
             return;
         }
 
-        _floatingControls.classList.add('hidden');
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _obsequioActual = { cliente: null, cantidadEntregada: 0, vaciosRecibidos: 0, observacion: '' }; // Resetear
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -89,7 +89,7 @@
                                     </div>
                                     <div>
                                         <label for="vaciosRecibidos" class="block text-gray-700 font-medium mb-1">Vacíos Recibidos:</label>
-                                        <input type="number" id="vaciosRecibidos" min="0" class="w-full px-4 py-2 border rounded-lg">
+                                        <input type="number" id="vaciosRecibidos" min="0" value="0" class="w-full px-4 py-2 border rounded-lg">
                                         <p id="vaciosTipoInfo" class="text-xs text-gray-500 mt-1">Tipo: --</p>
                                     </div>
                                 </div>
@@ -140,6 +140,10 @@
                 _obsequioConfig.productoId = configSnap.data().productoId;
 
                 // 2. Buscar el producto en el inventario del usuario actual (esto permanece igual)
+                // Asegurarse de que _inventarioCache esté cargado antes de buscar
+                if (_inventarioCache.length === 0) {
+                     await _loadInventarioUsuario(); // Cargar si está vacío
+                }
                 const productoDataEnInventario = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
 
                 if (productoDataEnInventario) {
@@ -148,6 +152,9 @@
                      if (!productoDataEnInventario.manejaVacios || !productoDataEnInventario.ventaPor?.cj) {
                          throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no maneja vacíos o no se vende por caja.`);
                      }
+                      if (!productoDataEnInventario.tipoVacio) {
+                          throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no tiene un tipo de vacío asignado.`);
+                      }
                 } else {
                     throw new Error("El producto configurado como obsequio no se encontró en tu inventario.");
                 }
@@ -156,7 +163,6 @@
             }
 
         } catch (error) {
-            // Log original (línea ~170)
             console.error("Error al cargar configuración de obsequio:", error);
             _obsequioConfig = { productoId: null, productoData: null }; // Resetear si hay error
              // El mensaje de error se mostrará en showGestionObsequiosView
@@ -209,8 +215,15 @@
             const stockEnCajas = Math.floor((prod.cantidadUnidades || 0) / (prod.unidadesPorCaja || 1));
             stockSpan.textContent = stockEnCajas;
             cantidadInput.max = stockEnCajas; // Establecer máximo
-            vaciosTipoInfo.textContent = `Tipo: ${prod.tipoVacio}`;
+            vaciosTipoInfo.textContent = `Tipo: ${prod.tipoVacio}`; // Mostrar tipo
+        } else {
+             // Si por alguna razón productoData es nulo aquí, mostrar error
+             productNameSpan.textContent = "Error";
+             stockSpan.textContent = "Error";
+             vaciosTipoInfo.textContent = "Tipo: Error";
+             if (form) form.style.display = 'none'; // Ocultar form si no hay producto
         }
+
 
         // Setup búsqueda de cliente
         clienteSearchInput.addEventListener('input', () => {
@@ -262,6 +275,7 @@
 
     /**
      * Valida, registra la entrega de obsequio, actualiza stock/saldos y genera ticket.
+     * --- CORREGIDO PARA AJUSTAR SALDO VACIOS CORRECTAMENTE ---
      */
     async function handleRegistrarObsequio(e) {
         e.preventDefault();
@@ -278,7 +292,12 @@
         const vaciosRecibidos = _obsequioActual.vaciosRecibidos;
         const productoObsequio = _obsequioConfig.productoData;
         const unidadesPorCaja = productoObsequio.unidadesPorCaja || 1;
-        const stockActualCajas = Math.floor((productoObsequio.cantidadUnidades || 0) / unidadesPorCaja);
+        const tipoVacioProducto = productoObsequio.tipoVacio; // Ya validado en _loadObsequioProduct
+
+        // Leer stock actual desde la caché (para validación inicial)
+        const prodEnCache = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
+        const stockActualUnidades = prodEnCache?.cantidadUnidades || 0;
+        const stockActualCajas = Math.floor(stockActualUnidades / unidadesPorCaja);
 
         if (cantidadEntregada <= 0) {
             _showModal('Error', 'La cantidad de cajas entregadas debe ser mayor que cero.');
@@ -288,17 +307,14 @@
             _showModal('Error', `Stock insuficiente. Solo hay ${stockActualCajas} cajas disponibles.`);
             return;
         }
-        if (!productoObsequio.tipoVacio) {
-             _showModal('Error', `El producto "${productoObsequio.presentacion}" no tiene un tipo de vacío asignado.`);
-             return;
-        }
+        // Validación de tipoVacio ya hecha al cargar
 
         const confirmMsg = `
             Confirmar entrega:<br>
             - Cliente: ${_obsequioActual.cliente.nombreComercial}<br>
             - Producto: ${productoObsequio.presentacion}<br>
             - Cajas Entregadas: ${cantidadEntregada}<br>
-            - Vacíos Recibidos (${productoObsequio.tipoVacio}): ${vaciosRecibidos}<br>
+            - Vacíos Recibidos (${tipoVacioProducto}): ${vaciosRecibidos}<br>
             - Observación: ${_obsequioActual.observacion || 'Ninguna'}
         `;
 
@@ -306,39 +322,12 @@
             _showModal('Progreso', 'Registrando entrega...');
 
             try {
-                const batch = _writeBatch(_db);
-                const unidadesARestar = cantidadEntregada * unidadesPorCaja;
-                const nuevoStockUnidades = (productoObsequio.cantidadUnidades || 0) - unidadesARestar;
-
-                // Actualizar stock
+                // --- INICIO: Lógica dentro de Transacción ---
                 const inventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, _obsequioConfig.productoId);
-                batch.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
+                const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _obsequioActual.cliente.id);
+                const registroRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`)); // Generar ID para registro
 
-                // Actualizar saldo de vacíos del cliente (si se recibieron)
-                if (vaciosRecibidos > 0) {
-                    // Usa el ID de proyecto hardcoded para la colección pública de clientes
-                    const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _obsequioActual.cliente.id);
-                    await _runTransaction(_db, async (transaction) => {
-                        const clienteDoc = await transaction.get(clienteRef);
-                        if (!clienteDoc.exists()) throw "El cliente no existe.";
-
-                        const clienteData = clienteDoc.data();
-                        const saldoVacios = clienteData.saldoVacios || {};
-                        const tipoVacioProducto = productoObsequio.tipoVacio;
-                        const saldoActualTipo = saldoVacios[tipoVacioProducto] || 0;
-
-                        // Restar los vacíos recibidos del saldo pendiente
-                        saldoVacios[tipoVacioProducto] = saldoActualTipo - vaciosRecibidos;
-
-                        transaction.update(clienteRef, { saldoVacios: saldoVacios });
-                    });
-                     // Nota: No incluimos la actualización del cliente en el batch principal
-                     // porque ya se hizo en la transacción separada.
-                }
-
-                // Guardar registro de la entrega
-                const registroRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
-                const registroData = {
+                const registroData = { // Preparar datos del registro
                     fecha: new Date(),
                     clienteId: _obsequioActual.cliente.id,
                     clienteNombre: _obsequioActual.cliente.nombreComercial,
@@ -346,29 +335,56 @@
                     productoNombre: productoObsequio.presentacion,
                     cantidadCajas: cantidadEntregada,
                     vaciosRecibidos: vaciosRecibidos,
-                    tipoVacio: productoObsequio.tipoVacio,
+                    tipoVacio: tipoVacioProducto,
                     observacion: _obsequioActual.observacion,
                     userId: _userId
                 };
-                batch.set(registroRef, registroData);
 
-                // Ejecutar el batch (actualización de stock y registro de entrega)
-                await batch.commit();
+                await _runTransaction(_db, async (transaction) => {
+                    // 1. Leer inventario y cliente DENTRO de la transacción
+                    const inventarioDoc = await transaction.get(inventarioRef);
+                    const clienteDoc = await transaction.get(clienteRef);
 
-                // Generar ticket
-                 _showSharingOptionsObsequio(registroData, productoObsequio, showGestionObsequiosView);
+                    if (!inventarioDoc.exists()) throw "El producto de obsequio no existe en el inventario.";
+                    if (!clienteDoc.exists()) throw "El cliente no existe.";
 
+                    // 2. Validar stock DENTRO de la transacción
+                    const stockActualTrans = inventarioDoc.data().cantidadUnidades || 0;
+                    const unidadesARestar = cantidadEntregada * unidadesPorCaja;
+                    if (unidadesARestar > stockActualTrans) {
+                        throw `Stock insuficiente DENTRO de la transacción. Disponible: ${Math.floor(stockActualTrans / unidadesPorCaja)} cajas.`;
+                    }
+                    const nuevoStockUnidades = stockActualTrans - unidadesARestar;
+
+                    // 3. Calcular nuevo saldo de vacíos
+                    const clienteData = clienteDoc.data();
+                    const saldoVaciosActual = clienteData.saldoVacios || {};
+                    const saldoActualTipo = saldoVaciosActual[tipoVacioProducto] || 0;
+                    // Ajuste: +CajasEntregadas (aumenta deuda) - VaciosRecibidos (disminuye deuda)
+                    const nuevoSaldoTipo = saldoActualTipo + cantidadEntregada - vaciosRecibidos;
+                    const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacioProducto]: nuevoSaldoTipo };
+
+                    // 4. Escribir todas las actualizaciones
+                    transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
+                    transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
+                    transaction.set(registroRef, registroData); // Guardar el registro
+                });
+                // --- FIN: Lógica dentro de Transacción ---
+
+                // Si la transacción fue exitosa, generar ticket
+                 _showSharingOptionsObsequio(registroData, productoObsequio, showGestionObsequiosView); // Pasar datos del registro guardado
 
             } catch (error) {
                 console.error("Error al registrar obsequio:", error);
-                _showModal('Error', `No se pudo registrar la entrega: ${error.message}`);
+                // Si la transacción falla, Firestore revierte todo
+                _showModal('Error', `No se pudo registrar la entrega: ${error.message || error}`);
             }
 
-        }, 'Sí, Confirmar');
+        }, 'Sí, Confirmar', null, true); // triggerConfirmLogic = true
     }
 
-    // --- Funciones adaptadas para Tickets de Obsequio ---
 
+    // --- Funciones adaptadas para Tickets de Obsequio (sin cambios) ---
     function _createTicketHTMLObsequio(registro, producto) {
         const fecha = registro.fecha.toLocaleDateString('es-ES');
         const clienteNombre = registro.clienteNombre;
@@ -431,7 +447,6 @@
             </div>
         `;
     }
-
     function _createRawTextTicketObsequio(registro, producto) {
         const fecha = registro.fecha.toLocaleDateString('es-ES');
 
@@ -507,7 +522,6 @@
 
         return ticket;
     }
-
     async function _handleShareTicketObsequio(htmlContent, successCallback) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div');
@@ -521,7 +535,7 @@
         if (!ticketElement) {
              _showModal('Error', 'No se pudo encontrar el elemento del ticket.');
              document.body.removeChild(tempDiv);
-             successCallback(); // Continuar aunque falle la imagen
+             successCallback(false); // Indicar fallo
              return;
         }
 
@@ -532,24 +546,27 @@
 
             if (navigator.share && blob) {
                 await navigator.share({ files: [new File([blob], "obsequio.png", { type: "image/png" })], title: "Ticket de Obsequio" });
-                 _showModal('Éxito', 'Entrega registrada. Imagen compartida.', successCallback);
+                 _showModal('Éxito', 'Entrega registrada. Imagen compartida.', () => successCallback(true)); // Indicar éxito
             } else {
-                 _showModal('Error', 'Función de compartir no disponible.', successCallback);
+                 _showModal('Error', 'Función de compartir no disponible.', () => successCallback(false)); // Indicar fallo
             }
         } catch(e) {
-             _showModal('Error', `No se pudo generar/compartir imagen: ${e.message}`, successCallback);
+             _showModal('Error', `No se pudo generar/compartir imagen: ${e.message}`, () => successCallback(false)); // Indicar fallo
         } finally {
-            document.body.removeChild(tempDiv);
+            if (document.body.contains(tempDiv)) {
+                 document.body.removeChild(tempDiv);
+            }
         }
     }
-
     async function _handleShareRawTextObsequio(textContent, successCallback) {
+        let success = false;
          if (navigator.share) {
             try {
                 await navigator.share({ title: 'Ticket de Obsequio', text: textContent });
-                 _showModal('Éxito', 'Entrega registrada. Ticket listo para imprimir.', successCallback);
+                _showModal('Éxito', 'Entrega registrada. Ticket listo para imprimir.', () => successCallback(true));
+                success = true;
             } catch (err) {
-                 _showModal('Aviso', 'No se compartió el ticket. Entrega registrada.', successCallback);
+                 _showModal('Aviso', 'No se compartió el ticket. Entrega registrada.', () => successCallback(false));
             }
         } else {
             try {
@@ -559,14 +576,18 @@
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                 _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', successCallback);
+                 _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', () => successCallback(true));
+                 success = true;
             } catch (copyErr) {
-                 _showModal('Error', 'No se pudo compartir ni copiar. Entrega registrada.', successCallback);
+                 _showModal('Error', 'No se pudo compartir ni copiar. Entrega registrada.', () => successCallback(false));
             }
         }
+        // Llamar callback si no se usó en los modales anteriores (caso share cancelado o error sin modal)
+        // if (!success) {
+        //     successCallback(false);
+        // }
     }
-
-    function _showSharingOptionsObsequio(registro, producto, successCallback) {
+    function _showSharingOptionsObsequio(registro, producto, callbackFinal) {
         const modalContent = `
             <div class="text-center">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Generar Ticket de Obsequio</h3>
@@ -581,12 +602,14 @@
 
         document.getElementById('printTextBtnObs').addEventListener('click', () => {
             const rawTextTicket = _createRawTextTicketObsequio(registro, producto);
-             _handleShareRawTextObsequio(rawTextTicket, successCallback);
+             // El callbackFinal (showGestionObsequiosView) se pasa a la función de compartir/copiar
+             _handleShareRawTextObsequio(rawTextTicket, callbackFinal);
         });
 
         document.getElementById('shareImageBtnObs').addEventListener('click', () => {
             const ticketHTML = _createTicketHTMLObsequio(registro, producto);
-             _handleShareTicketObsequio(ticketHTML, successCallback);
+             // El callbackFinal se pasa a la función de compartir/copiar
+             _handleShareTicketObsequio(ticketHTML, callbackFinal);
         });
     }
 
