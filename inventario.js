@@ -2,7 +2,7 @@
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
     // MODIFICADO: Asegurar que _getDoc esté declarado
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc, _limit; // Añadido _limit
 
     let _inventarioCache = [];
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
@@ -36,18 +36,17 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
-        // --- CORRECCIÓN: Añadir la asignación faltante ---
         _getDoc = dependencies.getDoc;
-        // --- FIN CORRECCIÓN ---
+        _limit = dependencies.limit; // Asignar limit
     };
 
-    // --- Versión ANTERIOR del manejador de errores ---
+    // --- CORRECCIÓN MANEJADOR DE ERRORES (Mantenida) ---
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
             try { _inventarioListenerUnsubscribe(); } catch(e) { console.warn("Error unsubscribing previous listener:", e); }
         }
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        console.log("Starting main inventory listener..."); // Log inicio listener (puede que no estuviera antes)
+        console.log("Starting main inventory listener..."); // Log inicio listener
 
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -55,20 +54,20 @@
                  try { callback(); } catch (cbError) { console.error("Listener callback error:", cbError); }
             }
         }, (error) => {
-             // --- Lógica de error ANTERIOR ---
-             if (window.isLoggingOut && error.code === 'permission-denied') {
-                 // Intenta ignorar el error durante el logout, pero aún así puede mostrar el modal
-                 return;
-             }
-             console.error("Error en listener de inventario:", error);
-             if (error.code !== 'cancelled') { // Evitar modal si se cancela manualmente
+            console.warn(`Inventory listener error. Code: ${error.code}, Message: ${error.message}, isLoggingOut: ${window.isLoggingOut}`); // Log detallado
+            const isPermissionErrorDuringLogout = window.isLoggingOut && (error.code === 'permission-denied' || error.code === 'unauthenticated');
+            if (isPermissionErrorDuringLogout) {
+                console.log("Inventory listener error ignored during logout process.");
+                return; // No mostrar el modal si es un error esperado durante logout
+            }
+            console.error("Error real en listener de inventario:", error); // Loguear como error real
+            if (error.code !== 'cancelled') {
                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario.');
-             }
-             // --- FIN Lógica de error ANTERIOR ---
+            }
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
-    // --- FIN Versión ANTERIOR ---
+    // --- FIN CORRECCIÓN MANEJADOR DE ERRORES ---
 
     // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
@@ -1078,9 +1077,90 @@
         if (_userRole !== 'admin') return; _showModal('Confirmación Extrema', `¿Estás SEGURO de eliminar TODOS los productos del inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => { _showModal('Progreso', 'Eliminando productos locales...'); try { const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snapshot = await _getDocs(collectionRef); if (snapshot.empty) { _showModal('Aviso', 'No hay productos en el inventario para eliminar.'); return; } const productIds = snapshot.docs.map(d => d.id); const BATCH_LIMIT = 490; let batch = _writeBatch(_db), opsCount = 0, totalDeletedLocally = 0; for (const docSnapshot of snapshot.docs) { batch.delete(docSnapshot.ref); opsCount++; if (opsCount >= BATCH_LIMIT) { await batch.commit(); totalDeletedLocally += opsCount; batch = _writeBatch(_db); opsCount = 0; } } if (opsCount > 0) { await batch.commit(); totalDeletedLocally += opsCount; } _showModal('Progreso', `Se eliminaron ${totalDeletedLocally} productos localmente. Propagando eliminación...`); if (window.adminModule?.propagateProductChange) { let propagationErrors = 0; for (const productId of productIds) { try { await window.adminModule.propagateProductChange(productId, null); } catch (propError) { console.error(`Error propagando eliminación de ${productId}:`, propError); propagationErrors++; } } _showModal(propagationErrors > 0 ? 'Advertencia' : 'Éxito', `Se eliminaron ${totalDeletedLocally} productos.${propagationErrors > 0 ? ` Ocurrieron ${propagationErrors} errores al propagar.` : ' Propagado correctamente.'}`); } else { _showModal('Advertencia', `Se eliminaron ${totalDeletedLocally} productos localmente, pero la función de propagación no está disponible.`); } } catch (error) { console.error("Error al eliminar todos los productos:", error); _showModal('Error', `Hubo un error al eliminar los productos: ${error.message}`); } }, 'Sí, Eliminar Todos', null, true);
     }
 
+    // --- CORRECCIÓN handleDeleteAllDatosMaestros ---
     async function handleDeleteAllDatosMaestros() {
-        if (_userRole !== 'admin') return; _showModal('Confirmar Borrado Datos Maestros', `¿Eliminar TODOS los Rubros, Segmentos y Marcas que NO estén siendo usados actualmente en el inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => { _showModal('Progreso', 'Verificando uso de datos maestros...'); try { const collectionsToClean=['rubros','segmentos','marcas']; const itemsToDelete={rubros:[],segmentos:[],marcas:[]}; const itemsInUse = {rubros: new Set(), segmentos: new Set(), marcas: new Set()}; let totalFound=0, totalToDelete=0; const inventarioSnap=await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`)); inventarioSnap.docs.forEach(doc => { const data = doc.data(); if(data.rubro) itemsInUse.rubros.add(data.rubro); if(data.segmento) itemsInUse.segmentos.add(data.segmento); if(data.marca) itemsInUse.marcas.add(data.marca); }); for(const colName of collectionsToClean){ const categorySnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/${colName}`)); categorySnap.docs.forEach(doc => { const name = doc.data().name; totalFound++; if (name && !itemsInUse[colName].has(name)) { itemsToDelete[colName].push({ id: doc.id, name: name }); totalToDelete++; } }); } if(totalToDelete === 0){ _showModal('Aviso','No se encontraron Rubros, Segmentos o Marcas no utilizados para eliminar.'); return; } _showModal('Confirmación Final', `Se eliminarán ${totalToDelete} datos maestros no utilizados (${itemsToDelete.rubros.length} Rubros, ${itemsToDelete.segmentos.length} Segmentos, ${itemsToDelete.marcas.length} Marcas). Esta acción se propagará. ¿Continuar?`, async ()=>{ _showModal('Progreso',`Eliminando ${totalToDelete} datos maestros locales...`); const batchAdmin=_writeBatch(_db); for(const colName in itemsToDelete){ itemsToDelete[colName].forEach(item => { batchAdmin.delete(_doc(_db,`artifacts/${_appId}/users/${_userId}/${colName}`, item.id)); }); } await batchAdmin.commit(); _showModal('Progreso',`Datos eliminados localmente. Propagando eliminación...`); if(window.adminModule?.propagateCategoryChange){ let propagationErrors=0; for(const colName in itemsToDelete){ for(const item of itemsToDelete[colName]){ try{ await window.adminModule.propagateCategoryChange(colName, item.id, null); }catch(propError){ console.error(`Error propagando eliminación de ${colName}/${item.id}:`,propError); propagationErrors++; } } } _showModal(propagationErrors>0?'Advertencia':'Éxito',`Se eliminaron ${totalToDelete} datos maestros no utilizados.${propagationErrors>0?` Ocurrieron ${propagationErrors} errores al propagar.`:' Propagado correctamente.'}`); } else {_showModal('Advertencia',`Se eliminaron ${totalToDelete} datos maestros localmente, pero la función de propagación no está disponible.`);} invalidateSegmentOrderCache(); // Limpiar cache local }, 'Sí, Eliminar No Usados', null, true); } catch (error) { console.error("Error al verificar/eliminar datos maestros:", error); _showModal('Error',`Ocurrió un error: ${error.message}`); } }, 'Sí, Eliminar No Usados', null, true);
+        if (_userRole !== 'admin') return;
+        _showModal('Confirmar Borrado Datos Maestros', `¿Eliminar TODOS los Rubros, Segmentos y Marcas que NO estén siendo usados actualmente en el inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => {
+            _showModal('Progreso', 'Verificando uso de datos maestros...');
+            try {
+                const collectionsToClean = ['rubros', 'segmentos', 'marcas'];
+                const itemsToDelete = { rubros: [], segmentos: [], marcas: [] };
+                const itemsInUse = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
+                let totalFound = 0, totalToDelete = 0;
+
+                // Verificar inventario
+                const inventarioSnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
+                inventarioSnap.docs.forEach(doc => {
+                    const data = doc.data();
+                    if (data.rubro) itemsInUse.rubros.add(data.rubro);
+                    if (data.segmento) itemsInUse.segmentos.add(data.segmento);
+                    if (data.marca) itemsInUse.marcas.add(data.marca);
+                });
+
+                // Encontrar ítems no usados
+                for (const colName of collectionsToClean) {
+                    const categorySnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/${colName}`));
+                    categorySnap.docs.forEach(doc => {
+                        const name = doc.data().name;
+                        totalFound++;
+                        if (name && !itemsInUse[colName].has(name)) {
+                            itemsToDelete[colName].push({ id: doc.id, name: name });
+                            totalToDelete++;
+                        }
+                    });
+                }
+
+                if (totalToDelete === 0) {
+                    _showModal('Aviso', 'No se encontraron Rubros, Segmentos o Marcas no utilizados para eliminar.');
+                    return; // Detener si no hay nada que borrar
+                }
+
+                // Confirmación final
+                _showModal('Confirmación Final', `Se eliminarán ${totalToDelete} datos maestros no utilizados (${itemsToDelete.rubros.length} Rubros, ${itemsToDelete.segmentos.length} Segmentos, ${itemsToDelete.marcas.length} Marcas). Esta acción se propagará. ¿Continuar?`, async () => {
+                    _showModal('Progreso', `Eliminando ${totalToDelete} datos maestros locales...`);
+                    try { // Try interno para eliminación y propagación
+                        const batchAdmin = _writeBatch(_db);
+                        for (const colName in itemsToDelete) {
+                            itemsToDelete[colName].forEach(item => {
+                                batchAdmin.delete(_doc(_db, `artifacts/${_appId}/users/${_userId}/${colName}`, item.id));
+                            });
+                        }
+                        await batchAdmin.commit();
+                        _showModal('Progreso', `Datos eliminados localmente. Propagando eliminación...`);
+
+                        // Propagación
+                        let propagationErrors = 0;
+                        if (window.adminModule?.propagateCategoryChange) {
+                            for (const colName in itemsToDelete) {
+                                for (const item of itemsToDelete[colName]) {
+                                    try {
+                                        await window.adminModule.propagateCategoryChange(colName, item.id, null);
+                                    } catch (propError) {
+                                        console.error(`Error propagando eliminación de ${colName}/${item.id}:`, propError);
+                                        propagationErrors++;
+                                    }
+                                }
+                            }
+                            _showModal(propagationErrors > 0 ? 'Advertencia' : 'Éxito', `Se eliminaron ${totalToDelete} datos maestros no utilizados.${propagationErrors > 0 ? ` Ocurrieron ${propagationErrors} errores al propagar.` : ' Propagado correctamente.'}`);
+                        } else {
+                            _showModal('Advertencia', `Se eliminaron ${totalToDelete} datos maestros localmente, pero la función de propagación no está disponible.`);
+                        }
+                        invalidateSegmentOrderCache(); // Limpiar cache local
+
+                    } catch (innerError) { // Catch para errores durante eliminación/propagación
+                         console.error("Error durante eliminación/propagación de datos maestros:", innerError);
+                         _showModal('Error',`Ocurrió un error durante la eliminación/propagación: ${innerError.message}`);
+                    }
+                }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmación Final
+
+            } catch (error) { // Catch para errores al verificar uso
+                console.error("Error al verificar/eliminar datos maestros:", error);
+                _showModal('Error', `Ocurrió un error: ${error.message}`);
+            }
+        }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmar Borrado
     }
+    // --- FIN CORRECCIÓN ---
+
 
     // Exponer funciones públicas necesarias
     window.inventarioModule = {
