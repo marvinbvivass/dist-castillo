@@ -2,7 +2,7 @@
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
     // MODIFICADO: Asegurar que _getDoc esté declarado
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc, _limit; // Añadido _limit
+    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
 
     let _inventarioCache = [];
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
@@ -36,38 +36,36 @@
         _where = dependencies.where;
         _getDocs = dependencies.getDocs;
         _writeBatch = dependencies.writeBatch;
+        // --- CORRECCIÓN: Añadir la asignación faltante ---
         _getDoc = dependencies.getDoc;
-        _limit = dependencies.limit; // Asignar limit
+        // --- FIN CORRECCIÓN ---
     };
 
-    // --- CORRECCIÓN MANEJADOR DE ERRORES (Mantenida) ---
+    // --- Versión ANTERIOR del manejador de errores (antes del fix específico de logout) ---
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
             try { _inventarioListenerUnsubscribe(); } catch(e) { console.warn("Error unsubscribing previous listener:", e); }
         }
         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        console.log("Starting main inventory listener..."); // Log inicio listener
-
         _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             if (callback && typeof callback === 'function') {
                  try { callback(); } catch (cbError) { console.error("Listener callback error:", cbError); }
             }
         }, (error) => {
-            console.warn(`Inventory listener error. Code: ${error.code}, Message: ${error.message}, isLoggingOut: ${window.isLoggingOut}`); // Log detallado
-            const isPermissionErrorDuringLogout = window.isLoggingOut && (error.code === 'permission-denied' || error.code === 'unauthenticated');
-            if (isPermissionErrorDuringLogout) {
-                console.log("Inventory listener error ignored during logout process.");
-                return; // No mostrar el modal si es un error esperado durante logout
-            }
-            console.error("Error real en listener de inventario:", error); // Loguear como error real
-            if (error.code !== 'cancelled') {
-                _showModal('Error de Conexión', 'No se pudo actualizar el inventario.');
-            }
+             // Esta es la versión SIN el fix específico para 'unauthenticated' durante logout
+             if (window.isLoggingOut && error.code === 'permission-denied') {
+                 console.log("Inventory listener error ignored during logout (permission-denied).");
+                 return; // Ignorar el error silenciosamente
+             }
+             console.error("Error en listener de inventario:", error);
+             if (error.code !== 'cancelled') { // No mostrar modal si es cancelación manual
+                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario.');
+             }
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
-    // --- FIN CORRECCIÓN MANEJADOR DE ERRORES ---
+    // --- FIN Versión ANTERIOR del manejador de errores ---
 
     // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
@@ -722,8 +720,25 @@
 
     function showModifyDeleteView() {
          if (_floatingControls) _floatingControls.classList.add('hidden'); const isAdmin = _userRole === 'admin';
+        // Define el HTML
         _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl"> <h2 class="text-2xl font-bold mb-6 text-center">Ver Productos / ${isAdmin?'Modificar Def.':'Consultar Stock'}</h2> ${getFiltrosHTML('modify')} <div id="productosListContainer" class="overflow-x-auto max-h-96 border rounded-lg"> <p class="text-gray-500 text-center p-4">Cargando...</p> </div> <div class="mt-6 flex flex-col sm:flex-row gap-4"> <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> ${isAdmin?`<button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg shadow-md hover:bg-red-700">Eliminar Todos</button>`:''} </div> </div> </div> </div>`;
-        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu); if (isAdmin) document.getElementById('deleteAllProductosBtn')?.addEventListener('click', handleDeleteAllProductos); const rCallback = () => renderProductosList('productosListContainer', !isAdmin); _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'modify-filter-rubro', 'Rubro'); setupFiltros('modify', rCallback); startMainInventarioListener(rCallback);
+
+        // --- INICIO CORRECCIÓN ---
+        // Define la función callback UNA VEZ
+        const renderCallback = () => renderProductosList('productosListContainer', !isAdmin);
+
+        // Adjunta listeners a los botones DESPUÉS de setear innerHTML
+        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
+        if (isAdmin) document.getElementById('deleteAllProductosBtn')?.addEventListener('click', handleDeleteAllProductos);
+
+        // Llama a la primera renderización explícitamente DESPUÉS de que el DOM se actualizó
+        renderCallback(); // Asegura que el contenedor existe para la primera carga
+
+        // Configura los filtros y el listener, pasando el mismo callback
+        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'modify-filter-rubro', 'Rubro');
+        setupFiltros('modify', renderCallback); // setupFiltros podría llamar a renderCallback más tarde
+        startMainInventarioListener(renderCallback); // El listener llamará a renderCallback en actualizaciones
+        // --- FIN CORRECCIÓN ---
     }
 
     function getFiltrosHTML(prefix) {
@@ -874,7 +889,14 @@
 
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
-        if (!container) { console.error(`Elemento ${elementId} no encontrado.`); return; }
+        // --- CORRECCIÓN ADICIONAL: Verificar container al inicio ---
+        if (!container) {
+             // Ya no logueamos error aquí porque la llamada inicial puede ocurrir antes
+             // console.error(`Elemento ${elementId} no encontrado.`);
+             // Simplemente no hacer nada si el contenedor no existe aún
+             return;
+        }
+        // --- FIN CORRECCIÓN ADICIONAL ---
 
         let productosFiltrados = [..._inventarioCache];
         productosFiltrados = productosFiltrados.filter(p => {
@@ -1077,7 +1099,7 @@
         if (_userRole !== 'admin') return; _showModal('Confirmación Extrema', `¿Estás SEGURO de eliminar TODOS los productos del inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => { _showModal('Progreso', 'Eliminando productos locales...'); try { const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snapshot = await _getDocs(collectionRef); if (snapshot.empty) { _showModal('Aviso', 'No hay productos en el inventario para eliminar.'); return; } const productIds = snapshot.docs.map(d => d.id); const BATCH_LIMIT = 490; let batch = _writeBatch(_db), opsCount = 0, totalDeletedLocally = 0; for (const docSnapshot of snapshot.docs) { batch.delete(docSnapshot.ref); opsCount++; if (opsCount >= BATCH_LIMIT) { await batch.commit(); totalDeletedLocally += opsCount; batch = _writeBatch(_db); opsCount = 0; } } if (opsCount > 0) { await batch.commit(); totalDeletedLocally += opsCount; } _showModal('Progreso', `Se eliminaron ${totalDeletedLocally} productos localmente. Propagando eliminación...`); if (window.adminModule?.propagateProductChange) { let propagationErrors = 0; for (const productId of productIds) { try { await window.adminModule.propagateProductChange(productId, null); } catch (propError) { console.error(`Error propagando eliminación de ${productId}:`, propError); propagationErrors++; } } _showModal(propagationErrors > 0 ? 'Advertencia' : 'Éxito', `Se eliminaron ${totalDeletedLocally} productos.${propagationErrors > 0 ? ` Ocurrieron ${propagationErrors} errores al propagar.` : ' Propagado correctamente.'}`); } else { _showModal('Advertencia', `Se eliminaron ${totalDeletedLocally} productos localmente, pero la función de propagación no está disponible.`); } } catch (error) { console.error("Error al eliminar todos los productos:", error); _showModal('Error', `Hubo un error al eliminar los productos: ${error.message}`); } }, 'Sí, Eliminar Todos', null, true);
     }
 
-    // --- CORRECCIÓN handleDeleteAllDatosMaestros ---
+    // --- CORRECCIÓN DE SINTAXIS ---
     async function handleDeleteAllDatosMaestros() {
         if (_userRole !== 'admin') return;
         _showModal('Confirmar Borrado Datos Maestros', `¿Eliminar TODOS los Rubros, Segmentos y Marcas que NO estén siendo usados actualmente en el inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => {
@@ -1088,7 +1110,7 @@
                 const itemsInUse = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
                 let totalFound = 0, totalToDelete = 0;
 
-                // Verificar inventario
+                // Verificar uso en el inventario actual
                 const inventarioSnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
                 inventarioSnap.docs.forEach(doc => {
                     const data = doc.data();
@@ -1097,7 +1119,7 @@
                     if (data.marca) itemsInUse.marcas.add(data.marca);
                 });
 
-                // Encontrar ítems no usados
+                // Identificar ítems no usados
                 for (const colName of collectionsToClean) {
                     const categorySnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/${colName}`));
                     categorySnap.docs.forEach(doc => {
@@ -1112,10 +1134,9 @@
 
                 if (totalToDelete === 0) {
                     _showModal('Aviso', 'No se encontraron Rubros, Segmentos o Marcas no utilizados para eliminar.');
-                    return; // Detener si no hay nada que borrar
+                    return; // Salir si no hay nada que eliminar
                 }
 
-                // Confirmación final
                 _showModal('Confirmación Final', `Se eliminarán ${totalToDelete} datos maestros no utilizados (${itemsToDelete.rubros.length} Rubros, ${itemsToDelete.segmentos.length} Segmentos, ${itemsToDelete.marcas.length} Marcas). Esta acción se propagará. ¿Continuar?`, async () => {
                     _showModal('Progreso', `Eliminando ${totalToDelete} datos maestros locales...`);
                     try { // Try interno para eliminación y propagación
@@ -1128,7 +1149,6 @@
                         await batchAdmin.commit();
                         _showModal('Progreso', `Datos eliminados localmente. Propagando eliminación...`);
 
-                        // Propagación
                         let propagationErrors = 0;
                         if (window.adminModule?.propagateCategoryChange) {
                             for (const colName in itemsToDelete) {
@@ -1147,20 +1167,19 @@
                         }
                         invalidateSegmentOrderCache(); // Limpiar cache local
 
-                    } catch (innerError) { // Catch para errores durante eliminación/propagación
-                         console.error("Error durante eliminación/propagación de datos maestros:", innerError);
-                         _showModal('Error',`Ocurrió un error durante la eliminación/propagación: ${innerError.message}`);
+                    } catch (deletePropError) { // Catch para errores en el try interno
+                         console.error("Error durante eliminación/propagación de datos maestros:", deletePropError);
+                         _showModal('Error', `Ocurrió un error durante la eliminación/propagación: ${deletePropError.message}`);
                     }
                 }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmación Final
 
-            } catch (error) { // Catch para errores al verificar uso
+            } catch (error) { // Catch para errores en el try externo (verificación inicial)
                 console.error("Error al verificar/eliminar datos maestros:", error);
                 _showModal('Error', `Ocurrió un error: ${error.message}`);
             }
         }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmar Borrado
     }
-    // --- FIN CORRECCIÓN ---
-
+    // --- FIN CORRECCIÓN DE SINTAXIS ---
 
     // Exponer funciones públicas necesarias
     window.inventarioModule = {
@@ -1172,3 +1191,4 @@
     };
 
 })();
+
