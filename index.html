@@ -226,7 +226,7 @@
     <script src="obsequios.js" defer></script>
 
 
-    <script type="module" defer> // Añadido DEFER al script principal
+    <script type="module" defer> // DEFER sigue siendo útil aquí
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -441,7 +441,7 @@
 
         function populateDropdown(collectionPath, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
-            if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return; }
+            if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return Promise.reject(new Error(`Element ${elementId} not found`)); } // Devolver promesa rechazada
 
             const placeholderText = `Seleccione un ${itemName}`;
             let placeholder = selectElement.querySelector('option[value=""]');
@@ -452,7 +452,8 @@
             selectElement.disabled = true;
 
             const collectionRef = collection(db, collectionPath);
-            getDocs(collectionRef).then(snapshot => {
+            // Devolver la promesa de getDocs
+            return getDocs(collectionRef).then(snapshot => { // return aquí
                 const currentSelection = selectedValue || selectElement.value; // Mantener selección si existe
                  // Volver a limpiar por si acaso hubo una carga anterior fallida
                  Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
@@ -486,6 +487,7 @@
                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
                  selectElement.disabled = true;
+                 throw error; // Relanzar el error para que Promise.all lo detecte
             });
         }
 
@@ -840,20 +842,30 @@
             console.log("Auth listener attached.");
         }
 
-
-        // --- Ejecutar inicialización y añadir listeners globales ---
-        // (Ya no se usa 'load', se ejecuta al final del script module)
-        console.log("Module script parsed. Initializing app...");
-        await initializeAppAndListeners(); // Iniciar Firebase y listeners
-        // Añadir listeners a elementos que existen desde el principio (login/register)
-        loginForm?.addEventListener('submit', handleLogin);
-        registerForm?.addEventListener('submit', handleRegister);
-        document.getElementById('logoutBtn')?.addEventListener('click', () => { window.showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Sí, Cerrar Sesión'); });
-        document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
-        document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
-        // Registrar Service Worker
-        if ('serviceWorker' in navigator) { try { const reg = await navigator.serviceWorker.register('./service-worker.js'); console.log('SW registered:', reg.scope); } catch (error) { console.error('SW registration failed:', error); } } else { console.log("SW not supported."); }
+        // *** CORRECCIÓN: Envolver en DOMContentLoaded ***
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log("DOM fully loaded and parsed. Initializing app...");
+            await initializeAppAndListeners(); // Iniciar Firebase y listeners
+            // Añadir listeners a elementos que existen desde el principio (login/register)
+            loginForm?.addEventListener('submit', handleLogin);
+            registerForm?.addEventListener('submit', handleRegister);
+            document.getElementById('logoutBtn')?.addEventListener('click', () => { window.showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Sí, Cerrar Sesión'); });
+            document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
+            document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
+            // Registrar Service Worker
+            if ('serviceWorker' in navigator) {
+                try {
+                    const reg = await navigator.serviceWorker.register('./service-worker.js');
+                    console.log('SW registered:', reg.scope);
+                } catch (error) {
+                    console.error('SW registration failed:', error);
+                }
+            } else {
+                console.log("SW not supported.");
+            }
+        });
 
     </script>
 </body>
 </html>
+
