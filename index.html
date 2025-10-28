@@ -103,25 +103,42 @@
             border: 1px dashed #6366f1; /* indigo */
             margin: 0.25rem 0;
         }
-        /* Styles for the offline toggle */
-        .toggle-checkbox:checked + .toggle-label {
-            background-color: #ef4444; /* red-500 */
+         /* Offline Toggle Switch Styles */
+        input[type="checkbox"]#offline-toggle {
+            height: 0;
+            width: 0;
+            visibility: hidden;
         }
-        .toggle-checkbox:checked + .toggle-label::after {
-            transform: translateX(100%);
-            border-color: white;
+        label[for="offline-toggle"] {
+            cursor: pointer;
+            text-indent: -9999px;
+            width: 50px; /* Ancho del switch */
+            height: 25px; /* Alto del switch */
+            background: grey;
+            display: block;
+            border-radius: 100px;
+            position: relative;
         }
-        .toggle-label::after {
+        label[for="offline-toggle"]:after {
             content: '';
             position: absolute;
             top: 2px;
             left: 2px;
-            width: 1.25rem; /* h-5 */
-            height: 1.25rem; /* w-5 */
-            background-color: white;
-            border-radius: 9999px; /* rounded-full */
-            border: 1px solid #e5e7eb; /* border-gray-200 */
-            transition: transform 0.2s ease-in-out;
+            width: 21px; /* Diámetro círculo */
+            height: 21px;
+            background: #fff;
+            border-radius: 90px;
+            transition: 0.3s;
+        }
+        input:checked + label[for="offline-toggle"] {
+            background: #dc2626; /* Rojo cuando está checked (Offline) */
+        }
+        input:checked + label[for="offline-toggle"]:after {
+            left: calc(100% - 2px);
+            transform: translateX(-100%);
+        }
+        label[for="offline-toggle"]:active:after {
+            width: 26px; /* Efecto al presionar */
         }
     </style>
 </head>
@@ -199,21 +216,20 @@
     <!-- Leaflet JS for maps -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Load module scripts -->
-    <script src="data.js"></script>
-    <script src="admin.js"></script>
-    <script src="inventario.js"></script>
-    <script src="catalogo.js"></script>
-    <script src="clientes.js"></script>
-    <script src="ventas.js"></script>
-    <script src="obsequios.js"></script>
+    <!-- Load module scripts DEFERidos -->
+    <script src="data.js" defer></script>
+    <script src="admin.js" defer></script>
+    <script src="inventario.js" defer></script>
+    <script src="catalogo.js" defer></script>
+    <script src="clientes.js" defer></script>
+    <script src="ventas.js" defer></script>
+    <script src="obsequios.js" defer></script>
 
 
-    <script type="module" defer>
+    <script type="module" defer> // Añadido DEFER al script principal
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // *** MODIFICADO: Añadir enableNetwork, disableNetwork ***
         import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter, enableNetwork, disableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase configuration
@@ -232,7 +248,7 @@
         let db;
         let auth;
         let userId;
-        window.userRole = 'user'; // *** MODIFICADO: Hacer global ***
+        window.userRole = 'user'; // Expuesto globalmente
         let activeListeners = [];
         window.isLoggingOut = false; // Flag to indicate logout process
         // NUEVO: Definir TIPOS_VACIO globalmente para consistencia
@@ -320,8 +336,8 @@
              modalContainer.classList.remove('hidden');
          }
 
+        // Modal para agregar categorías, con propagación si es admin
         async function showAddItemModal(collectionName, itemName) {
-            // Basic Add Modal Logic (No propagation for non-admins)
             modalContent.innerHTML = `
                 <div class="text-center">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
@@ -369,14 +385,13 @@
                         newItemInput.select();
                      } else {
                         const newItemData = { name: newItemNameUpper };
-
-                        // MODIFICADO: Guardar la referencia del nuevo documento
+                        // Guardar la referencia del nuevo documento
                         const newDocRef = await addDoc(collectionRef, newItemData);
 
                         addItemMessage.textContent = `¡"${newItemNameUpper}" agregado!`;
                         addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
 
-                        // --- INICIO DE LA CORRECCIÓN ---
+                        // --- INICIO DE LA CORRECCIÓN PROPAGACIÓN ---
                         // Si el usuario es admin y el módulo de admin existe, propagar el cambio.
                         if (window.userRole === 'admin' && window.adminModule?.propagateCategoryChange) {
                             addItemMessage.textContent = 'Agregado. Propagando...';
@@ -395,18 +410,20 @@
                                 addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                             }
                         }
-                        // --- FIN DE LA CORRECCIÓN ---
+                        // --- FIN DE LA CORRECCIÓN PROPAGACIÓN ---
 
                         newItemInput.value = '';
                         newItemInput.focus();
-                        const relatedDropdownId = collectionName.slice(0,-1);
+                        // Actualizar dropdown relacionado si existe
+                        const relatedDropdownId = collectionName.slice(0,-1); // ej: 'rubros' -> 'rubro'
                         const dropdown = document.getElementById(relatedDropdownId);
                         if(dropdown){
                             const option = document.createElement('option');
                             option.value = newItemNameUpper; option.textContent = newItemNameUpper;
                             dropdown.appendChild(option);
+                            // Reordenar alfabéticamente
                             Array.from(dropdown.options).sort((a, b) => a.text.localeCompare(b.text)).forEach(opt => dropdown.add(opt));
-                            dropdown.value = newItemNameUpper;
+                            dropdown.value = newItemNameUpper; // Seleccionar el nuevo
                         }
                         setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
                     }
@@ -421,6 +438,7 @@
             });
         }
 
+
         function populateDropdown(collectionPath, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
             if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return; }
@@ -429,29 +447,48 @@
             let placeholder = selectElement.querySelector('option[value=""]');
             if (!placeholder) { placeholder = document.createElement('option'); placeholder.value = ""; selectElement.prepend(placeholder); }
             placeholder.textContent = placeholderText;
+            // Limpiar opciones excepto el placeholder
             Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
             selectElement.disabled = true;
 
             const collectionRef = collection(db, collectionPath);
             getDocs(collectionRef).then(snapshot => {
-                const currentSelection = selectedValue || selectElement.value;
-                Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
-                const items = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })).filter(item => item.name).sort((a, b) => a.name.localeCompare(b.name));
+                const currentSelection = selectedValue || selectElement.value; // Mantener selección si existe
+                 // Volver a limpiar por si acaso hubo una carga anterior fallida
+                 Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
+
+                const items = snapshot.docs
+                    .map(doc => ({ id: doc.id, name: doc.data().name }))
+                    .filter(item => item.name) // Filtrar items sin nombre
+                    .sort((a, b) => a.name.localeCompare(b.name)); // Ordenar alfabéticamente
+
                 let foundSelected = false;
                 items.forEach(item => {
-                     const option = document.createElement('option'); option.value = item.name; option.textContent = item.name;
-                     if (selectedValue && item.name === selectedValue) { option.selected = true; foundSelected = true; }
-                     else if (!selectedValue && item.name === currentSelection) { option.selected = true; foundSelected = true; }
+                     const option = document.createElement('option');
+                     option.value = item.name;
+                     option.textContent = item.name;
+                     // Seleccionar el valor si coincide con selectedValue o la selección actual
+                     if (selectedValue && item.name === selectedValue) {
+                         option.selected = true;
+                         foundSelected = true;
+                     } else if (!selectedValue && item.name === currentSelection) {
+                         option.selected = true;
+                         foundSelected = true;
+                     }
                      selectElement.appendChild(option);
                 });
-                if (!foundSelected) { selectElement.value = ""; }
-                 selectElement.disabled = false;
+                // Si la selección anterior no se encontró (ej. se eliminó), resetear al placeholder
+                if (!foundSelected) {
+                     selectElement.value = "";
+                }
+                 selectElement.disabled = false; // Habilitar dropdown
             }).catch(error => {
                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
                  selectElement.disabled = true;
             });
         }
+
 
         // --- AUTHENTICATION AND VIEW LOGIC ---
         async function handleRegister(e) {
@@ -468,6 +505,7 @@
                  const userCredential = await createUserWithEmailAndPassword(auth, email, password); const user = userCredential.user;
                  const userDocRef = doc(db, "users", user.uid);
                  await setDoc(userDocRef, { email: user.email, role: 'user', createdAt: new Date() });
+                 // El onAuthStateChanged se encargará de mostrar la vista principal
              } catch (error) {
                  console.error("Registration error:", error.code, error.message);
                  if (error.code === 'auth/email-already-in-use') registerMessage.textContent = 'El correo ya está registrado.';
@@ -483,6 +521,7 @@
             const loginButton = e.target.querySelector('button[type="submit"]'); loginButton.disabled = true; loginButton.textContent = 'Ingresando...';
             try {
                 await signInWithEmailAndPassword(auth, email, password);
+                 // El onAuthStateChanged se encargará de mostrar la vista principal
             } catch (error) {
                 console.error("Login error:", error.code, error.message);
                  if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') authMessage.textContent = 'Correo o contraseña incorrectos.';
@@ -526,7 +565,7 @@
 
         /** Displays the login view */
         function showLoginView() {
-            console.log("Showing Login View"); window.isLoggingOut = false;
+            console.log("Showing Login View"); window.isLoggingOut = false; // Reset flag
             if (floatingControls) floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden'); registerContent.classList.add('hidden'); loginContent.classList.remove('hidden');
             loginForm?.reset(); if(authMessage) authMessage.textContent = '';
@@ -552,20 +591,25 @@
                   { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' }
+                  { path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' } // Es un documento
               ];
               console.log("Preloading data for offline use...");
               const results = await Promise.allSettled(
                   collectionsToPreload.map(col => {
-                      if (col.path.includes('/config/obsequio')) {
+                      if (col.path.includes('/config/obsequio')) { // Si es un documento
                            const docRef = doc(db, col.path);
                            return getDoc(docRef).catch(err => ({ failed: true, reason: err }));
-                      } else {
+                      } else { // Si es una colección
                           return getDocs(collection(db, col.path)).catch(err => ({ failed: true, reason: err }));
                       }
                   })
               );
-              results.forEach((result, index) => { const colInfo = collectionsToPreload[index]; if (result.status !== 'fulfilled' || (result.value && result.value.failed)) console.warn(` - ${colInfo.name}: Preload failed.`); });
+              results.forEach((result, index) => {
+                  const colInfo = collectionsToPreload[index];
+                  if (result.status !== 'fulfilled' || (result.value && result.value.failed)) {
+                      console.warn(` - ${colInfo.name}: Preload failed.`);
+                  }
+              });
               const endTime = performance.now(); console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
         }
 
@@ -576,10 +620,10 @@
             const userDocRef = doc(db, "users", userId); console.log("Fetching user role...");
             try {
                 const userDoc = await getDoc(userDocRef);
-                if (userDoc.exists()) { window.userRole = userDoc.data().role || 'user'; } // *** MODIFICADO: Actualizar global ***
-                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); window.userRole = 'user'; } // *** MODIFICADO: Actualizar global ***
-            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); window.userRole = 'user'; } // *** MODIFICADO: Actualizar global ***
-            console.log("User role:", window.userRole); // *** MODIFICADO: Leer global ***
+                if (userDoc.exists()) { window.userRole = userDoc.data().role || 'user'; } // Actualiza global
+                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); window.userRole = 'user'; } // Actualiza global
+            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); window.userRole = 'user'; } // Actualiza global
+            console.log("User role:", window.userRole);
 
             loginContent.classList.add('hidden'); registerContent.classList.add('hidden');
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando...</h2></div></div>`;
@@ -587,70 +631,97 @@
 
              console.log("Starting data preload..."); try { await preloadAllData(); } catch (preloadError) { console.error("Error preloadAllData:", preloadError); } console.log("Preload attempted. Initializing modules...");
 
-            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig }; // *** MODIFICADO: Pasar global userRole ***
+            const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig };
             let initSuccess = true;
-             const modules = [ { name: 'Data', init: window.initData }, { name: 'Admin', init: window.initAdmin }, { name: 'Inventario', init: window.initInventario }, { name: 'Catalogo', init: window.initCatalogo }, { name: 'Clientes', init: window.initClientes }, { name: 'Ventas', init: window.initVentas }, { name: 'Obsequios', init: window.initObsequios } ];
-             modules.forEach(m => { if (typeof m.init === 'function') { try { m.init(dependencies); console.log(`${m.name} initialized.`); } catch (e) { console.error(`Error init ${m.name}:`, e); initSuccess = false; } } else { console.error(`CRITICAL: ${m.name} init function not found.`); initSuccess = false; } });
+             // Definir módulos a inicializar
+             const modules = [
+                { name: 'Data', init: window.initData },
+                { name: 'Admin', init: window.initAdmin },
+                { name: 'Inventario', init: window.initInventario }, // CRITICAL error if this is undefined
+                { name: 'Catalogo', init: window.initCatalogo },
+                { name: 'Clientes', init: window.initClientes },
+                { name: 'Ventas', init: window.initVentas },
+                { name: 'Obsequios', init: window.initObsequios }
+             ];
+             // Intentar inicializar cada módulo
+             modules.forEach(m => {
+                 if (typeof m.init === 'function') { // Verificar si la función existe
+                     try {
+                         m.init(dependencies);
+                         console.log(`${m.name} initialized.`);
+                     } catch (e) {
+                         console.error(`Error initializing ${m.name}:`, e);
+                         initSuccess = false;
+                     }
+                 } else {
+                     // Si la función no existe, mostrar error crítico
+                     console.error(`CRITICAL: ${m.name} init function not found.`); // El error que estás viendo
+                     initSuccess = false;
+                 }
+             });
 
-            if (!initSuccess) { window.showModal("Error Crítico", "Componentes no pudieron inicializarse. Revisa consola."); console.error("App initialization failed."); }
-            else { console.log("Modules initialized. Showing main menu."); showMainMenu(); }
+
+            if (!initSuccess) { window.showModal("Error Crítico", "Algunos componentes no pudieron inicializarse. Revisa la consola."); console.error("App initialization failed."); }
+            else { console.log("Modules initialized successfully. Showing main menu."); showMainMenu(); }
         }
 
-        // --- NUEVO: Función para manejar el interruptor offline ---
-        function handleOfflineToggle(event) {
-            const isOffline = event.target.checked;
-            const toggleLabel = document.getElementById('offline-toggle-label');
-            const toggleText = document.getElementById('offline-toggle-text');
 
-            if (isOffline) {
-                console.log("Modo Offline: Desactivando red de Firestore...");
-                disableNetwork(db).then(() => {
-                    console.log("Red de Firestore desactivada.");
+         // Función para manejar el toggle offline
+         async function handleOfflineToggle() {
+            const toggle = document.getElementById('offline-toggle');
+            const toggleText = document.getElementById('offline-toggle-text');
+            const isManualOffline = toggle.checked;
+
+            if (isManualOffline) {
+                // Desconectar
+                try {
+                    await disableNetwork(db);
                     localStorage.setItem('manualOfflineMode', 'true');
-                    if(toggleLabel) toggleLabel.classList.add('bg-red-500'); // Estilo rojo
-                    if(toggleText) toggleText.textContent = 'Trabajando Sin Conexión';
-                    window.showModal(
-                        'Modo Sin Conexión Activado',
-                        'Estás trabajando sin conexión. Cualquier dato o actualización no se guardará en la nube hasta que te vuelvas a conectar manualmente.',
-                        null, 'Entendido'
-                    );
-                    // Actualizar estado visual en floating controls (opcional)
-                    if(connectionStatusEl) {
-                        connectionStatusEl.textContent = "OFFLINE (Manual)";
-                        connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                    toggleText.textContent = 'Offline (Manual)';
+                    toggleText.classList.remove('text-green-700');
+                    toggleText.classList.add('text-red-700');
+                    // Actualizar estado flotante si está visible
+                    if (connectionStatusEl) {
+                         connectionStatusEl.textContent = "OFFLINE (Manual)";
+                         connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                     }
-                }).catch(error => {
-                    console.error("Error al desactivar la red:", error);
-                    window.showModal('Error', 'No se pudo desactivar la conexión de red.');
-                    event.target.checked = false; // Revertir el interruptor
-                });
+                    _showModal('Modo Offline Activado', 'La aplicación ahora trabajará sin conexión. Cualquier dato o actualización no se cargarán hasta que te vuelvas a conectar manualmente.', null, 'Entendido');
+                    console.log("Firestore network disabled manually.");
+                } catch (err) {
+                    console.error("Error disabling Firestore network:", err);
+                    _showModal('Error', 'No se pudo desactivar la conexión.');
+                    toggle.checked = false; // Revertir visualmente
+                }
             } else {
-                console.log("Modo Online: Activando red de Firestore...");
-                enableNetwork(db).then(() => {
-                    console.log("Red de Firestore activada.");
+                // Reconectar
+                try {
+                    await enableNetwork(db);
                     localStorage.removeItem('manualOfflineMode');
-                    if(toggleLabel) toggleLabel.classList.remove('bg-red-500'); // Estilo normal
-                    if(toggleText) toggleText.textContent = 'Forzar Sin Conexión';
-                    // El listener de onSnapshot actualizará el estado visual en floating controls
-                }).catch(error => {
-                    console.error("Error al activar la red:", error);
-                    window.showModal('Error', 'No se pudo reactivar la conexión de red.');
-                    event.target.checked = true; // Revertir el interruptor
-                });
+                    toggleText.textContent = 'Online (Manual)';
+                    toggleText.classList.remove('text-red-700');
+                    toggleText.classList.add('text-green-700');
+                    // El listener onSnapshot actualizará el estado flotante eventualmente
+                    console.log("Firestore network enabled manually.");
+                    _showModal('Modo Online Activado', 'La aplicación intentará conectarse y sincronizar datos.', null, 'Entendido');
+                } catch (err) {
+                    console.error("Error enabling Firestore network:", err);
+                    _showModal('Error', 'No se pudo reactivar la conexión.');
+                    toggle.checked = true; // Revertir visualmente
+                }
             }
         }
+
 
         /** Displays the main menu buttons */
         window.showMainMenu = function() {
             console.log("Showing Main Menu"); cleanupListeners(); // Clean up previous listeners FIRST
 
-            // Listener de estado de conexión (basado en Firestore)
-            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`); // Use user's inventory
+            // Listener para estado de conexión (considerando modo manual)
+            const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
                 if (!connectionStatusEl) return;
-                // *** MODIFICADO: Considerar el modo offline manual ***
-                const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
-                if (manualOffline) {
+                const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                if (isManualOffline) {
                      connectionStatusEl.textContent = "OFFLINE (Manual)";
                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                 } else {
@@ -660,9 +731,15 @@
                 }
             }, (error) => {
                 console.warn("Connection status listener error:", error.code);
-                if (connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
-                    connectionStatusEl.textContent = "Error Conexión";
-                    connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                 // Mostrar error solo si NO estamos en modo manual offline y no es un error esperado de logout
+                if (!isManualOffline && connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
+                     connectionStatusEl.textContent = "Error Conexión";
+                     connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
+                } else if (!isManualOffline) {
+                     // Si es error de logout esperado o cancelado, no mostrar error visual grave
+                     connectionStatusEl.textContent = "DESCONECTADO";
+                     connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-gray-400 text-gray-900';
                 }
             });
             activeListeners.push(unsubscribeStatus);
@@ -670,7 +747,7 @@
             if (floatingControls) floatingControls.classList.remove('hidden'); else console.error("floatingControls not found in showMainMenu.");
             mainContent.classList.remove('hidden');
 
-            const isAdmin = window.userRole === 'admin'; // *** MODIFICADO: Leer global userRole ***
+            const isAdmin = window.userRole === 'admin';
             mainContent.innerHTML = `
                 <div class="p-4 pt-8"> <div class="container mx-auto max-w-lg"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                     <h1 class="text-3xl font-bold text-gray-800 mb-6">Menú Principal</h1>
@@ -683,36 +760,31 @@
                         <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-700 text-white rounded-lg shadow-md hover:bg-gray-800">${isAdmin ? 'Admin Panel' : 'Mi Perfil'}</button>
                         ${isAdmin ? `<button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Data</button>` : ''}
                     </div>
-
-                    <!-- *** INICIO: Interruptor Offline *** -->
-                    <div class="mt-8 pt-4 border-t border-gray-300 flex items-center justify-center space-x-3">
-                        <span id="offline-toggle-text" class="text-sm font-medium text-gray-700">Forzar Sin Conexión</span>
-                        <div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                            <input type="checkbox" name="offline-toggle" id="offline-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer opacity-0 z-10 peer"/>
-                            <label for="offline-toggle" id="offline-toggle-label" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer transition-colors duration-200 ease-in-out peer-checked:bg-red-500"></label>
-                        </div>
+                     <!-- Interruptor Offline -->
+                    <div class="mt-8 pt-4 border-t flex items-center justify-center space-x-3">
+                         <span id="offline-toggle-text" class="text-sm font-medium text-gray-700">Online (Manual)</span>
+                         <input type="checkbox" id="offline-toggle"/>
+                         <label for="offline-toggle" id="offline-toggle-label">Toggle</label>
                     </div>
-                     <!-- *** FIN: Interruptor Offline *** -->
-
                 </div> </div> </div>
             `;
 
-            // Configurar estado inicial del interruptor basado en localStorage
+             // Configurar estado inicial del interruptor y listener
             const offlineToggle = document.getElementById('offline-toggle');
-            const toggleLabel = document.getElementById('offline-toggle-label');
-            const toggleText = document.getElementById('offline-toggle-text');
-            const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
-            if (offlineToggle) {
-                offlineToggle.checked = manualOffline;
-                 // Aplicar estilo inicial
-                if(manualOffline) {
-                    if(toggleLabel) toggleLabel.classList.add('bg-red-500');
-                    if(toggleText) toggleText.textContent = 'Trabajando Sin Conexión';
+            const offlineToggleText = document.getElementById('offline-toggle-text');
+            if (offlineToggle && offlineToggleText) {
+                const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                offlineToggle.checked = isManualOffline;
+                if (isManualOffline) {
+                    offlineToggleText.textContent = 'Offline (Manual)';
+                    offlineToggleText.classList.remove('text-green-700');
+                    offlineToggleText.classList.add('text-red-700');
                 } else {
-                     if(toggleLabel) toggleLabel.classList.remove('bg-red-500');
-                     if(toggleText) toggleText.textContent = 'Forzar Sin Conexión';
+                    offlineToggleText.textContent = 'Online (Manual)';
+                    offlineToggleText.classList.remove('text-red-700');
+                    offlineToggleText.classList.add('text-green-700');
                 }
-                offlineToggle.addEventListener('change', handleOfflineToggle); // Adjuntar listener
+                offlineToggle.addEventListener('change', handleOfflineToggle);
             }
 
 
@@ -722,13 +794,15 @@
                 else { console.error("Target is not function:", viewFunction); window.showModal("Error Interno", `Acción no disponible.`); showMainMenu(); }
             };
 
-            if (window.showInventarioSubMenu) document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu));
-            if (window.showClientesSubMenu) document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu));
-            if (window.showVentasView) document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView));
-            if (window.showGestionObsequiosView) document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView));
-            if (window.showCatalogoSubMenu) document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu));
-            if (window.showAdminOrProfileView) document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView));
-            if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView));
+            // Adjuntar listeners a botones de menú (asegurarse de que las funciones existan)
+            if (window.showInventarioSubMenu) document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu)); else console.error("showInventarioSubMenu not found");
+            if (window.showClientesSubMenu) document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu)); else console.error("showClientesSubMenu not found");
+            if (window.showVentasView) document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView)); else console.error("showVentasView not found");
+            if (window.showGestionObsequiosView) document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); // else console.error("showGestionObsequiosView not found"); // Solo existe si no es admin
+            if (window.showCatalogoSubMenu) document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu)); else console.error("showCatalogoSubMenu not found");
+            if (window.showAdminOrProfileView) document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView)); else console.error("showAdminOrProfileView not found");
+            if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); // else console.error("showDataView not found"); // Solo existe si es admin
+
         }
 
         // --- APP INITIALIZATION ---
@@ -739,21 +813,24 @@
                 db = getFirestore(app); auth = getAuth(app); setLogLevel('warn');
                 console.log("Firebase App, Firestore, Auth initialized.");
 
-                // *** INICIO: Aplicar estado offline al inicio si está guardado ***
-                const manualOffline = localStorage.getItem('manualOfflineMode') === 'true';
-                if (manualOffline) {
-                    console.log("Modo Offline Manual detectado al inicio. Desactivando red...");
-                    await disableNetwork(db).catch(err => console.error("Error inicial desactivando red:", err));
+                // --- Control inicial de red ---
+                const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
+                if (isManualOffline) {
+                    await disableNetwork(db);
+                    console.log("Starting in manual offline mode.");
                 } else {
-                    console.log("Modo Online detectado al inicio. Asegurando red activa...");
-                    await enableNetwork(db).catch(err => console.error("Error inicial activando red:", err)); // Asegura que esté activa si no hay preferencia offline
+                    await enableNetwork(db); // Asegurar que esté habilitada por defecto
+                    console.log("Starting in online mode.");
                 }
-                // *** FIN: Aplicar estado offline al inicio ***
+
 
             } catch (initError) { console.error("CRITICAL: Firebase init failed:", initError); alert("Error Crítico: No se pudo conectar. Recarga."); return; }
+
+             // Habilitar persistencia offline
             try { await enableIndexedDbPersistence(db); console.log("Offline persistence enabled."); }
-            catch (err) { if(err.code=='failed-precondition')console.warn("Persistence failed: Multiple tabs?"); else if(err.code=='unimplemented')console.warn("Persistence failed: Browser not supported."); else console.error("Persistence error:", err); }
-             console.log("Attaching Auth listener...");
+            catch (err) { if(err.code=='failed-precondition')console.warn("Persistence failed: Multiple tabs open?"); else if(err.code=='unimplemented')console.warn("Persistence failed: Browser not supported?"); else console.error("Persistence error:", err); }
+
+             console.log("Attaching Auth state listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
                 cleanupListeners(); // Limpiar listeners ANTES de cambiar vista
@@ -763,17 +840,20 @@
             console.log("Auth listener attached.");
         }
 
-        // --- Load event listener ---
-        window.addEventListener('load', async () => {
-            console.log("Window loaded. Initializing app...");
-            await initializeAppAndListeners();
-            loginForm?.addEventListener('submit', handleLogin);
-            registerForm?.addEventListener('submit', handleRegister);
-            document.getElementById('logoutBtn')?.addEventListener('click', () => { window.showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Sí, Cerrar Sesión'); });
-            document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
-            document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
-            if ('serviceWorker' in navigator) { try { const reg = await navigator.serviceWorker.register('./service-worker.js'); console.log('SW registered:', reg.scope); } catch (error) { console.error('SW registration failed:', error); } } else { console.log("SW not supported."); }
-        });
+
+        // --- Ejecutar inicialización y añadir listeners globales ---
+        // (Ya no se usa 'load', se ejecuta al final del script module)
+        console.log("Module script parsed. Initializing app...");
+        await initializeAppAndListeners(); // Iniciar Firebase y listeners
+        // Añadir listeners a elementos que existen desde el principio (login/register)
+        loginForm?.addEventListener('submit', handleLogin);
+        registerForm?.addEventListener('submit', handleRegister);
+        document.getElementById('logoutBtn')?.addEventListener('click', () => { window.showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Sí, Cerrar Sesión'); });
+        document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
+        document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) { try { const reg = await navigator.serviceWorker.register('./service-worker.js'); console.log('SW registered:', reg.scope); } catch (error) { console.error('SW registration failed:', error); } } else { console.log("SW not supported."); }
+
     </script>
 </body>
 </html>
