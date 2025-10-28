@@ -166,7 +166,7 @@
         } catch (error) { console.error("Error cargando marcas:", error); return []; }
     }
 
-    // *** MODIFICADO: renderSortableHierarchy ya no filtra segmentos, solo los atenúa ***
+    // *** MODIFICADO: renderSortableHierarchy ahora OCULTA segmentos en lugar de atenuarlos ***
     async function renderSortableHierarchy(rubroFiltro = '') {
         const container = document.getElementById('segmentos-marcas-sortable-list');
         if (!container) return;
@@ -199,7 +199,7 @@
             const allMarcas = await getAllMarcas();
             const marcasMap = new Map(allMarcas.map(m => [m.name, m.id]));
 
-            // Obtener productos filtrados por rubro (si aplica) para saber qué atenuar y qué marcas mostrar
+            // Obtener productos filtrados por rubro (si aplica) para saber qué ocultar y qué marcas mostrar
             let prodsQuery = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             if (rubroFiltro) {
                 prodsQuery = _query(prodsQuery, _where("rubro", "==", rubroFiltro));
@@ -223,10 +223,10 @@
                 segCont.dataset.segmentoName = seg.name;
                 segCont.dataset.type = 'segmento';
 
-                // Atenuar si hay filtro y este segmento no tiene productos en ese rubro
+                // Ocultar si hay filtro y este segmento no tiene productos en ese rubro
                 const segmentHasProductsInRubro = !segmentsWithProductsInRubro || segmentsWithProductsInRubro.has(seg.name);
                 if (rubroFiltro && !segmentHasProductsInRubro) {
-                    segCont.classList.add('opacity-50'); // Atenuar el contenedor completo
+                    segCont.classList.add('hidden'); // <-- CAMBIO AQUÍ: Usar hidden en lugar de opacity-50
                 }
 
                 const segTitle = document.createElement('div');
@@ -283,6 +283,7 @@
             container.innerHTML = `<p class="text-red-500 text-center">Error al cargar la estructura.</p>`;
         }
     }
+
 
     function addDragAndDropHandlersHierarchy(container) {
         let draggedItem = null; // El elemento que se está arrastrando (<li> o <div>)
@@ -409,7 +410,7 @@
 
     async function handleGuardarOrdenJerarquia() {
         if (_userRole !== 'admin') return;
-        const segConts = document.querySelectorAll('#segmentos-marcas-sortable-list .segmento-container');
+        const segConts = document.querySelectorAll('#segmentos-marcas-sortable-list .segmento-container'); // Obtener TODOS los divs de segmento, incluso los ocultos
         if (segConts.length === 0) { _showModal('Aviso', 'No hay elementos para ordenar.'); return; }
         _showModal('Progreso', 'Guardando nuevo orden...');
         const batch = _writeBatch(_db);
@@ -428,7 +429,7 @@
         }
 
 
-        // Iterar sobre los contenedores de segmento en el orden visual actual
+        // Iterar sobre los contenedores de segmento en el orden visual actual (incluye ocultos)
         segConts.forEach((segCont, index) => {
             const segId = segCont.dataset.segmentoId;
             orderedSegIds.push(segId); // Guardar ID en orden
