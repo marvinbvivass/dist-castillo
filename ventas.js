@@ -513,6 +513,13 @@
                  }
                 _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
             }
+            
+            // --- ¡CORRECCIÓN AÑADIDA AQUÍ! ---
+            // Esto evita que el modal de "Confirmar" se cierre antes de que 
+            // aparezca el modal de "showSharingOptions".
+            return false; 
+            // --- FIN DE LA CORRECCIÓN ---
+
         }, 'Sí, guardar', () => { /* No hacer nada si cancela la confirmación */ }, true); // True para indicar lógica de confirmación (mostrar progreso)
     }
 
@@ -876,3 +883,4 @@
         invalidateCache: () => { /* No action needed */ }
     };
 })();
+
