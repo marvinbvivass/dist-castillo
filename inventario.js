@@ -39,7 +39,7 @@
         _getDoc = dependencies.getDoc;
     };
 
-    // --- Versión ANTERIOR del manejador de errores (antes del fix específico de logout) ---
+    // --- CORRECCIÓN: Manejador de errores de listener mejorado ---
     function startMainInventarioListener(callback) {
         if (_inventarioListenerUnsubscribe) {
             try { _inventarioListenerUnsubscribe(); } catch(e) { console.warn("Error unsubscribing previous listener:", e); }
@@ -51,9 +51,9 @@
                  try { callback(); } catch (cbError) { console.error("Listener callback error:", cbError); }
             }
         }, (error) => {
-             // Esta es la versión SIN el fix específico para 'unauthenticated' durante logout
-             if (window.isLoggingOut && error.code === 'permission-denied') {
-                 console.log("Inventory listener error ignored during logout (permission-denied).");
+             // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+             if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
+                 console.log(`Inventory listener error ignored (assumed logout): ${error.code}`); 
                  return; // Ignorar el error silenciosamente
              }
              console.error("Error en listener de inventario:", error);
@@ -63,7 +63,7 @@
         });
         _activeListeners.push(_inventarioListenerUnsubscribe);
     }
-    // --- FIN Versión ANTERIOR del manejador de errores ---
+    // --- FIN CORRECCIÓN ---
 
     // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
@@ -664,7 +664,15 @@
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             if (items.length === 0) { container.innerHTML = `<p class="text-gray-500 text-sm p-2">No hay ${itemName.toLowerCase()}s definidos.</p>`; return; }
             container.innerHTML = items.map(item => `<div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-200"><span class="text-gray-800 text-sm flex-grow mr-2">${item.name}</span><div class="flex-shrink-0 space-x-1"><button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}', '${item.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" title="Eliminar">X</button></div></div>`).join('');
-        }, (error) => { if (window.isLoggingOut && error.code === 'permission-denied') { return; } console.error(`Error listener ${collectionName}:`, error); container.innerHTML = `<p class="text-red-500 text-center p-2">Error al cargar.</p>`; });
+        }, (error) => { 
+            // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+            if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
+                console.log(`Listener ${collectionName} error ignored (assumed logout): ${error.code}`); 
+                return; // Ignorar el error silenciosamente
+            }
+            console.error(`Error listener ${collectionName}:`, error); 
+            container.innerHTML = `<p class="text-red-500 text-center p-2">Error al cargar.</p>`; 
+        });
         _activeListeners.push(unsubscribe);
     }
 
