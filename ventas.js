@@ -536,7 +536,7 @@
                            async () => {
                                // No mostramos "Progreso", solo ejecutamos la lógica
                                await saveAndShare();
-                               return false; // Evita que este modal (Entendido) cierre el modal de sharing
+                               // return false; // <-- CORRECCIÓN: Eliminada esta línea que bloqueaba el cierre.
                            }, 
                            'Entendido', 
                            null, 
