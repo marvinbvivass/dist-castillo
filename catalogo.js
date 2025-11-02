@@ -226,16 +226,133 @@
         if (!_marcasCache || _marcasCache.length === 0) { window.showModal('Aviso', 'No hay productos.'); return; }
         const pages = []; for (let i = 0; i < _marcasCache.length; i += MAX_BRANDS) pages.push(_marcasCache.slice(i, i + MAX_BRANDS)); const totalP = pages.length;
         if (shareBtn){shareBtn.textContent=`Generando ${totalP} imagen(es)...`; shareBtn.disabled=true;} if (tasaCont)tasaCont.classList.add('hidden'); if (btnsCont)btnsCont.classList.add('hidden'); window.showModal('Progreso', `Generando ${totalP} página(s)...`);
-        try { const imgFiles = await Promise.all(pages.map(async (brandsPage, idx) => { const pNum=idx+1; let contHtml='<div class="space-y-4">'; const monLabel=_catalogoMonedaActual==='COP'?'PRECIO (COP)':'PRECIO (USD)'; brandsPage.forEach(marca=>{contHtml+=`<table class="min-w-full bg-transparent text-lg"> <thead class="text-black"> <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl rounded-t-lg">${marca}</th></tr> <tr><th class="py-2 px-4 text-left font-semibold text-base border-b">PRESENTACIÓN (Segmento)</th><th class="py-2 px-4 text-right font-semibold text-base border-b">${monLabel}</th></tr> </thead><tbody>`; const prodsMarca=_productosAgrupadosCache[marca]||[]; prodsMarca.forEach(p=>{ const vPor=p.ventaPor||{und:true}, precios=p.precios||{und:p.precioPorUnidad||0}; let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; if(vPor.cj&&precios.cj>0){pBaseUSD=precios.cj;uInfo=`(Cj/${p.unidadesPorCaja||1} und)`;}else if(vPor.paq&&precios.paq>0){pBaseUSD=precios.paq;uInfo=`(Paq/${p.unidadesPorPaquete||1} und)`;}else{pBaseUSD=precios.und||0;uInfo=`(Und)`;} let pMostrado=_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0?`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`:`$${pBaseUSD.toFixed(2)}`; const sDisp=p.segmento?`<span class="text-xs ml-1">(${p.segmento})</span>`:''; contHtml+=`<tr class="border-b last:border-b-0"><td class="py-2 px-4 align-top">${dPres} ${sDisp} ${uInfo?`<span class="block text-xs">${uInfo}</span>`:''}</td><td class="py-2 px-4 text-right font-semibold align-top">${pMostrado}</td></tr>`; }); contHtml+=`</tbody></table>`;}); contHtml+='</div>'; const titleEl=document.querySelector('#catalogo-para-imagen h2'); const title=titleEl?titleEl.textContent.trim():'Catálogo';
+        
+        try { 
+            const imgFiles = await Promise.all(pages.map(async (brandsPage, idx) => { 
+                const pNum=idx+1; 
+                let contHtml='<div class="space-y-4">'; 
+                const monLabel=_catalogoMonedaActual==='COP'?'PRECIO (COP)':'PRECIO (USD)'; 
+                brandsPage.forEach(marca=>{
+                    contHtml+=`<table class="min-w-full bg-transparent text-lg"> <thead class="text-black"> <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl rounded-t-lg">${marca}</th></tr> <tr><th class="py-2 px-4 text-left font-semibold text-base border-b">PRESENTACIÓN (Segmento)</th><th class="py-2 px-4 text-right font-semibold text-base border-b">${monLabel}</th></tr> </thead><tbody>`; 
+                    const prodsMarca=_productosAgrupadosCache[marca]||[]; 
+                    prodsMarca.forEach(p=>{ 
+                        const vPor=p.ventaPor||{und:true}, precios=p.precios||{und:p.precioPorUnidad||0}; 
+                        let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; 
+                        if(vPor.cj&&precios.cj>0){pBaseUSD=precios.cj;uInfo=`(Cj/${p.unidadesPorCaja||1} und)`;}
+                        else if(vPor.paq&&precios.paq>0){pBaseUSD=precios.paq;uInfo=`(Paq/${p.unidadesPorPaquete||1} und)`;}
+                        else{pBaseUSD=precios.und||0;uInfo=`(Und)`;} 
+                        let pMostrado=_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0?`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`:`$${pBaseUSD.toFixed(2)}`; 
+                        const sDisp=p.segmento?`<span class="text-xs ml-1">(${p.segmento})</span>`:''; 
+                        contHtml+=`<tr class="border-b last:border-b-0"><td class="py-2 px-4 align-top">${dPres} ${sDisp} ${uInfo?`<span class="block text-xs">${uInfo}</span>`:''}</td><td class="py-2 px-4 text-right font-semibold align-top">${pMostrado}</td></tr>`; 
+                    }); 
+                    contHtml+=`</tbody></table>`;
+                }); 
+                contHtml+='</div>'; 
+                
+                const titleEl=document.querySelector('#catalogo-para-imagen h2'); 
+                const title=titleEl?titleEl.textContent.trim():'Catálogo';
+                
                 const fPageHtml = `<div class="bg-white p-8" style="width: 800px; box-shadow: none; border: 1px solid #eee;"> <h2 class="text-4xl font-bold mb-2 text-center">${title}</h2> <p class="text-center mb-1 text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p> <p class="text-center mb-4 text-base italic">(Precios incluyen IVA)</p> ${contHtml} <p class="text-center mt-4 text-sm">Página ${pNum} de ${totalP}</p> </div>`;
-                const tempDiv=document.createElement('div'); tempDiv.style.position='absolute'; tempDiv.style.left='-9999px'; tempDiv.style.top='0'; tempDiv.innerHTML=fPageHtml; document.body.appendChild(tempDiv); const pWrap=tempDiv.firstElementChild; if(_currentBgImage){pWrap.style.backgroundImage=`linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('${_currentBgImage}')`; pWrap.style.backgroundSize='cover'; pWrap.style.backgroundPosition='center';}
-                const canvasOpts = { scale: 3, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' }; const canvas = await html2canvas(pWrap, canvasOpts); const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.9)); document.body.removeChild(tempDiv); const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase(); return new File([blob], `catalogo_${safeTitle}_p${pNum}.png`, { type: "image/png" }); }));
-            const modalCont = document.getElementById('modalContainer'); if(modalCont) modalCont.classList.add('hidden');
-            if (navigator.share && imgFiles.length > 0 && navigator.canShare?.({ files: imgFiles })) { try { await navigator.share({ files: imgFiles, title: `Catálogo: ${title}`, text: `Catálogo (${title}) - ${totalP>1?`${totalP} páginas`:''}` }); } catch (shareErr) { if(shareErr.name!=='AbortError') window.showModal('Error Compartir', 'No se pudieron compartir.'); } }
-            else if (imgFiles.length > 0) { window.showModal('Imágenes Generadas', 'Navegador no soporta compartir. Intenta descargar.'); try { const fImg = imgFiles[0]; const url = URL.createObjectURL(fImg); const a=document.createElement('a'); a.href=url; a.download=fImg.name; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); } catch (dlError) { console.error("Fallo descarga:", dlError); } }
-            else { window.showModal('Error', 'No se generaron imágenes.'); }
-        } catch (error) { console.error("Error generando imagen:", error); window.showModal('Error Grave', `Error: ${error.message || error}`); }
-        finally { if(shareBtn){shareBtn.textContent='Generar Imagen'; shareBtn.disabled=false;} if(tasaCont)tasaCont.classList.remove('hidden'); if(btnsCont)btnsCont.classList.remove('hidden'); const modalCont=document.getElementById('modalContainer'); if(modalCont && !modalCont.classList.contains('hidden') && modalCont.querySelector('h3')?.textContent.startsWith('Progreso')) modalCont.classList.add('hidden'); }
+                
+                const tempDiv=document.createElement('div'); 
+                tempDiv.style.position='absolute'; 
+                tempDiv.style.left='-9999px'; 
+                tempDiv.style.top='0'; 
+                tempDiv.innerHTML=fPageHtml; 
+                document.body.appendChild(tempDiv); 
+                
+                const pWrap=tempDiv.firstElementChild; 
+
+                // --- INICIO DE LA CORRECCIÓN ---
+                // Precargar la imagen de fondo antes de renderizar
+                if(_currentBgImage) {
+                    try {
+                        // Creamos una promesa que se resuelve cuando la imagen se carga
+                        await new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.crossOrigin = 'Anonymous'; // Necesario para canvas si la imagen es de otro dominio (aunque aquí sea local)
+                            img.onload = resolve;
+                            img.onerror = (err) => {
+                                console.warn(`No se pudo precargar la imagen de fondo: ${_currentBgImage}`, err);
+                                // Resolvemos de todos modos para no detener la generación de la imagen
+                                // Simplemente saldrá con fondo blanco.
+                                resolve(); 
+                            };
+                            img.src = _currentBgImage;
+                        });
+                        
+                        // Ahora que la imagen está en la caché del navegador, la aplicamos
+                        pWrap.style.backgroundImage=`linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('${_currentBgImage}')`; 
+                        pWrap.style.backgroundSize='cover'; 
+                        pWrap.style.backgroundPosition='center';
+                    } catch (imgError) {
+                        console.error("Error durante la precarga de la imagen de fondo:", imgError);
+                        // Continuar sin imagen de fondo si falla la precarga
+                    }
+                }
+                
+                // Darle al navegador un pequeño respiro (tick) para aplicar los estilos
+                await new Promise(resolve => setTimeout(resolve, 50));
+                // --- FIN DE LA CORRECCIÓN ---
+
+                const canvasOpts = { scale: 3, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' }; 
+                
+                let canvas;
+                try {
+                     canvas = await html2canvas(pWrap, canvasOpts);
+                } catch (canvasError) {
+                    console.error("html2canvas falló:", canvasError);
+                    document.body.removeChild(tempDiv); // Asegurarse de limpiar
+                    throw new Error(`Fallo en render de html2canvas: ${canvasError.message}`); // Propagar el error
+                }
+
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.9)); 
+                document.body.removeChild(tempDiv); 
+                
+                const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase(); 
+                return new File([blob], `catalogo_${safeTitle}_p${pNum}.png`, { type: "image/png" }); 
+            }));
+            
+            const modalCont = document.getElementById('modalContainer'); 
+            if(modalCont) modalCont.classList.add('hidden');
+            
+            if (navigator.share && imgFiles.length > 0 && navigator.canShare?.({ files: imgFiles })) { 
+                try { 
+                    await navigator.share({ files: imgFiles, title: `Catálogo: ${title}`, text: `Catálogo (${title}) - ${totalP>1?`${totalP} páginas`:''}` }); 
+                } catch (shareErr) { 
+                    if(shareErr.name!=='AbortError') window.showModal('Error Compartir', 'No se pudieron compartir.'); 
+                } 
+            }
+            else if (imgFiles.length > 0) { 
+                window.showModal('Imágenes Generadas', 'Navegador no soporta compartir. Intenta descargar.'); 
+                try { 
+                    const fImg = imgFiles[0]; 
+                    const url = URL.createObjectURL(fImg); 
+                    const a=document.createElement('a'); 
+                    a.href=url; 
+                    a.download=fImg.name; 
+                    document.body.appendChild(a); 
+                    a.click(); 
+                    document.body.removeChild(a); 
+                    URL.revokeObjectURL(url); 
+                } catch (dlError) { 
+                    console.error("Fallo descarga:", dlError); 
+                } 
+            }
+            else { 
+                window.showModal('Error', 'No se generaron imágenes.'); 
+            }
+        } catch (error) { 
+            console.error("Error generando imagen:", error); 
+            window.showModal('Error Grave', `Error: ${error.message || error}`); 
+        }
+        finally { 
+            if(shareBtn){shareBtn.textContent='Generar Imagen'; shareBtn.disabled=false;} 
+            if(tasaCont)tasaCont.classList.remove('hidden'); 
+            if(btnsCont)btnsCont.classList.remove('hidden'); 
+            const modalCont=document.getElementById('modalContainer'); 
+            if(modalCont && !modalCont.classList.contains('hidden') && modalCont.querySelector('h3')?.textContent.startsWith('Progreso')) modalCont.classList.add('hidden'); 
+        }
     }
 
     window.catalogoModule = {
