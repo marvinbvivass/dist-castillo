@@ -540,7 +540,7 @@
                            }, 
                            'Entendido', 
                            null, 
-                           true // Cierra el modal 'Entendido' al hacer clic
+                           false // <--- CORRECCIÓN: Cambiado de 'true' a 'false'
                 );
 
             } else {
