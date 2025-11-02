@@ -11,6 +11,7 @@
     let _inventarioCache = []; // Caché del inventario del usuario actual
     let _obsequioConfig = { productoId: null, productoData: null }; // Configuración del producto de obsequio
     let _obsequioActual = { cliente: null, cantidadEntregada: 0, vaciosRecibidos: 0, observacion: '' };
+    let _lastObsequiosSearch = []; // Caché para los resultados de búsqueda del registro
 
     // Constante para tipos de vacío (debe coincidir con inventario.js)
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
@@ -44,15 +45,42 @@
     };
 
     /**
-     * Muestra la vista principal de gestión de obsequios.
+     * Muestra el NUEVO sub-menú de obsequios.
+     * Esta es ahora la función principal llamada desde el menú de index.html.
      */
-    window.showGestionObsequiosView = async function() {
+    window.showGestionObsequiosView = function() {
         if (_userRole !== 'user') {
             _showModal('Acceso Denegado', 'Esta función es solo para vendedores.');
             _showMainMenu();
             return;
         }
+        if (_floatingControls) _floatingControls.classList.add('hidden');
+        
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Obsequios</h1>
+                        <div class="space-y-4">
+                            <button id="generarObsequioBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600">Generar Obsequio</button>
+                            <button id="registroObsequiosBtn" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Registro de Obsequios</button>
+                            <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver al Menú</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
 
+        document.getElementById('generarObsequioBtn').addEventListener('click', showGenerarObsequioView);
+        document.getElementById('registroObsequiosBtn').addEventListener('click', showRegistroObsequiosView);
+        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+    };
+
+    /**
+     * Muestra la vista para generar una nueva entrega de obsequio.
+     * (Esta era la antigua función 'window.showGestionObsequiosView')
+     */
+    async function showGenerarObsequioView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _obsequioActual = { cliente: null, cantidadEntregada: 0, vaciosRecibidos: 0, observacion: '' }; // Resetear
         _mainContent.innerHTML = `
@@ -60,8 +88,9 @@
                 <div class="container mx-auto max-w-lg">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <div class="flex justify-between items-center mb-6">
-                            <h1 class="text-2xl font-bold text-gray-800">Gestión de Obsequios</h1>
-                            <button id="backToMenuBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <h1 class="text-2xl font-bold text-gray-800">Generar Obsequio</h1>
+                            <!-- CORRECCIÓN: El botón "Volver" ahora regresa al sub-menú de obsequios -->
+                            <button id="backToObsequiosMenuBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
 
                         <div id="obsequio-loader" class="text-center text-gray-500 mb-4">Cargando configuración...</div>
@@ -104,7 +133,8 @@
                 </div>
             </div>
         `;
-        document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
+        // CORRECCIÓN: Listener del botón "Volver"
+        document.getElementById('backToObsequiosMenuBtn').addEventListener('click', window.showGestionObsequiosView);
 
         // Cargar datos necesarios en paralelo
         await Promise.all([
@@ -131,28 +161,32 @@
      * También carga los datos del producto desde el inventario del usuario actual.
      */
     async function _loadObsequioProduct() {
+// ... existing code ...
         try {
             // 1. Leer la configuración pública directamente
             const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH); // Usa la ruta pública definida
-            const configSnap = await _getDoc(configRef);
-
+// ... existing code ...
             if (configSnap.exists()) {
                 _obsequioConfig.productoId = configSnap.data().productoId;
 
                 // 2. Buscar el producto en el inventario del usuario actual (esto permanece igual)
-                // Asegurarse de que _inventarioCache esté cargado antes de buscar
+// ... existing code ...
                 if (_inventarioCache.length === 0) {
                      await _loadInventarioUsuario(); // Cargar si está vacío
                 }
+// ... existing code ...
                 const productoDataEnInventario = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
 
                 if (productoDataEnInventario) {
-                    _obsequioConfig.productoData = productoDataEnInventario;
+// ... existing code ...
+                     _obsequioConfig.productoData = productoDataEnInventario;
                      // Validar que maneje vacíos y sea por caja (esto permanece igual)
                      if (!productoDataEnInventario.manejaVacios || !productoDataEnInventario.ventaPor?.cj) {
+// ... existing code ...
                          throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no maneja vacíos o no se vende por caja.`);
                      }
                       if (!productoDataEnInventario.tipoVacio) {
+// ... existing code ...
                           throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no tiene un tipo de vacío asignado.`);
                       }
                 } else {
@@ -163,6 +197,7 @@
             }
 
         } catch (error) {
+// ... existing code ...
             console.error("Error al cargar configuración de obsequio:", error);
             _obsequioConfig = { productoId: null, productoData: null }; // Resetear si hay error
              // El mensaje de error se mostrará en showGestionObsequiosView
@@ -170,12 +205,15 @@
     }
 
     /** Carga el inventario del usuario actual */
+// ... existing code ...
     async function _loadInventarioUsuario() {
          try {
              const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+// ... existing code ...
              const snapshot = await _getDocs(inventarioRef);
              _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
          } catch (error) {
+// ... existing code ...
              console.error("Error cargando inventario del usuario:", error);
              _inventarioCache = []; // Dejar vacío si hay error
              _showModal('Error', 'No se pudo cargar tu inventario.');
@@ -183,13 +221,16 @@
     }
 
     /** Carga los clientes desde la colección pública */
+// ... existing code ...
     async function _loadClientes() {
         try {
             // Usa el ID de proyecto hardcoded para la colección pública
+// ... existing code ...
             const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
             const snapshot = await _getDocs(clientesRef);
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         } catch (error) {
+// ... existing code ...
             console.error("Error cargando clientes:", error);
             _clientesCache = [];
              _showModal('Error', 'No se pudo cargar la lista de clientes.');
@@ -197,27 +238,33 @@
     }
 
     /** Configura los listeners y elementos de la UI de obsequios */
+// ... existing code ...
     function setupObsequioUI() {
         const clienteSearchInput = document.getElementById('clienteSearchObsequio');
         const cantidadInput = document.getElementById('cantidadEntregada');
+// ... existing code ...
         const vaciosInput = document.getElementById('vaciosRecibidos');
         const observacionInput = document.getElementById('observacion');
         const form = document.getElementById('obsequioForm');
 
         // Poblar nombre y stock del producto
+// ... existing code ...
         const productNameSpan = document.getElementById('obsequioProductName');
         const stockSpan = document.getElementById('obsequioStock');
         const vaciosTipoInfo = document.getElementById('vaciosTipoInfo');
 
         if (_obsequioConfig.productoData) {
+// ... existing code ...
             const prod = _obsequioConfig.productoData;
             productNameSpan.textContent = `${prod.marca} - ${prod.segmento} - ${prod.presentacion}`;
             const stockEnCajas = Math.floor((prod.cantidadUnidades || 0) / (prod.unidadesPorCaja || 1));
+// ... existing code ...
             stockSpan.textContent = stockEnCajas;
             cantidadInput.max = stockEnCajas; // Establecer máximo
             vaciosTipoInfo.textContent = `Tipo: ${prod.tipoVacio}`; // Mostrar tipo
         } else {
              // Si por alguna razón productoData es nulo aquí, mostrar error
+// ... existing code ...
              productNameSpan.textContent = "Error";
              stockSpan.textContent = "Error";
              vaciosTipoInfo.textContent = "Tipo: Error";
@@ -226,23 +273,28 @@
 
 
         // Setup búsqueda de cliente
+// ... existing code ...
         clienteSearchInput.addEventListener('input', () => {
             const searchTerm = clienteSearchInput.value.toLowerCase();
             const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
             _renderClienteDropdown(filteredClients);
+// ... existing code ...
             document.getElementById('clienteDropdownObsequio').classList.remove('hidden');
         });
 
         // Setup formulario
+// ... existing code ...
         cantidadInput.addEventListener('input', (e) => _obsequioActual.cantidadEntregada = parseInt(e.target.value, 10) || 0);
         vaciosInput.addEventListener('input', (e) => _obsequioActual.vaciosRecibidos = parseInt(e.target.value, 10) || 0);
         observacionInput.addEventListener('input', (e) => _obsequioActual.observacion = e.target.value.trim());
         form.addEventListener('submit', handleRegistrarObsequio);
 
         // Ocultar dropdown si se hace clic fuera
+// ... existing code ...
         document.addEventListener('click', function(event) {
              const dropdown = document.getElementById('clienteDropdownObsequio');
              const searchInput = document.getElementById('clienteSearchObsequio');
+// ... existing code ...
             if (dropdown && !dropdown.contains(event.target) && event.target !== searchInput) {
                 dropdown.classList.add('hidden');
             }
@@ -250,12 +302,15 @@
     }
 
     /** Renderiza el dropdown de clientes para obsequios */
+// ... existing code ...
     function _renderClienteDropdown(filteredClients) {
         const clienteDropdown = document.getElementById('clienteDropdownObsequio');
         if(!clienteDropdown) return;
+// ... existing code ...
         clienteDropdown.innerHTML = '';
         filteredClients.forEach(cliente => {
             const item = document.createElement('div');
+// ... existing code ...
             item.className = 'autocomplete-item';
             item.textContent = `${cliente.nombreComercial} (${cliente.nombrePersonal})`;
             item.addEventListener('click', () => _selectCliente(cliente));
@@ -264,9 +319,11 @@
     }
 
     /** Selecciona un cliente y muestra el formulario */
+// ... existing code ...
     function _selectCliente(cliente) {
         _obsequioActual.cliente = cliente;
         document.getElementById('client-search-container-obsequio').classList.add('hidden');
+// ... existing code ...
         document.getElementById('clienteDropdownObsequio').classList.add('hidden');
         document.getElementById('selected-client-name-obsequio').textContent = cliente.nombreComercial;
         document.getElementById('client-display-container-obsequio').classList.remove('hidden');
@@ -275,109 +332,138 @@
 
     /**
      * Valida, registra la entrega de obsequio, actualiza stock/saldos y genera ticket.
+// ... existing code ...
      * --- CORREGIDO PARA AJUSTAR SALDO VACIOS CORRECTAMENTE ---
      */
     async function handleRegistrarObsequio(e) {
+// ... existing code ...
         e.preventDefault();
         if (!_obsequioActual.cliente) {
             _showModal('Error', 'Debes seleccionar un cliente.');
+// ... existing code ...
             return;
         }
         if (!_obsequioConfig.productoId || !_obsequioConfig.productoData) {
             _showModal('Error', 'Producto de obsequio no configurado o no encontrado.');
+// ... existing code ...
             return;
         }
 
         const cantidadEntregada = _obsequioActual.cantidadEntregada;
+// ... existing code ...
         const vaciosRecibidos = _obsequioActual.vaciosRecibidos;
         const productoObsequio = _obsequioConfig.productoData;
         const unidadesPorCaja = productoObsequio.unidadesPorCaja || 1;
+// ... existing code ...
         const tipoVacioProducto = productoObsequio.tipoVacio; // Ya validado en _loadObsequioProduct
 
         // Leer stock actual desde la caché (para validación inicial)
         const prodEnCache = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
+// ... existing code ...
         const stockActualUnidades = prodEnCache?.cantidadUnidades || 0;
         const stockActualCajas = Math.floor(stockActualUnidades / unidadesPorCaja);
 
         if (cantidadEntregada <= 0) {
+// ... existing code ...
             _showModal('Error', 'La cantidad de cajas entregadas debe ser mayor que cero.');
             return;
         }
+// ... existing code ...
         if (cantidadEntregada > stockActualCajas) {
             _showModal('Error', `Stock insuficiente. Solo hay ${stockActualCajas} cajas disponibles.`);
             return;
         }
+// ... existing code ...
         // Validación de tipoVacio ya hecha al cargar
 
         const confirmMsg = `
             Confirmar entrega:<br>
+// ... existing code ...
             - Cliente: ${_obsequioActual.cliente.nombreComercial}<br>
             - Producto: ${productoObsequio.presentacion}<br>
             - Cajas Entregadas: ${cantidadEntregada}<br>
+// ... existing code ...
             - Vacíos Recibidos (${tipoVacioProducto}): ${vaciosRecibidos}<br>
             - Observación: ${_obsequioActual.observacion || 'Ninguna'}
         `;
 
         _showModal('Confirmar Obsequio', confirmMsg, async () => {
+// ... existing code ...
             _showModal('Progreso', 'Registrando entrega...');
 
             try {
                 // --- INICIO: Lógica dentro de Transacción ---
+// ... existing code ...
                 const inventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, _obsequioConfig.productoId);
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _obsequioActual.cliente.id);
                 const registroRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`)); // Generar ID para registro
 
                 const registroData = { // Preparar datos del registro
+// ... existing code ...
                     fecha: new Date(),
                     clienteId: _obsequioActual.cliente.id,
                     clienteNombre: _obsequioActual.cliente.nombreComercial,
+// ... existing code ...
                     productoId: _obsequioConfig.productoId,
                     productoNombre: productoObsequio.presentacion,
                     cantidadCajas: cantidadEntregada,
+// ... existing code ...
                     vaciosRecibidos: vaciosRecibidos,
                     tipoVacio: tipoVacioProducto,
                     observacion: _obsequioActual.observacion,
+// ... existing code ...
                     userId: _userId
                 };
 
                 await _runTransaction(_db, async (transaction) => {
+// ... existing code ...
                     // 1. Leer inventario y cliente DENTRO de la transacción
                     const inventarioDoc = await transaction.get(inventarioRef);
                     const clienteDoc = await transaction.get(clienteRef);
 
+// ... existing code ...
                     if (!inventarioDoc.exists()) throw "El producto de obsequio no existe en el inventario.";
                     if (!clienteDoc.exists()) throw "El cliente no existe.";
 
                     // 2. Validar stock DENTRO de la transacción
+// ... existing code ...
                     const stockActualTrans = inventarioDoc.data().cantidadUnidades || 0;
                     const unidadesARestar = cantidadEntregada * unidadesPorCaja;
                     if (unidadesARestar > stockActualTrans) {
+// ... existing code ...
                         throw `Stock insuficiente DENTRO de la transacción. Disponible: ${Math.floor(stockActualTrans / unidadesPorCaja)} cajas.`;
                     }
                     const nuevoStockUnidades = stockActualTrans - unidadesARestar;
 
                     // 3. Calcular nuevo saldo de vacíos
+// ... existing code ...
                     const clienteData = clienteDoc.data();
                     const saldoVaciosActual = clienteData.saldoVacios || {};
                     const saldoActualTipo = saldoVaciosActual[tipoVacioProducto] || 0;
+// ... existing code ...
                     // Ajuste: +CajasEntregadas (aumenta deuda) - VaciosRecibidos (disminuye deuda)
                     const nuevoSaldoTipo = saldoActualTipo + cantidadEntregada - vaciosRecibidos;
                     const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacioProducto]: nuevoSaldoTipo };
 
                     // 4. Escribir todas las actualizaciones
+// ... existing code ...
                     transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
                     transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
                     transaction.set(registroRef, registroData); // Guardar el registro
+// ... existing code ...
                 });
                 // --- FIN: Lógica dentro de Transacción ---
 
                 // Si la transacción fue exitosa, generar ticket
-                 _showSharingOptionsObsequio(registroData, productoObsequio, showGestionObsequiosView); // Pasar datos del registro guardado
+                 // CORRECCIÓN: Llamar a window.showGestionObsequiosView (el sub-menú)
+                 _showSharingOptionsObsequio(registroData, productoObsequio, window.showGestionObsequiosView);
 
             } catch (error) {
+// ... existing code ...
                 console.error("Error al registrar obsequio:", error);
                 // Si la transacción falla, Firestore revierte todo
                 _showModal('Error', `No se pudo registrar la entrega: ${error.message || error}`);
+// ... existing code ...
             }
 
         }, 'Sí, Confirmar', null, true); // triggerConfirmLogic = true
@@ -385,215 +471,275 @@
 
 
     // --- Funciones adaptadas para Tickets de Obsequio (sin cambios) ---
+// ... existing code ...
     function _createTicketHTMLObsequio(registro, producto) {
         const fecha = registro.fecha.toLocaleDateString('es-ES');
         const clienteNombre = registro.clienteNombre;
+// ... existing code ...
         // Obtener nombre personal del cliente (requiere buscar en _clientesCache o pasar el objeto cliente)
         const clienteObj = _clientesCache.find(c => c.id === registro.clienteId);
         const clienteNombrePersonal = clienteObj?.nombrePersonal || '';
 
+// ... existing code ...
         const titulo = 'ENTREGA DE OBSEQUIO';
 
         return `
             <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
+// ... existing code ...
                 <div class="text-center">
                     <h2 class="text-4xl uppercase">${titulo}</h2>
                     <p class="text-3xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
+// ... existing code ...
                 </div>
                 <div class="text-3xl mt-8">
                     <p>FECHA: ${fecha}</p>
+// ... existing code ...
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
                 <table class="w-full text-3xl mt-6">
+// ... existing code ...
                     <thead>
                         <tr>
                             <th class="pb-2 text-left">PRODUCTO ENTREGADO</th>
+// ... existing code ...
                             <th class="pb-2 text-center">CANT.</th>
                         </tr>
                     </thead>
                     <tbody>
+// ... existing code ...
                          <tr class="align-top">
                             <td class="py-2 pr-2 text-left" style="width: 80%;">
                                 <div style="line-height: 1.2;">${producto.segmento || ''} ${producto.marca || ''} ${registro.productoNombre}</div>
+// ... existing code ...
                             </td>
                             <td class="py-2 text-center" style="width: 20%;">${registro.cantidadCajas} CJ</td>
                         </tr>
+// ... existing code ...
                     </tbody>
                 </table>
                  ${registro.vaciosRecibidos > 0 ? `
                  <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
+// ... existing code ...
                      <p>ENVASES RECIBIDOS:</p>
                      <table class="w-full text-3xl mt-2">
                          <tbody>
+// ... existing code ...
                             <tr>
                                 <td class="py-1 pr-2 text-left" style="width: 70%;">${registro.tipoVacio}</td>
                                 <td class="py-1 pl-2 text-right" style="width: 30%;">${registro.vaciosRecibidos} CJ</td>
+// ... existing code ...
                             </tr>
                          </tbody>
                      </table>
+// ... existing code ...
                  </div>
                  ` : ''}
                  ${registro.observacion ? `
                  <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
+// ... existing code ...
                      <p>OBSERVACIÓN:</p>
                      <p class="font-normal">${registro.observacion}</p>
                  </div>
+// ... existing code ...
                  ` : ''}
                 <div class="text-center mt-16">
                     <p class="border-t border-black w-96 mx-auto"></p>
+// ... existing code ...
                     <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
                 </div>
                 <hr class="border-dashed border-black mt-6">
+// ... existing code ...
             </div>
         `;
     }
     function _createRawTextTicketObsequio(registro, producto) {
+// ... existing code ...
         const fecha = registro.fecha.toLocaleDateString('es-ES');
 
         const toTitleCase = (str) => {
+// ... existing code ...
             if (!str) return '';
             return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
         };
 
         const clienteNombre = toTitleCase(registro.clienteNombre);
+// ... existing code ...
         const clienteObj = _clientesCache.find(c => c.id === registro.clienteId);
         const clienteNombrePersonal = toTitleCase(clienteObj?.nombrePersonal || '');
 
         const LINE_WIDTH = 48;
+// ... existing code ...
         let ticket = '';
 
         const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
          const wordWrap = (text, maxWidth) => {
+// ... existing code ...
             const lines = [];
             if (!text) return lines;
             let currentLine = '';
+// ... existing code ...
             const words = text.split(' ');
             for (const word of words) {
                 if ((currentLine + ' ' + word).trim().length > maxWidth) {
+// ... existing code ...
                     if(currentLine.length > 0) lines.push(currentLine.trim());
                     currentLine = word;
                 } else {
+// ... existing code ...
                     currentLine = (currentLine + ' ' + word).trim();
                 }
             }
+// ... existing code ...
             if (currentLine) lines.push(currentLine.trim());
             return lines;
         };
 
         ticket += center('Distribuidora Castillo Yañez') + '\n';
+// ... existing code ...
         ticket += center('Entrega de Obsequio') + '\n\n';
 
         const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH);
         wrappedClientName.forEach(line => {
+// ... existing code ...
             ticket += line + '\n';
         });
         ticket += `Fecha: ${fecha}\n`;
+// ... existing code ...
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
 
         ticket += 'PRODUCTO ENTREGADO'.padEnd(LINE_WIDTH - 9) + 'CANT.'.padStart(9) + '\n';
         const productName = toTitleCase(`${producto.segmento || ''} ${producto.marca || ''} ${registro.productoNombre}`);
+// ... existing code ...
         const wrappedProductName = wordWrap(productName, LINE_WIDTH - 10); // Dejar espacio para cantidad
         wrappedProductName.forEach((line, index) => {
              const qtyStr = index === wrappedProductName.length - 1 ? `${registro.cantidadCajas} CJ` : '';
+// ... existing code ...
              ticket += line.padEnd(LINE_WIDTH - 9) + qtyStr.padStart(9) + '\n';
         });
 
         if (registro.vaciosRecibidos > 0) {
+// ... existing code ...
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             ticket += center('ENVASES RECIBIDOS') + '\n';
             const vacioText = `${registro.tipoVacio}`;
+// ... existing code ...
             const vacioQtyText = `${registro.vaciosRecibidos} CJ`;
              ticket += vacioText.padEnd(LINE_WIDTH - vacioQtyText.length) + vacioQtyText + '\n';
         }
 
          if (registro.observacion) {
+// ... existing code ...
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             ticket += 'OBSERVACION:\n';
              const wrappedObs = wordWrap(registro.observacion, LINE_WIDTH);
+// ... existing code ...
              wrappedObs.forEach(line => { ticket += line + '\n'; });
         }
 
 
         ticket += '-'.repeat(LINE_WIDTH) + '\n\n';
+// ... existing code ...
         ticket += '\n\n\n\n';
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
+// ... existing code ...
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
 
         return ticket;
     }
+// ... existing code ...
     async function _handleShareTicketObsequio(htmlContent, successCallback) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div');
+// ... existing code ...
         tempDiv.style.position = 'absolute';
         tempDiv.style.left = '-9999px';
         tempDiv.style.top = '0';
+// ... existing code ...
         tempDiv.innerHTML = htmlContent;
         document.body.appendChild(tempDiv);
 
         const ticketElement = document.getElementById('temp-ticket-for-image');
+// ... existing code ...
         if (!ticketElement) {
              _showModal('Error', 'No se pudo encontrar el elemento del ticket.');
              document.body.removeChild(tempDiv);
+// ... existing code ...
              successCallback(false); // Indicar fallo
              return;
         }
 
         try {
+// ... existing code ...
             await new Promise(resolve => setTimeout(resolve, 100)); // Pequeña pausa para renderizar
             const canvas = await html2canvas(ticketElement, { scale: 3 });
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 
             if (navigator.share && blob) {
+// ... existing code ...
                 await navigator.share({ files: [new File([blob], "obsequio.png", { type: "image/png" })], title: "Ticket de Obsequio" });
                  _showModal('Éxito', 'Entrega registrada. Imagen compartida.', () => successCallback(true)); // Indicar éxito
             } else {
+// ... existing code ...
                  _showModal('Error', 'Función de compartir no disponible.', () => successCallback(false)); // Indicar fallo
             }
         } catch(e) {
+// ... existing code ...
              _showModal('Error', `No se pudo generar/compartir imagen: ${e.message}`, () => successCallback(false)); // Indicar fallo
         } finally {
             if (document.body.contains(tempDiv)) {
+// ... existing code ...
                  document.body.removeChild(tempDiv);
             }
         }
     }
     async function _handleShareRawTextObsequio(textContent, successCallback) {
+// ... existing code ...
         let success = false;
          if (navigator.share) {
             try {
+// ... existing code ...
                 await navigator.share({ title: 'Ticket de Obsequio', text: textContent });
                 _showModal('Éxito', 'Entrega registrada. Ticket listo para imprimir.', () => successCallback(true));
                 success = true;
+// ... existing code ...
             } catch (err) {
                  _showModal('Aviso', 'No se compartió el ticket. Entrega registrada.', () => successCallback(false));
             }
         } else {
+// ... existing code ...
             try {
                 const textArea = document.createElement("textarea");
                 textArea.value = textContent;
+// ... existing code ...
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
+// ... existing code ...
                 document.body.removeChild(textArea);
                  _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', () => successCallback(true));
                  success = true;
+// ... existing code ...
             } catch (copyErr) {
                  _showModal('Error', 'No se pudo compartir ni copiar. Entrega registrada.', () => successCallback(false));
             }
         }
+// ... existing code ...
         // Llamar callback si no se usó en los modales anteriores (caso share cancelado o error sin modal)
         // if (!success) {
         //     successCallback(false);
         // }
     }
     function _showSharingOptionsObsequio(registro, producto, callbackFinal) {
+// ... existing code ...
         const modalContent = `
             <div class="text-center">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Generar Ticket de Obsequio</h3>
+// ... existing code ...
                 <p class="text-gray-600 mb-6">Elige el formato para el comprobante.</p>
                 <div class="space-y-4">
                     <button id="printTextBtnObs" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Imprimir (Texto)</button>
+// ... existing code ...
                     <button id="shareImageBtnObs" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Compartir (Imagen)</button>
                 </div>
             </div>`;
@@ -601,17 +747,189 @@
          _showModal('Elige una opción', modalContent, null, ''); // No mostrar botón de confirmación por defecto
 
         document.getElementById('printTextBtnObs').addEventListener('click', () => {
+// ... existing code ...
             const rawTextTicket = _createRawTextTicketObsequio(registro, producto);
              // El callbackFinal (showGestionObsequiosView) se pasa a la función de compartir/copiar
              _handleShareRawTextObsequio(rawTextTicket, callbackFinal);
+// ... existing code ...
         });
 
         document.getElementById('shareImageBtnObs').addEventListener('click', () => {
             const ticketHTML = _createTicketHTMLObsequio(registro, producto);
+// ... existing code ...
              // El callbackFinal se pasa a la función de compartir/copiar
              _handleShareTicketObsequio(ticketHTML, callbackFinal);
         });
     }
 
+    // --- NUEVAS FUNCIONES PARA EL REGISTRO DE OBSEQUIOS ---
+
+    /**
+     * Muestra la vista del registro de obsequios con filtro de mes.
+     */
+    function showRegistroObsequiosView() {
+        if (_floatingControls) _floatingControls.classList.add('hidden');
+        _lastObsequiosSearch = []; // Limpiar caché
+
+        // Obtener mes y año actual en formato YYYY-MM
+        const today = new Date();
+        const currentMonth = today.toISOString().slice(0, 7); // "2025-11" (o el mes actual)
+
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Registro de Obsequios</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg items-end">
+                            <div class="md:col-span-1">
+                                <label for="obsequioMonth" class="block text-sm font-medium">Mes y Año:</label>
+                                <input type="month" id="obsequioMonth" value="${currentMonth}" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm">
+                            </div>
+                            <button id="searchObsequiosBtn" class="md:col-span-1 w-full px-6 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700">Buscar</button>
+                            <button id="downloadObsequiosBtn" class="md:col-span-1 w-full px-6 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 disabled:opacity-50" disabled>Descargar Excel</button>
+                        </div>
+                        <div id="obsequios-list-container" class="overflow-x-auto max-h-96">
+                            <p class="text-center text-gray-500">Seleccione un mes y presione "Buscar".</p>
+                        </div>
+                        <button id="backToObsequiosMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('backToObsequiosMenuBtn').addEventListener('click', window.showGestionObsequiosView); // Vuelve al sub-menú
+        document.getElementById('searchObsequiosBtn').addEventListener('click', handleSearchObsequios);
+        document.getElementById('downloadObsequiosBtn').addEventListener('click', handleDownloadObsequios);
+    }
+
+    /**
+     * Maneja la búsqueda de registros de obsequios por mes.
+     */
+    async function handleSearchObsequios() {
+        const container = document.getElementById('obsequios-list-container');
+        const monthInput = document.getElementById('obsequioMonth').value;
+        const downloadBtn = document.getElementById('downloadObsequiosBtn');
+        
+        if (!container || !downloadBtn) return;
+        container.innerHTML = `<p class="text-center text-gray-500">Buscando...</p>`;
+        downloadBtn.disabled = true;
+        _lastObsequiosSearch = [];
+
+        if (!monthInput) {
+            _showModal('Error', 'Seleccione un mes y año.');
+            container.innerHTML = `<p class="text-center text-gray-500">Seleccione un mes y presione "Buscar".</p>`;
+            return;
+        }
+
+        try {
+            // Calcular fechas
+            const [year, month] = monthInput.split('-').map(Number);
+            const fechaDesde = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)); // Inicio del mes en UTC
+            const fechaHasta = new Date(Date.UTC(year, month, 1, 0, 0, 0)); // Inicio del *siguiente* mes en UTC
+
+            // Consultar Firestore
+            const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
+            // CORRECCIÓN: Usar '<' para fechaHasta para no incluir el primer milisegundo del siguiente mes
+            const q = _query(obsequiosRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<", fechaHasta));
+            
+            const snapshot = await _getDocs(q);
+            _lastObsequiosSearch = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            renderObsequiosList(_lastObsequiosSearch);
+            if (_lastObsequiosSearch.length > 0) {
+                downloadBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error("Error buscando obsequios:", error);
+            container.innerHTML = `<p class="text-center text-red-500">Error al buscar registros.</p>`;
+        }
+    }
+
+    /**
+     * Renderiza la lista de obsequios encontrados.
+     */
+    function renderObsequiosList(obsequios) {
+        const container = document.getElementById('obsequios-list-container');
+        if (obsequios.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron obsequios para este mes.</p>`;
+            return;
+        }
+
+        // Ordenar por fecha descendente
+        obsequios.sort((a, b) => (b.fecha?.toDate() || 0) - (a.fecha?.toDate() || 0));
+
+        let tableHTML = `
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200 sticky top-0 z-10">
+                    <tr>
+                        <th class="py-2 px-3 border-b text-left">Fecha</th>
+                        <th class="py-2 px-3 border-b text-left">Cliente</th>
+                        <th class="py-2 px-3 border-b text-left">Producto</th>
+                        <th class="py-2 px-3 border-b text-center">Cjs Entreg.</th>
+                        <th class="py-2 px-3 border-b text-center">Vacíos Recib.</th>
+                        <th class="py-2 px-3 border-b text-left">Observación</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        
+        obsequios.forEach(reg => {
+            const fechaStr = reg.fecha?.toDate() ? reg.fecha.toDate().toLocaleDateString('es-ES') : 'N/A';
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-3 border-b">${fechaStr}</td>
+                    <td class="py-2 px-3 border-b">${reg.clienteNombre || 'N/A'}</td>
+                    <td class="py-2 px-3 border-b">${reg.productoNombre || 'N/A'}</td>
+                    <td class="py-2 px-3 border-b text-center font-semibold">${reg.cantidadCajas || 0}</td>
+                    <td class="py-2 px-3 border-b text-center font-semibold">${reg.vaciosRecibidos || 0}</td>
+                    <td class="py-2 px-3 border-b text-xs">${reg.observacion || ''}</td>
+                </tr> `;
+        });
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+    }
+
+    /**
+     * Maneja la descarga del registro de obsequios en Excel.
+     */
+    function handleDownloadObsequios() {
+        if (_lastObsequiosSearch.length === 0) {
+            _showModal('Aviso', 'No hay datos para descargar.');
+            return;
+        }
+        if (typeof XLSX === 'undefined') {
+            _showModal('Error', 'La librería de Excel (XLSX) no está cargada.');
+            return;
+        }
+
+        _showModal('Progreso', 'Generando Excel...');
+        try {
+            const dataToExport = _lastObsequiosSearch.map(reg => ({
+                Fecha: reg.fecha?.toDate() ? reg.fecha.toDate().toLocaleDateString('es-ES') : 'N/A',
+                Cliente: reg.clienteNombre || 'N/A',
+                Producto: reg.productoNombre || 'N/A',
+                'Cajas Entregadas': reg.cantidadCajas || 0,
+                'Vacíos Recibidos': reg.vaciosRecibidos || 0,
+                'Tipo Vacío': reg.tipoVacio || 'N/A',
+                Observacion: reg.observacion || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Registro Obsequios');
+            
+            const monthInput = document.getElementById('obsequioMonth').value || 'mes_actual';
+            XLSX.writeFile(wb, `Registro_Obsequios_${monthInput}.xlsx`);
+
+            // Ocultar modal de progreso
+            const modal = document.getElementById('modalContainer');
+            if(modal) modal.classList.add('hidden');
+
+        } catch (error) {
+            console.error("Error generando Excel:", error);
+            _showModal('Error', `No se pudo generar el archivo: ${error.message}`);
+        }
+    }
+
 
 })(); // Fin del IIFE
+
