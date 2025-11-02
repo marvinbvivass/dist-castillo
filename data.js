@@ -253,7 +253,7 @@
         } catch (error) { /* Error ya mostrado por exportSingleClosingToExcel */ }
     }
 
-    // --- Lógica de Estadísticas (sin cambios) ---
+    // --- Lógica de Estadísticas ---
     function showProductStatsView() {
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
@@ -287,7 +287,22 @@
             const allClosings = [...pubSnap.docs.map(d=>d.data()), ...admSnap.docs.map(d=>d.data())];
             if (allClosings.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay datos.</p>`; _lastStatsData = []; return; }
             const pSales = {}; const admInvRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const invSnap = await _getDocs(admInvRef); const admInvMap = new Map(invSnap.docs.map(d=>[d.id, d.data()])); let earliestDate = new Date();
-            allClosings.forEach(c => { const cDate = c.fecha?.toDate?c.fecha.toDate():new Date(0); if(cDate<earliestDate)earliestDate=cDate; (c.ventas||[]).forEach(v => { (v.productos||[]).forEach(p => { const admPInfo = admInvMap.get(p.id); if (admPInfo && admPInfo.rubro === rFilt) { if (!pSales[p.id]) pSales[p.id]={presentacion:admPInfo.presentacion, totalUnidades:0, ventaPor:admPInfo.ventaPor, unidadesPorCaja:admPInfo.unidadesPorCaja||1, unidadesPorPaquete:admPInfo.unidadesPorPaquete||1}; pSales[p.id].totalUnidades += (p.totalUnidadesVendidas||0); } }); }); });
+            allClosings.forEach(c => { const cDate = c.fecha?.toDate?c.fecha.toDate():new Date(0); if(cDate<earliestDate)earliestDate=cDate; (c.ventas||[]).forEach(v => { (v.productos||[]).forEach(p => { const admPInfo = admInvMap.get(p.id); if (admPInfo && admPInfo.rubro === rFilt) { 
+                // *** MODIFICACIÓN AQUÍ ***
+                if (!pSales[p.id]) {
+                    pSales[p.id]={
+                        segmento: admPInfo.segmento || 'S/S', // Añadir Segmento
+                        marca: admPInfo.marca || 'S/M',       // Añadir Marca
+                        presentacion: admPInfo.presentacion,
+                        totalUnidades: 0, 
+                        ventaPor: admPInfo.ventaPor, 
+                        unidadesPorCaja: admPInfo.unidadesPorCaja||1, 
+                        unidadesPorPaquete: admPInfo.unidadesPorPaquete||1
+                    };
+                }
+                // *** FIN MODIFICACIÓN ***
+                pSales[p.id].totalUnidades += (p.totalUnidadesVendidas||0); 
+            } }); }); });
             const pArray = Object.values(pSales); let nWeeks = 1;
             if (sType === 'general') { nWeeks = Math.max(1, Math.ceil(Math.abs((now - earliestDate) / (86400000 * 7)))); }
             _lastStatsData = pArray; _lastNumWeeks = nWeeks; renderStatsList(pArray, sType, nWeeks);
@@ -297,15 +312,45 @@
         const cont = document.getElementById('stats-list-container'); if (productArray.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No se encontraron ventas.</p>`; return; }
         const hTitle = statsType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
         let tHTML = `<table class="min-w-full bg-white text-sm"> <thead class="bg-gray-200 sticky top-0 z-10"> <tr> <th class="py-2 px-3 border-b text-left">Producto</th> <th class="py-2 px-3 border-b text-center">${hTitle}</th> </tr> </thead> <tbody>`;
-        productArray.sort((a,b)=>(a.presentacion||'').localeCompare(b.presentacion||''));
-        productArray.forEach(p => { let dQty=0, dUnit='Unds'; const totPer = statsType==='general'?(p.totalUnidades/numWeeks):p.totalUnidades; if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} else {dQty=totPer.toFixed(0);} tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b">${p.presentacion}</td><td class="py-2 px-3 border-b text-center font-bold">${dQty} <span class="font-normal text-xs">${dUnit}</span></td></tr>`; });
+        
+        // *** MODIFICACIÓN AQUÍ (ORDENAMIENTO) ***
+        productArray.sort((a,b)=>{
+            const segComp = (a.segmento || '').localeCompare(b.segmento || '');
+            if (segComp !== 0) return segComp;
+            const marComp = (a.marca || '').localeCompare(b.marca || '');
+            if (marComp !== 0) return marComp;
+            return (a.presentacion||'').localeCompare(b.presentacion||'');
+        });
+        // *** FIN MODIFICACIÓN ***
+
+        productArray.forEach(p => { 
+            let dQty=0, dUnit='Unds'; const totPer = statsType==='general'?(p.totalUnidades/numWeeks):p.totalUnidades; 
+            if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} 
+            else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} 
+            else {dQty=totPer.toFixed(0);} 
+            
+            // *** MODIFICACIÓN AQUÍ (DESCRIPCIÓN) ***
+            const desc = `<span class="font-semibold">${p.segmento}</span> <span class="text-gray-700">${p.marca}</span> <span class="text-gray-500 font-light">${p.presentacion}</span>`;
+            tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b">${desc}</td><td class="py-2 px-3 border-b text-center font-bold">${dQty} <span class="font-normal text-xs">${dUnit}</span></td></tr>`; 
+            // *** FIN MODIFICACIÓN ***
+        });
         tHTML += `</tbody></table>`; cont.innerHTML = `${tHTML}<div class="mt-6 text-center"><button id="downloadStatsBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700">Descargar Excel</button></div>`;
         const dBt = document.getElementById('downloadStatsBtn'); if(dBt) dBt.addEventListener('click', handleDownloadStats);
     }
     function handleDownloadStats() {
         if (_lastStatsData.length === 0 || typeof XLSX === 'undefined') { _showModal('Aviso', _lastStatsData.length === 0 ? 'No hay datos.' : 'Librería Excel no cargada.'); return; }
         const sType = document.getElementById('stats-type').value; const hTitle = sType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
-        const dExport = _lastStatsData.map(p => { let dQty=0, dUnit='Unds'; const totPer=sType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} else {dQty=totPer.toFixed(0);} return {'Producto': p.presentacion, [hTitle]: `${dQty} ${dUnit}`}; });
+        const dExport = _lastStatsData.map(p => { 
+            let dQty=0, dUnit='Unds'; const totPer=sType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
+            if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} 
+            else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} 
+            else {dQty=totPer.toFixed(0);} 
+            
+            // *** MODIFICACIÓN AQUÍ (EXCEL) ***
+            const desc = `${p.segmento} ${p.marca} ${p.presentacion}`;
+            return {'Producto': desc, [hTitle]: `${dQty} ${dUnit}`}; 
+            // *** FIN MODIFICACIÓN ***
+        });
         const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
         const rubro = document.getElementById('stats-rubro-filter').value; const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Estadisticas_${rubro}_${sType}_${today}.xlsx`);
@@ -329,7 +374,7 @@
         try {
             const cliRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`); const cliSnaps = await _getDocs(cliRef);
             _consolidatedClientsCache = cliSnaps.docs.map(d => ({id: d.id, ...d.data()}));
-            filtCont.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg bg-gray-50"> <input type="text" id="client-search-input" placeholder="Buscar..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg text-sm"> <div> <label for="client-filter-sector" class="block text-xs mb-1">Sector</label> <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> </div> <button id="clear-client-filters-btn" class="bg-gray-300 text-xs rounded-lg self-end py-1.5 px-3 hover:bg-gray-400 mt-3 md:mt-0">Limpiar</button> </div>`;
+            filtCont.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg bg-gray-50"> <input type="text" id="client-search-input" placeholder="Buscar..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg text-sm"> <div> <label for="client-filter-sector" class="block text-xs mb-1">Sector</label> <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> </div> <button id="clear-client-filters-btn" class="bg-gray-300 text-xs font-semibold text-gray-700 rounded-lg self-end py-1.5 px-3 hover:bg-gray-400 transition duration-150">Limpiar</button> </div>`;
             const uSectors = [...new Set(_consolidatedClientsCache.map(c => c.sector).filter(Boolean))].sort(); const sFilt = document.getElementById('client-filter-sector'); uSectors.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sFilt.appendChild(o); });
             document.getElementById('client-search-input').addEventListener('input', renderConsolidatedClientsList); sFilt.addEventListener('change', renderConsolidatedClientsList); document.getElementById('clear-client-filters-btn').addEventListener('click', () => { document.getElementById('client-search-input').value = ''; sFilt.value = ''; renderConsolidatedClientsList(); });
             renderConsolidatedClientsList(); document.getElementById('downloadClientsBtn').classList.remove('hidden');
