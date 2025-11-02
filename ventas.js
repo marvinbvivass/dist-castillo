@@ -92,9 +92,24 @@
 
     function loadDataForNewSale() {
         const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
-        const unsubClientes = _onSnapshot(clientesRef, snap => { _clientesCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); }, err => { if (!window.isLoggingOut || err.code !== 'permission-denied') console.error("Error clientes:", err); });
+        // --- FIX: Manejador de error de listener ---
+        const unsubClientes = _onSnapshot(clientesRef, snap => { _clientesCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); }, err => { 
+            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+                console.log(`Ventas (clientes) listener error ignored (assumed logout): ${err.code}`);
+                return;
+            }
+            console.error("Error clientes:", err); 
+        });
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        const unsubInventario = _onSnapshot(inventarioRef, snap => { _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); populateRubroFilter(); if (_ventaActual.cliente) renderVentasInventario(); }, err => { if (!window.isLoggingOut || err.code !== 'permission-denied') console.error("Error inventario:", err); const b = document.getElementById('inventarioTableBody'); if(b) b.innerHTML = '<tr><td colspan="4" class="text-red-500">Error inventario</td></tr>'; });
+        // --- FIX: Manejador de error de listener ---
+        const unsubInventario = _onSnapshot(inventarioRef, snap => { _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); populateRubroFilter(); if (_ventaActual.cliente) renderVentasInventario(); }, err => { 
+            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+                console.log(`Ventas (inventario) listener error ignored (assumed logout): ${err.code}`);
+                return;
+            }
+            console.error("Error inventario:", err); 
+            const b = document.getElementById('inventarioTableBody'); if(b) b.innerHTML = '<tr><td colspan="4" class="text-red-500">Error inventario</td></tr>'; 
+        });
         _activeListeners.push(unsubClientes, unsubInventario);
     }
 
@@ -533,13 +548,21 @@
     function renderVentasList() {
         const cont = document.getElementById('ventasListContainer'); if (!cont) return;
         const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
+        // --- FIX: Manejador de error de listener ---
         const unsub = _onSnapshot(q, (snap) => {
             _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); _ventasGlobal.sort((a,b)=>(b.fecha?.toDate()??0)-(a.fecha?.toDate()??0));
             if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
             let tHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0 z-10"><tr> <th class="py-2 px-3 border-b text-left">Cliente</th> <th class="py-2 px-3 border-b text-left">Fecha</th> <th class="py-2 px-3 border-b text-right">Total</th> <th class="py-2 px-3 border-b text-center">Acciones</th> </tr></thead><tbody>`;
             _ventasGlobal.forEach(v => { const fV=v.fecha?.toDate?v.fecha.toDate():new Date(0); const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; });
             tHTML += `</tbody></table>`; cont.innerHTML = tHTML;
-        }, (err) => { if (!window.isLoggingOut || err.code !== 'permission-denied') console.error("Error lista ventas:", err); if(cont) cont.innerHTML = `<p class="text-red-500">Error al cargar.</p>`; });
+        }, (err) => { 
+            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+                console.log(`Ventas (lista) listener error ignored (assumed logout): ${err.code}`);
+                return;
+            }
+            console.error("Error lista ventas:", err); 
+            if(cont) cont.innerHTML = `<p class="text-red-500">Error al cargar.</p>`; 
+        });
         _activeListeners.push(unsub);
     }
 
