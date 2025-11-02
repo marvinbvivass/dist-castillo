@@ -479,6 +479,7 @@
     }
 
     // *** MODIFICADO: generarTicket ahora confirma, llama a _processAndSaveVenta, y LUEGO muestra opciones ***
+    // *** ESTA ES LA FUNCIÓN MODIFICADA ***
     async function generarTicket() {
         if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
         const prods = Object.values(_ventaActual.productos);
@@ -487,40 +488,72 @@
 
         // 1. Mostrar modal de confirmación para GUARDAR
         _showModal('Confirmar Venta', '¿Guardar esta transacción?', async () => {
-            _showModal('Progreso', 'Guardando transacción...'); // Mostrar progreso mientras se guarda
-            try {
-                // 2. Llamar a la función que guarda y ajusta
-                const savedData = await _processAndSaveVenta();
+            
+            // --- INICIO DE LA MODIFICACIÓN ---
+            const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
 
-                // 3. Si tuvo éxito, AHORA mostrar las opciones de ticket
-                // Pasar showNuevaVentaView como callback final
-                showSharingOptions(
-                    { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha }, // Datos básicos
-                    savedData.productos, // Productos guardados
-                    savedData.vaciosDevueltosPorTipo, // Vacíos guardados
-                    'Nota de Entrega',
-                    () => { // Callback que se ejecuta después de imprimir/compartir
-                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
-                    }
+            // 1. Definir el callback final (lo que pasa después de compartir/imprimir)
+            const finalCallback = (shareSuccess) => { // shareSuccess es true/false
+                if (isManualOffline) {
+                    // Si estábamos offline, solo volvemos a la vista de nueva venta
+                    // El modal de "OFFLINE activado" ya se mostró.
+                    showNuevaVentaView(); 
+                } else {
+                    // Si estábamos online, mostramos el modal de éxito
+                    _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
+                }
+            };
+
+            // 2. Definir la lógica de guardado y generación de ticket
+            const saveAndShare = async () => {
+                try {
+                    const savedData = await _processAndSaveVenta(); // Guardar (en caché o red)
+                    
+                    // Mostrar opciones de ticket, pasando el callback final
+                    showSharingOptions(
+                        { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha }, 
+                        savedData.productos, 
+                        savedData.vaciosDevueltosPorTipo, 
+                        'Nota de Entrega',
+                        finalCallback // <--- Pasa el callback final aquí
+                    );
+
+                } catch (saveError) {
+                    console.error("Error al guardar venta:", saveError);
+                     const progressModal = document.getElementById('modalContainer');
+                     if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                          progressModal.classList.add('hidden');
+                     }
+                    _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
+                }
+            };
+
+            // 3. Decidir qué hacer basado en el estado online/offline
+            if (isManualOffline) {
+                // MODO OFFLINE: Mostrar mensaje de advertencia y LUEGO guardar
+                _showModal('Modo Offline', 
+                           'OFFLINE activado. La venta se registra pero se guardará cuando vuelva la conexión.', 
+                           async () => {
+                               // No mostramos "Progreso", solo ejecutamos la lógica
+                               await saveAndShare();
+                               return false; // Evita que este modal (Entendido) cierre el modal de sharing
+                           }, 
+                           'Entendido', 
+                           null, 
+                           true // Cierra el modal 'Entendido' al hacer clic
                 );
 
-            } catch (saveError) {
-                // Si _processAndSaveVenta falló, mostrar el error
-                console.error("Error al guardar venta:", saveError);
-                 const progressModal = document.getElementById('modalContainer'); // Cerrar modal de progreso si aún está visible
-                 if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                      progressModal.classList.add('hidden');
-                 }
-                _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
+            } else {
+                // MODO ONLINE: Mostrar "Progreso" y LUEGO guardar
+                _showModal('Progreso', 'Guardando transacción...');
+                await saveAndShare();
             }
             
-            // --- ¡CORRECCIÓN AÑADIDA AQUÍ! ---
-            // Esto evita que el modal de "Confirmar" se cierre antes de que 
-            // aparezca el modal de "showSharingOptions".
-            return false; 
-            // --- FIN DE LA CORRECCIÓN ---
+            // --- FIN DE LA MODIFICACIÓN ---
+            
+            return false; // Evita que el modal "Confirmar Venta" se cierre
 
-        }, 'Sí, guardar', () => { /* No hacer nada si cancela la confirmación */ }, true); // True para indicar lógica de confirmación (mostrar progreso)
+        }, 'Sí, guardar', () => { /* No hacer nada si cancela */ }, true);
     }
 
     function showVentasTotalesView() {
@@ -883,4 +916,3 @@
         invalidateCache: () => { /* No action needed */ }
     };
 })();
-
