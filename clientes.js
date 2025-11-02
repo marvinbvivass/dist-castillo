@@ -67,6 +67,7 @@
                         <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Clientes</h1>
                         <div class="space-y-4">
                             <button id="verClientesBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Ver Clientes</button>
+                            <!-- REVERTIDO: Botón "Agregar Cliente" visible para todos -->
                             <button id="agregarClienteBtn" class="w-full px-6 py-3 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600">Agregar Cliente</button>
                             <button id="saldosVaciosBtn" class="w-full px-6 py-3 bg-cyan-500 text-white font-semibold rounded-lg shadow-md hover:bg-cyan-600">Consultar Saldos de Vacíos</button>
                             ${_userRole === 'admin' ? `
@@ -79,11 +80,12 @@
             </div>
         `;
         document.getElementById('verClientesBtn').addEventListener('click', showVerClientesView);
-        document.getElementById('agregarClienteBtn').addEventListener('click', showAgregarClienteView);
-        document.getElementById('saldosVaciosBtn').addEventListener('click', showSaldosVaciosView);
+        // REVERTIDO: Listener de "Agregar Cliente" visible para todos
+        document.getElementById('agregarClienteBtn')?.addEventListener('click', showAgregarClienteView);
         if (_userRole === 'admin') {
-            document.getElementById('funcionesAvanzadasBtn').addEventListener('click', showFuncionesAvanzadasView);
+            document.getElementById('funcionesAvanzadasBtn')?.addEventListener('click', showFuncionesAvanzadasView);
         }
+        document.getElementById('saldosVaciosBtn').addEventListener('click', showSaldosVaciosView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
@@ -609,9 +611,9 @@
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderClientesList('clientesListContainer', false); // Pass container ID and readOnly flag
         }, (error) => {
-             // MODIFICACIÓN: Ignorar error de permisos al cerrar sesión
-            if (window.isLoggingOut && error.code === 'permission-denied') {
-                console.log("Listener de clientes detenido por cierre de sesión (ignorado).");
+             // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+            if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
+                console.log(`Clientes listener error ignored (assumed logout): ${error.code}`); 
                 return; // Ignorar el error silenciosamente
             }
             console.error("Error al cargar clientes:", error);
@@ -658,8 +660,9 @@
                 });
                 selectElement.value = currentValue;
              }).catch(error => {
-                if (window.isLoggingOut && error.code === 'permission-denied') {
-                    console.log("Error carga dropdown sectores ignorado durante logout.");
+                // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+                if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                    console.log("Error carga dropdown sectores ignorado (assumed logout).");
                     return;
                 }
                  console.error("Error cargando sectores para filtro:", error);
@@ -1013,9 +1016,9 @@
                 </div>
             `).join('');
         }, (error) => {
-             // MODIFICACIÓN: Ignorar error de permisos al cerrar sesión
-            if (window.isLoggingOut && error.code === 'permission-denied') {
-                console.log("Listener de gestión sectores detenido por cierre de sesión (ignorado).");
+             // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+            if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
+                console.log(`Sectores listener error ignored (assumed logout): ${error.code}`); 
                 return;
             }
             console.error("Error en listener de gestión sectores:", error);
@@ -1178,9 +1181,9 @@
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderSaldosList(); // Re-render list on data change
         }, (error) => {
-            // MODIFICACIÓN: Ignorar error de permisos al cerrar sesión
-            if (window.isLoggingOut && error.code === 'permission-denied') {
-                console.log("Listener de saldos detenido por cierre de sesión (ignorado).");
+            // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
+            if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
+                console.log(`Saldos listener error ignored (assumed logout): ${error.code}`);
                 return; // Ignorar el error silenciosamente
             }
             console.error("Error al cargar saldos:", error);
