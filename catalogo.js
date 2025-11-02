@@ -295,7 +295,8 @@
                 await new Promise(resolve => setTimeout(resolve, 50));
                 // --- FIN DE LA CORRECCIÓN ---
 
-                const canvasOpts = { scale: 3, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' }; 
+                // MODIFICACIÓN: Reducir escala a 2 para archivos más pequeños
+                const canvasOpts = { scale: 2, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' }; 
                 
                 let canvas;
                 try {
@@ -306,11 +307,13 @@
                     throw new Error(`Fallo en render de html2canvas: ${canvasError.message}`); // Propagar el error
                 }
 
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.9)); 
+                // MODIFICACIÓN: Usar JPEG calidad 0.85 para reducir drásticamente el tamaño del archivo
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85)); 
                 document.body.removeChild(tempDiv); 
                 
                 const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase(); 
-                return new File([blob], `catalogo_${safeTitle}_p${pNum}.png`, { type: "image/png" }); 
+                // MODIFICACIÓN: Cambiar nombre y tipo de archivo a .jpeg
+                return new File([blob], `catalogo_${safeTitle}_p${pNum}.jpeg`, { type: "image/jpeg" }); 
             }));
             
             const modalCont = document.getElementById('modalContainer'); 
