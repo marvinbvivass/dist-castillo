@@ -161,11 +161,11 @@
      * También carga los datos del producto desde el inventario del usuario actual.
      */
     async function _loadObsequioProduct() {
-// ... existing code ...
         try {
             // 1. Leer la configuración pública directamente
             const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH); // Usa la ruta pública definida
-// ... existing code ...
+            const configSnap = await _getDoc(configRef); // <-- ESTA LÍNEA FALTABA
+
             if (configSnap.exists()) {
                 _obsequioConfig.productoId = configSnap.data().productoId;
 
@@ -932,4 +932,5 @@
 
 
 })(); // Fin del IIFE
+
 
