@@ -345,7 +345,13 @@
                 }
                 
                 // Carga Restante = Stock Actual en Inventario
+                // --- CORRECCIÓN ---
+                // El inventarioMap es del vendedor, que ya se actualizó. 
+                // Para obtener la "Carga Restante" correcta del día del cierre,
+                // debemos tomar la Carga Inicial (calculada) y restarle lo vendido.
+                // PERO, el inventarioMap *ya es* la carga restante (stock actual).
                 const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
+                
                 // Carga Inicial = Carga Restante + Total Vendido
                 const initialStockUnits = currentStockUnits + totalSoldUnits;
 
@@ -465,10 +471,13 @@
                             }
                             marcaColStart = c; // Empezar nuevo merge de marca
                         }
+                    } else {
+                        // Iniciar en el primer item
+                        lastSegment = segment;
+                        lastMarca = marca;
+                        segmentColStart = c;
+                        marcaColStart = c;
                     }
-
-                    lastSegment = segment;
-                    lastMarca = marca;
                 });
 
                 // --- Cerrar los últimos merges ---
@@ -812,3 +821,5 @@
     window.dataModule = { showClosingDetail, handleDownloadSingleClosing };
 
 })();
+
+
