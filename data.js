@@ -382,89 +382,167 @@
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
+            // --- Helper para obtener el precio principal ---
+            const getPrice = (p) => {
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                // Priorizar Cj, luego Paq, luego Und
+                if (p.ventaPor?.cj && precios.cj > 0) return Number(precios.cj.toFixed(2));
+                if (p.ventaPor?.paq && precios.paq > 0) return Number(precios.paq.toFixed(2));
+                return Number((precios.und || 0).toFixed(2));
+            };
+
             // --- 2. Crear una hoja POR RUBRO ---
             for (const rubroName in finalData.rubros) {
                 const rubroData = finalData.rubros[rubroName];
                 const { products: sortedProducts, sortedClients, clients: clientData, productTotals } = rubroData;
 
-                const sheetData = [];
+                const ws = {}; // Empezar objeto de hoja vacío
+                const merges = [];
+                let currentRow = 0; // 0-based index
+
+                // --- Fila 1: FECHA ---
+                ws['A1'] = { v: 'FECHA:', t: 's', s: { font: { bold: true } } };
+                ws['B1'] = { v: fechaCierre, t: 's' };
+                currentRow = 1;
+
+                // --- Fila 2: USUARIO ---
+                ws['A2'] = { v: 'USUARIO:', t: 's', s: { font: { bold: true } } };
+                ws['B2'] = { v: usuarioEmail, t: 's' };
+                currentRow = 2; // Fila 3 vacía (index 2)
+                currentRow = 3; // Fila 4 (index 3)
+
+                // --- Fila 4-7: HEADERS ---
+                const headerRowSegment = currentRow;     // index 3
+                const headerRowMarca = currentRow + 1;   // index 4
+                const headerRowProducto = currentRow + 2; // index 5
+                const headerRowPrecio = currentRow + 3;   // index 6
                 
-                // --- Encabezados de Archivo (Fila 1 y 2) ---
-                sheetData.push([`FECHA: ${fechaCierre}`]);
-                sheetData.push([`USUARIO: ${usuarioEmail}`]);
-                sheetData.push([]); // Fila 3 vacía
+                ws['B' + (headerRowSegment + 1)] = { v: 'SEGMENTO ->', t: 's', s: { font: { bold: true } } };
+                ws['B' + (headerRowMarca + 1)] = { v: 'MARCA ->', t: 's', s: { font: { bold: true } } };
+                ws['B' + (headerRowProducto + 1)] = { v: 'PRODUCTO ->', t: 's', s: { font: { bold: true } } };
+                ws['B' + (headerRowPrecio + 1)] = { v: 'PRECIO ->', t: 's', s: { font: { bold: true } } };
+                
+                let currentCol = 2; // Empezar en Columna 'C'
+                let lastSegment = null;
+                let lastMarca = null;
+                let segmentColStart = 2;
+                let marcaColStart = 2;
 
-                // --- Encabezados de Tabla (Fila 4 a 7) ---
-                const headerRow1_Segmento = ["", "SEGMENTO ->"]; // Col A, B
-                const headerRow2_Marca = ["", "MARCA ->"]; // Col A, B
-                const headerRow3_Producto = ["", "PRODUCTO ->"]; // Col A, B
-                const headerRow4_Precio = ["", "PRECIO ->"]; // Col A, B
+                sortedProducts.forEach((p, index) => {
+                    const c = currentCol + index; // 0-based column index
+                    const segment = p.segmento || 'S/S';
+                    const marca = p.marca || 'S/M';
 
-                sortedProducts.forEach(p => {
-                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
-                    let precioMostrado = 0;
-                    if (p.ventaPor?.cj && precios.cj > 0) precioMostrado = precios.cj;
-                    else if (p.ventaPor?.paq && precios.paq > 0) precioMostrado = precios.paq;
-                    else precioMostrado = precios.und || 0;
+                    // --- Añadir valores de celda ---
+                    ws[XLSX.utils.encode_cell({r: headerRowSegment, c: c})] = { v: segment, t: 's' };
+                    ws[XLSX.utils.encode_cell({r: headerRowMarca, c: c})] = { v: marca, t: 's' };
+                    ws[XLSX.utils.encode_cell({r: headerRowProducto, c: c})] = { v: p.presentacion || 'S/P', t: 's' };
+                    ws[XLSX.utils.encode_cell({r: headerRowPrecio, c: c})] = { v: getPrice(p), t: 'n', z: '$0.00' }; // 'z' es formato
 
-                    headerRow1_Segmento.push(p.segmento || 'S/S');
-                    headerRow2_Marca.push(p.marca || 'S/M');
-                    headerRow3_Producto.push(p.presentacion || 'S/P');
-                    headerRow4_Precio.push(precioMostrado > 0 ? Number(precioMostrado.toFixed(2)) : ''); // Guardar como número
+                    // --- Manejar Merges ---
+                    if (index > 0) { // No comparar en el primer item
+                        // Segment Merge
+                        if (segment !== lastSegment) {
+                            if (c - 1 >= segmentColStart) { // Merge si hay más de una celda
+                                merges.push({ s: { r: headerRowSegment, c: segmentColStart }, e: { r: headerRowSegment, c: c - 1 } });
+                            }
+                            segmentColStart = c;
+                        }
+                        
+                        // Marca Merge
+                        if (marca !== lastMarca) {
+                            if (c - 1 >= marcaColStart) { // Merge si hay más de una celda
+                                merges.push({ s: { r: headerRowMarca, c: marcaColStart }, e: { r: headerRowMarca, c: c - 1 } });
+                            }
+                            marcaColStart = c;
+                        }
+
+                        // Si el segmento cambia, la marca *debe* resetearse también
+                        if (segment !== lastSegment) {
+                            if (c - 1 >= marcaColStart) {
+                                // Cerrar el merge de marca anterior
+                                merges.push({ s: { r: headerRowMarca, c: marcaColStart }, e: { r: headerRowMarca, c: c - 1 } });
+                            }
+                            marcaColStart = c; // Empezar nuevo merge de marca
+                        }
+                    }
+
+                    lastSegment = segment;
+                    lastMarca = marca;
                 });
 
-                headerRow1_Segmento.push("TOTAL CLIENTE");
-                headerRow2_Marca.push("");
-                headerRow3_Producto.push("");
-                headerRow4_Precio.push("");
+                // --- Cerrar los últimos merges ---
+                const lastCol = currentCol + sortedProducts.length - 1;
+                if (lastCol >= segmentColStart) {
+                    merges.push({ s: { r: headerRowSegment, c: segmentColStart }, e: { r: headerRowSegment, c: lastCol } });
+                }
+                if (lastCol >= marcaColStart) {
+                    merges.push({ s: { r: headerRowMarca, c: marcaColStart }, e: { r: headerRowMarca, c: lastCol } });
+                }
+                
+                // Añadir "TOTAL CLIENTE" header
+                const totalCol = lastCol + 1;
+                ws[XLSX.utils.encode_cell({r: headerRowSegment, c: totalCol})] = { v: 'TOTAL CLIENTE', t: 's', s: { font: { bold: true } } };
+                // Combinar header de total cliente
+                merges.push({ s: { r: headerRowSegment, c: totalCol }, e: { r: headerRowPrecio, c: totalCol } });
 
-                sheetData.push(headerRow1_Segmento, headerRow2_Marca, headerRow3_Producto, headerRow4_Precio);
-                sheetData.push([]); // Fila 8 vacía
 
-                // --- FILA: CARGA INICIAL (Fila 9) ---
-                const cargaInicialRow = ["", "CARGA INICIAL"]; // Col A, B
-                sortedProducts.forEach(p => {
+                // --- Fila 8 vacía ---
+                currentRow = 7; // index 7
+                currentRow = 8; // Fila 9 (index 8)
+
+                // --- FILA: CARGA INICIAL ---
+                let dataRow = currentRow; // index 8
+                ws['B' + (dataRow + 1)] = { v: 'CARGA INICIAL', t: 's', s: { font: { bold: true } } };
+                sortedProducts.forEach((p, index) => {
+                    const c = currentCol + index;
                     const initialStock = productTotals[p.id].initialStock;
-                    cargaInicialRow.push(getDisplayQty(initialStock, p));
+                    ws[XLSX.utils.encode_cell({r: dataRow, c: c})] = { v: getDisplayQty(initialStock, p), t: 's' };
                 });
-                cargaInicialRow.push(""); // Sin total
-                sheetData.push(cargaInicialRow);
-                
-                // --- Filas de Clientes (Fila 10+) ---
-                sortedClients.forEach(clientName => {
-                    const clientRow = [clientName, ""]; // Col A = Cliente, Col B = vacía
-                    const clientSales = clientData[clientName];
+                dataRow++; // index 9
 
-                    sortedProducts.forEach(p => {
+                // --- Filas de Clientes ---
+                sortedClients.forEach(clientName => {
+                    ws['A' + (dataRow + 1)] = { v: clientName, t: 's' }; // Col A
+                    const clientSales = clientData[clientName];
+                    sortedProducts.forEach((p, index) => {
+                        const c = currentCol + index;
                         const qU = clientSales.products[p.id] || 0;
-                        clientRow.push(getDisplayQty(qU, p));
+                        ws[XLSX.utils.encode_cell({r: dataRow, c: c})] = { v: getDisplayQty(qU, p), t: 's' };
                     });
-                    
-                    clientRow.push(Number(clientSales.totalValue.toFixed(2))); // Total por cliente EN ESTE RUBRO
-                    sheetData.push(clientRow);
+                    ws[XLSX.utils.encode_cell({r: dataRow, c: totalCol})] = { v: Number(clientSales.totalValue.toFixed(2)), t: 'n', z: '$0.00' };
+                    dataRow++;
                 });
 
                 // --- FILA: TOTAL VENDIDO ---
-                const totalVendidoRow = ["", "TOTAL VENDIDO"]; // Col A, B
-                sortedProducts.forEach(p => {
+                ws['B' + (dataRow + 1)] = { v: 'TOTAL VENDIDO', t: 's', s: { font: { bold: true } } };
+                sortedProducts.forEach((p, index) => {
+                    const c = currentCol + index;
                     const totalSold = productTotals[p.id].totalSold;
-                    totalVendidoRow.push(getDisplayQty(totalSold, p));
+                    ws[XLSX.utils.encode_cell({r: dataRow, c: c})] = { v: getDisplayQty(totalSold, p), t: 's' };
                 });
-                totalVendidoRow.push(Number(rubroData.totalValue.toFixed(2))); // Gran total de este rubro
-                sheetData.push(totalVendidoRow);
+                ws[XLSX.utils.encode_cell({r: dataRow, c: totalCol})] = { v: Number(rubroData.totalValue.toFixed(2)), t: 'n', z: '$0.00' };
+                dataRow++;
 
                 // --- FILA: CARGA RESTANTE ---
-                const cargaRestanteRow = ["", "CARGA RESTANTE"]; // Col A, B
-                sortedProducts.forEach(p => {
+                ws['B' + (dataRow + 1)] = { v: 'CARGA RESTANTE', t: 's', s: { font: { bold: true } } };
+                sortedProducts.forEach((p, index) => {
+                    const c = currentCol + index;
                     const currentStock = productTotals[p.id].currentStock;
-                    cargaRestanteRow.push(getDisplayQty(currentStock, p));
+                    ws[XLSX.utils.encode_cell({r: dataRow, c: c})] = { v: getDisplayQty(currentStock, p), t: 's' };
                 });
-                cargaRestanteRow.push(""); // Sin total
-                sheetData.push(cargaRestanteRow);
+                dataRow++;
 
-                // Añadir la hoja al libro
-                const ws = XLSX.utils.aoa_to_sheet(sheetData);
-                // Truncar nombre de hoja si es muy largo (límite Excel 31 chars)
+                // --- Finalizar Hoja ---
+                ws['!merges'] = merges;
+                // Set range
+                const endCell = XLSX.utils.encode_cell({r: dataRow, c: totalCol});
+                ws['!ref'] = `A1:${endCell}`;
+                // Set Col Widths
+                ws['!cols'] = [ {wch: 30}, {wch: 20} ]; // Col A (Cliente), Col B (Labels)
+                for(let i=0; i < sortedProducts.length; i++) { ws['!cols'].push({wch: 15}); } // Product cols
+                ws['!cols'].push({wch: 20}); // Total Col
+
                 const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
                 XLSX.utils.book_append_sheet(wb, ws, sheetName);
             }
@@ -734,4 +812,3 @@
     window.dataModule = { showClosingDetail, handleDownloadSingleClosing };
 
 })();
-
