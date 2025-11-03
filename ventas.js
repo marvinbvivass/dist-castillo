@@ -139,7 +139,7 @@
 
     async function renderVentasInventario() {
         const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
+        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? filtInv.filter(p => p.rubro === selRubro) : invFilt;
         // Usa la función global para ordenar el inventario en la vista de venta
         const sortFunc = await window.getGlobalProductSortFunction();
         filtInv.sort(sortFunc);
@@ -530,7 +530,7 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                 <div class="space-y-4">
                     <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                    <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
+                    <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-700">Cierre de Ventas</button>
                 </div>
                 <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
             </div> </div> </div>
@@ -588,42 +588,331 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
+    
+    // --- NUEVA LÓGICA DE PROCESAMIENTO ---
     async function processSalesDataForReport(ventas, userIdForInventario) {
-        const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
+        const dataByRubro = {};
+        const clientTotals = {}; 
+        let grandTotalValue = 0;
+        const vaciosMovementsPorTipo = {};
+        const allRubros = new Set();
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); // Usa inventario del vendedor
-        const inventarioSnapshot = await _getDocs(inventarioRef); const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        ventas.forEach(venta => { const cliN=venta.clienteNombre||'N/A'; if(!clientData[cliN])clientData[cliN]={products:{},totalValue:0}; if(!vaciosMovementsPorTipo[cliN]){vaciosMovementsPorTipo[cliN]={};TIPOS_VACIO_GLOBAL.forEach(t=>vaciosMovementsPorTipo[cliN][t]={entregados:0,devueltos:0});} clientData[cliN].totalValue+=(venta.total||0); grandTotalValue+=(venta.total||0); const vacDev=venta.vaciosDevueltosPorTipo||{}; for(const t in vacDev){if(!vaciosMovementsPorTipo[cliN][t])vaciosMovementsPorTipo[cliN][t]={e:0,d:0}; vaciosMovementsPorTipo[cliN][t].devueltos+=(vacDev[t]||0);} (venta.productos||[]).forEach(p=>{const pComp=inventarioMap.get(p.id)||p; if(pComp.manejaVacios&&pComp.tipoVacio){const tV=pComp.tipoVacio; if(!vaciosMovementsPorTipo[cliN][tV])vaciosMovementsPorTipo[cliN][tV]={e:0,d:0}; vaciosMovementsPorTipo[cliN][tV].entregados+=p.cantidadVendida?.cj||0;} const r=pComp.rubro||'N/R', s=pComp.segmento||'N/S', m=pComp.marca||'N/M'; if(!allProductsMap.has(p.id))allProductsMap.set(p.id,{...pComp,id:p.id,rubro:r,segmento:s,marca:m,presentacion:p.presentacion}); if(!clientData[cliN].products[p.id])clientData[cliN].products[p.id]=0; clientData[cliN].products[p.id]+=(p.totalUnidadesVendidas||0);}); });
-        const sortedClients = Object.keys(clientData).sort();
-        const sortFunction = await window.getGlobalProductSortFunction(); // Usa orden global
-        const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
-        return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
+
+        // 1. Obtener el mapa de inventario del VENDEDOR
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+        const inventarioSnapshot = await _getDocs(inventarioRef); 
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        
+        // 1b. Obtener info del usuario para el reporte
+        const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
+        const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
+
+        // 2. Procesar todas las ventas
+        ventas.forEach(venta => {
+            const clientName = venta.clienteNombre || 'Cliente Desconocido';
+            const ventaTotalCliente = venta.total || 0;
+            clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+            grandTotalValue += ventaTotalCliente;
+
+            if (!vaciosMovementsPorTipo[clientName]) { 
+                vaciosMovementsPorTipo[clientName] = {}; 
+                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
+            }
+            const vacDev = venta.vaciosDevueltosPorTipo || {};
+            for (const t in vacDev) { 
+                if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
+                vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
+            }
+
+            (venta.productos || []).forEach(p => {
+                const prodCompleto = inventarioMap.get(p.id) || p;
+                const rubro = prodCompleto.rubro || 'SIN RUBRO';
+                allRubros.add(rubro);
+
+                if (!dataByRubro[rubro]) {
+                    dataByRubro[rubro] = {
+                        clients: {},
+                        productsMap: new Map(),
+                        productTotals: {}, // NUEVO: Para Carga Inicial/Restante
+                        totalValue: 0
+                    };
+                }
+                if (!dataByRubro[rubro].clients[clientName]) {
+                    dataByRubro[rubro].clients[clientName] = {
+                        products: {},
+                        totalValue: 0
+                    };
+                }
+
+                if (!dataByRubro[rubro].productsMap.has(p.id)) {
+                    dataByRubro[rubro].productsMap.set(p.id, prodCompleto);
+                }
+
+                const cantidadUnidades = p.totalUnidadesVendidas || 0;
+                const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) +
+                                         (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) +
+                                         (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
+
+                dataByRubro[rubro].clients[clientName].products[p.id] = 
+                    (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
+                
+                dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
+                dataByRubro[rubro].totalValue += subtotalProducto;
+
+                if (prodCompleto.manejaVacios && prodCompleto.tipoVacio) {
+                    const tV = prodCompleto.tipoVacio; 
+                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
+                }
+            });
+        });
+
+        // 3. Obtener la función de ordenamiento global
+        const sortFunction = await window.getGlobalProductSortFunction();
+
+        // 4. Finalizar procesamiento: Convertir Mapas a Arrays ordenados y calcular Totales de Stock
+        const finalData = {
+            rubros: {},
+            vaciosMovementsPorTipo: vaciosMovementsPorTipo,
+            clientTotals: clientTotals,
+            grandTotalValue: grandTotalValue
+        };
+
+        for (const rubroName of Array.from(allRubros).sort()) {
+            const rubroData = dataByRubro[rubroName];
+            
+            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
+            const sortedClients = Object.keys(rubroData.clients).sort();
+
+            // NUEVO: Calcular Carga Inicial, Vendida y Restante para cada producto
+            const productTotals = {};
+            for (const p of sortedProducts) {
+                const productId = p.id;
+                let totalSoldUnits = 0;
+                for (const clientName of sortedClients) {
+                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
+                }
+                
+                // Carga Restante = Stock Actual en Inventario
+                const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
+                // Carga Inicial = Carga Restante + Total Vendido
+                const initialStockUnits = currentStockUnits + totalSoldUnits;
+
+                productTotals[productId] = {
+                    totalSold: totalSoldUnits,
+                    currentStock: currentStockUnits,
+                    initialStock: initialStockUnits
+                };
+            }
+            
+            finalData.rubros[rubroName] = {
+                clients: rubroData.clients,
+                products: sortedProducts, 
+                sortedClients: sortedClients,
+                totalValue: rubroData.totalValue,
+                productTotals: productTotals // Adjuntar los nuevos totales
+            };
+        }
+
+        return { finalData, userInfo }; // Devolver también la info del usuario
     }
+
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin/user actual
-            let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
-            let bHTML=''; sortedClients.forEach(cli=>{bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;}); bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;});
-            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fHTML+=`<td class="p-1 border text-center">${dT}</td>`;}); fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
-            let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
-            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
-            _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
+            // AHORA ES ASYNC
+            const { finalData } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin/user actual
+
+            // El reporte visual principal solo mostrará la hoja "Total Por Cliente" para simplicidad
+            let totalClientesHTML = `<h3 class="text-xl font-bold mb-4">Total por Cliente</h3>
+                                     <table class="min-w-full bg-white text-sm">
+                                         <thead class="bg-gray-200">
+                                             <tr>
+                                                 <th class="py-2 px-3 border-b text-left">Cliente</th>
+                                                 <th class="py-2 px-3 border-b text-right">Total Gasto</th>
+                                             </tr>
+                                         </thead>
+                                         <tbody>`;
+            
+            const sortedClientTotals = Object.entries(finalData.clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
+
+            for (const [clientName, totalValue] of sortedClientTotals) {
+                totalClientesHTML += `<tr class="hover:bg-gray-50">
+                                          <td class="py-2 px-3 border-b">${clientName}</td>
+                                          <td class="py-2 px-3 border-b text-right font-semibold">$${totalValue.toFixed(2)}</td>
+                                      </tr>`;
+            }
+            totalClientesHTML += `</tbody>
+                                  <tfoot>
+                                      <tr class="bg-gray-200 font-bold">
+                                          <td class="py-2 px-3 border-b text-left">GRAN TOTAL</td>
+                                          <td class="py-2 px-3 border-b text-right">$${finalData.grandTotalValue.toFixed(2)}</td>
+                                      </tr>
+                                  </tfoot>
+                                </table>`;
+            
+            // El reporte de vacíos (sin cambios)
+            let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(finalData.vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(finalData.vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(finalData.vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=finalData.vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
+            
+            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> 
+                                  <p class="text-sm text-gray-600 mb-4">Mostrando resumen de totales. El detalle completo por rubro (incluyendo Carga Inicial/Restante) está disponible en la descarga de Excel.</p>
+                                  ${totalClientesHTML}
+                                  ${vHTML} 
+                                </div>`;
+            _showModal('Reporte de Cierre (Resumen)', reportHTML, null, 'Cerrar');
         } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
+    
+    // --- NUEVA LÓGICA DE EXPORTACIÓN ---
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
+        
+        // Helper interno para formatear cantidad
+        function getDisplayQty(qU, p) {
+            if (!qU || qU === 0) return '';
+            const vP = p.ventaPor || {und: true}, uCj = p.unidadesPorCaja || 1, uPaq = p.unidadesPorPaquete || 1;
+            // Priorizar Cajas, luego Paq, luego Und
+            if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) return `${qU / uCj} Cj`;
+            if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) return `${qU / uPaq} Paq`;
+            return `${qU} Und`;
+        }
+
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID user actual
-            const dSheet1 = []; const hRow = ["Cliente"]; finalProductOrder.forEach(p => { hRow.push(p.presentacion || 'N/A'); }); hRow.push("Total Cliente"); dSheet1.push(hRow);
-            sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
-            const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
-            const ws1 = XLSX.utils.aoa_to_sheet(dSheet1); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, 'Reporte Cierre');
-            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if (cliVacios.length > 0) { const dSheet2=[['Cliente','Tipo Vacío','Entregados','Devueltos','Neto']]; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0)dSheet2.push([cli,t,mov.entregados,mov.devueltos,mov.entregados-mov.devueltos]);});}); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheet2), 'Reporte Vacíos');}
-            const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
-        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error Excel: ${error.message}`); throw error; }
+            // 1. Procesar los datos
+            const { finalData, userInfo } = await processSalesDataForReport(ventas, _userId); 
+            const wb = XLSX.utils.book_new();
+            const fechaCierre = new Date().toLocaleDateString('es-ES');
+            const usuarioEmail = userInfo.email || 'Usuario Desconocido';
+
+            // --- 2. Crear una hoja POR RUBRO ---
+            for (const rubroName in finalData.rubros) {
+                const rubroData = finalData.rubros[rubroName];
+                const { products: sortedProducts, sortedClients, clients: clientData, productTotals } = rubroData;
+
+                const sheetData = [];
+                
+                // --- Encabezados de Archivo ---
+                sheetData.push([`FECHA: ${fechaCierre}`]);
+                sheetData.push([`USUARIO: ${usuarioEmail}`]);
+                sheetData.push([]); // Fila vacía
+
+                // --- Encabezados de Tabla ---
+                const headerRow1_Segmento = ["CLIENTE", "SEGMENTO ->"];
+                const headerRow2_Marca = ["", "MARCA ->"];
+                const headerRow3_Producto = ["", "PRODUCTO ->"];
+                const headerRow4_Precio = ["", "PRECIO ->"];
+
+                sortedProducts.forEach(p => {
+                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                    let precioMostrado = 0;
+                    if (p.ventaPor?.cj && precios.cj > 0) precioMostrado = precios.cj;
+                    else if (p.ventaPor?.paq && precios.paq > 0) precioMostrado = precios.paq;
+                    else precioMostrado = precios.und || 0;
+
+                    headerRow1_Segmento.push(p.segmento || 'S/S');
+                    headerRow2_Marca.push(p.marca || 'S/M');
+                    headerRow3_Producto.push(p.presentacion || 'S/P');
+                    headerRow4_Precio.push(precioMostrado > 0 ? precioMostrado : '');
+                });
+
+                headerRow1_Segmento.push("TOTAL CLIENTE");
+                headerRow2_Marca.push("");
+                headerRow3_Producto.push("");
+                headerRow4_Precio.push("");
+
+                sheetData.push(headerRow1_Segmento, headerRow2_Marca, headerRow3_Producto, headerRow4_Precio);
+                sheetData.push([]); // Fila vacía
+
+                // --- NUEVA FILA: CARGA INICIAL ---
+                const cargaInicialRow = ["CARGA INICIAL", ""];
+                sortedProducts.forEach(p => {
+                    const initialStock = productTotals[p.id].initialStock;
+                    cargaInicialRow.push(getDisplayQty(initialStock, p));
+                });
+                cargaInicialRow.push(""); // Sin total
+                sheetData.push(cargaInicialRow);
+                
+                // --- Filas de Clientes ---
+                sortedClients.forEach(clientName => {
+                    const clientRow = [clientName, ""];
+                    const clientSales = clientData[clientName];
+
+                    sortedProducts.forEach(p => {
+                        const qU = clientSales.products[p.id] || 0;
+                        clientRow.push(getDisplayQty(qU, p));
+                    });
+                    
+                    clientRow.push(Number(clientSales.totalValue.toFixed(2)));
+                    sheetData.push(clientRow);
+                });
+
+                // --- FILA: TOTAL VENDIDO ---
+                const totalVendidoRow = ["TOTAL VENDIDO", ""];
+                sortedProducts.forEach(p => {
+                    const totalSold = productTotals[p.id].totalSold;
+                    totalVendidoRow.push(getDisplayQty(totalSold, p));
+                });
+                totalVendidoRow.push(Number(rubroData.totalValue.toFixed(2)));
+                sheetData.push(totalVendidoRow);
+
+                // --- NUEVA FILA: CARGA RESTANTE ---
+                const cargaRestanteRow = ["CARGA RESTANTE", ""];
+                sortedProducts.forEach(p => {
+                    const currentStock = productTotals[p.id].currentStock;
+                    cargaRestanteRow.push(getDisplayQty(currentStock, p));
+                });
+                cargaRestanteRow.push(""); // Sin total
+                sheetData.push(cargaRestanteRow);
+
+                // Añadir la hoja al libro
+                const ws = XLSX.utils.aoa_to_sheet(sheetData);
+                const sheetName = rubroName.substring(0, 31);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            }
+
+            // --- 3. Crear hoja de Reporte Vacíos (lógica anterior) ---
+            const { vaciosMovementsPorTipo } = finalData;
+            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const cliVacios = Object.keys(vaciosMovementsPorTipo)
+                                  .filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0))
+                                  .sort(); 
+            if (cliVacios.length > 0) { 
+                const dSheetVacios = [['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto']]; 
+                cliVacios.forEach(cli => {
+                    const movs = vaciosMovementsPorTipo[cli]; 
+                    TIPOS_VACIO_GLOBAL.forEach(t => {
+                        const mov = movs[t] || {entregados:0, devueltos:0}; 
+                        if (mov.entregados > 0 || mov.devueltos > 0) {
+                            dSheetVacios.push([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                        }
+                    });
+                }); 
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetVacios), 'Reporte Vacíos');
+            }
+
+            // --- 4. Crear hoja de Total por Cliente ---
+            const { clientTotals, grandTotalValue } = finalData;
+            const dSheetClientes = [['Cliente', 'Gasto Total']];
+            const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
+
+            sortedClientTotals.forEach(([clientName, totalValue]) => {
+                dSheetClientes.push([clientName, Number(totalValue.toFixed(2))]);
+            });
+            dSheetClientes.push(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetClientes), 'Total Por Cliente');
+
+            // --- 5. Descargar el archivo ---
+            const today = new Date().toISOString().slice(0, 10); 
+            XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
+
+        } catch (error) { 
+            console.error("Error exportando:", error); 
+            _showModal('Error', `Error Excel: ${error.message}`); 
+            throw error; // Relanzar para que 'ejecutarCierre' lo cachee
+        }
     }
+    
     async function ejecutarCierre() {
         _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
             _showModal('Progreso', 'Obteniendo ventas...');
