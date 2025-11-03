@@ -3,7 +3,8 @@
 (function() {
     // Variables locales del módulo
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown;
+    // --- MODIFICADO: Añadido _getDoc y _doc ---
+    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc;
 
     let _lastStatsData = [];
     let _lastNumWeeks = 1;
@@ -13,6 +14,16 @@
     // Variables para el mapa
     let mapInstance = null;
     let mapMarkers = new Map();
+
+    // --- NUEVO: Helper para formatear cantidad ---
+    function getDisplayQty(qU, p) {
+        if (!qU || qU === 0) return '';
+        const vP = p.ventaPor || {und: true}, uCj = p.unidadesPorCaja || 1, uPaq = p.unidadesPorPaquete || 1;
+        // Priorizar Cajas, luego Paq, luego Und
+        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) return `${qU / uCj} Cj`;
+        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) return `${qU / uPaq} Paq`;
+        return `${qU} Und`;
+    }
 
     window.initData = function(dependencies) {
         _db = dependencies.db;
@@ -28,6 +39,9 @@
         _where = dependencies.where;
         _orderBy = dependencies.orderBy;
         _populateDropdown = dependencies.populateDropdown;
+        // --- MODIFICADO: Añadido _getDoc y _doc ---
+        _getDoc = dependencies.getDoc;
+        _doc = dependencies.doc;
     };
 
     window.showDataView = function() {
@@ -150,8 +164,9 @@
         container.innerHTML = tableHTML;
     }
 
-    // --- Lógica de Reporte (adaptada para usar ordenamiento global) ---
-    async function processSalesDataForReport(ventas, userIdForInventario) {
+    // --- Lógica de Reporte (ADAPTADA PARA MODAL) ---
+    // --- RENOMBRADA a _processSalesDataForModal ---
+    async function _processSalesDataForModal(ventas, userIdForInventario) {
         // Funciones locales getRubroOrderMapLocal/getSegmentoOrderMapLocal eliminadas
 
         const clientData = {};
@@ -187,20 +202,21 @@
         const sortedClients = Object.keys(clientData).sort();
 
         // --- USA ORDEN GLOBAL ---
-        const sortFunction = await window.getGlobalProductSortFunction();
+        // Esta función ahora se define localmente (copiada de catalogo.js)
+        const sortFunction = await getGlobalProductSortFunction();
         const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
         // --- FIN ---
 
         return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
 
-    // MODIFICADO: Usa cabecera simplificada
+    // MODIFICADO: Usa _processSalesDataForModal
     async function showClosingDetail(closingId) {
         const closingData = window.tempClosingsData?.find(c => c.id === closingId);
         if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId);
 
             // Cabecera simplificada
             let headerHTML = `<tr class="sticky top-0 z-20 bg-gray-200"> <th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`;
@@ -222,24 +238,279 @@
         } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
 
-    // MODIFICADO: Usa cabecera simplificada
+    // --- NUEVO: Pegado desde ventas.js para el nuevo export ---
+    async function processSalesDataForReport(ventas, userIdForInventario) {
+        const dataByRubro = {};
+        const clientTotals = {}; 
+        let grandTotalValue = 0;
+        const vaciosMovementsPorTipo = {};
+        const allRubros = new Set();
+        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+
+        // 1. Obtener el mapa de inventario del VENDEDOR
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+        const inventarioSnapshot = await _getDocs(inventarioRef); 
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        
+        // 1b. Obtener info del usuario para el reporte
+        // --- ADAPTACIÓN: Usar _getDoc y _doc (añadidos a initData) ---
+        const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
+        const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
+
+        // 2. Procesar todas las ventas
+        ventas.forEach(venta => {
+            const clientName = venta.clienteNombre || 'Cliente Desconocido';
+            const ventaTotalCliente = venta.total || 0;
+            clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+            grandTotalValue += ventaTotalCliente;
+
+            if (!vaciosMovementsPorTipo[clientName]) { 
+                vaciosMovementsPorTipo[clientName] = {}; 
+                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
+            }
+            const vacDev = venta.vaciosDevueltosPorTipo || {};
+            for (const t in vacDev) { 
+                if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
+                vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
+            }
+
+            (venta.productos || []).forEach(p => {
+                const prodCompleto = inventarioMap.get(p.id) || p;
+                const rubro = prodCompleto.rubro || 'SIN RUBRO';
+                allRubros.add(rubro);
+
+                if (!dataByRubro[rubro]) {
+                    dataByRubro[rubro] = {
+                        clients: {},
+                        productsMap: new Map(),
+                        productTotals: {}, // NUEVO: Para Carga Inicial/Restante
+                        totalValue: 0
+                    };
+                }
+                if (!dataByRubro[rubro].clients[clientName]) {
+                    dataByRubro[rubro].clients[clientName] = {
+                        products: {},
+                        totalValue: 0
+                    };
+                }
+
+                if (!dataByRubro[rubro].productsMap.has(p.id)) {
+                    dataByRubro[rubro].productsMap.set(p.id, prodCompleto);
+                }
+
+                const cantidadUnidades = p.totalUnidadesVendidas || 0;
+                const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) +
+                                         (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) +
+                                         (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
+
+                dataByRubro[rubro].clients[clientName].products[p.id] = 
+                    (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
+                
+                dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
+                dataByRubro[rubro].totalValue += subtotalProducto;
+
+                if (prodCompleto.manejaVacios && prodCompleto.tipoVacio) {
+                    const tV = prodCompleto.tipoVacio; 
+                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
+                }
+            });
+        });
+
+        // 3. Obtener la función de ordenamiento global
+        // --- ADAPTACIÓN: Llamar a la función localmente definida ---
+        const sortFunction = await getGlobalProductSortFunction();
+
+        // 4. Finalizar procesamiento: Convertir Mapas a Arrays ordenados y calcular Totales de Stock
+        const finalData = {
+            rubros: {},
+            vaciosMovementsPorTipo: vaciosMovementsPorTipo,
+            clientTotals: clientTotals,
+            grandTotalValue: grandTotalValue
+        };
+
+        for (const rubroName of Array.from(allRubros).sort()) {
+            const rubroData = dataByRubro[rubroName];
+            
+            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
+            const sortedClients = Object.keys(rubroData.clients).sort();
+
+            // NUEVO: Calcular Carga Inicial, Vendida y Restante para cada producto
+            const productTotals = {};
+            for (const p of sortedProducts) {
+                const productId = p.id;
+                let totalSoldUnits = 0;
+                for (const clientName of sortedClients) {
+                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
+                }
+                
+                // Carga Restante = Stock Actual en Inventario
+                const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
+                // Carga Inicial = Carga Restante + Total Vendido
+                const initialStockUnits = currentStockUnits + totalSoldUnits;
+
+                productTotals[productId] = {
+                    totalSold: totalSoldUnits,
+                    currentStock: currentStockUnits,
+                    initialStock: initialStockUnits
+                };
+            }
+            
+            finalData.rubros[rubroName] = {
+                clients: rubroData.clients,
+                products: sortedProducts, 
+                sortedClients: sortedClients,
+                totalValue: rubroData.totalValue,
+                productTotals: productTotals // Adjuntar los nuevos totales
+            };
+        }
+
+        return { finalData, userInfo }; // Devolver también la info del usuario
+    }
+
+
+    // --- MODIFICADO: Reemplazado con la nueva lógica de 'ventas.js' ---
     async function exportSingleClosingToExcel(closingData) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
+        
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
-            const dSheet1 = [];
-            // Cabecera simple
-            const hRow = ["Cliente"]; finalProductOrder.forEach(p => hRow.push(p.presentacion || 'N/A')); hRow.push("Total Cliente"); dSheet1.push(hRow);
-            // Filas de datos
-            sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
-            // Pie de tabla
-            const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
-            const ws1 = XLSX.utils.aoa_to_sheet(dSheet1); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, 'Reporte Cierre');
-            // Hoja de Vacíos (sin cambios)
-            const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if (cliVacios.length > 0) { const dSheet2=[['Cliente','Tipo Vacío','Entregados','Devueltos','Neto']]; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0)dSheet2.push([cli,t,mov.entregados,mov.devueltos,mov.entregados-mov.devueltos]);});}); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheet2), 'Reporte Vacíos');}
-            const vendedor = closingData.vendedorInfo || {}; const fecha = closingData.fecha.toDate().toISOString().slice(0, 10); const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
+            // 1. Procesar los datos
+            const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+            const wb = XLSX.utils.book_new();
+            
+            // --- ADAPTACIÓN: Usar la fecha e info del cierre específico ---
+            const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
+            const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
+
+            // --- 2. Crear una hoja POR RUBRO ---
+            for (const rubroName in finalData.rubros) {
+                const rubroData = finalData.rubros[rubroName];
+                const { products: sortedProducts, sortedClients, clients: clientData, productTotals } = rubroData;
+
+                const sheetData = [];
+                
+                // --- Encabezados de Archivo (Fila 1 y 2) ---
+                sheetData.push([`FECHA: ${fechaCierre}`]);
+                sheetData.push([`USUARIO: ${usuarioEmail}`]);
+                sheetData.push([]); // Fila 3 vacía
+
+                // --- Encabezados de Tabla (Fila 4 a 7) ---
+                const headerRow1_Segmento = ["", "SEGMENTO ->"]; // Col A, B
+                const headerRow2_Marca = ["", "MARCA ->"]; // Col A, B
+                const headerRow3_Producto = ["", "PRODUCTO ->"]; // Col A, B
+                const headerRow4_Precio = ["", "PRECIO ->"]; // Col A, B
+
+                sortedProducts.forEach(p => {
+                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                    let precioMostrado = 0;
+                    if (p.ventaPor?.cj && precios.cj > 0) precioMostrado = precios.cj;
+                    else if (p.ventaPor?.paq && precios.paq > 0) precioMostrado = precios.paq;
+                    else precioMostrado = precios.und || 0;
+
+                    headerRow1_Segmento.push(p.segmento || 'S/S');
+                    headerRow2_Marca.push(p.marca || 'S/M');
+                    headerRow3_Producto.push(p.presentacion || 'S/P');
+                    headerRow4_Precio.push(precioMostrado > 0 ? Number(precioMostrado.toFixed(2)) : ''); // Guardar como número
+                });
+
+                headerRow1_Segmento.push("TOTAL CLIENTE");
+                headerRow2_Marca.push("");
+                headerRow3_Producto.push("");
+                headerRow4_Precio.push("");
+
+                sheetData.push(headerRow1_Segmento, headerRow2_Marca, headerRow3_Producto, headerRow4_Precio);
+                sheetData.push([]); // Fila 8 vacía
+
+                // --- FILA: CARGA INICIAL (Fila 9) ---
+                const cargaInicialRow = ["", "CARGA INICIAL"]; // Col A, B
+                sortedProducts.forEach(p => {
+                    const initialStock = productTotals[p.id].initialStock;
+                    cargaInicialRow.push(getDisplayQty(initialStock, p));
+                });
+                cargaInicialRow.push(""); // Sin total
+                sheetData.push(cargaInicialRow);
+                
+                // --- Filas de Clientes (Fila 10+) ---
+                sortedClients.forEach(clientName => {
+                    const clientRow = [clientName, ""]; // Col A = Cliente, Col B = vacía
+                    const clientSales = clientData[clientName];
+
+                    sortedProducts.forEach(p => {
+                        const qU = clientSales.products[p.id] || 0;
+                        clientRow.push(getDisplayQty(qU, p));
+                    });
+                    
+                    clientRow.push(Number(clientSales.totalValue.toFixed(2))); // Total por cliente EN ESTE RUBRO
+                    sheetData.push(clientRow);
+                });
+
+                // --- FILA: TOTAL VENDIDO ---
+                const totalVendidoRow = ["", "TOTAL VENDIDO"]; // Col A, B
+                sortedProducts.forEach(p => {
+                    const totalSold = productTotals[p.id].totalSold;
+                    totalVendidoRow.push(getDisplayQty(totalSold, p));
+                });
+                totalVendidoRow.push(Number(rubroData.totalValue.toFixed(2))); // Gran total de este rubro
+                sheetData.push(totalVendidoRow);
+
+                // --- FILA: CARGA RESTANTE ---
+                const cargaRestanteRow = ["", "CARGA RESTANTE"]; // Col A, B
+                sortedProducts.forEach(p => {
+                    const currentStock = productTotals[p.id].currentStock;
+                    cargaRestanteRow.push(getDisplayQty(currentStock, p));
+                });
+                cargaRestanteRow.push(""); // Sin total
+                sheetData.push(cargaRestanteRow);
+
+                // Añadir la hoja al libro
+                const ws = XLSX.utils.aoa_to_sheet(sheetData);
+                // Truncar nombre de hoja si es muy largo (límite Excel 31 chars)
+                const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            }
+
+            // --- 3. Crear hoja de Reporte Vacíos (lógica anterior) ---
+            const { vaciosMovementsPorTipo } = finalData;
+            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const cliVacios = Object.keys(vaciosMovementsPorTipo)
+                                  .filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0))
+                                  .sort(); 
+            if (cliVacios.length > 0) { 
+                const dSheetVacios = [['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto']]; 
+                cliVacios.forEach(cli => {
+                    const movs = vaciosMovementsPorTipo[cli]; 
+                    TIPOS_VACIO_GLOBAL.forEach(t => {
+                        const mov = movs[t] || {entregados:0, devueltos:0}; 
+                        if (mov.entregados > 0 || mov.devueltos > 0) {
+                            dSheetVacios.push([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                        }
+                    });
+                }); 
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetVacios), 'Reporte Vacíos');
+            }
+
+            // --- 4. Crear hoja de Total por Cliente ---
+            const { clientTotals, grandTotalValue } = finalData;
+            const dSheetClientes = [['Cliente', 'Gasto Total']];
+            const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
+
+            sortedClientTotals.forEach(([clientName, totalValue]) => {
+                dSheetClientes.push([clientName, Number(totalValue.toFixed(2))]);
+            });
+            dSheetClientes.push(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetClientes), 'Total Por Cliente');
+
+            // --- 5. Descargar el archivo (usando la lógica de data.js) ---
+            const vendedor = closingData.vendedorInfo || {}; 
+            const fecha = closingData.fecha.toDate().toISOString().slice(0, 10); 
+            const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
             XLSX.writeFile(wb, `Cierre_${vendNombre}_${fecha}.xlsx`);
-        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error Excel: ${error.message}`); throw error; }
+
+        } catch (error) { 
+            console.error("Error exportando:", error); 
+            _showModal('Error', `Error Excel: ${error.message}`); 
+            throw error; 
+        }
     }
 
     async function handleDownloadSingleClosing(closingId) {
@@ -430,7 +701,37 @@
         document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
     }
 
+    // --- NUEVO: Función de ordenamiento copiada de catalogo.js ---
+    // (Cache local de data.js)
+    let _sortPreferenceCache = null;
+    let _rubroOrderMapCache = null;
+    let _segmentoOrderMapCache = null;
+    const SORT_CONFIG_PATH = 'config/productSortOrder'; // Asume que el admin (userId) guarda su config aquí
+
+    async function getGlobalProductSortFunction() {
+        // Usa el _userId del ADMIN
+        if (!_sortPreferenceCache) {
+            try { const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); const dSnap=await _getDoc(dRef); if(dSnap.exists()&&dSnap.data().order){ _sortPreferenceCache=dSnap.data().order; const expKeys=new Set(['rubro','segmento','marca','presentacion']); if(_sortPreferenceCache.length!==expKeys.size||!_sortPreferenceCache.every(k=>expKeys.has(k))){console.warn("Orden inválido, usando default."); _sortPreferenceCache=['segmento','marca','presentacion','rubro'];} } else {_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} }
+            catch (error) { console.error("Error cargando pref orden:", error); _sortPreferenceCache=['segmento','marca','presentacion','rubro']; }
+        }
+        if (!_rubroOrderMapCache) { _rubroOrderMapCache={}; try { const rRef=_collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); const snap=await _getDocs(rRef); snap.docs.forEach(d=>{const data=d.data(); _rubroOrderMapCache[data.name]=data.orden??9999;}); } catch (e) { console.warn("No se pudo obtener orden rubros.", e); } }
+        if (!_segmentoOrderMapCache) { _segmentoOrderMapCache={}; try { const sRef=_collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`); const snap=await _getDocs(sRef); snap.docs.forEach(d=>{const data=d.data(); _segmentoOrderMapCache[data.name]=data.orden??9999;}); } catch (e) { console.warn("No se pudo obtener orden segmentos.", e); } }
+
+        return (a, b) => {
+            for (const key of _sortPreferenceCache) { let valA, valB, compRes = 0;
+                switch (key) {
+                    case 'rubro': valA=_rubroOrderMapCache[a.rubro]??9999; valB=_rubroOrderMapCache[b.rubro]??9999; compRes=valA-valB; if(compRes===0)compRes=(a.rubro||'').localeCompare(b.rubro||''); break;
+                    case 'segmento': valA=_segmentoOrderMapCache[a.segmento]??9999; valB=_segmentoOrderMapCache[b.segmento]??9999; compRes=valA-valB; if(compRes===0)compRes=(a.segmento||'').localeCompare(b.segmento||''); break;
+                    case 'marca': valA=a.marca||''; valB=b.marca||''; compRes=valA.localeCompare(valB); break;
+                    case 'presentacion': valA=a.presentacion||''; valB=b.presentacion||''; compRes=valA.localeCompare(valB); break;
+                } if (compRes !== 0) return compRes;
+            } return 0;
+        };
+    };
+    // --- FIN de la función copiada ---
+
     // Exponer funciones públicas
     window.dataModule = { showClosingDetail, handleDownloadSingleClosing };
 
 })();
+
