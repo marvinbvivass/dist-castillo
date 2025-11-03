@@ -783,7 +783,7 @@
             const { finalData, userInfo } = await processSalesDataForReport(ventas, _userId); 
             const wb = XLSX.utils.book_new();
             const fechaCierre = new Date().toLocaleDateString('es-ES');
-            const usuarioEmail = userInfo.email || 'Usuario Desconocido';
+            const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
             // --- 2. Crear una hoja POR RUBRO ---
             for (const rubroName in finalData.rubros) {
@@ -792,16 +792,16 @@
 
                 const sheetData = [];
                 
-                // --- Encabezados de Archivo ---
+                // --- Encabezados de Archivo (Fila 1 y 2) ---
                 sheetData.push([`FECHA: ${fechaCierre}`]);
                 sheetData.push([`USUARIO: ${usuarioEmail}`]);
-                sheetData.push([]); // Fila vacía
+                sheetData.push([]); // Fila 3 vacía
 
-                // --- Encabezados de Tabla ---
-                const headerRow1_Segmento = ["CLIENTE", "SEGMENTO ->"];
-                const headerRow2_Marca = ["", "MARCA ->"];
-                const headerRow3_Producto = ["", "PRODUCTO ->"];
-                const headerRow4_Precio = ["", "PRECIO ->"];
+                // --- Encabezados de Tabla (Fila 4 a 7) ---
+                const headerRow1_Segmento = ["", "SEGMENTO ->"]; // Col A, B
+                const headerRow2_Marca = ["", "MARCA ->"]; // Col A, B
+                const headerRow3_Producto = ["", "PRODUCTO ->"]; // Col A, B
+                const headerRow4_Precio = ["", "PRECIO ->"]; // Col A, B
 
                 sortedProducts.forEach(p => {
                     const precios = p.precios || { und: p.precioPorUnidad || 0 };
@@ -813,7 +813,7 @@
                     headerRow1_Segmento.push(p.segmento || 'S/S');
                     headerRow2_Marca.push(p.marca || 'S/M');
                     headerRow3_Producto.push(p.presentacion || 'S/P');
-                    headerRow4_Precio.push(precioMostrado > 0 ? precioMostrado : '');
+                    headerRow4_Precio.push(precioMostrado > 0 ? Number(precioMostrado.toFixed(2)) : ''); // Guardar como número
                 });
 
                 headerRow1_Segmento.push("TOTAL CLIENTE");
@@ -822,10 +822,10 @@
                 headerRow4_Precio.push("");
 
                 sheetData.push(headerRow1_Segmento, headerRow2_Marca, headerRow3_Producto, headerRow4_Precio);
-                sheetData.push([]); // Fila vacía
+                sheetData.push([]); // Fila 8 vacía
 
-                // --- NUEVA FILA: CARGA INICIAL ---
-                const cargaInicialRow = ["CARGA INICIAL", ""];
+                // --- FILA: CARGA INICIAL (Fila 9) ---
+                const cargaInicialRow = ["", "CARGA INICIAL"]; // Col A, B
                 sortedProducts.forEach(p => {
                     const initialStock = productTotals[p.id].initialStock;
                     cargaInicialRow.push(getDisplayQty(initialStock, p));
@@ -833,9 +833,9 @@
                 cargaInicialRow.push(""); // Sin total
                 sheetData.push(cargaInicialRow);
                 
-                // --- Filas de Clientes ---
+                // --- Filas de Clientes (Fila 10+) ---
                 sortedClients.forEach(clientName => {
-                    const clientRow = [clientName, ""];
+                    const clientRow = [clientName, ""]; // Col A = Cliente, Col B = vacía
                     const clientSales = clientData[clientName];
 
                     sortedProducts.forEach(p => {
@@ -843,21 +843,21 @@
                         clientRow.push(getDisplayQty(qU, p));
                     });
                     
-                    clientRow.push(Number(clientSales.totalValue.toFixed(2)));
+                    clientRow.push(Number(clientSales.totalValue.toFixed(2))); // Total por cliente EN ESTE RUBRO
                     sheetData.push(clientRow);
                 });
 
                 // --- FILA: TOTAL VENDIDO ---
-                const totalVendidoRow = ["TOTAL VENDIDO", ""];
+                const totalVendidoRow = ["", "TOTAL VENDIDO"]; // Col A, B
                 sortedProducts.forEach(p => {
                     const totalSold = productTotals[p.id].totalSold;
                     totalVendidoRow.push(getDisplayQty(totalSold, p));
                 });
-                totalVendidoRow.push(Number(rubroData.totalValue.toFixed(2)));
+                totalVendidoRow.push(Number(rubroData.totalValue.toFixed(2))); // Gran total de este rubro
                 sheetData.push(totalVendidoRow);
 
-                // --- NUEVA FILA: CARGA RESTANTE ---
-                const cargaRestanteRow = ["CARGA RESTANTE", ""];
+                // --- FILA: CARGA RESTANTE ---
+                const cargaRestanteRow = ["", "CARGA RESTANTE"]; // Col A, B
                 sortedProducts.forEach(p => {
                     const currentStock = productTotals[p.id].currentStock;
                     cargaRestanteRow.push(getDisplayQty(currentStock, p));
@@ -867,7 +867,8 @@
 
                 // Añadir la hoja al libro
                 const ws = XLSX.utils.aoa_to_sheet(sheetData);
-                const sheetName = rubroName.substring(0, 31);
+                // Truncar nombre de hoja si es muy largo (límite Excel 31 chars)
+                const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
                 XLSX.utils.book_append_sheet(wb, ws, sheetName);
             }
 
