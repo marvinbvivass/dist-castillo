@@ -216,20 +216,20 @@
             const pAgrupados = prods.reduce((acc, p) => { const m = p.marca || 'Sin Marca'; if (!acc[m]) acc[m] = []; acc[m].push(p); return acc; }, {}); const mOrdenadas = [...new Set(prods.map(p => p.marca || 'Sin Marca'))];
             _marcasCache = mOrdenadas; _productosAgrupadosCache = pAgrupados;
             
-            // --- MODIFICACIÓN: Reducido space-y-6 a space-y-3 ---
-            let html = '<div class="space-y-3">'; 
+            // --- MODIFICACIÓN: Reducido space-y-3 a space-y-2 ---
+            let html = '<div class="space-y-2">'; 
             const monLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)';
             
             mOrdenadas.forEach(marca => { 
                 // --- MODIFICACIÓN: Reducido text-lg a text-base ---
-                html += `<table class="min-w-full bg-transparent text-sm md:text-base"> 
+                html += `<table class="min-w-full bg-transparent text-sm"> 
                             <thead class="text-black"> 
-                                <!-- MODIFICACIÓN: Reducido py-2 a py-1.5, md:text-xl a md:text-lg -->
-                                <tr><th colspan="2" class="py-1.5 px-2 md:px-4 bg-gray-100 font-bold text-left text-base md:text-lg rounded-t-lg">${marca}</th></tr> 
-                                <!-- MODIFICACIÓN: Reducido md:py-2 a md:py-1, md:text-base a md:text-sm -->
+                                <!-- MODIFICACIÓN: Reducido py-1.5 a py-1, md:text-lg a md:text-base -->
+                                <tr><th colspan="2" class="py-1 px-2 md:px-4 bg-gray-100 font-bold text-left text-base rounded-t-lg">${marca}</th></tr> 
+                                <!-- MODIFICACIÓN: Reducido py-1 a py-0.5, md:text-sm a text-xs -->
                                 <tr> 
-                                    <th class="py-1 px-2 md:px-4 text-left font-semibold text-xs md:text-sm border-b border-gray-300">PRESENTACIÓN (Segmento)</th> 
-                                    <th class="py-1 md:py-1 px-2 md:px-4 text-right font-semibold text-xs md:text-sm border-b border-gray-300 price-toggle" onclick="window.toggleCatalogoMoneda()" title="Clic para cambiar">${monLabel} <span class="text-xs">⇆</span></th> 
+                                    <th class="py-0.5 px-2 md:px-4 text-left font-semibold text-xs border-b border-gray-300">PRESENTACIÓN (Segmento)</th> 
+                                    <th class="py-0.5 px-2 md:px-4 text-right font-semibold text-xs border-b border-gray-300 price-toggle" onclick="window.toggleCatalogoMoneda()" title="Clic para cambiar">${monLabel} <span class="text-xs">⇆</span></th> 
                                 </tr> 
                             </thead> 
                             <tbody>`;
@@ -244,14 +244,13 @@
                     else{pMostrado=`$${pBaseUSD.toFixed(2)}`;} 
                     const sDisp=p.segmento?`<span class="text-xs text-gray-500 ml-1">(${p.segmento})</span>`:''; 
                     
-                    // --- MODIFICACIÓN: py-1.5 y md:py-1 (antes py-1.5 md:py-2) ---
-                    // --- MODIFICACIÓN: <span> de uInfo ahora es inline-block ml-2 ---
+                    // --- MODIFICACIÓN: py-1 md:py-1 a py-0.5 px-2 ---
                     html+=`<tr class="border-b last:border-b-0">
-                                <td class="py-1 md:py-1 px-2 md:px-4 align-top">
+                                <td class="py-0.5 px-2 align-top">
                                     ${dPres} ${sDisp} 
                                     ${uInfo?`<span class="inline-block ml-2 text-xs text-gray-500">${uInfo}</span>`:''}
                                 </td>
-                                <td class="py-1 md:py-1 px-2 md:px-4 text-right font-semibold align-top">${pMostrado}</td>
+                                <td class="py-0.5 px-2 text-right font-semibold align-top">${pMostrado}</td>
                            </tr>`; 
                 }); 
                 html += `</tbody></table>`; 
@@ -262,8 +261,8 @@
     }
 
     async function handleGenerateCatalogoImage() {
-        // --- MODIFICACIÓN: Aumentado MAX_BRANDS_PER_PAGE de 5 a 7 ---
-        const MAX_BRANDS_PER_PAGE = 7; 
+        // --- MODIFICACIÓN: Aumentado MAX_BRANDS_PER_PAGE de 7 a 8 ---
+        const MAX_BRANDS_PER_PAGE = 8; 
         const shareBtn=document.getElementById('generateCatalogoImageBtn'), tasaCont=document.getElementById('tasa-input-container'), btnsCont=document.getElementById('catalogo-buttons-container');
         if (!_marcasCache || _marcasCache.length === 0) { window.showModal('Aviso', 'No hay productos.'); return; }
         
@@ -294,19 +293,23 @@
         _showModal('Progreso', `Generando ${totalP} página(s)...`);
         
         try { 
+            // --- CORRECCIÓN: Definir 'title' aquí ---
+            const titleEl=document.querySelector('#catalogo-para-imagen h2');
+            const title=titleEl?titleEl.textContent.trim():'Catálogo';
+
             const imgFiles = await Promise.all(pages.map(async (brandsPage, idx) => { 
                 const pNum=idx+1; 
-                // --- MODIFICACIÓN: Reducido space-y-4 a space-y-2 ---
-                let contHtml='<div class="space-y-2">'; 
+                // --- MODIFICACIÓN: Reducido space-y-2 a space-y-1 ---
+                let contHtml='<div class="space-y-1">'; 
                 const monLabel=_catalogoMonedaActual==='COP'?'PRECIO (COP)':'PRECIO (USD)'; 
                 brandsPage.forEach(marca=>{
-                    // --- MODIFICACIÓN: Reducido text-lg a text-base ---
-                    contHtml+=`<table class="min-w-full bg-transparent text-base"> 
+                    // --- MODIFICACIÓN: Reducido text-base a text-sm ---
+                    contHtml+=`<table class="min-w-full bg-transparent text-sm"> 
                                 <thead class="text-black"> 
-                                    <!-- MODIFICACIÓN: Reducido py-2 px-4 a py-1.5 px-3, text-xl a text-lg -->
-                                    <tr><th colspan="2" class="py-1.5 px-3 bg-gray-100 font-bold text-left text-lg">${marca}</th></tr> 
-                                    <!-- MODIFICACIÓN: Reducido py-2 px-4 a py-1 px-3, text-base a text-sm -->
-                                    <tr><th class="py-1 px-3 text-left font-semibold text-sm border-b">PRESENTACIÓN (Segmento)</th><th class="py-1 px-3 text-right font-semibold text-sm border-b">${monLabel}</th></tr> 
+                                    <!-- MODIFICACIÓN: Reducido py-1.5 px-3 a py-1 px-2, text-lg a text-base -->
+                                    <tr><th colspan="2" class="py-1 px-2 bg-gray-100 font-bold text-left text-base">${marca}</th></tr> 
+                                    <!-- MODIFICACIÓN: Reducido py-1 px-3 a py-0.5 px-2, text-sm a text-xs -->
+                                    <tr><th class="py-0.5 px-2 text-left font-semibold text-xs border-b">PRESENTACIÓN (Segmento)</th><th class="py-0.5 px-2 text-right font-semibold text-xs border-b">${monLabel}</th></tr> 
                                 </thead><tbody>`; 
                     const prodsMarca=_productosAgrupadosCache[marca]||[]; 
                     prodsMarca.forEach(p=>{ 
@@ -317,28 +320,29 @@
                         let pMostrado=_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0?`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`:`$${pBaseUSD.toFixed(2)}`; 
                         const sDisp=p.segmento?`<span class="text-xs ml-1">(${p.segmento})</span>`:''; 
                         
-                        // --- MODIFICACIÓN: Reducido py-2 px-4 a py-1 px-3 ---
-                        // --- MODIFICACIÓN: <span> de uInfo ahora es inline-block ml-2 ---
+                        // --- MODIFICACIÓN: Reducido py-1 px-3 a py-0.5 px-2 ---
                         contHtml+=`<tr class="border-b last:border-b-0">
-                                        <td class="py-1 px-3 align-top">
+                                        <td class="py-0.5 px-2 align-top">
                                             ${dPres} ${sDisp} 
                                             ${uInfo?`<span class="inline-block ml-2 text-xs text-gray-600">${uInfo}</span>`:''}
                                         </td>
-                                        <td class="py-1 px-3 text-right font-semibold align-top">${pMostrado}</td>
+                                        <td class="py-0.5 px-2 text-right font-semibold align-top">${pMostrado}</td>
                                    </tr>`; 
                     }); 
                     contHtml+=`</tbody></table>`;
                 }); 
                 contHtml+='</div>'; 
                 
-                const titleEl=document.querySelector('#catalogo-para-imagen h2'); const title=titleEl?titleEl.textContent.trim():'Catálogo';
-                // --- MODIFICACIÓN: Reducido p-8 a p-6, text-4xl a text-3xl, mb-4 a mb-2 ---
-                const fPageHtml = `<div class="bg-white p-6" style="width: 800px; box-shadow: none; border: 1px solid #eee;"> 
-                                    <h2 class="text-3xl font-bold mb-2 text-center">${title}</h2> 
-                                    <p class="text-center mb-1 text-sm">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p> 
-                                    <p class="text-center mb-2 text-sm italic">(Precios incluyen IVA)</p> 
+                // --- CORRECCIÓN: 'title' ya está definido afuera ---
+                // const titleEl=document.querySelector('#catalogo-para-imagen h2'); const title=titleEl?titleEl.textContent.trim():'Catálogo';
+                
+                // --- MODIFICACIÓN: Reducido p-6 a p-4, text-3xl a text-2xl, mb-2 a mb-1 ---
+                const fPageHtml = `<div class="bg-white p-4" style="width: 800px; box-shadow: none; border: 1px solid #eee;"> 
+                                    <h2 class="text-2xl font-bold mb-1 text-center">${title}</h2> 
+                                    <p class="text-center mb-0.5 text-xs">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p> 
+                                    <p class="text-center mb-1 text-xs italic">(Precios incluyen IVA)</p> 
                                     ${contHtml} 
-                                    <p class="text-center mt-3 text-xs">Página ${pNum} de ${totalP}</p> 
+                                    <p class="text-center mt-2 text-xs">Página ${pNum} de ${totalP}</p> 
                                   </div>`;
                                   
                 const tempDiv=document.createElement('div'); tempDiv.style.position='absolute'; tempDiv.style.left='-9999px'; tempDiv.style.top='0'; tempDiv.innerHTML=fPageHtml; document.body.appendChild(tempDiv); const pWrap=tempDiv.firstElementChild; 
@@ -370,6 +374,7 @@
                 // Intento 1: Compartir todos los archivos
                 console.log(`Intentando compartir ${imgFiles.length} archivos...`);
                 // --- MODIFICACIÓN: Eliminada la comprobación navigator.canShare ---
+                // --- CORRECCIÓN: 'title' ahora está definido ---
                 await navigator.share({ files: imgFiles, title: `Catálogo: ${title}`, text: `Catálogo (${title}) - ${totalP} páginas` });
                 // Si llega aquí, tuvo éxito
                 
