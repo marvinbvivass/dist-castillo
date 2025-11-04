@@ -15,14 +15,28 @@
     let mapInstance = null;
     let mapMarkers = new Map();
 
-    // --- NUEVO: Helper para formatear cantidad ---
+    // --- *** CORRECCIÓN 1: Lógica de getDisplayQty mejorada *** ---
+    // Devuelve solo el número, en la unidad de venta principal (Cj > Paq > Und)
     function getDisplayQty(qU, p) {
-        if (!qU || qU === 0) return '';
-        const vP = p.ventaPor || {und: true}, uCj = p.unidadesPorCaja || 1, uPaq = p.unidadesPorPaquete || 1;
-        // Priorizar Cajas, luego Paq, luego Und
-        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) return `${qU / uCj} Cj`;
-        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) return `${qU / uPaq} Paq`;
-        return `${qU} Und`;
+        if (!qU || qU === 0) return 0; // Devolver 0 para celdas numéricas
+        
+        const vP = p.ventaPor || {und: true};
+        const uCj = p.unidadesPorCaja || 1;
+        const uPaq = p.unidadesPorPaquete || 1;
+
+        // Prioridad: Si se vende por Caja
+        if (vP.cj && uCj > 0) {
+            const val = (qU / uCj);
+            // Evitar 1.000000001
+            return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
+        }
+        // Prioridad 2: Si se vende por Paquete
+        if (vP.paq && uPaq > 0) {
+            const val = (qU / uPaq);
+            return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
+        }
+        // Fallback: Mostrar unidades base
+        return qU;
     }
 
     window.initData = function(dependencies) {
@@ -299,7 +313,18 @@
                     dataByRubro[rubro].productsMap.set(p.id, prodCompleto);
                 }
 
-                const cantidadUnidades = p.totalUnidadesVendidas || 0;
+                // --- *** CORRECCIÓN 2: Robustez para datos antiguos *** ---
+                // Si `totalUnidadesVendidas` no existe (datos antiguos), calcularlo desde `cantidadVendida`.
+                let cantidadUnidades = p.totalUnidadesVendidas || 0;
+                if ((cantidadUnidades === 0) && p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) {
+                    const uCj = prodCompleto.unidadesPorCaja || 1;
+                    const uPaq = prodCompleto.unidadesPorPaquete || 1;
+                    cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj +
+                                       (p.cantidadVendida.paq || 0) * uPaq +
+                                       (p.cantidadVendida.und || 0);
+                }
+                // --- *** FIN DE LA CORRECCIÓN *** ---
+
                 const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) +
                                          (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) +
                                          (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
@@ -495,7 +520,7 @@
                 let subTotalCargaInicial = 0;
                 sortedProducts.forEach(p => {
                     const initialStock = productTotals[p.id]?.initialStock || 0;
-                    cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 's' });
+                    cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
                     subTotalCargaInicial += initialStock * getPrice(p);
                 });
                 cargaInicialRow[subTotalCol] = { v: subTotalCargaInicial, t: 'n', z: '$0.00' };
@@ -510,7 +535,7 @@
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach(p => {
                         const qU = clientSales.products[p.id] || 0;
-                        clientRow.push({ v: getDisplayQty(qU, p), t: 's' });
+                        clientRow.push({ v: getDisplayQty(qU, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
                     });
                     // Usar el total ya calculado
                     clientRow[subTotalCol] = { v: clientSales.totalValue, t: 'n', z: '$0.00' };
@@ -525,7 +550,7 @@
                 let subTotalCargaRestante = 0;
                 sortedProducts.forEach(p => {
                     const currentStock = productTotals[p.id]?.currentStock || 0;
-                    cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 's' });
+                    cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
                     subTotalCargaRestante += currentStock * getPrice(p);
                 });
                 cargaRestanteRow[subTotalCol] = { v: subTotalCargaRestante, t: 'n', z: '$0.00' };
@@ -535,7 +560,7 @@
                 const totalesRow = [null, { v: "TOTALES", s: { font: { bold: true } } }];
                 sortedProducts.forEach(p => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
-                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 's' });
+                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
                 });
                 // Usar el rubroTotalValue (que es la suma de clientSales.totalValue)
                 totalesRow[subTotalCol] = { v: rubroTotalValue, t: 'n', z: '$0.00' };
@@ -753,7 +778,7 @@
          if (typeof XLSX === 'undefined' || _filteredClientsCache.length === 0) { _showModal('Aviso', typeof XLSX === 'undefined'?'Librería Excel no cargada.':'No hay clientes.'); return; }
         const dExport = _filteredClientsCache.map(c => ({'Sector':c.sector||'','Nombre Comercial':c.nombreComercial||'','Nombre Personal':c.nombrePersonal||'','Telefono':c.telefono||'','CEP':c.codigoCEP||'','Coordenadas':c.coordenadas||''}));
         const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
-        const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
+        XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
     }
 
     // --- Lógica del Mapa (sin cambios) ---
