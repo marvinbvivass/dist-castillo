@@ -252,7 +252,6 @@
         } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
 
-    // --- NUEVO: Pegado desde ventas.js para el nuevo export ---
     // (Esta función es necesaria para exportSingleClosingToExcel)
     async function processSalesDataForReport(ventas, userIdForInventario) {
         const dataByRubro = {};
@@ -339,16 +338,19 @@
                     dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); // Almacenar el objeto unificado
                 }
 
-                // --- Cálculo de Unidades (usa 'p' de la venta, que es correcto) ---
-                let cantidadUnidades = p.totalUnidadesVendidas || 0;
-                if ((cantidadUnidades === 0) && p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) {
+                // --- *** INICIO CORRECCIÓN LÓGICA DE UNIDADES *** ---
+                // Priorizar el cálculo desde 'cantidadVendida' (para datos antiguos y nuevos)
+                let cantidadUnidades = 0;
+                if (p.cantidadVendida) { // Si el objeto 'cantidadVendida' existe
                     const uCj = p.unidadesPorCaja || 1;
                     const uPaq = p.unidadesPorPaquete || 1;
                     cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj +
                                        (p.cantidadVendida.paq || 0) * uPaq +
                                        (p.cantidadVendida.und || 0);
+                } else if (p.totalUnidadesVendidas) { // Fallback solo si 'cantidadVendida' no existe
+                    cantidadUnidades = p.totalUnidadesVendidas;
                 }
-                // --- Fin Cálculo de Unidades ---
+                // --- *** FIN CORRECCIÓN LÓGICA DE UNIDADES *** ---
 
                 // --- Cálculo de Subtotal (usa 'p' de la venta, que es correcto) ---
                 const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) +
@@ -429,7 +431,6 @@
 
 
     // --- *** INICIO DE LA SECCIÓN MODIFICADA *** ---
-    // Esta función reemplaza la versión anterior en data.js
     async function exportSingleClosingToExcel(closingData) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
         
@@ -441,6 +442,20 @@
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
+            // --- *** NUEVO: Estilos y Bordes *** ---
+            const borderStyle = { style: "thin", color: { auto: 1 } };
+            const borders = {
+                top: borderStyle,
+                bottom: borderStyle,
+                left: borderStyle,
+                right: borderStyle
+            };
+            const boldStyle = { font: { bold: true }, border: borders };
+            const dataStyle = { border: borders };
+            const priceStyle = { numFmt: "$0.00", border: borders };
+            const qtyStyle = { numFmt: "0.##", border: borders }; // Formato para números
+            const subTotalStyle = { font: { bold: true }, numFmt: "$0.00", border: borders };
+            
             // --- Helper para obtener el precio principal (priorizando Cj > Paq > Und) ---
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
@@ -467,27 +482,36 @@
                 const START_ROW = 0; // Fila '1'
                 
                 // --- Construir filas de cabecera (Segmento, Marca, Presentación, Precio) ---
-                const headerRowSegment = [null, { v: "SEGMENTO", s: { font: { bold: true } } }];
-                const headerRowMarca = [null, { v: "MARCA", s: { font: { bold: true } } }];
-                const headerRowPresentacion = [null, { v: "PRESENTACION", s: { font: { bold: true } } }];
-                const headerRowPrecio = [null, { v: "PRECIO", s: { font: { bold: true } } }];
+                const headerRowSegment = [null, { v: "SEGMENTO", s: boldStyle }];
+                const headerRowMarca = [null, { v: "MARCA", s: boldStyle }];
+                const headerRowPresentacion = [null, { v: "PRESENTACION", s: boldStyle }];
+                const headerRowPrecio = [null, { v: "PRECIO", s: boldStyle }];
                 
                 let lastSegment = null;
                 let lastMarca = null;
                 let segmentColStart = START_COL;
                 let marcaColStart = START_COL;
 
+                // --- *** NUEVO: Calcular anchos de columna *** ---
+                const colWchs = new Array(sortedProducts.length).fill(0); // Array para anchos de productos
+
                 sortedProducts.forEach((p, index) => {
                     const c = START_COL + index; // Índice de columna (base 0)
                     const segment = p.segmento || 'S/S';
                     const marca = p.marca || 'S/M';
+                    const presentacion = p.presentacion || 'S/P';
+                    const precio = getPrice(p);
 
-                    // Añadir valores de celda
-                    headerRowSegment[c] = segment;
-                    headerRowMarca[c] = marca;
-                    headerRowPresentacion[c] = p.presentacion || 'S/P';
-                    headerRowPrecio[c] = { v: getPrice(p), t: 'n', z: '$0.00' };
-                    colWidths.push({ wch: 15 }); // Ancho para esta columna de producto
+                    // Añadir valores de celda con estilo
+                    headerRowSegment[c] = { v: segment, s: dataStyle };
+                    headerRowMarca[c] = { v: marca, s: dataStyle };
+                    headerRowPresentacion[c] = { v: presentacion, s: dataStyle };
+                    headerRowPrecio[c] = { v: precio, t: 'n', z: '$0.00', s: priceStyle };
+
+                    // Calcular ancho de columna
+                    const priceLen = precio.toFixed(2).length;
+                    const w = Math.max(segment.length, marca.length, presentacion.length, priceLen);
+                    colWchs[index] = Math.max(colWchs[index] || 10, w + 2); // +2 de padding
 
                     // --- Manejar Merges de cabecera ---
                     if (index > 0) {
@@ -522,10 +546,14 @@
 
                 // --- Añadir Columna "Sub Total" (Cabecera) ---
                 const subTotalCol = START_COL + sortedProducts.length;
-                headerRowSegment[subTotalCol] = { v: "Sub Total", s: { font: { bold: true } } };
+                headerRowSegment[subTotalCol] = { v: "Sub Total", s: boldStyle };
                 // Las otras filas de cabecera quedan vacías en esta columna, así que las combinamos
                 merges.push({ s: { r: START_ROW, c: subTotalCol }, e: { r: START_ROW + 3, c: subTotalCol } });
-                colWidths.push({ wch: 20 });
+                colWidths.push({ wch: 15 }); // Ancho para Sub Total
+                
+                // Aplicar anchos de columna calculados
+                colWchs.forEach(w => colWidths.push({ wch: w }));
+
 
                 // Añadir cabeceras a los datos de la hoja
                 ws_data.push(headerRowSegment);
@@ -543,54 +571,48 @@
                 // --- Construir Filas de Datos ---
                 
                 // --- Fila: CARGA INICIAL ---
-                const cargaInicialRow = [null, { v: "CARGA INICIAL", s: { font: { bold: true } } }];
-                let subTotalCargaInicial = 0;
+                const cargaInicialRow = [null, { v: "CARGA INICIAL", s: boldStyle }];
                 sortedProducts.forEach(p => {
                     const initialStock = productTotals[p.id]?.initialStock || 0;
-                    cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
-                    subTotalCargaInicial += initialStock * getPrice(p);
+                    cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 'n', s: qtyStyle }); // Con estilo y tipo
                 });
-                cargaInicialRow[subTotalCol] = { v: subTotalCargaInicial, t: 'n', z: '$0.00' };
+                cargaInicialRow[subTotalCol] = null; // *** CORRECCIÓN: Sin Subtotal ***
                 ws_data.push(cargaInicialRow);
 
                 ws_data.push([]); // Fila 7 vacía (CLIENTES label)
 
                 // --- Filas: Clientes ---
-                let subTotalVendido_Check = 0;
                 sortedClients.forEach(clientName => {
-                    const clientRow = [null, clientName];
+                    const clientRow = [null, { v: clientName, s: dataStyle }]; // Cliente con borde
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach(p => {
                         const qU = clientSales.products[p.id] || 0;
-                        clientRow.push({ v: getDisplayQty(qU, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
+                        clientRow.push({ v: getDisplayQty(qU, p), t: 'n', s: qtyStyle }); // Con estilo y tipo
                     });
                     // Usar el total ya calculado
-                    clientRow[subTotalCol] = { v: clientSales.totalValue, t: 'n', z: '$0.00' };
-                    subTotalVendido_Check += clientSales.totalValue;
+                    clientRow[subTotalCol] = { v: clientSales.totalValue, t: 'n', z: '$0.00', s: priceStyle };
                     ws_data.push(clientRow);
                 });
 
                 ws_data.push([]); // Fila vacía antes de totales
 
                 // --- Fila: CARGA RESTANTE ---
-                const cargaRestanteRow = [null, { v: "CARGA RESTANTE", s: { font: { bold: true } } }];
-                let subTotalCargaRestante = 0;
+                const cargaRestanteRow = [null, { v: "CARGA RESTANTE", s: boldStyle }];
                 sortedProducts.forEach(p => {
                     const currentStock = productTotals[p.id]?.currentStock || 0;
-                    cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
-                    subTotalCargaRestante += currentStock * getPrice(p);
+                    cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 'n', s: qtyStyle }); // Con estilo y tipo
                 });
-                cargaRestanteRow[subTotalCol] = { v: subTotalCargaRestante, t: 'n', z: '$0.00' };
+                cargaRestanteRow[subTotalCol] = null; // *** CORRECCIÓN: Sin Subtotal ***
                 ws_data.push(cargaRestanteRow);
 
                 // --- Fila: TOTALES (Vendido) ---
-                const totalesRow = [null, { v: "TOTALES", s: { font: { bold: true } } }];
+                const totalesRow = [null, { v: "TOTALES", s: boldStyle }];
                 sortedProducts.forEach(p => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
-                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 'n' }); // *** CORRECCIÓN: t: 'n' (number)
+                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 'n', s: qtyStyle }); // Con estilo y tipo
                 });
                 // Usar el rubroTotalValue (que es la suma de clientSales.totalValue)
-                totalesRow[subTotalCol] = { v: rubroTotalValue, t: 'n', z: '$0.00' };
+                totalesRow[subTotalCol] = { v: rubroTotalValue, t: 'n', z: '$0.00', s: subTotalStyle };
                 ws_data.push(totalesRow);
 
                 // --- Finalizar Hoja ---
@@ -619,7 +641,11 @@
                         }
                     });
                 }); 
-                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetVacios), 'Reporte Vacíos');
+                const wsVacios = XLSX.utils.aoa_to_sheet(dSheetVacios);
+                // --- *** NUEVO: Auto-ancho Vacíos *** ---
+                const vaciosColWidths = [ {wch: 25}, {wch: 15}, {wch: 12}, {wch: 12}, {wch: 10} ];
+                wsVacios['!cols'] = vaciosColWidths;
+                XLSX.utils.book_append_sheet(wb, wsVacios, 'Reporte Vacíos');
             }
 
             // --- 4. Crear hoja de Total por Cliente ---
@@ -631,7 +657,12 @@
                 dSheetClientes.push([clientName, Number(totalValue.toFixed(2))]);
             });
             dSheetClientes.push(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheetClientes), 'Total Por Cliente');
+            
+            const wsClientes = XLSX.utils.aoa_to_sheet(dSheetClientes);
+            // --- *** NUEVO: Auto-ancho Clientes *** ---
+            const clienteColWidths = [ {wch: 35}, {wch: 15} ];
+            wsClientes['!cols'] = clienteColWidths;
+            XLSX.utils.book_append_sheet(wb, wsClientes, 'Total Por Cliente');
 
             // --- 5. Descargar el archivo (usando la lógica de data.js) ---
             const vendedor = closingData.vendedorInfo || {}; 
@@ -805,6 +836,10 @@
          if (typeof XLSX === 'undefined' || _filteredClientsCache.length === 0) { _showModal('Aviso', typeof XLSX === 'undefined'?'Librería Excel no cargada.':'No hay clientes.'); return; }
         const dExport = _filteredClientsCache.map(c => ({'Sector':c.sector||'','Nombre Comercial':c.nombreComercial||'','Nombre Personal':c.nombrePersonal||'','Telefono':c.telefono||'','CEP':c.codigoCEP||'','Coordenadas':c.coordenadas||''}));
         const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+        // --- *** NUEVO: Auto-ancho Clientes Consolidados *** ---
+        const clientColWidths = [ {wch: 20}, {wch: 30}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 20} ];
+        ws['!cols'] = clientColWidths;
+        const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
     }
 
