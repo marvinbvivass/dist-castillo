@@ -290,8 +290,34 @@
             }
 
             (venta.productos || []).forEach(p => {
-                const prodCompleto = inventarioMap.get(p.id) || p;
-                const rubro = prodCompleto.rubro || 'SIN RUBRO';
+                // --- *** INICIO DE LA CORRECCIÓN *** ---
+                const prodInventario = inventarioMap.get(p.id); // Datos del inventario (puede ser undefined)
+                
+                // Construir el objeto 'prodParaReporte'
+                // Priorizar datos de la VENTA (p) para conversión y precios
+                // Priorizar datos del INVENTARIO (prodInventario) para categorización (Rubro, etc.)
+                const prodParaReporte = {
+                    id: p.id,
+                    // Datos de Venta (p) - ¡Estos son los que importan para el cálculo!
+                    precios: p.precios,
+                    ventaPor: p.ventaPor || {und: true}, // Usar el 'ventaPor' de la venta
+                    unidadesPorCaja: p.unidadesPorCaja || 1, // Usar 'unidadesPorCaja' de la venta
+                    unidadesPorPaquete: p.unidadesPorPaquete || 1, // Usar 'unidadesPorPaquete' de la venta
+                    
+                    // Datos de Inventario (prodInventario) o fallback a la Venta (p)
+                    rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
+                    segmento: prodInventario?.segmento || p.segmento || 'S/S',
+                    marca: prodInventario?.marca || p.marca || 'S/M',
+                    presentacion: prodInventario?.presentacion || p.presentacion || 'S/P',
+                    
+                    // Datos de Vacíos (del inventario, ya que es una propiedad del producto)
+                    manejaVacios: prodInventario?.manejaVacios || p.manejaVacios || false,
+                    tipoVacio: prodInventario?.tipoVacio || p.tipoVacio || null
+                };
+                
+                const rubro = prodParaReporte.rubro;
+                // --- *** FIN DE LA CORRECCIÓN *** ---
+                
                 allRubros.add(rubro);
 
                 if (!dataByRubro[rubro]) {
@@ -310,24 +336,21 @@
                 }
 
                 if (!dataByRubro[rubro].productsMap.has(p.id)) {
-                    dataByRubro[rubro].productsMap.set(p.id, prodCompleto);
+                    dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); // Almacenar el objeto unificado
                 }
 
-                // --- *** CORRECCIÓN 2: Robustez para datos antiguos *** ---
-                // Si `totalUnidadesVendidas` no existe (datos antiguos), calcularlo desde `cantidadVendida`.
+                // --- Cálculo de Unidades (usa 'p' de la venta, que es correcto) ---
                 let cantidadUnidades = p.totalUnidadesVendidas || 0;
                 if ((cantidadUnidades === 0) && p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) {
-                    // --- *** INICIO DE LA CORRECCIÓN DE HOY *** ---
-                    // Usar las unidades guardadas 'p' (de la venta) en lugar de 'prodCompleto' (del inventario actual)
                     const uCj = p.unidadesPorCaja || 1;
                     const uPaq = p.unidadesPorPaquete || 1;
-                    // --- *** FIN DE LA CORRECCIÓN DE HOY *** ---
                     cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj +
                                        (p.cantidadVendida.paq || 0) * uPaq +
                                        (p.cantidadVendida.und || 0);
                 }
-                // --- *** FIN DE LA CORRECCIÓN *** ---
+                // --- Fin Cálculo de Unidades ---
 
+                // --- Cálculo de Subtotal (usa 'p' de la venta, que es correcto) ---
                 const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) +
                                          (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) +
                                          (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
@@ -338,8 +361,9 @@
                 dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
                 dataByRubro[rubro].totalValue += subtotalProducto;
 
-                if (prodCompleto.manejaVacios && prodCompleto.tipoVacio) {
-                    const tV = prodCompleto.tipoVacio; 
+                // Lógica de vacíos (usa 'prodParaReporte' ahora)
+                if (prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) {
+                    const tV = prodParaReporte.tipoVacio; 
                     if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
                     vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
                 }
