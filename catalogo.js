@@ -215,273 +215,237 @@
             if (prods.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500 p-4">No hay productos ${ _currentRubros.length>0?'en categoría':''}.</p>`; _marcasCache = []; _productosAgrupadosCache = {}; return; }
             const pAgrupados = prods.reduce((acc, p) => { const m = p.marca || 'Sin Marca'; if (!acc[m]) acc[m] = []; acc[m].push(p); return acc; }, {}); const mOrdenadas = [...new Set(prods.map(p => p.marca || 'Sin Marca'))];
             _marcasCache = mOrdenadas; _productosAgrupadosCache = pAgrupados;
-            let html = '<div class="space-y-4">'; const monLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)';
-            mOrdenadas.forEach(marca => { html += `<table class="min-w-full bg-transparent text-sm md:text-lg"> <thead class="text-black"> <tr><th colspan="2" class="py-2 px-2 md:px-4 bg-gray-100 font-bold text-left text-base md:text-xl rounded-t-lg">${marca}</th></tr> <tr> <th class="py-1 md:py-2 px-2 md:px-4 text-left font-semibold text-xs md:text-base border-b border-gray-300">PRESENTACIÓN (Segmento)</th> <th class="py-1 md:py-2 px-2 md:px-4 text-right font-semibold text-xs md:text-base border-b border-gray-300 price-toggle" onclick="window.toggleCatalogoMoneda()" title="Clic para cambiar">${monLabel} <span class="text-xs">⇆</span></th> </tr> </thead> <tbody>`;
-                const prodsMarca = pAgrupados[marca] || []; prodsMarca.forEach(p => { const vPor=p.ventaPor||{und:true}; const precios=p.precios||{und:p.precioPorUnidad||0}; let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; if(vPor.cj&&precios.cj>0){pBaseUSD=precios.cj;uInfo=`(Cj/${p.unidadesPorCaja||1} und)`;}else if(vPor.paq&&precios.paq>0){pBaseUSD=precios.paq;uInfo=`(Paq/${p.unidadesPorPaquete||1} und)`;}else{pBaseUSD=precios.und||0;uInfo=`(Und)`;} let pMostrado; if(_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0){pMostrado=`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`; }else{pMostrado=`$${pBaseUSD.toFixed(2)}`;} const sDisp=p.segmento?`<span class="text-xs text-gray-500 ml-1">(${p.segmento})</span>`:''; html+=`<tr class="border-b last:border-b-0"><td class="py-1.5 md:py-2 px-2 md:px-4 align-top">${dPres} ${sDisp} ${uInfo?`<span class="block text-xs text-gray-500">${uInfo}</span>`:''}</td><td class="py-1.5 md:py-2 px-2 md:px-4 text-right font-semibold align-top">${pMostrado}</td></tr>`; }); html += `</tbody></table>`; }); html += '</div>'; cont.innerHTML = html;
+            
+            // --- MODIFICACIÓN: Reducido space-y-6 a space-y-3 ---
+            let html = '<div class="space-y-3">'; 
+            const monLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)';
+            
+            mOrdenadas.forEach(marca => { 
+                // --- MODIFICACIÓN: Reducido text-lg a text-base ---
+                html += `<table class="min-w-full bg-transparent text-sm md:text-base"> 
+                            <thead class="text-black"> 
+                                <!-- MODIFICACIÓN: Reducido py-2 a py-1.5, md:text-xl a md:text-lg -->
+                                <tr><th colspan="2" class="py-1.5 px-2 md:px-4 bg-gray-100 font-bold text-left text-base md:text-lg rounded-t-lg">${marca}</th></tr> 
+                                <!-- MODIFICACIÓN: Reducido md:py-2 a md:py-1, md:text-base a md:text-sm -->
+                                <tr> 
+                                    <th class="py-1 px-2 md:px-4 text-left font-semibold text-xs md:text-sm border-b border-gray-300">PRESENTACIÓN (Segmento)</th> 
+                                    <th class="py-1 md:py-1 px-2 md:px-4 text-right font-semibold text-xs md:text-sm border-b border-gray-300 price-toggle" onclick="window.toggleCatalogoMoneda()" title="Clic para cambiar">${monLabel} <span class="text-xs">⇆</span></th> 
+                                </tr> 
+                            </thead> 
+                            <tbody>`;
+                const prodsMarca = pAgrupados[marca] || []; 
+                prodsMarca.forEach(p => { 
+                    const vPor=p.ventaPor||{und:true}; const precios=p.precios||{und:p.precioPorUnidad||0}; let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; 
+                    if(vPor.cj&&precios.cj>0){pBaseUSD=precios.cj;uInfo=`(Cj/${p.unidadesPorCaja||1} und)`;}
+                    else if(vPor.paq&&precios.paq>0){pBaseUSD=precios.paq;uInfo=`(Paq/${p.unidadesPorPaquete||1} und)`;}
+                    else{pBaseUSD=precios.und||0;uInfo=`(Und)`;} 
+                    let pMostrado; 
+                    if(_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0){pMostrado=`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`; }
+                    else{pMostrado=`$${pBaseUSD.toFixed(2)}`;} 
+                    const sDisp=p.segmento?`<span class="text-xs text-gray-500 ml-1">(${p.segmento})</span>`:''; 
+                    
+                    // --- MODIFICACIÓN: py-1.5 y md:py-1 (antes py-1.5 md:py-2) ---
+                    // --- MODIFICACIÓN: <span> de uInfo ahora es inline-block ml-2 ---
+                    html+=`<tr class="border-b last:border-b-0">
+                                <td class="py-1 md:py-1 px-2 md:px-4 align-top">
+                                    ${dPres} ${sDisp} 
+                                    ${uInfo?`<span class="inline-block ml-2 text-xs text-gray-500">${uInfo}</span>`:''}
+                                </td>
+                                <td class="py-1 md:py-1 px-2 md:px-4 text-right font-semibold align-top">${pMostrado}</td>
+                           </tr>`; 
+                }); 
+                html += `</tbody></table>`; 
+            }); 
+            html += '</div>'; 
+            cont.innerHTML = html;
         } catch (error) { console.error("Error render catálogo:", error); cont.innerHTML = `<p class="text-red-500">Error al mostrar.</p>`; }
     }
 
     async function handleGenerateCatalogoImage() {
-        const MAX_BRANDS = 5; 
-        const shareBtn = document.getElementById('generateCatalogoImageBtn'), 
-              tasaCont = document.getElementById('tasa-input-container'), 
-              btnsCont = document.getElementById('catalogo-buttons-container');
+        // --- MODIFICACIÓN: Aumentado MAX_BRANDS_PER_PAGE de 5 a 7 ---
+        const MAX_BRANDS_PER_PAGE = 7; 
+        const shareBtn=document.getElementById('generateCatalogoImageBtn'), tasaCont=document.getElementById('tasa-input-container'), btnsCont=document.getElementById('catalogo-buttons-container');
+        if (!_marcasCache || _marcasCache.length === 0) { window.showModal('Aviso', 'No hay productos.'); return; }
         
-        if (!_marcasCache || _marcasCache.length === 0) { 
-            window.showModal('Aviso', 'No hay productos.'); 
-            return; 
+        // --- Pre-cargar imagen de fondo ---
+        if (_currentBgImage) {
+            _showModal('Progreso', 'Cargando imagen de fondo...');
+            try {
+                await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = _currentBgImage;
+                });
+            } catch (e) {
+                console.warn("No se pudo precargar la imagen de fondo, continuando sin ella.", e);
+                _currentBgImage = ''; // Resetear si falla la carga
+            }
         }
         
-        const pages = []; 
-        for (let i = 0; i < _marcasCache.length; i += MAX_BRANDS) {
-             pages.push(_marcasCache.slice(i, i + MAX_BRANDS));
+        const pages = []; for (let i = 0; i < _marcasCache.length; i += MAX_BRANDS_PER_PAGE) pages.push(_marcasCache.slice(i, i + MAX_BRANDS_PER_PAGE)); const totalP = pages.length;
+        if (shareBtn){shareBtn.textContent=`Generando ${totalP} imagen(es)...`; shareBtn.disabled=true;} if (tasaCont)tasaCont.classList.add('hidden'); if (btnsCont)btnsCont.classList.add('hidden'); 
+        
+        // Ocultar modal de "Cargando..." y mostrar el de "Generando..."
+        const progressModal = document.getElementById('modalContainer');
+        if(progressModal && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+             progressModal.classList.add('hidden');
         }
-        const totalP = pages.length;
+        _showModal('Progreso', `Generando ${totalP} página(s)...`);
         
-        if (shareBtn) { 
-            shareBtn.textContent = `Generando ${totalP} imagen(es)...`; 
-            shareBtn.disabled = true; 
-        } 
-        if (tasaCont) tasaCont.classList.add('hidden'); 
-        if (btnsCont) btnsCont.classList.add('hidden'); 
-        window.showModal('Progreso', `Generando ${totalP} página(s)...`);
-        
-        let generatedImageFiles = []; // Almacenará los Archivos de imagen generados
-
         try { 
-            // 1. GENERAR TODAS LAS IMÁGENES
-            generatedImageFiles = await Promise.all(pages.map(async (brandsPage, idx) => { 
-                const pNum = idx + 1; 
-                let contHtml = '<div class="space-y-4">'; 
-                const monLabel = _catalogoMonedaActual === 'COP' ? 'PRECIO (COP)' : 'PRECIO (USD)'; 
-                
-                brandsPage.forEach(marca => {
-                    contHtml += `<table class="min-w-full bg-transparent text-lg"> <thead class="text-black"> <tr><th colspan="2" class="py-2 px-4 bg-gray-100 font-bold text-left text-xl rounded-t-lg">${marca}</th></tr> <tr><th class="py-2 px-4 text-left font-semibold text-base border-b">PRESENTACIÓN (Segmento)</th><th class="py-2 px-4 text-right font-semibold text-base border-b">${monLabel}</th></tr> </thead><tbody>`; 
-                    const prodsMarca = _productosAgrupadosCache[marca] || []; 
-                    prodsMarca.forEach(p => { 
-                        const vPor=p.ventaPor||{und:true}, precios=p.precios||{und:p.precioPorUnidad||0}; 
-                        let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; 
+            const imgFiles = await Promise.all(pages.map(async (brandsPage, idx) => { 
+                const pNum=idx+1; 
+                // --- MODIFICACIÓN: Reducido space-y-4 a space-y-2 ---
+                let contHtml='<div class="space-y-2">'; 
+                const monLabel=_catalogoMonedaActual==='COP'?'PRECIO (COP)':'PRECIO (USD)'; 
+                brandsPage.forEach(marca=>{
+                    // --- MODIFICACIÓN: Reducido text-lg a text-base ---
+                    contHtml+=`<table class="min-w-full bg-transparent text-base"> 
+                                <thead class="text-black"> 
+                                    <!-- MODIFICACIÓN: Reducido py-2 px-4 a py-1.5 px-3, text-xl a text-lg -->
+                                    <tr><th colspan="2" class="py-1.5 px-3 bg-gray-100 font-bold text-left text-lg">${marca}</th></tr> 
+                                    <!-- MODIFICACIÓN: Reducido py-2 px-4 a py-1 px-3, text-base a text-sm -->
+                                    <tr><th class="py-1 px-3 text-left font-semibold text-sm border-b">PRESENTACIÓN (Segmento)</th><th class="py-1 px-3 text-right font-semibold text-sm border-b">${monLabel}</th></tr> 
+                                </thead><tbody>`; 
+                    const prodsMarca=_productosAgrupadosCache[marca]||[]; 
+                    prodsMarca.forEach(p=>{ 
+                        const vPor=p.ventaPor||{und:true}, precios=p.precios||{und:p.precioPorUnidad||0}; let pBaseUSD=0, dPres=`${p.presentacion||'N/A'}`, uInfo=''; 
                         if(vPor.cj&&precios.cj>0){pBaseUSD=precios.cj;uInfo=`(Cj/${p.unidadesPorCaja||1} und)`;}
                         else if(vPor.paq&&precios.paq>0){pBaseUSD=precios.paq;uInfo=`(Paq/${p.unidadesPorPaquete||1} und)`;}
                         else{pBaseUSD=precios.und||0;uInfo=`(Und)`;} 
                         let pMostrado=_catalogoMonedaActual==='COP'&&_catalogoTasaCOP>0?`COP ${(Math.ceil((pBaseUSD*_catalogoTasaCOP)/100)*100).toLocaleString('es-CO')}`:`$${pBaseUSD.toFixed(2)}`; 
                         const sDisp=p.segmento?`<span class="text-xs ml-1">(${p.segmento})</span>`:''; 
-                        contHtml+=`<tr class="border-b last:border-b-0"><td class="py-2 px-4 align-top">${dPres} ${sDisp} ${uInfo?`<span class="block text-xs">${uInfo}</span>`:''}</td><td class="py-2 px-4 text-right font-semibold align-top">${pMostrado}</td></tr>`; 
+                        
+                        // --- MODIFICACIÓN: Reducido py-2 px-4 a py-1 px-3 ---
+                        // --- MODIFICACIÓN: <span> de uInfo ahora es inline-block ml-2 ---
+                        contHtml+=`<tr class="border-b last:border-b-0">
+                                        <td class="py-1 px-3 align-top">
+                                            ${dPres} ${sDisp} 
+                                            ${uInfo?`<span class="inline-block ml-2 text-xs text-gray-600">${uInfo}</span>`:''}
+                                        </td>
+                                        <td class="py-1 px-3 text-right font-semibold align-top">${pMostrado}</td>
+                                   </tr>`; 
                     }); 
                     contHtml+=`</tbody></table>`;
                 }); 
                 contHtml+='</div>'; 
                 
-                const titleEl = document.querySelector('#catalogo-para-imagen h2'); 
-                const title = titleEl ? titleEl.textContent.trim() : 'Catálogo';
+                const titleEl=document.querySelector('#catalogo-para-imagen h2'); const title=titleEl?titleEl.textContent.trim():'Catálogo';
+                // --- MODIFICACIÓN: Reducido p-8 a p-6, text-4xl a text-3xl, mb-4 a mb-2 ---
+                const fPageHtml = `<div class="bg-white p-6" style="width: 800px; box-shadow: none; border: 1px solid #eee;"> 
+                                    <h2 class="text-3xl font-bold mb-2 text-center">${title}</h2> 
+                                    <p class="text-center mb-1 text-sm">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p> 
+                                    <p class="text-center mb-2 text-sm italic">(Precios incluyen IVA)</p> 
+                                    ${contHtml} 
+                                    <p class="text-center mt-3 text-xs">Página ${pNum} de ${totalP}</p> 
+                                  </div>`;
+                                  
+                const tempDiv=document.createElement('div'); tempDiv.style.position='absolute'; tempDiv.style.left='-9999px'; tempDiv.style.top='0'; tempDiv.innerHTML=fPageHtml; document.body.appendChild(tempDiv); const pWrap=tempDiv.firstElementChild; 
                 
-                const fPageHtml = `<div class="bg-white p-8" style="width: 800px; box-shadow: none; border: 1px solid #eee;"> <h2 class="text-4xl font-bold mb-2 text-center">${title}</h2> <p class="text-center mb-1 text-base">DISTRIBUIDORA CASTILLO YAÑEZ C.A</p> <p class="text-center mb-4 text-base italic">(Precios incluyen IVA)</p> ${contHtml} <p class="text-center mt-4 text-sm">Página ${pNum} de ${totalP}</p> </div>`;
-                
-                const tempDiv=document.createElement('div'); 
-                tempDiv.style.position='absolute'; 
-                tempDiv.style.left='-9999px'; 
-                tempDiv.style.top='0'; 
-                tempDiv.innerHTML=fPageHtml; 
-                document.body.appendChild(tempDiv); 
-                
-                const pWrap=tempDiv.firstElementChild; 
-
-                // Precargar la imagen de fondo (lógica anterior)
-                if(_currentBgImage) {
-                    try {
-                        await new Promise((resolve, reject) => {
-                            const img = new Image();
-                            img.crossOrigin = 'Anonymous'; 
-                            img.onload = resolve;
-                            img.onerror = (err) => {
-                                console.warn(`No se pudo precargar la imagen de fondo: ${_currentBgImage}`, err);
-                                resolve(); 
-                            };
-                            img.src = _currentBgImage;
-                        });
-                        
-                        pWrap.style.backgroundImage=`linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('${_currentBgImage}')`; 
-                        pWrap.style.backgroundSize='cover'; 
-                        pWrap.style.backgroundPosition='center';
-                    } catch (imgError) {
-                        console.error("Error durante la precarga de la imagen de fondo:", imgError);
-                    }
+                if(_currentBgImage){
+                    pWrap.style.backgroundImage=`linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('${_currentBgImage}')`; 
+                    pWrap.style.backgroundSize='cover'; 
+                    pWrap.style.backgroundPosition='center';
                 }
                 
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // --- Pequeña pausa para asegurar renderizado de fondo ---
+                await new Promise(resolve => setTimeout(resolve, 50)); 
                 
-                // NUEVOS AJUSTES: Escala 1.5 y JPEG calidad 0.8
-                const canvasOpts = { scale: 1.5, useCORS: true, allowTaint: true, backgroundColor: '#FFFFFF' }; // Fondo blanco sólido
+                // --- MODIFICACIÓN: Reducido scale de 3 a 1.5, cambiado a image/jpeg y calidad 0.8 ---
+                const canvasOpts = { scale: 1.5, useCORS: true, allowTaint: true, backgroundColor: _currentBgImage ? null : '#FFFFFF' }; 
+                const canvas = await html2canvas(pWrap, canvasOpts); 
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8)); 
                 
-                let canvas;
-                try {
-                     canvas = await html2canvas(pWrap, canvasOpts);
-                } catch (canvasError) {
-                    console.error("html2canvas falló:", canvasError);
-                    document.body.removeChild(tempDiv);
-                    throw new Error(`Fallo en render de html2canvas: ${canvasError.message}`);
-                }
-
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8)); // JPEG 80% calidad
                 document.body.removeChild(tempDiv); 
-                
                 const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase(); 
+                // --- MODIFICACIÓN: Cambiado a .jpeg ---
                 return new File([blob], `catalogo_${safeTitle}_p${pNum}.jpeg`, { type: "image/jpeg" }); 
-            }));
+            })); 
             
-            // 2. CERRAR MODAL DE PROGRESO
-            const modalCont = document.getElementById('modalContainer'); 
-            if(modalCont) modalCont.classList.add('hidden');
+            const modalCont = document.getElementById('modalContainer'); if(modalCont) modalCont.classList.add('hidden');
             
-            if (generatedImageFiles.length === 0) {
-                 _showModal('Error', 'No se generaron imágenes.');
-                 // Salir, pero ejecutar el bloque 'finally' para reactivar botones
-                 return;
-            }
-
-            // --- INICIO DE LA NUEVA LÓGICA HÍBRIDA ---
-            
-            // MODIFICACIÓN: Eliminada la comprobación navigator.canShare.
-            // Ahora intentará compartir directamente, igual que tu código antiguo.
-            if (navigator.share && generatedImageFiles.length > 0) {
-                try {
-                    // INTENTAR COMPARTIR TODOS LOS ARCHIVOS
-                    const titleEl = document.querySelector('#catalogo-para-imagen h2'); 
-                    const title = titleEl ? titleEl.textContent.trim() : 'Catálogo';
-                    
-                    await navigator.share({ 
-                        files: generatedImageFiles, 
-                        title: `Catálogo: ${title}`, 
-                        text: `Catálogo (${title}) - ${totalP} página(s)` 
-                    });
-                    
-                    // Si llega aquí, ¡funcionó!
-                    console.log("Múltiples archivos compartidos exitosamente.");
-                    // No necesitamos mostrar un modal de éxito, el 'finally' se encargará de los botones.
-                    // Reactivar botones en el 'finally'
-                    return; // Salir de la función exitosamente.
-
-                } catch (shareErr) {
-                    // SI FALLA (como está pasando ahora), capturar el error
-                    if (shareErr.name !== 'AbortError') {
-                        // El usuario no canceló, fue un error real.
-                        console.warn(`Fallo al compartir múltiples archivos (error: ${shareErr.name}). Volviendo a compartir uno por uno.`);
-                        // No mostramos un modal de error, simplemente continuamos
-                        // al modal de "uno por uno" que está debajo (el Plan B).
-                    } else {
-                        // El usuario canceló la selección. Salir de la función.
-                        console.log("El usuario canceló el compartir múltiple.");
-                        // Reactivar botones en el 'finally'
-                        return; // Salir
-                    }
-                }
-            } else {
-                // El navegador no soporta compartir múltiples archivos,
-                // así que vamos directamente al modal "uno por uno".
-                console.log("Navegador no soporta compartir múltiples archivos, mostrando modal individual.");
-            }
-            // --- FIN DE LA NUEVA LÓGICA HÍBRIDA ---
-
-
-            // 3. MOSTRAR NUEVO MODAL CON OPCIONES INDIVIDUALES (PLAN B / FALLBACK)
-            // (Este es el código que ya teníamos de la última vez)
-            let modalHtml = `<div class="text-center">
-                                <h3 class="text-xl font-bold mb-4">Imágenes Generadas</h3>
-                                <p class="text-gray-600 mb-6">Se generaron ${totalP} página(s). Elige una para compartir o descargar.</p>
-                                <div class="space-y-3 max-h-60 overflow-y-auto p-2 bg-gray-50 rounded-lg">`;
-            
-            generatedImageFiles.forEach((file, index) => {
-                modalHtml += `
-                    <div class="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border">
-                        <span class="font-medium text-sm">Página ${index + 1}</span>
-                        <div class="space-x-2">
-                            <button class="share-page-btn px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600" data-index="${index}">Compartir</button>
-                            <button class="download-page-btn px-3 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600" data-index="${index}">Descargar</button>
-                        </div>
-                    </div>`;
-            });
-            modalHtml += `</div></div>`;
-
-            // Mostrar el nuevo modal (sin botones de confirmación/cancelación en la llamada)
-            _showModal('Compartir Catálogo', modalHtml, null, '');
-
-            // 4. AÑADIR LISTENERS A LOS BOTONES DEL NUEVO MODAL
-
-            // Función para compartir UNA SOLA página
-            const sharePage = async (index) => {
-                const fileToShare = generatedImageFiles[index];
-                if (!fileToShare) return;
+            // --- Lógica de compartir "híbrida" (Intenta todo, si falla, muestra Plan B) ---
+            try {
+                // Intento 1: Compartir todos los archivos
+                console.log(`Intentando compartir ${imgFiles.length} archivos...`);
+                await navigator.share({ files: imgFiles, title: `Catálogo: ${title}`, text: `Catálogo (${title}) - ${totalP} páginas` });
+                // Si llega aquí, tuvo éxito
                 
-                try {
-                    // Comprobar capacidad de compartir este archivo específico
-                    if (!navigator.share || !navigator.canShare?.({ files: [fileToShare] })) {
-                        _showModal('Error', 'Tu navegador no soporta compartir este tipo de archivo.');
-                        return;
-                    }
-                    // Intentar compartir solo UN archivo
-                    await navigator.share({ 
-                        files: [fileToShare], 
-                        title: `Catálogo Página ${index + 1}`,
-                        text: `Catálogo Página ${index + 1}`
+            } catch (shareErr) {
+                console.warn("Error al compartir todos los archivos:", shareErr.name, shareErr.message);
+                
+                // Si el error NO fue "AbortError" (cancelado por el usuario), mostrar Plan B
+                if (shareErr.name !== 'AbortError') {
+                    _showModal('Error al Compartir Múltiple', 'No se pudieron compartir todas las imágenes a la vez. Intenta compartirlas una por una.');
+                    
+                    // --- Plan B: Mostrar modal para compartir una por una ---
+                    let shareOptionsHTML = '<div class="space-y-3">';
+                    imgFiles.forEach((file, index) => {
+                        shareOptionsHTML += `
+                            <div class="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
+                                <span class="font-medium text-sm">Página ${index + 1} de ${totalP}</span>
+                                <div class="space-x-2">
+                                    <button class="share-single-btn px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600" data-index="${index}">Compartir</button>
+                                    <button class="download-single-btn px-3 py-1.5 bg-gray-500 text-white text-xs rounded-lg hover:bg-gray-600" data-index="${index}">Descargar</button>
+                                </div>
+                            </div>`;
                     });
-                } catch (shareErr) {
-                    if (shareErr.name !== 'AbortError') {
-                        console.error("Error al compartir página individual:", shareErr);
-                        // Mostrar el error que vimos en la captura
-                        _showModal('Error Compartir', 'No se pudieron compartir.');
-                    }
-                }
-            };
+                    shareOptionsHTML += '</div>';
 
-            // Función para descargar UNA SOLA página
-            const downloadPage = (index) => {
-                const fileToDownload = generatedImageFiles[index];
-                if (!fileToDownload) return;
-                try {
-                    const url = URL.createObjectURL(fileToDownload); 
-                    const a = document.createElement('a'); 
-                    a.href = url; 
-                    a.download = fileToDownload.name; 
-                    document.body.appendChild(a); 
-                    a.click(); 
-                    document.body.removeChild(a); 
-                    URL.revokeObjectURL(url);
-                } catch (dlError) {
-                    console.error("Fallo descarga:", dlError);
-                    _showModal('Error', 'No se pudo descargar el archivo.');
+                    _showModal('Imágenes Generadas', shareOptionsHTML, null, 'Cerrar');
+                    
+                    // Añadir listeners a los botones del Plan B
+                    document.querySelectorAll('.share-single-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const index = parseInt(e.target.dataset.index, 10);
+                            const file = imgFiles[index];
+                            try {
+                                await navigator.share({ files: [file], title: `Catálogo: ${title} (Pág ${index + 1})` });
+                            } catch (singleShareErr) {
+                                if (singleShareErr.name !== 'AbortError') {
+                                    _showModal('Error', 'No se pudo compartir esta imagen.');
+                                }
+                            }
+                        });
+                    });
+                    
+                    document.querySelectorAll('.download-single-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const index = parseInt(e.target.dataset.index, 10);
+                            const file = imgFiles[index];
+                            try { 
+                                const url = URL.createObjectURL(file); 
+                                const a = document.createElement('a'); 
+                                a.href = url; 
+                                a.download = file.name; 
+                                document.body.appendChild(a); 
+                                a.click(); 
+                                document.body.removeChild(a); 
+                                URL.revokeObjectURL(url); 
+                            } catch (dlError) { 
+                                console.error("Fallo descarga:", dlError); 
+                                _showModal('Error', 'No se pudo descargar la imagen.');
+                            }
+                        });
+                    });
                 }
-            };
-            
-            // Adjuntar los listeners a los botones dentro del modal
-            document.querySelectorAll('.share-page-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => sharePage(parseInt(e.target.dataset.index)));
-            });
-            document.querySelectorAll('.download-page-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => downloadPage(parseInt(e.target.dataset.index)));
-            });
+            }
+            // --- Fin lógica híbrida ---
 
         } catch (error) { 
-            // Capturar errores de la generación de imágenes (Promise.all)
-            console.error("Error generando imágenes:", error); 
-            window.showModal('Error Grave', `Error al generar: ${error.message || error}`); 
-        }
-        finally { 
-            // 5. REACTIVAR BOTONES DE LA UI PRINCIPAL
-            if (shareBtn) { 
-                shareBtn.textContent = 'Generar Imagen'; 
-                shareBtn.disabled = false; 
-            } 
-            if (tasaCont) tasaCont.classList.remove('hidden'); 
-            if (btnsCont) btnsCont.classList.remove('hidden'); 
-            
-            // Asegurarse de que el modal de "Progreso" esté cerrado
-            const modalCont = document.getElementById('modalContainer'); 
-            if (modalCont && !modalCont.classList.contains('hidden') && modalCont.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                modalCont.classList.add('hidden'); 
-            }
+            console.error("Error generando imagen del catálogo: ", error); 
+            _showModal('Error Grave', `Error al generar: ${error.message || error}`); 
+        } finally { 
+            if(shareBtn){shareBtn.textContent='Generar Imagen'; shareBtn.disabled=false;} 
+            if(tasaCont)tasaCont.classList.remove('hidden'); 
+            if(btnsCont)btnsCont.classList.remove('hidden'); 
+            const modalCont=document.getElementById('modalContainer'); 
+            if(modalCont && !modalCont.classList.contains('hidden') && modalCont.querySelector('h3')?.textContent.startsWith('Progreso')) modalCont.classList.add('hidden'); 
         }
     }
-
+    
+    // Exponer función para invalidar la caché
     window.catalogoModule = {
         invalidateCache: invalidateGlobalSortCache
     };
