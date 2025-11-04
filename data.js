@@ -317,8 +317,11 @@
                 // Si `totalUnidadesVendidas` no existe (datos antiguos), calcularlo desde `cantidadVendida`.
                 let cantidadUnidades = p.totalUnidadesVendidas || 0;
                 if ((cantidadUnidades === 0) && p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) {
-                    const uCj = prodCompleto.unidadesPorCaja || 1;
-                    const uPaq = prodCompleto.unidadesPorPaquete || 1;
+                    // --- *** INICIO DE LA CORRECCIÓN DE HOY *** ---
+                    // Usar las unidades guardadas 'p' (de la venta) en lugar de 'prodCompleto' (del inventario actual)
+                    const uCj = p.unidadesPorCaja || 1;
+                    const uPaq = p.unidadesPorPaquete || 1;
+                    // --- *** FIN DE LA CORRECCIÓN DE HOY *** ---
                     cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj +
                                        (p.cantidadVendida.paq || 0) * uPaq +
                                        (p.cantidadVendida.und || 0);
