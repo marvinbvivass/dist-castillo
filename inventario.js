@@ -544,41 +544,115 @@
         if (productos.length === 0) { container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan con los filtros.</p>`; return; }
         let tableHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-100 sticky top-0 z-10"><tr><th class="py-2 px-4 border-b text-left">Producto</th><th class="py-2 px-4 border-b text-center w-40">Cant. Nueva</th></tr></thead><tbody>`;
         let lastHeaderKey = null; const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
+        
         productos.forEach(p => {
             const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
             if (currentHeaderValue !== lastHeaderKey) { lastHeaderKey = currentHeaderValue; tableHTML += `<tr><td colspan="2" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`; }
+            
             const vPor = p.ventaPor || {und:true};
-            let uType='Und', cFactor=1, cStockU=p.cantidadUnidades||0;
-            // Priorizar Caja, luego Paquete, luego Unidad para mostrar/editar
-            if(vPor.cj){uType='Cj'; cFactor=p.unidadesPorCaja||1;}
-            else if(vPor.paq){uType='Paq'; cFactor=p.unidadesPorPaquete||1;}
-            cFactor=Math.max(1,cFactor); // Asegurar factor > 0
-            const cStockDispU = Math.floor(cStockU / cFactor); // Cantidad actual en la unidad de medida elegida
+            const cStockU = p.cantidadUnidades||0;
 
-            tableHTML += `<tr class="hover:bg-gray-50"><td class="py-2 px-4 border-b"><p class="font-medium">${p.presentacion}</p><p class="text-xs text-gray-500">${p.marca||'S/M'} - Actual: ${cStockDispU} ${uType}. (${cStockU} Und. Base)</p></td><td class="py-2 px-4 border-b text-center align-middle"><div class="flex items-center justify-center"><input type="number" value="${cStockDispU}" data-doc-id="${p.id}" data-conversion-factor="${cFactor}" min="0" step="1" class="w-20 p-1 text-center border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"><span class="ml-2">${uType}.</span></div></td></tr>`;
+            // --- Lógica para el <select> ---
+            let optionsHTML = '';
+            let factors = {};
+            let defaultUnit = 'und'; // Default siempre es 'Und'
+            
+            // Construir opciones y factores
+            if(vPor.cj){ 
+                const factor = p.unidadesPorCaja||1;
+                optionsHTML += `<option value="cj" data-factor="${factor}">Cj.</option>`; 
+                factors['cj'] = factor;
+                defaultUnit = 'cj'; // Priorizar Cj si existe
+            }
+            if(vPor.paq){ 
+                const factor = p.unidadesPorPaquete||1;
+                optionsHTML += `<option value="paq" data-factor="${factor}">Paq.</option>`; 
+                factors['paq'] = factor;
+                if(defaultUnit === 'und') defaultUnit = 'paq'; // Priorizar Paq sobre Und
+            }
+            if(vPor.und){ 
+                optionsHTML += `<option value="und" data-factor="1">Und.</option>`; 
+                factors['und'] = 1;
+            }
+            
+            // Establecer el 'selected' en el string HTML
+            optionsHTML = optionsHTML.replace(`value="${defaultUnit}"`, `value="${defaultUnit}" selected`);
+
+            const cStockDispU = Math.floor(cStockU / (factors[defaultUnit] || 1)); // Cantidad actual en la unidad de medida ELEGIDA
+
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-4 border-b">
+                        <p class="font-medium">${p.presentacion}</p>
+                        <p class="text-xs text-gray-500">${p.marca||'S/M'} - Actual: ${cStockU} Und. Base</p>
+                    </td>
+                    <td class="py-2 px-4 border-b text-center align-middle">
+                        <div class="flex items-center justify-center">
+                            <input type="number" value="${cStockDispU}" data-doc-id="${p.id}" min="0" step="1" class="w-20 p-1 text-center border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ajuste-qty-input">
+                            <select data-doc-id="${p.id}" class="w-20 ml-2 p-1 border rounded-lg text-sm bg-gray-50 ajuste-unit-select">
+                                ${optionsHTML}
+                            </select>
+                        </div>
+                    </td>
+                </tr>`;
         });
-        tableHTML += `</tbody></table>`; container.innerHTML = tableHTML;
+        tableHTML += `</tbody></table>`; 
+        container.innerHTML = tableHTML;
+        
+        // --- Añadir listeners a los <select> ---
+        // Es necesario añadir listeners para recalcular el valor del input si el usuario cambia la unidad
+        container.querySelectorAll('.ajuste-unit-select').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const docId = e.target.dataset.docId;
+                const input = container.querySelector(`.ajuste-qty-input[data-doc-id="${docId}"]`);
+                const producto = _inventarioCache.find(p => p.id === docId);
+                if (!input || !producto) return;
+
+                const selectedOption = e.target.options[e.target.selectedIndex];
+                const newFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
+                const stockBase = producto.cantidadUnidades || 0;
+                
+                // Recalcular y mostrar el stock actual en la *nueva* unidad seleccionada
+                input.value = Math.floor(stockBase / newFactor);
+            });
+        });
     }
 
     async function handleGuardarAjusteMasivo() {
-        const inputs = document.querySelectorAll('#ajusteListContainer input[data-doc-id]');
+        const inputs = document.querySelectorAll('#ajusteListContainer .ajuste-qty-input');
         if (inputs.length === 0) { _showModal('Aviso', 'No hay productos en la lista para ajustar.'); return; }
         const batch = _writeBatch(_db);
         let changesCount = 0;
         let invalidValues = false;
+        
         // Limpiar estilos de error
         inputs.forEach(i => i.classList.remove('border-red-500','ring-1','ring-red-500'));
 
         inputs.forEach(input => {
             const docId = input.dataset.docId;
-            const conversionFactor = parseInt(input.dataset.conversionFactor, 10) || 1;
             const newValueStr = input.value.trim();
             const newValue = parseInt(newValueStr, 10);
             const productoOriginal = _inventarioCache.find(p => p.id === docId);
 
+            // --- Lógica para obtener el factor ---
+            const unitSelect = document.querySelector(`.ajuste-unit-select[data-doc-id="${docId}"]`);
+            if (!unitSelect) {
+                console.warn(`No se encontró select para ${docId}`);
+                invalidValues = true;
+                return; // No se puede procesar
+            }
+            const selectedUnit = unitSelect.value; // 'cj', 'paq', 'und'
+            const selectedOption = unitSelect.querySelector(`option[value="${selectedUnit}"]`);
+            if (!selectedOption) {
+                 console.warn(`No se encontró option seleccionada para ${docId}`);
+                 invalidValues = true;
+                 return;
+            }
+            const conversionFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
+            // --- Fin lógica factor ---
+
              // Validar entrada: no vacío, número entero no negativo
             if (newValueStr === '' || isNaN(newValue) || !Number.isInteger(newValue) || newValue < 0) {
-                 // Permitir vacío si no se quiere cambiar, pero marcar como inválido si se ingresó algo incorrecto
                 if(newValueStr !== '') {
                     input.classList.add('border-red-500','ring-1','ring-red-500');
                     invalidValues = true;
@@ -601,7 +675,7 @@
             }
         });
 
-        if(invalidValues){ _showModal('Error','Hay valores inválidos marcados en rojo. Corrígelos e intenta de nuevo.'); return; }
+        if(invalidValues){ _showModal('Error','Hay valores inválidos marcados en rojo o no se pudo leer la unidad. Corrígelos e intenta de nuevo.'); return; }
         if(changesCount === 0){ _showModal('Aviso','No se detectaron cambios en las cantidades.'); return; }
 
         _showModal('Confirmar Cambios', `Se actualizará la cantidad base de ${changesCount} producto(s). ¿Continuar?`, async () => {
@@ -609,8 +683,9 @@
             try {
                 await batch.commit();
                 _showModal('Éxito',`Se actualizaron ${changesCount} producto(s) correctamente.`);
-                // Opcional: Podrías forzar un refresh de la lista aquí si no confías en el listener
-                // renderAjusteMasivoList();
+                // El listener actualizará la UI, pero forzamos un re-render para que los <input>
+                // muestren el valor correcto en la unidad seleccionada por defecto.
+                renderAjusteMasivoList();
             } catch (error) {
                 console.error("Error al guardar ajuste masivo:", error);
                 _showModal('Error',`Ocurrió un error al guardar: ${error.message}`);
