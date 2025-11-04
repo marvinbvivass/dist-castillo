@@ -369,69 +369,20 @@
             try {
                 // Intento 1: Compartir todos los archivos
                 console.log(`Intentando compartir ${imgFiles.length} archivos...`);
+                // --- MODIFICACIÓN: Eliminada la comprobación navigator.canShare ---
                 await navigator.share({ files: imgFiles, title: `Catálogo: ${title}`, text: `Catálogo (${title}) - ${totalP} páginas` });
                 // Si llega aquí, tuvo éxito
                 
             } catch (shareErr) {
                 console.warn("Error al compartir todos los archivos:", shareErr.name, shareErr.message);
                 
-                // Si el error NO fue "AbortError" (cancelado por el usuario), mostrar Plan B
+                // --- MODIFICACIÓN: Ya no se muestra el Plan B ---
+                // Si el error NO fue "AbortError" (cancelado por el usuario), mostrar error simple
                 if (shareErr.name !== 'AbortError') {
-                    _showModal('Error al Compartir Múltiple', 'No se pudieron compartir todas las imágenes a la vez. Intenta compartirlas una por una.');
-                    
-                    // --- Plan B: Mostrar modal para compartir una por una ---
-                    let shareOptionsHTML = '<div class="space-y-3">';
-                    imgFiles.forEach((file, index) => {
-                        shareOptionsHTML += `
-                            <div class="flex justify-between items-center p-2 bg-gray-100 rounded-lg">
-                                <span class="font-medium text-sm">Página ${index + 1} de ${totalP}</span>
-                                <div class="space-x-2">
-                                    <button class="share-single-btn px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600" data-index="${index}">Compartir</button>
-                                    <button class="download-single-btn px-3 py-1.5 bg-gray-500 text-white text-xs rounded-lg hover:bg-gray-600" data-index="${index}">Descargar</button>
-                                </div>
-                            </div>`;
-                    });
-                    shareOptionsHTML += '</div>';
-
-                    _showModal('Imágenes Generadas', shareOptionsHTML, null, 'Cerrar');
-                    
-                    // Añadir listeners a los botones del Plan B
-                    document.querySelectorAll('.share-single-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            const index = parseInt(e.target.dataset.index, 10);
-                            const file = imgFiles[index];
-                            try {
-                                await navigator.share({ files: [file], title: `Catálogo: ${title} (Pág ${index + 1})` });
-                            } catch (singleShareErr) {
-                                if (singleShareErr.name !== 'AbortError') {
-                                    _showModal('Error', 'No se pudo compartir esta imagen.');
-                                }
-                            }
-                        });
-                    });
-                    
-                    document.querySelectorAll('.download-single-btn').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            const index = parseInt(e.target.dataset.index, 10);
-                            const file = imgFiles[index];
-                            try { 
-                                const url = URL.createObjectURL(file); 
-                                const a = document.createElement('a'); 
-                                a.href = url; 
-                                a.download = file.name; 
-                                document.body.appendChild(a); 
-                                a.click(); 
-                                document.body.removeChild(a); 
-                                URL.revokeObjectURL(url); 
-                            } catch (dlError) { 
-                                console.error("Fallo descarga:", dlError); 
-                                _showModal('Error', 'No se pudo descargar la imagen.');
-                            }
-                        });
-                    });
+                    _showModal('Error al Compartir', 'No se pudieron compartir las imágenes. Es posible que el navegador no lo soporte o los archivos sean muy grandes.');
                 }
             }
-            // --- Fin lógica híbrida ---
+            // --- Fin lógica ---
 
         } catch (error) { 
             console.error("Error generando imagen del catálogo: ", error); 
