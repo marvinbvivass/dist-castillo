@@ -1,10 +1,7 @@
-// --- Service Worker Mejorado para Funcionalidad Offline Robusta ---
+const CACHE_NAME = 'ventas-app-cache-v8'; 
 
-const CACHE_NAME = 'ventas-app-cache-v7'; // Versión actualizada para forzar la recarga
-
-// Lista de archivos locales esenciales para el funcionamiento de la aplicación (App Shell)
 const urlsToCache = [
-    './', // Alias para index.html
+    './',
     './index.html',
     './admin.js',
     './data.js',
@@ -12,6 +9,7 @@ const urlsToCache = [
     './catalogo.js',
     './clientes.js',
     './ventas.js',
+    './obsequios.js', // Añadido para caché
     './manifest.json',
     './images/icons/icon-192x192.png',
     './images/icons/icon-512x512.png',
@@ -20,13 +18,11 @@ const urlsToCache = [
     './images/maltinypepsi.png',
     './images/alimentospolar.png',
     './images/p&g.png'
-    // Las URLs de terceros (Tailwind, Firebase, etc.) se cachearán dinámicamente.
 ];
 
-// Evento 'install': Se dispara cuando el Service Worker se instala por primera vez.
 self.addEventListener('install', event => {
     console.log('[Service Worker] Instalando...');
-    self.skipWaiting(); // Forzar la activación inmediata
+    self.skipWaiting(); 
     
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -40,7 +36,6 @@ self.addEventListener('install', event => {
     );
 });
 
-// Evento 'activate': Se dispara cuando el nuevo Service Worker se activa.
 self.addEventListener('activate', event => {
     console.log('[Service Worker] Activando...');
     const cacheWhitelist = [CACHE_NAME];
@@ -59,35 +54,33 @@ self.addEventListener('activate', event => {
     );
 });
 
-// Evento 'fetch': Se dispara para cada solicitud de red.
 self.addEventListener('fetch', event => {
-    // No interceptamos solicitudes que no sean GET
     if (event.request.method !== 'GET') {
         return;
     }
     
-    // Para las solicitudes de Firebase, siempre vamos a la red.
+    // No cachear solicitudes a terceros (CDNs, Firebase, etc.)
+    if (!event.request.url.startsWith(self.location.origin)) {
+        return; 
+    }
+    
     if (event.request.url.includes('firestore.googleapis.com')) {
         return;
     }
 
-    // Estrategia: Network falling back to cache.
-    // Intenta obtener el recurso de la red. Si tiene éxito, lo actualiza en la caché.
-    // Si falla, intenta servirlo desde la caché.
+    // Estrategia: Red primero, luego caché (SOLO para archivos locales)
     event.respondWith(
         caches.open(CACHE_NAME).then(cache => {
             return fetch(event.request)
                 .then(networkResponse => {
-                    // Si la respuesta de red es válida, la usamos y actualizamos la caché
                     console.log(`[Service Worker] Guardando en caché: ${event.request.url}`);
                     cache.put(event.request, networkResponse.clone());
                     return networkResponse;
                 })
                 .catch(() => {
-                    // Si la red falla, intentamos servir desde la caché
+                    // Si la red falla, servir desde la caché
                     return cache.match(event.request);
                 });
         })
     );
 });
-
