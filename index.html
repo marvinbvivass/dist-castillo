@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplicación de Gestión de Ventas</title>
@@ -11,14 +10,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Leaflet CSS for maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 
-    <!-- PWA Manifest and Theme Color -->
     <meta name="theme-color" content="#ffffff"/>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/icons/icon-192x192.png">
-
 
     <style>
         body {
@@ -51,7 +47,6 @@
             from { opacity: 0; }
             to { opacity: 1; }
         }
-        /* Style for search dropdown */
         .autocomplete-list {
             position: absolute;
             background-color: white;
@@ -62,15 +57,15 @@
             z-index: 10;
             width: 100%;
             border-radius: 0 0 0.5rem 0.5rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Add shadow */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); 
         }
         .autocomplete-item {
             padding: 0.5rem 1rem;
             cursor: pointer;
             transition: background-color 0.2s;
-            font-size: 0.875rem; /* Slightly smaller font */
+            font-size: 0.875rem; 
         }
-        .autocomplete-item:hover, .autocomplete-item.selected { /* Style for selected/hovered */
+        .autocomplete-item:hover, .autocomplete-item.selected { 
             background-color: #f1f5f9;
         }
         .uppercase-ticket {
@@ -78,32 +73,29 @@
         }
         .price-toggle:hover {
             cursor: pointer;
-            background-color: #f0f0f0; /* Slight background on hover */
-            border-radius: 4px; /* Rounded corners */
+            background-color: #f0f0f0; 
+            border-radius: 4px; 
         }
-         /* Style for drag indicator */
-        .drag-over {
-             border-top: 3px dashed #3b82f6; /* Blue dashed line */
-             background-color: #eff6ff; /* Light blue background */
+         .drag-over {
+             border-top: 3px dashed #3b82f6; 
+             background-color: #eff6ff; 
         }
-        /* Placeholder styles for drag & drop */
         .segmento-placeholder, .marca-placeholder {
             list-style-type: none;
             border-radius: 0.375rem;
         }
         .segmento-placeholder {
             height: 60px;
-            background: #dbeafe; /* light blue */
-            border: 2px dashed #3b82f6; /* blue */
+            background: #dbeafe; 
+            border: 2px dashed #3b82f6; 
             margin: 1rem 0;
         }
         .marca-placeholder {
             height: 30px;
-            background: #e0e7ff; /* lighter blue */
-            border: 1px dashed #6366f1; /* indigo */
+            background: #e0e7ff; 
+            border: 1px dashed #6366f1; 
             margin: 0.25rem 0;
         }
-         /* Offline Toggle Switch Styles */
         input[type="checkbox"]#offline-toggle {
             height: 0;
             width: 0;
@@ -112,8 +104,8 @@
         label[for="offline-toggle"] {
             cursor: pointer;
             text-indent: -9999px;
-            width: 50px; /* Ancho del switch */
-            height: 25px; /* Alto del switch */
+            width: 50px; 
+            height: 25px; 
             background: grey;
             display: block;
             border-radius: 100px;
@@ -124,32 +116,29 @@
             position: absolute;
             top: 2px;
             left: 2px;
-            width: 21px; /* Diámetro círculo */
+            width: 21px; 
             height: 21px;
             background: #fff;
             border-radius: 90px;
             transition: 0.3s;
         }
         input:checked + label[for="offline-toggle"] {
-            background: #dc2626; /* Rojo cuando está checked (Offline) */
+            background: #dc2626; 
         }
         input:checked + label[for="offline-toggle"]:after {
             left: calc(100% - 2px);
             transform: translateX(-100%);
         }
         label[for="offline-toggle"]:active:after {
-            width: 26px; /* Efecto al presionar */
+            width: 26px; 
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col bg-gray-100"> <!-- Default body background -->
+<body class="min-h-screen flex flex-col bg-gray-100"> 
     <div id="app" class="flex flex-col min-h-screen">
-        <!-- Main content area -->
         <main id="mainContent" class="flex-grow hidden">
-            <!-- Page content inserted dynamically -->
         </main>
 
-        <!-- Login view area -->
         <main id="loginContent" class="flex-grow flex items-center justify-center p-4">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Iniciar Sesión</h1>
@@ -161,7 +150,7 @@
                     <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-300 transform hover:scale-105">
                         Ingresar
                     </button>
-                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
+                    <p id="authMessage" class="text-sm text-red-500 mt-2 h-4"></p> 
                 </form>
                  <p class="mt-6 text-sm text-gray-800">
                     ¿No tienes una cuenta?
@@ -170,7 +159,6 @@
             </div>
         </main>
 
-        <!-- Registration view area -->
         <main id="registerContent" class="flex-grow flex items-center justify-center p-4 hidden">
             <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6">Crear Cuenta</h1>
@@ -184,7 +172,7 @@
                     <button type="submit" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
                         Registrar
                     </button>
-                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> <!-- Fixed height -->
+                    <p id="registerMessage" class="text-sm text-red-500 mt-2 h-4"></p> 
                 </form>
                 <p class="mt-6 text-sm text-gray-800">
                     ¿Ya tienes una cuenta?
@@ -193,16 +181,11 @@
             </div>
         </main>
 
-
-        <!-- Modal container -->
         <div id="modalContainer" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 hidden animate-fade-in p-4">
             <div id="modalContent" class="bg-white p-6 md:p-8 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                <!-- Content injected dynamically -->
             </div>
         </div>
 
-
-        <!-- Floating Controls -->
         <div id="floating-controls" class="fixed bottom-4 right-4 space-y-2 z-40 hidden">
              <span id="connectionStatus" class="block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300"></span>
             <button id="logoutBtn" class="w-12 h-12 bg-red-500 text-white font-semibold rounded-full shadow-lg hover:bg-red-600 transition duration-300 flex items-center justify-center transform hover:scale-110" title="Cerrar Sesión">
@@ -213,10 +196,8 @@
         </div>
     </div>
 
-    <!-- Leaflet JS for maps -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Load module scripts DEFERidos -->
     <script src="data.js" defer></script>
     <script src="admin.js" defer></script>
     <script src="inventario.js" defer></script>
@@ -225,14 +206,13 @@
     <script src="ventas.js" defer></script>
     <script src="obsequios.js" defer></script>
 
-
-    <script type="module" defer> // DEFER sigue siendo útil aquí
-        // Import Firebase modules
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script type="module" defer> 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter, enableNetwork, disableNetwork } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter, enableNetwork, disableNetwork } from "httpsg://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase configuration
         const firebaseConfig = {
             apiKey: "AIzaSyAiitXEEekD-7FD7kDxDIcRbxlClsF5gHU",
             authDomain: "ventas-9a210.firebaseapp.com",
@@ -244,18 +224,14 @@
         };
          const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
 
-        // Global variables
         let db;
         let auth;
         let userId;
-        window.userRole = 'user'; // Expuesto globalmente
+        window.userRole = 'user'; 
         let activeListeners = [];
-        window.isLoggingOut = false; // Flag to indicate logout process
-        // NUEVO: Definir TIPOS_VACIO globalmente para consistencia
+        window.isLoggingOut = false; 
         window.TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
-
-        // DOM element references
         const mainContent = document.getElementById('mainContent');
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
@@ -268,8 +244,6 @@
         const floatingControls = document.getElementById('floating-controls');
         const connectionStatusEl = document.getElementById('connectionStatus');
 
-
-        // --- UTILITY FUNCTIONS ---
          window.showModal = function(title, message, onConfirm = null, confirmText = 'Confirmar', onCancel = null, triggerConfirmLogic = false) {
              modalContent.innerHTML = `
                  <div class="text-center">
@@ -336,7 +310,6 @@
              modalContainer.classList.remove('hidden');
          }
 
-        // Modal para agregar categorías, con propagación si es admin
         async function showAddItemModal(collectionName, itemName) {
             modalContent.innerHTML = `
                 <div class="text-center">
@@ -385,18 +358,14 @@
                         newItemInput.select();
                      } else {
                         const newItemData = { name: newItemNameUpper };
-                        // Guardar la referencia del nuevo documento
                         const newDocRef = await addDoc(collectionRef, newItemData);
 
                         addItemMessage.textContent = `¡"${newItemNameUpper}" agregado!`;
                         addItemMessage.className = 'text-sm text-green-600 mt-2 h-4';
 
-                        // --- INICIO DE LA CORRECCIÓN PROPAGACIÓN ---
-                        // Si el usuario es admin y el módulo de admin existe, propagar el cambio.
                         if (window.userRole === 'admin' && window.adminModule?.propagateCategoryChange) {
                             addItemMessage.textContent = 'Agregado. Propagando...';
                             try {
-                                // Obtenemos los datos completos del nuevo doc para propagar
                                 const newDocSnap = await getDoc(newDocRef);
                                 if (newDocSnap.exists()) {
                                     await window.adminModule.propagateCategoryChange(collectionName, newDocRef.id, newDocSnap.data());
@@ -410,20 +379,17 @@
                                 addItemMessage.className = 'text-sm text-red-600 mt-2 h-4';
                             }
                         }
-                        // --- FIN DE LA CORRECCIÓN PROPAGACIÓN ---
 
                         newItemInput.value = '';
                         newItemInput.focus();
-                        // Actualizar dropdown relacionado si existe
-                        const relatedDropdownId = collectionName.slice(0,-1); // ej: 'rubros' -> 'rubro'
+                        const relatedDropdownId = collectionName.slice(0,-1); 
                         const dropdown = document.getElementById(relatedDropdownId);
                         if(dropdown){
                             const option = document.createElement('option');
                             option.value = newItemNameUpper; option.textContent = newItemNameUpper;
                             dropdown.appendChild(option);
-                            // Reordenar alfabéticamente
                             Array.from(dropdown.options).sort((a, b) => a.text.localeCompare(b.text)).forEach(opt => dropdown.add(opt));
-                            dropdown.value = newItemNameUpper; // Seleccionar el nuevo
+                            dropdown.value = newItemNameUpper; 
                         }
                         setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
                     }
@@ -441,34 +407,30 @@
 
         function populateDropdown(collectionPath, elementId, itemName, selectedValue = null) {
             const selectElement = document.getElementById(elementId);
-            if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return Promise.reject(new Error(`Element ${elementId} not found`)); } // Devolver promesa rechazada
+            if (!selectElement) { console.warn(`Dropdown element not found: ${elementId}`); return Promise.reject(new Error(`Element ${elementId} not found`)); } 
 
             const placeholderText = `Seleccione un ${itemName}`;
             let placeholder = selectElement.querySelector('option[value=""]');
             if (!placeholder) { placeholder = document.createElement('option'); placeholder.value = ""; selectElement.prepend(placeholder); }
             placeholder.textContent = placeholderText;
-            // Limpiar opciones excepto el placeholder
             Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
             selectElement.disabled = true;
 
             const collectionRef = collection(db, collectionPath);
-            // Devolver la promesa de getDocs
-            return getDocs(collectionRef).then(snapshot => { // return aquí
-                const currentSelection = selectedValue || selectElement.value; // Mantener selección si existe
-                 // Volver a limpiar por si acaso hubo una carga anterior fallida
+            return getDocs(collectionRef).then(snapshot => { 
+                const currentSelection = selectedValue || selectElement.value; 
                  Array.from(selectElement.options).forEach(option => { if (option.value !== "") selectElement.removeChild(option); });
 
                 const items = snapshot.docs
                     .map(doc => ({ id: doc.id, name: doc.data().name }))
-                    .filter(item => item.name) // Filtrar items sin nombre
-                    .sort((a, b) => a.name.localeCompare(b.name)); // Ordenar alfabéticamente
+                    .filter(item => item.name) 
+                    .sort((a, b) => a.name.localeCompare(b.name)); 
 
                 let foundSelected = false;
                 items.forEach(item => {
                      const option = document.createElement('option');
                      option.value = item.name;
                      option.textContent = item.name;
-                     // Seleccionar el valor si coincide con selectedValue o la selección actual
                      if (selectedValue && item.name === selectedValue) {
                          option.selected = true;
                          foundSelected = true;
@@ -478,21 +440,18 @@
                      }
                      selectElement.appendChild(option);
                 });
-                // Si la selección anterior no se encontró (ej. se eliminó), resetear al placeholder
                 if (!foundSelected) {
                      selectElement.value = "";
                 }
-                 selectElement.disabled = false; // Habilitar dropdown
+                 selectElement.disabled = false; 
             }).catch(error => {
                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
                  selectElement.disabled = true;
-                 throw error; // Relanzar el error para que Promise.all lo detecte
+                 throw error; 
             });
         }
 
-
-        // --- AUTHENTICATION AND VIEW LOGIC ---
         async function handleRegister(e) {
              e.preventDefault();
              console.log("Attempting registration...");
@@ -507,7 +466,6 @@
                  const userCredential = await createUserWithEmailAndPassword(auth, email, password); const user = userCredential.user;
                  const userDocRef = doc(db, "users", user.uid);
                  await setDoc(userDocRef, { email: user.email, role: 'user', createdAt: new Date() });
-                 // El onAuthStateChanged se encargará de mostrar la vista principal
              } catch (error) {
                  console.error("Registration error:", error.code, error.message);
                  if (error.code === 'auth/email-already-in-use') registerMessage.textContent = 'El correo ya está registrado.';
@@ -523,7 +481,6 @@
             const loginButton = e.target.querySelector('button[type="submit"]'); loginButton.disabled = true; loginButton.textContent = 'Ingresando...';
             try {
                 await signInWithEmailAndPassword(auth, email, password);
-                 // El onAuthStateChanged se encargará de mostrar la vista principal
             } catch (error) {
                 console.error("Login error:", error.code, error.message);
                  if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') authMessage.textContent = 'Correo o contraseña incorrectos.';
@@ -533,27 +490,19 @@
             }
         }
 
-        /** Handles user logout */
         async function handleLogout() {
              console.log("Attempting logout...");
-             window.isLoggingOut = true; // Set flag
+             window.isLoggingOut = true; 
              try {
-                 // MODIFICADO: NO llamar cleanupListeners() aquí.
-                 // onAuthStateChanged se encargará cuando user sea null.
-                 // cleanupListeners(); // <--- Línea eliminada/comentada
-
                  await signOut(auth);
                  console.log("User signed out successfully.");
-                 // onAuthStateChanged handled showing the login view
              } catch (error) {
                  console.error("Logout error:", error);
-                 window.isLoggingOut = false; // Reset flag on error
+                 window.isLoggingOut = false; 
                  window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
              }
         }
 
-
-        /** Detaches all active Firestore listeners */
         function cleanupListeners() {
             console.log(`Cleaning up ${activeListeners.length} active listener(s)...`);
             activeListeners.forEach(unsubscribe => {
@@ -561,13 +510,12 @@
                     try { unsubscribe(); } catch (e) { console.warn("Error unsubscribing listener:", e); }
                 } else { console.warn("Attempted to unsubscribe non-function:", unsubscribe); }
             });
-            activeListeners = []; // Clear the array
+            activeListeners = []; 
             console.log("Listeners cleaned up.");
         }
 
-        /** Displays the login view */
         function showLoginView() {
-            console.log("Showing Login View"); window.isLoggingOut = false; // Reset flag
+            console.log("Showing Login View"); window.isLoggingOut = false; 
             if (floatingControls) floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden'); registerContent.classList.add('hidden'); loginContent.classList.remove('hidden');
             loginForm?.reset(); if(authMessage) authMessage.textContent = '';
@@ -575,7 +523,6 @@
             document.body.classList.remove('catalogo-active'); document.body.style.removeProperty('--catalogo-bg-image');
         }
 
-        /** Displays the registration view */
         function showRegisterView() {
             console.log("Showing Register View"); if (floatingControls) floatingControls.classList.add('hidden');
             mainContent.classList.add('hidden'); loginContent.classList.add('hidden'); registerContent.classList.remove('hidden');
@@ -583,7 +530,6 @@
             const registerButton = registerForm?.querySelector('button[type="submit"]'); if(registerButton){ registerButton.disabled = false; registerButton.textContent = 'Registrar'; }
         }
 
-        /** Preloads essential data collections for offline use */
         async function preloadAllData() {
               const startTime = performance.now();
               const collectionsToPreload = [
@@ -593,15 +539,15 @@
                   { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
                   { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' } // Es un documento
+                  { path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' } 
               ];
               console.log("Preloading data for offline use...");
               const results = await Promise.allSettled(
                   collectionsToPreload.map(col => {
-                      if (col.path.includes('/config/obsequio')) { // Si es un documento
+                      if (col.path.includes('/config/obsequio')) { 
                            const docRef = doc(db, col.path);
                            return getDoc(docRef).catch(err => ({ failed: true, reason: err }));
-                      } else { // Si es una colección
+                      } else { 
                           return getDocs(collection(db, col.path)).catch(err => ({ failed: true, reason: err }));
                       }
                   })
@@ -615,16 +561,14 @@
               const endTime = performance.now(); console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
         }
 
-
-        /** Displays the main application view after authentication */
         async function showMainView(currentUser) {
             userId = currentUser.uid; console.log("Showing Main View for user:", userId);
             const userDocRef = doc(db, "users", userId); console.log("Fetching user role...");
             try {
                 const userDoc = await getDoc(userDocRef);
-                if (userDoc.exists()) { window.userRole = userDoc.data().role || 'user'; } // Actualiza global
-                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); window.userRole = 'user'; } // Actualiza global
-            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); window.userRole = 'user'; } // Actualiza global
+                if (userDoc.exists()) { window.userRole = userDoc.data().role || 'user'; } 
+                else { console.warn(`User doc ${userId} not found. Creating default.`); await setDoc(userDocRef, { email: currentUser.email, role: 'user', createdAt: new Date() }, { merge: true }); window.userRole = 'user'; } 
+            } catch (error) { console.error("CRITICAL: Error fetching/setting user role:", error); window.showModal("Error Crítico", "No se pudo verificar tu rol."); window.userRole = 'user'; } 
             console.log("User role:", window.userRole);
 
             loginContent.classList.add('hidden'); registerContent.classList.add('hidden');
@@ -635,19 +579,17 @@
 
             const dependencies = { db, userId, appId, mainContent, floatingControls, activeListeners, userRole: window.userRole, showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown, collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter, firebaseConfig };
             let initSuccess = true;
-             // Definir módulos a inicializar
              const modules = [
                 { name: 'Data', init: window.initData },
                 { name: 'Admin', init: window.initAdmin },
-                { name: 'Inventario', init: window.initInventario }, // CRITICAL error if this is undefined
+                { name: 'Inventario', init: window.initInventario }, 
                 { name: 'Catalogo', init: window.initCatalogo },
                 { name: 'Clientes', init: window.initClientes },
                 { name: 'Ventas', init: window.initVentas },
                 { name: 'Obsequios', init: window.initObsequios }
              ];
-             // Intentar inicializar cada módulo
              modules.forEach(m => {
-                 if (typeof m.init === 'function') { // Verificar si la función existe
+                 if (typeof m.init === 'function') { 
                      try {
                          m.init(dependencies);
                          console.log(`${m.name} initialized.`);
@@ -656,8 +598,7 @@
                          initSuccess = false;
                      }
                  } else {
-                     // Si la función no existe, mostrar error crítico
-                     console.error(`CRITICAL: ${m.name} init function not found.`); // El error que estás viendo
+                     console.error(`CRITICAL: ${m.name} init function not found.`); 
                      initSuccess = false;
                  }
              });
@@ -667,22 +608,18 @@
             else { console.log("Modules initialized successfully. Showing main menu."); showMainMenu(); }
         }
 
-
-         // Función para manejar el toggle offline
          async function handleOfflineToggle() {
             const toggle = document.getElementById('offline-toggle');
             const toggleText = document.getElementById('offline-toggle-text');
             const isManualOffline = toggle.checked;
 
             if (isManualOffline) {
-                // Desconectar
                 try {
                     await disableNetwork(db);
                     localStorage.setItem('manualOfflineMode', 'true');
                     toggleText.textContent = 'Offline (Manual)';
                     toggleText.classList.remove('text-green-700');
                     toggleText.classList.add('text-red-700');
-                    // Actualizar estado flotante si está visible
                     if (connectionStatusEl) {
                          connectionStatusEl.textContent = "OFFLINE (Manual)";
                          connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
@@ -692,33 +629,28 @@
                 } catch (err) {
                     console.error("Error disabling Firestore network:", err);
                     _showModal('Error', 'No se pudo desactivar la conexión.');
-                    toggle.checked = false; // Revertir visualmente
+                    toggle.checked = false; 
                 }
             } else {
-                // Reconectar
                 try {
                     await enableNetwork(db);
                     localStorage.removeItem('manualOfflineMode');
                     toggleText.textContent = 'Online (Manual)';
                     toggleText.classList.remove('text-red-700');
                     toggleText.classList.add('text-green-700');
-                    // El listener onSnapshot actualizará el estado flotante eventualmente
                     console.log("Firestore network enabled manually.");
                     _showModal('Modo Online Activado', 'La aplicación intentará conectarse y sincronizar datos.', null, 'Entendido');
                 } catch (err) {
                     console.error("Error enabling Firestore network:", err);
                     _showModal('Error', 'No se pudo reactivar la conexión.');
-                    toggle.checked = true; // Revertir visualmente
+                    toggle.checked = true; 
                 }
             }
         }
 
-
-        /** Displays the main menu buttons */
         window.showMainMenu = function() {
-            console.log("Showing Main Menu"); cleanupListeners(); // Clean up previous listeners FIRST
+            console.log("Showing Main Menu"); cleanupListeners(); 
 
-            // Listener para estado de conexión (considerando modo manual)
             const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
                 if (!connectionStatusEl) return;
@@ -734,12 +666,10 @@
             }, (error) => {
                 console.warn("Connection status listener error:", error.code);
                 const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
-                 // Mostrar error solo si NO estamos en modo manual offline y no es un error esperado de logout
                 if (!isManualOffline && connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
                      connectionStatusEl.textContent = "Error Conexión";
                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                 } else if (!isManualOffline) {
-                     // Si es error de logout esperado o cancelado, no mostrar error visual grave
                      connectionStatusEl.textContent = "DESCONECTADO";
                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-gray-400 text-gray-900';
                 }
@@ -762,7 +692,6 @@
                         <button id="profileAdminBtn" class="w-full px-6 py-3 bg-gray-700 text-white rounded-lg shadow-md hover:bg-gray-800">${isAdmin ? 'Admin Panel' : 'Mi Perfil'}</button>
                         ${isAdmin ? `<button id="dataBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Data</button>` : ''}
                     </div>
-                     <!-- Interruptor Offline -->
                     <div class="mt-8 pt-4 border-t flex items-center justify-center space-x-3">
                          <span id="offline-toggle-text" class="text-sm font-medium text-gray-700">Online (Manual)</span>
                          <input type="checkbox" id="offline-toggle"/>
@@ -771,7 +700,6 @@
                 </div> </div> </div>
             `;
 
-             // Configurar estado inicial del interruptor y listener
             const offlineToggle = document.getElementById('offline-toggle');
             const offlineToggleText = document.getElementById('offline-toggle-text');
             if (offlineToggle && offlineToggleText) {
@@ -789,25 +717,21 @@
                 offlineToggle.addEventListener('change', handleOfflineToggle);
             }
 
-
             const navigateTo = (viewFunction) => {
                 const fName = Object.keys(window).find(key => window[key] === viewFunction); console.log(`Navigating to: ${fName || 'Unknown'}`);
                 if (typeof viewFunction === 'function') { if (floatingControls) floatingControls.classList.add('hidden'); try { viewFunction(); } catch (navError) { console.error(`Error navigating:`, navError); window.showModal("Error Navegación", `Error: ${navError.message}`); showMainMenu(); } }
                 else { console.error("Target is not function:", viewFunction); window.showModal("Error Interno", `Acción no disponible.`); showMainMenu(); }
             };
 
-            // Adjuntar listeners a botones de menú (asegurarse de que las funciones existan)
             if (window.showInventarioSubMenu) document.getElementById('inventarioBtn')?.addEventListener('click', () => navigateTo(window.showInventarioSubMenu)); else console.error("showInventarioSubMenu not found");
             if (window.showClientesSubMenu) document.getElementById('clientesBtn')?.addEventListener('click', () => navigateTo(window.showClientesSubMenu)); else console.error("showClientesSubMenu not found");
             if (window.showVentasView) document.getElementById('ventasBtn')?.addEventListener('click', () => navigateTo(window.showVentasView)); else console.error("showVentasView not found");
-            if (window.showGestionObsequiosView) document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); // else console.error("showGestionObsequiosView not found"); // Solo existe si no es admin
+            if (window.showGestionObsequiosView) document.getElementById('obsequiosBtn')?.addEventListener('click', () => navigateTo(window.showGestionObsequiosView)); 
             if (window.showCatalogoSubMenu) document.getElementById('catalogoBtn')?.addEventListener('click', () => navigateTo(window.showCatalogoSubMenu)); else console.error("showCatalogoSubMenu not found");
             if (window.showAdminOrProfileView) document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView)); else console.error("showAdminOrProfileView not found");
-            if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); // else console.error("showDataView not found"); // Solo existe si es admin
-
+            if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); 
         }
 
-        // --- APP INITIALIZATION ---
         async function initializeAppAndListeners() {
             console.log("Initializing Firebase app...");
             try {
@@ -815,44 +739,38 @@
                 db = getFirestore(app); auth = getAuth(app); setLogLevel('warn');
                 console.log("Firebase App, Firestore, Auth initialized.");
 
-                // --- Control inicial de red ---
                 const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
                 if (isManualOffline) {
                     await disableNetwork(db);
                     console.log("Starting in manual offline mode.");
                 } else {
-                    await enableNetwork(db); // Asegurar que esté habilitada por defecto
+                    await enableNetwork(db); 
                     console.log("Starting in online mode.");
                 }
 
-
             } catch (initError) { console.error("CRITICAL: Firebase init failed:", initError); alert("Error Crítico: No se pudo conectar. Recarga."); return; }
 
-             // Habilitar persistencia offline
             try { await enableIndexedDbPersistence(db); console.log("Offline persistence enabled."); }
             catch (err) { if(err.code=='failed-precondition')console.warn("Persistence failed: Multiple tabs open?"); else if(err.code=='unimplemented')console.warn("Persistence failed: Browser not supported?"); else console.error("Persistence error:", err); }
 
              console.log("Attaching Auth state listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners(); // Limpiar listeners ANTES de cambiar vista
+                cleanupListeners(); 
                 if (user) { showMainView(user).catch(err => { console.error("CRITICAL: Error showMainView:", err); window.showModal("Error Crítico", "Error al cargar app. Recarga."); }); }
                 else { showLoginView(); }
             });
             console.log("Auth listener attached.");
         }
 
-        // *** CORRECCIÓN: Envolver en DOMContentLoaded ***
         document.addEventListener('DOMContentLoaded', async () => {
             console.log("DOM fully loaded and parsed. Initializing app...");
-            await initializeAppAndListeners(); // Iniciar Firebase y listeners
-            // Añadir listeners a elementos que existen desde el principio (login/register)
+            await initializeAppAndListeners(); 
             loginForm?.addEventListener('submit', handleLogin);
             registerForm?.addEventListener('submit', handleRegister);
             document.getElementById('logoutBtn')?.addEventListener('click', () => { window.showModal('Confirmar Cierre de Sesión', '¿Estás seguro?', handleLogout, 'Sí, Cerrar Sesión'); });
             document.getElementById('goToRegisterBtn')?.addEventListener('click', showRegisterView);
             document.getElementById('goToLoginBtn')?.addEventListener('click', showLoginView);
-            // Registrar Service Worker
             if ('serviceWorker' in navigator) {
                 try {
                     const reg = await navigator.serviceWorker.register('./service-worker.js');
@@ -868,5 +786,3 @@
     </script>
 </body>
 </html>
-
-
