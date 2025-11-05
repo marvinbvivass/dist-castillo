@@ -1,6 +1,6 @@
 // --- Service Worker Mejorado para Funcionalidad Offline Robusta ---
 
-const CACHE_NAME = 'ventas-app-cache-v6'; // Versión actualizada para forzar la recarga
+const CACHE_NAME = 'ventas-app-cache-v7'; // Versión actualizada para forzar la recarga
 
 // Lista de archivos locales esenciales para el funcionamiento de la aplicación (App Shell)
 const urlsToCache = [
@@ -90,3 +90,4 @@ self.addEventListener('fetch', event => {
         })
     );
 });
+
