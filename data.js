@@ -244,7 +244,7 @@
             let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p => { let tQ=0; sortedClients.forEach(cli => tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} footerHTML+=`<td class="p-1 border text-center">${dT}</td>`; }); footerHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
 
             // Reporte de vacíos (sin cambios)
-            let vaciosHTML = ''; const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
+            let vaciosHTML = ''; const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vaciosHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vaciosHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vaciosHTML+='</tbody></table></div>';}
 
             const vendedor = closingData.vendedorInfo || {};
             const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <div class="mb-4"> <p><strong>Vendedor:</strong> ${vendedor.nombre||''} ${vendedor.apellido||''}</p> <p><strong>Camión:</strong> ${vendedor.camion||'N/A'}</p> <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p> </div> <h3 class="text-xl mb-4">Reporte Cierre</h3> <div class="overflow-auto border" style="max-height: 40vh;"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${headerHTML}</thead> <tbody>${bodyHTML}</tbody> <tfoot>${footerHTML}</tfoot> </table> </div> ${vaciosHTML} </div>`;
@@ -631,17 +631,31 @@
                                   .filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0))
                                   .sort(); 
             if (cliVacios.length > 0) { 
-                const dSheetVacios = [['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto']]; 
+                // --- *** INICIO MODIFICACIÓN: Aplicar Estilos a Hoja Vacíos *** ---
+                const dSheetVacios = [[
+                    {v: 'Cliente', s: boldStyle},
+                    {v: 'Tipo Vacío', s: boldStyle},
+                    {v: 'Entregados', s: boldStyle},
+                    {v: 'Devueltos', s: boldStyle},
+                    {v: 'Neto', s: boldStyle}
+                ]]; 
                 cliVacios.forEach(cli => {
                     const movs = vaciosMovementsPorTipo[cli]; 
                     TIPOS_VACIO_GLOBAL.forEach(t => {
                         const mov = movs[t] || {entregados:0, devueltos:0}; 
                         if (mov.entregados > 0 || mov.devueltos > 0) {
-                            dSheetVacios.push([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            dSheetVacios.push([
+                                {v: cli, s: dataStyle},
+                                {v: t, s: dataStyle},
+                                {v: mov.entregados, t: 'n', s: dataStyle},
+                                {v: mov.devueltos, t: 'n', s: dataStyle},
+                                {v: mov.entregados - mov.devueltos, t: 'n', s: dataStyle}
+                            ]);
                         }
                     });
                 }); 
                 const wsVacios = XLSX.utils.aoa_to_sheet(dSheetVacios);
+                // --- *** FIN MODIFICACIÓN *** ---
                 // --- *** NUEVO: Auto-ancho Vacíos *** ---
                 const vaciosColWidths = [ {wch: 25}, {wch: 15}, {wch: 12}, {wch: 12}, {wch: 10} ];
                 wsVacios['!cols'] = vaciosColWidths;
@@ -650,15 +664,26 @@
 
             // --- 4. Crear hoja de Total por Cliente ---
             const { clientTotals, grandTotalValue } = finalData;
-            const dSheetClientes = [['Cliente', 'Gasto Total']];
+            // --- *** INICIO MODIFICACIÓN: Aplicar Estilos a Hoja Clientes *** ---
+            const dSheetClientes = [[
+                {v: 'Cliente', s: boldStyle},
+                {v: 'Gasto Total', s: boldStyle}
+            ]];
             const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
 
             sortedClientTotals.forEach(([clientName, totalValue]) => {
-                dSheetClientes.push([clientName, Number(totalValue.toFixed(2))]);
+                dSheetClientes.push([
+                    {v: clientName, s: dataStyle},
+                    {v: Number(totalValue.toFixed(2)), t: 'n', z: '$0.00', s: priceStyle}
+                ]);
             });
-            dSheetClientes.push(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+            dSheetClientes.push([
+                {v: 'GRAN TOTAL', s: boldStyle},
+                {v: Number(grandTotalValue.toFixed(2)), t: 'n', z: '$0.00', s: subTotalStyle} // Reusar subTotalStyle
+            ]);
             
             const wsClientes = XLSX.utils.aoa_to_sheet(dSheetClientes);
+            // --- *** FIN MODIFICACIÓN *** ---
             // --- *** NUEVO: Auto-ancho Clientes *** ---
             const clienteColWidths = [ {wch: 35}, {wch: 15} ];
             wsClientes['!cols'] = clienteColWidths;
@@ -782,20 +807,53 @@
     }
     function handleDownloadStats() {
         if (_lastStatsData.length === 0 || typeof XLSX === 'undefined') { _showModal('Aviso', _lastStatsData.length === 0 ? 'No hay datos.' : 'Librería Excel no cargada.'); return; }
-        const sType = document.getElementById('stats-type').value; const hTitle = sType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
-        const dExport = _lastStatsData.map(p => { 
-            let dQty=0, dUnit='Unds'; const totPer=sType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
+        
+        // --- *** INICIO MODIFICACIÓN: Aplicar Estilos a Excel *** ---
+        // 1. Definir Estilos
+        const borderStyle = { style: "thin", color: { auto: 1 } };
+        const borders = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle };
+        const boldStyle = { font: { bold: true }, border: borders };
+        const dataStyle = { border: borders };
+        
+        // 2. Preparar datos con celdas de objeto
+        const ws_data = [];
+        const sType = document.getElementById('stats-type').value; 
+        const hTitle = sType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
+        
+        // Cabecera
+        ws_data.push([
+            { v: 'Producto', s: boldStyle },
+            { v: hTitle, s: boldStyle }
+        ]);
+
+        // 3. Llenar datos
+        _lastStatsData.forEach(p => { 
+            let dQty=0, dUnit='Unds'; 
+            const totPer=sType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
             if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} 
             else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} 
             else {dQty=totPer.toFixed(0);} 
             
-            // *** MODIFICACIÓN AQUÍ (EXCEL) ***
             const desc = `${p.segmento} ${p.marca} ${p.presentacion}`;
-            return {'Producto': desc, [hTitle]: `${dQty} ${dUnit}`}; 
-            // *** FIN MODIFICACIÓN ***
+            
+            ws_data.push([
+                { v: desc, s: dataStyle },
+                { v: `${dQty} ${dUnit}`, s: dataStyle }
+            ]);
         });
-        const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
-        const rubro = document.getElementById('stats-rubro-filter').value; const today = new Date().toISOString().slice(0, 10);
+        
+        // 4. Crear hoja y libro
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb, ws, 'Estadisticas');
+        
+        // 5. Aplicar anchos
+        ws['!cols'] = [ {wch: 60}, {wch: 20} ];
+        
+        // --- *** FIN MODIFICACIÓN *** ---
+
+        const rubro = document.getElementById('stats-rubro-filter').value; 
+        const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Estadisticas_${rubro}_${sType}_${today}.xlsx`);
     }
 
@@ -834,11 +892,41 @@
     }
     function handleDownloadFilteredClients() {
          if (typeof XLSX === 'undefined' || _filteredClientsCache.length === 0) { _showModal('Aviso', typeof XLSX === 'undefined'?'Librería Excel no cargada.':'No hay clientes.'); return; }
-        const dExport = _filteredClientsCache.map(c => ({'Sector':c.sector||'','Nombre Comercial':c.nombreComercial||'','Nombre Personal':c.nombrePersonal||'','Telefono':c.telefono||'','CEP':c.codigoCEP||'','Coordenadas':c.coordenadas||''}));
-        const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
-        // --- *** NUEVO: Auto-ancho Clientes Consolidados *** ---
+        
+        // --- *** INICIO MODIFICACIÓN: Aplicar Estilos a Excel *** ---
+        // 1. Definir Estilos
+        const borderStyle = { style: "thin", color: { auto: 1 } };
+        const borders = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle };
+        const boldStyle = { font: { bold: true }, border: borders };
+        const dataStyle = { border: borders };
+
+        // 2. Preparar datos con celdas de objeto
+        const ws_data = [];
+        const headers = ['Sector', 'Nombre Comercial', 'Nombre Personal', 'Telefono', 'CEP', 'Coordenadas'];
+        ws_data.push(headers.map(h => ({ v: h, s: boldStyle }))); // Cabecera
+
+        // 3. Llenar datos
+        _filteredClientsCache.forEach(c => {
+            ws_data.push([
+                { v: c.sector || '', s: dataStyle },
+                { v: c.nombreComercial || '', s: dataStyle },
+                { v: c.nombrePersonal || '', s: dataStyle },
+                { v: c.telefono || '', s: dataStyle },
+                { v: c.codigoCEP || '', s: dataStyle },
+                { v: c.coordenadas || '', s: dataStyle }
+            ]);
+        });
+
+        // 4. Crear hoja y libro
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb, ws, 'Clientes Consolidados');
+
+        // 5. Aplicar anchos (esta lógica ya existía y es correcta)
         const clientColWidths = [ {wch: 20}, {wch: 30}, {wch: 30}, {wch: 15}, {wch: 15}, {wch: 20} ];
         ws['!cols'] = clientColWidths;
+        // --- *** FIN MODIFICACIÓN *** ---
+
         const today = new Date().toISOString().slice(0, 10);
         XLSX.writeFile(wb, `Clientes_Consolidados_${today}.xlsx`);
     }
