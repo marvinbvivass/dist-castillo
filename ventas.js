@@ -12,8 +12,6 @@
     let _tasaBs = 0;
     let _monedaActual = 'USD';
 
-    // Asume que TIPOS_VACIO_GLOBAL se define o está disponible globalmente
-    // Usaremos window.TIPOS_VACIO_GLOBAL si existe, o un default
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
     window.initVentas = function(dependencies) {
@@ -85,14 +83,13 @@
         document.getElementById('tasaCopInput').addEventListener('input', (e) => { _tasaCOP = parseFloat(e.target.value) || 0; localStorage.setItem('tasaCOP', _tasaCOP); if (_monedaActual === 'COP') { renderVentasInventario(); updateVentaTotal(); } });
         document.getElementById('tasaBsInput').addEventListener('input', (e) => { _tasaBs = parseFloat(e.target.value) || 0; localStorage.setItem('tasaBs', _tasaBs); if (_monedaActual === 'Bs') { renderVentasInventario(); updateVentaTotal(); } });
         document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
-        document.getElementById('generarTicketBtn').addEventListener('click', generarTicket); // Llama a la nueva lógica
+        document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
         loadDataForNewSale();
     }
 
     function loadDataForNewSale() {
         const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
-        // --- FIX: Manejador de error de listener ---
         const unsubClientes = _onSnapshot(clientesRef, snap => { _clientesCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); }, err => { 
             if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
                 console.log(`Ventas (clientes) listener error ignored (assumed logout): ${err.code}`);
@@ -101,7 +98,6 @@
             console.error("Error clientes:", err); 
         });
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        // --- FIX: Manejador de error de listener ---
         const unsubInventario = _onSnapshot(inventarioRef, snap => { _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); populateRubroFilter(); if (_ventaActual.cliente) renderVentasInventario(); }, err => { 
             if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
                 console.log(`Ventas (inventario) listener error ignored (assumed logout): ${err.code}`);
@@ -140,13 +136,11 @@
     async function renderVentasInventario() {
         const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
         const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
-        // Usa la función global para ordenar el inventario en la vista de venta
         const sortFunc = await window.getGlobalProductSortFunction();
         filtInv.sort(sortFunc);
         body.innerHTML = '';
         if (filtInv.length === 0) { body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">No hay productos ${selRubro ? 'en este rubro' : ''}.</td></tr>`; return; }
         let lastHKey = null;
-        // Obtiene el primer criterio de ordenamiento de la preferencia global (si existe)
         const fSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
         filtInv.forEach(prod => {
             const curHVal = prod[fSortKey] || `Sin ${fSortKey}`; if (curHVal !== lastHKey) { lastHKey = curHVal; const hRow = document.createElement('tr'); hRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold sticky top-[calc(theme(height.10))] z-[9]">${lastHKey}</td>`; body.appendChild(hRow); }
@@ -175,7 +169,6 @@
         if(_monedaActual==='COP'&&_tasaCOP>0)tEl.textContent=`Total: COP ${(Math.ceil((tUSD*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; else if(_monedaActual==='Bs'&&_tasaBs>0)tEl.textContent=`Total: Bs.S ${(tUSD*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; else tEl.textContent=`Total: $${tUSD.toFixed(2)}`;
     }
 
-    // Funciones de Ticket (sin cambios)
     function createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo = 'ticket') {
         const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
         const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
@@ -205,7 +198,7 @@
                 qtyText = `${cant.und} UND`;
                 priceText = `$${(precios.und || 0).toFixed(2)}`;
             } else {
-                return; // No mostrar si no hay cantidad
+                return;
             }
             total += subtotal;
 
@@ -308,7 +301,7 @@
                 } else { return; }
                 total += subtotal;
 
-                const wrappedDesc = wordWrap(desc, 25); // Max width for description column
+                const wrappedDesc = wordWrap(desc, 25);
                 wrappedDesc.forEach((line, index) => {
                     const qtyStr = index === wrappedDesc.length - 1 ? qtyText : '';
                     const priceStr = index === wrappedDesc.length - 1 ? priceText : '';
@@ -337,7 +330,6 @@
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
         return ticket;
     }
-    // Funciones handleShareTicket, handleShareRawText, copyToClipboard, legacyCopyToClipboard (solo reciben callback)
     async function handleShareTicket(htmlContent, callbackDespuesDeCompartir) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div'); tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.innerHTML = htmlContent; document.body.appendChild(tempDiv);
@@ -353,20 +345,18 @@
     async function handleShareRawText(textContent, callbackDespuesDeCompartir) {
         let success = false;
          if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); success = true; } catch (err) { console.warn("Share API error:", err.name); } }
-         else { try { legacyCopyToClipboard(textContent, (copySuccess) => { success = copySuccess; }); } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } } // Pasar callback a legacy
-         // Asegurarse de llamar al callback DESPUÉS de intentar, incluso si legacyCopyToClipboard es asíncrono en su modal
-         // Usar un pequeño timeout si legacyCopyToClipboard no retorna directamente el estado
+         else { try { legacyCopyToClipboard(textContent, (copySuccess) => { success = copySuccess; }); } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } }
          setTimeout(() => {
             if (callbackDespuesDeCompartir) callbackDespuesDeCompartir(success);
-         }, 100); // Pequeña espera por si el modal de legacyCopyToClipboard es lento
+         }, 100);
     }
     function copyToClipboard(textContent, callbackDespuesDeCopia) {
         if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(textContent)
                 .then(() => { _showModal('Copiado', 'Texto copiado.'); if(callbackDespuesDeCopia) callbackDespuesDeCopia(true); })
-                .catch(err => legacyCopyToClipboard(textContent, callbackDespuesDeCopia)); // Fallback
+                .catch(err => legacyCopyToClipboard(textContent, callbackDespuesDeCopia));
         } else {
-            legacyCopyToClipboard(textContent, callbackDespuesDeCopia); // Fallback directo
+            legacyCopyToClipboard(textContent, callbackDespuesDeCopia);
         }
     }
     function legacyCopyToClipboard(textContent, callbackDespuesDeCopia) {
@@ -376,25 +366,103 @@
         catch (err) { console.error('Fallback copy failed:', err); _showModal('Error', 'No se pudo copiar el texto.'); success = false;}
         finally { document.body.removeChild(textArea); if(callbackDespuesDeCopia) callbackDespuesDeCopia(success); }
     }
-    // *** MODIFICADO: showSharingOptions ahora recibe callbackFinal ***
     function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, callbackFinal) {
         const modalContent = `<div class="text-center"><h3 class="text-xl font-bold mb-4">Generar ${tipo}</h3><p class="mb-6">Elige formato.</p><div class="space-y-4"><button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Imprimir (Texto)</button><button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">Compartir (Imagen)</button></div></div>`;
-        _showModal('Elige opción', modalContent, null, ''); // Sin botón 'Confirmar' por defecto
-        // Llama al callbackFinal *después* de intentar compartir/imprimir
+        _showModal('Elige opción', modalContent, null, '');
         document.getElementById('printTextBtn').addEventListener('click', () => { const rawText = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); handleShareRawText(rawText, callbackFinal); });
         document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, callbackFinal); });
     }
 
-    // *** MODIFICADO: _processAndSaveVenta ahora es la función que guarda ***
+    async function checkAndStoreInitialLoadSnapshot() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const todayString = `${year}-${month}-${day}`;
+
+        const snapshotDocRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/carga_snapshots/${todayString}`);
+
+        try {
+            const docSnap = await _getDoc(snapshotDocRef);
+
+            if (docSnap.exists()) {
+                console.log("El snapshot de Carga Inicial para hoy ya existe.");
+                return;
+            }
+
+            console.log(`Creando snapshot de Carga Inicial para ${todayString}...`);
+            
+            if (!_inventarioCache || _inventarioCache.length === 0) {
+                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+                const snapshot = await _getDocs(inventarioRef);
+                _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Inventario local recargado para snapshot.");
+            }
+
+            const inventarioMap = {};
+            _inventarioCache.forEach(prod => {
+                inventarioMap[prod.id] = prod;
+            });
+
+            const snapshotData = {
+                fecha: new Date(),
+                inventario: inventarioMap
+            };
+
+            await _setDoc(snapshotDocRef, snapshotData);
+            console.log("Snapshot de Carga Inicial guardado exitosamente.");
+
+        } catch (error) {
+            console.error("Error crítico al verificar o guardar el snapshot de Carga Inicial:", error);
+            _showModal("Error de Snapshot", "No se pudo guardar la Carga Inicial, pero la venta puede continuar. Contacte al admin.");
+        }
+    }
+
+    async function generarTicket() {
+        if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
+        const prods = Object.values(_ventaActual.productos);
+        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c => c > 0);
+        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Agrega productos o registra vacíos devueltos.'); return; }
+
+        await checkAndStoreInitialLoadSnapshot();
+
+        _showModal('Confirmar Venta', '¿Guardar esta transacción?', async () => {
+            _showModal('Progreso', 'Guardando transacción...');
+            try {
+                const savedData = await _processAndSaveVenta();
+
+                showSharingOptions(
+                    { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha },
+                    savedData.productos,
+                    savedData.vaciosDevueltosPorTipo,
+                    'Nota de Entrega',
+                    () => {
+                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
+                    }
+                );
+
+            } catch (saveError) {
+                console.error("Error al guardar venta:", saveError);
+                 const progressModal = document.getElementById('modalContainer');
+                 if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                      progressModal.classList.add('hidden');
+                 }
+                _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
+            }
+            
+            return false; 
+
+        }, 'Sí, guardar', () => { }, true);
+    }
+
     async function _processAndSaveVenta() {
         console.log("Starting _processAndSaveVenta...");
-        // Esta función ahora contiene la lógica de guardado que estaba antes en handleSaveVentaAndAdjustments
         try {
             const batch = _writeBatch(_db);
             const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
             let totalVenta=0;
             const itemsVenta=[];
-            const vaciosChanges={}; // tipoVacio: cambio_neto_para_saldo_cliente
+            const vaciosChanges={};
             const prodsParaGuardar = Object.values(_ventaActual.productos);
 
             for(const p of prodsParaGuardar){
@@ -415,7 +483,7 @@
                 if(pCache.manejaVacios && pCache.tipoVacio){
                     const tV=pCache.tipoVacio;
                     const cjV=p.cantCj||0;
-                    if(cjV > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) + cjV; // Aumenta deuda cliente
+                    if(cjV > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) + cjV;
                 }
 
                 if(restarU > 0) {
@@ -432,7 +500,7 @@
 
             for(const tV in _ventaActual.vaciosDevueltosPorTipo){
                 const dev=_ventaActual.vaciosDevueltosPorTipo[tV]||0;
-                if(dev > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) - dev; // Disminuye deuda cliente
+                if(dev > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) - dev;
             }
 
             if(Object.values(vaciosChanges).some(c => c !== 0)){
@@ -464,63 +532,17 @@
                 batch.set(ventaRef, ventaDataToSave);
             } else {
                  console.warn("No se guardó la venta: sin productos ni vacíos devueltos.");
-                 throw new Error("No hay productos ni vacíos devueltos para guardar."); // Lanzar error para que no continúe
+                 throw new Error("No hay productos ni vacíos devueltos para guardar.");
             }
 
             await batch.commit();
             console.log("_processAndSaveVenta finished successfully.");
-            // Devolver los datos guardados para usarlos en el ticket
             return { venta: ventaDataToSave, productos: itemsVenta, vaciosDevueltosPorTipo: ventaDataToSave.vaciosDevueltosPorTipo };
 
         } catch (e) {
             console.error("Error in _processAndSaveVenta:", e);
-            throw e; // Relanzar el error para que sea capturado por generarTicket
+            throw e;
         }
-    }
-
-    // *** MODIFICADO: generarTicket ahora confirma, llama a _processAndSaveVenta, y LUEGO muestra opciones ***
-    async function generarTicket() {
-        if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
-        const prods = Object.values(_ventaActual.productos);
-        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c => c > 0);
-        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Agrega productos o registra vacíos devueltos.'); return; }
-
-        // 1. Mostrar modal de confirmación para GUARDAR
-        _showModal('Confirmar Venta', '¿Guardar esta transacción?', async () => {
-            _showModal('Progreso', 'Guardando transacción...'); // Mostrar progreso mientras se guarda
-            try {
-                // 2. Llamar a la función que guarda y ajusta
-                const savedData = await _processAndSaveVenta();
-
-                // 3. Si tuvo éxito, AHORA mostrar las opciones de ticket
-                // Pasar showNuevaVentaView como callback final
-                showSharingOptions(
-                    { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha }, // Datos básicos
-                    savedData.productos, // Productos guardados
-                    savedData.vaciosDevueltosPorTipo, // Vacíos guardados
-                    'Nota de Entrega',
-                    () => { // Callback que se ejecuta después de imprimir/compartir
-                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
-                    }
-                );
-
-            } catch (saveError) {
-                // Si _processAndSaveVenta falló, mostrar el error
-                console.error("Error al guardar venta:", saveError);
-                 const progressModal = document.getElementById('modalContainer'); // Cerrar modal de progreso si aún está visible
-                 if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                      progressModal.classList.add('hidden');
-                 }
-                _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
-            }
-            
-            // --- ¡CORRECCIÓN AÑADIDA AQUÍ! ---
-            // Esto evita que el modal de "Confirmar" se cierre antes de que 
-            // aparezca el modal de "showSharingOptions".
-            return false; 
-            // --- FIN DE LA CORRECCIÓN ---
-
-        }, 'Sí, guardar', () => { /* No hacer nada si cancela la confirmación */ }, true); // True para indicar lógica de confirmación (mostrar progreso)
     }
 
     function showVentasTotalesView() {
@@ -555,7 +577,6 @@
     function renderVentasList() {
         const cont = document.getElementById('ventasListContainer'); if (!cont) return;
         const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
-        // --- FIX: Manejador de error de listener ---
         const unsub = _onSnapshot(q, (snap) => {
             _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); _ventasGlobal.sort((a,b)=>(b.fecha?.toDate()??0)-(a.fecha?.toDate()??0));
             if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
@@ -591,11 +612,11 @@
     async function processSalesDataForReport(ventas, userIdForInventario) {
         const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); // Usa inventario del vendedor
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
         const inventarioSnapshot = await _getDocs(inventarioRef); const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         ventas.forEach(venta => { const cliN=venta.clienteNombre||'N/A'; if(!clientData[cliN])clientData[cliN]={products:{},totalValue:0}; if(!vaciosMovementsPorTipo[cliN]){vaciosMovementsPorTipo[cliN]={};TIPOS_VACIO_GLOBAL.forEach(t=>vaciosMovementsPorTipo[cliN][t]={entregados:0,devueltos:0});} clientData[cliN].totalValue+=(venta.total||0); grandTotalValue+=(venta.total||0); const vacDev=venta.vaciosDevueltosPorTipo||{}; for(const t in vacDev){if(!vaciosMovementsPorTipo[cliN][t])vaciosMovementsPorTipo[cliN][t]={e:0,d:0}; vaciosMovementsPorTipo[cliN][t].devueltos+=(vacDev[t]||0);} (venta.productos||[]).forEach(p=>{const pComp=inventarioMap.get(p.id)||p; if(pComp.manejaVacios&&pComp.tipoVacio){const tV=pComp.tipoVacio; if(!vaciosMovementsPorTipo[cliN][tV])vaciosMovementsPorTipo[cliN][tV]={e:0,d:0}; vaciosMovementsPorTipo[cliN][tV].entregados+=p.cantidadVendida?.cj||0;} const r=pComp.rubro||'N/R', s=pComp.segmento||'N/S', m=pComp.marca||'N/M'; if(!allProductsMap.has(p.id))allProductsMap.set(p.id,{...pComp,id:p.id,rubro:r,segmento:s,marca:m,presentacion:p.presentacion}); if(!clientData[cliN].products[p.id])clientData[cliN].products[p.id]=0; clientData[cliN].products[p.id]+=(p.totalUnidadesVendidas||0);}); });
         const sortedClients = Object.keys(clientData).sort();
-        const sortFunction = await window.getGlobalProductSortFunction(); // Usa orden global
+        const sortFunction = await window.getGlobalProductSortFunction();
         const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
         return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
@@ -603,7 +624,7 @@
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin/user actual
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId);
             let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
             let bHTML=''; sortedClients.forEach(cli=>{bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;}); bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;});
             let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fHTML+=`<td class="p-1 border text-center">${dT}</td>`;}); fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
@@ -615,7 +636,7 @@
     async function exportCierreToExcel(ventas) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID user actual
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId);
             const dSheet1 = []; const hRow = ["Cliente"]; finalProductOrder.forEach(p => { hRow.push(p.presentacion || 'N/A'); }); hRow.push("Total Cliente"); dSheet1.push(hRow);
             sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
             const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
@@ -632,25 +653,22 @@
             try {
                  _showModal('Progreso', 'Generando Excel...'); await exportCierreToExcel(ventas);
                  _showModal('Progreso', 'Archivando y eliminando...'); const cierreData = { fecha: new Date(), ventas: ventas.map(({id,...rest})=>rest), total: ventas.reduce((s,v)=>s+(v.total||0),0) }; let cDocRef;
-                 // Guardar cierre en colección pública si es usuario normal, privada si es admin
                  if (window.userRole === 'user') {
                      const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
-                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); // Colección pública para cierres de vendedores
+                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`));
                      cierreData.vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de vendedor guardado en colección pública.");
-                 } else { // Si es admin, guardar en su colección privada
+                 } else {
                      cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de admin guardado en colección privada.");
                  }
-                 // Eliminar ventas activas
                  const batch = _writeBatch(_db); ventas.forEach(v => batch.delete(_doc(ventasRef, v.id))); await batch.commit();
                 _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas archivadas/eliminadas.', showVentasTotalesView); return true;
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
     }
-    // *** MODIFICADO: showPastSaleOptions ahora pasa callback showVentasActualesView ***
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
         console.log("showPastSaleOptions called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
@@ -658,29 +676,25 @@
         const productosFormateados = (venta.productos || []).map(p => ({
             ...p,
             cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
-            totalUnidadesVendidas: p.totalUnidadesVendidas || /* calculation */ 0,
+            totalUnidadesVendidas: p.totalUnidadesVendidas || 0,
             precios: p.precios || { und: 0, paq: 0, cj: 0 }
         }));
-        // El callback ahora es showVentasActualesView para volver a la lista después de compartir
         showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
     }
     function editVenta(ventaId) {
-        console.log("editVenta called with ID:", ventaId); // *** Log de depuración ***
+        console.log("editVenta called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
-         _originalVentaForEdit = JSON.parse(JSON.stringify(venta)); // Deep copy para comparar cambios
+         _originalVentaForEdit = JSON.parse(JSON.stringify(venta));
         showEditVentaView(venta);
     }
-    // *** MODIFICADO: deleteVenta ahora incluye ajuste de stock/vacíos en transacción ***
     function deleteVenta(ventaId) {
-        console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
+        console.log("deleteVenta called with ID:", ventaId);
          const venta = _ventasGlobal.find(v => v.id === ventaId);
          if (!venta) {
             _showModal('Error', 'Venta no encontrada en la lista actual.');
             return;
          }
-         // *** ELIMINADA: Verificación de _inventarioCache ***
-         // if (!_inventarioCache || _inventarioCache.length === 0) { ... }
 
         _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
             _showModal('Progreso', 'Eliminando venta y ajustando datos...');
@@ -689,7 +703,6 @@
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
 
                 await _runTransaction(_db, async (transaction) => {
-                    // --- PASO 1: LEER TODO PRIMERO ---
                     console.log("Transaction: Reading venta and cliente...");
                     const ventaDoc = await transaction.get(ventaRef);
                     const clienteDoc = await transaction.get(clienteRef);
@@ -700,37 +713,34 @@
                     const clienteData = clienteDoc.exists() ? clienteDoc.data() : null;
                     const productosVendidos = ventaData.productos || [];
 
-                    // Crear refs y leer todos los documentos de inventario necesarios
                     const inventarioRefs = {};
-                    const productoIds = productosVendidos.map(p => p.id).filter(id => id); // Filtrar IDs nulos/vacíos
+                    const productoIds = productosVendidos.map(p => p.id).filter(id => id);
                     console.log(`Transaction: Reading ${productoIds.length} inventory items...`);
-                    const inventarioDocsMap = new Map(); // Para guardar los docs leídos
+                    const inventarioDocsMap = new Map();
                     if (productoIds.length > 0) {
                         const uniqueProductIds = [...new Set(productoIds)];
                         const inventarioGetPromises = uniqueProductIds.map(id => {
                             const ref = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
-                            inventarioRefs[id] = ref; // Guardar la ref para usarla después
+                            inventarioRefs[id] = ref;
                             return transaction.get(ref);
                         });
                         const inventarioDocs = await Promise.all(inventarioGetPromises);
                         inventarioDocs.forEach((docSnap, index) => {
-                            inventarioDocsMap.set(uniqueProductIds[index], docSnap); // Guardar doc por ID
+                            inventarioDocsMap.set(uniqueProductIds[index], docSnap);
                         });
                     }
                     console.log("Transaction: All reads completed.");
 
-                    // --- PASO 2: CALCULAR AJUSTES ---
                     const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
                     const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual };
-                    const ajustesInventario = []; // { ref: docRef, cantidad: aRestaurar }
-                    const ajustesVaciosNetos = {}; // { tipoVacio: ajusteSaldo }
+                    const ajustesInventario = [];
+                    const ajustesVaciosNetos = {};
 
-                    // a) Calcular ajuste inventario y vacíos entregados
                     for (const productoVendido of productosVendidos) {
                         const unidadesARestaurar = productoVendido.totalUnidadesVendidas || 0;
                         if (unidadesARestaurar > 0) {
                             const productoInventarioRef = inventarioRefs[productoVendido.id];
-                            if (productoInventarioRef) { // Asegurar que la ref existe
+                            if (productoInventarioRef) {
                                 ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar, id: productoVendido.id });
                             } else {
                                 console.warn(`No se encontró ref de inventario para producto ${productoVendido.id} en la venta.`);
@@ -741,33 +751,29 @@
                             const tipo = productoVendido.tipoVacio;
                             const cajasEntregadas = productoVendido.cantidadVendida?.cj || 0;
                             if (cajasEntregadas > 0) {
-                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas; // Restar de la deuda (revertir entrega)
+                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas;
                             }
                         }
                     }
 
-                    // b) Calcular ajuste por vacíos devueltos en la venta
                     const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
                     for (const tipo in vaciosDevueltosEnVenta) {
                         const cajasDevueltas = vaciosDevueltosEnVenta[tipo] || 0;
                         if (cajasDevueltas > 0) {
-                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas; // Sumar a la deuda (revertir devolución)
+                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas;
                         }
                     }
 
-                    // --- PASO 3: ESCRIBIR TODO ---
                     console.log("Transaction: Starting writes...");
 
-                    // a) Escribir ajustes de inventario
                     for (const ajuste of ajustesInventario) {
-                         const invDoc = inventarioDocsMap.get(ajuste.id); // Obtener el doc LEÍDO PREVIAMENTE
+                         const invDoc = inventarioDocsMap.get(ajuste.id);
                          const stockActual = invDoc && invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
                          const nuevoStock = stockActual + ajuste.cantidad;
                          console.log(`Transaction: Updating inventory ${ajuste.id}. Old: ${stockActual}, Adjustment: ${ajuste.cantidad}, New: ${nuevoStock}`);
-                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true }); // Usar set + merge por si el producto ya no existe
+                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true });
                     }
 
-                    // b) Escribir ajustes de saldo de vacíos (si hubo cambios y el cliente existe)
                     let saldoVaciosModificado = false;
                     if (clienteDoc.exists()) {
                         for (const tipo in ajustesVaciosNetos) {
@@ -787,23 +793,19 @@
                          console.warn("Transaction: Client doc does not exist, skipping empty balance update.");
                     }
 
-
-                    // c) Eliminar la venta
                     console.log("Transaction: Deleting sale document.");
                     transaction.delete(ventaRef);
 
                     console.log("Transaction: All writes queued.");
-                }); // Fin _runTransaction
+                });
 
                 _showModal('Éxito', 'Venta eliminada. Inventario y saldos de vacíos ajustados.');
-                // La lista se actualizará automáticamente por el listener onSnapshot al eliminar la venta.
 
             } catch (error) {
                 console.error("Error eliminando/revirtiendo venta:", error);
-                // Si falla la transacción, Firestore revierte todo automáticamente.
                 _showModal('Error', `No se pudo eliminar/revertir la venta: ${error.message}`);
             }
-        }, 'Sí, Eliminar y Revertir', null, true); // True para indicar lógica de confirmación
+        }, 'Sí, Eliminar y Revertir', null, true);
     }
     async function showEditVentaView(venta) {
         if (_floatingControls) _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
@@ -852,7 +854,6 @@
         if (!_originalVentaForEdit) { _showModal('Error', 'Venta original no encontrada.'); return; }
         const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0);
         const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo || {}).some(c => c > 0);
-        // Permitir guardar aunque no haya productos si hay vacíos (o viceversa), pero no si ambos están vacíos
         if (prods.length === 0 && !hayVac && Object.values(_originalVentaForEdit.vaciosDevueltosPorTipo || {}).every(c => c === 0)) {
             _showModal('Error', 'La venta editada no puede quedar completamente vacía.'); return;
         }
@@ -861,11 +862,11 @@
             _showModal('Progreso', 'Guardando y ajustando...');
             try {
                 const batch=_writeBatch(_db); const origProds=new Map((_originalVentaForEdit.productos||[]).map(p=>[p.id,p])); const newProds=new Map(Object.values(_ventaActual.productos).map(p=>[p.id,p])); const allPIds=new Set([...origProds.keys(),...newProds.keys()]); const vaciosAdj={}; TIPOS_VACIO.forEach(t=>vaciosAdj[t]=0);
-                for(const pId of allPIds){ const origP=origProds.get(pId), newP=newProds.get(pId), pCache=_inventarioCache.find(p=>p.id===pId); if(!pCache)continue; const origU=origP?(origP.totalUnidadesVendidas||0):0, newU=newP?(newP.totalUnidadesVendidas||0):0, deltaU=origU-newU; // deltaU > 0 significa que se devolvió stock
+                for(const pId of allPIds){ const origP=origProds.get(pId), newP=newProds.get(pId), pCache=_inventarioCache.find(p=>p.id===pId); if(!pCache)continue; const origU=origP?(origP.totalUnidadesVendidas||0):0, newU=newP?(newP.totalUnidadesVendidas||0):0, deltaU=origU-newU;
                     if(deltaU!==0){ const cStockU=pCache.cantidadUnidades||0, fStockU=cStockU+deltaU; if(fStockU<0)throw new Error(`Stock insuficiente "${pCache.presentacion}" (${fStockU} unidades). Ajuste requerido: ${deltaU}.`); const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,pId); batch.update(pRef,{cantidadUnidades:fStockU}); }
-                    if(pCache.manejaVacios&&pCache.tipoVacio){ const tV=pCache.tipoVacio, origCj=origP?.cantidadVendida?.cj||0, newCj=newP?.cantCj||0, deltaCj=newCj-origCj; if(vaciosAdj.hasOwnProperty(tV))vaciosAdj[tV]+=deltaCj; } } // deltaCj > 0 significa que se entregaron más vacíos (aumenta deuda)
-                const origVac=_originalVentaForEdit.vaciosDevueltosPorTipo||{}, newVac=_ventaActual.vaciosDevueltosPorTipo||{}; TIPOS_VACIO.forEach(t=>{const origD=origVac[t]||0, newD=newVac[t]||0, deltaD=newD-origD; if(vaciosAdj.hasOwnProperty(t))vaciosAdj[t]-=deltaD;}); // deltaD > 0 significa que se recibieron más vacíos (disminuye deuda)
-                if(Object.values(vaciosAdj).some(a=>a!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId); try{await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())return; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosAdj){const adj=vaciosAdj[tV]; if(adj!==0) sVac[tV]=(sVac[tV]||0)+adj;} t.update(cliRef,{saldoVacios:sVac});});} catch(transErr){console.error(`Error ajustando vacíos cli ${_originalVentaForEdit.clienteId}:`,transErr); _showModal('Advertencia','No se pudieron ajustar los saldos de vacíos del cliente.');}} // Continuar aunque falle ajuste de saldo
+                    if(pCache.manejaVacios&&pCache.tipoVacio){ const tV=pCache.tipoVacio, origCj=origP?.cantidadVendida?.cj||0, newCj=newP?.cantCj||0, deltaCj=newCj-origCj; if(vaciosAdj.hasOwnProperty(tV))vaciosAdj[tV]+=deltaCj; } }
+                const origVac=_originalVentaForEdit.vaciosDevueltosPorTipo||{}, newVac=_ventaActual.vaciosDevueltosPorTipo||{}; TIPOS_VACIO.forEach(t=>{const origD=origVac[t]||0, newD=newVac[t]||0, deltaD=newD-origD; if(vaciosAdj.hasOwnProperty(t))vaciosAdj[t]-=deltaD;});
+                if(Object.values(vaciosAdj).some(a=>a!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId); try{await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())return; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosAdj){const adj=vaciosAdj[tV]; if(adj!==0) sVac[tV]=(sVac[tV]||0)+adj;} t.update(cliRef,{saldoVacios:sVac});});} catch(transErr){console.error(`Error ajustando vacíos cli ${_originalVentaForEdit.clienteId}:`,transErr); _showModal('Advertencia','No se pudieron ajustar los saldos de vacíos del cliente.');}}
                 let nTotal=0; const nItems=Object.values(_ventaActual.productos).filter(p=>p.totalUnidadesVendidas>0).map(p=>{ const pr=p.precios||{und:p.precioPorUnidad||0}; const sub=(pr.cj||0)*(p.cantCj||0)+(pr.paq||0)*(p.cantPaq||0)+(pr.und||0)*(p.cantUnd||0); nTotal+=sub; const uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; const totURecalc=(p.cantCj||0)*uCj+(p.cantPaq||0)*uPaq+(p.cantUnd||0); return { id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null, precios:p.precios, ventaPor:p.ventaPor, unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja, cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0}, totalUnidadesVendidas:totURecalc, iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null }; });
                 const vRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/ventas`,_originalVentaForEdit.id); batch.update(vRef,{productos:nItems, total:nTotal, vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo, fechaModificacion:new Date()});
                 await batch.commit(); _originalVentaForEdit=null; _showModal('Éxito','Venta actualizada.',showVentasActualesView);
@@ -880,6 +881,6 @@
         showPastSaleOptions,
         editVenta,
         deleteVenta,
-        invalidateCache: () => { /* No action needed */ }
+        invalidateCache: () => { }
     };
 })();
