@@ -43,14 +43,14 @@
         },
         columnWidths: {
             // CORRECCIÓN: Nombres de ancho de columna actualizados para reflejar el nuevo diseño
-            col_A_LabelsClientes: 25, // Col A (Fecha/Usuario/Clientes)
-            col_B_Products: 12,       // Default para productos (B, C, D...)
-            subtotal: 15,             // RE-AGREGADO
-            vaciosCliente: 25,        // Hoja Vacíos - Cliente
-            vaciosTipo: 15,           // Hoja Vacíos - Tipo
-            vaciosQty: 12,            // Hoja Vacíos - Cantidades
-            totalCliente: 35,         // Hoja Total Cliente - Cliente
-            totalClienteValor: 15    // Hoja Total Cliente - Valor
+            col_A_LabelsClientes: 25, // Col A (Etiquetas/Clientes)
+            products: 12,           // Default para productos (B, C, D...)
+            subtotal: 15,           // RE-AGREGADO
+            vaciosCliente: 25,      // Hoja Vacíos - Cliente
+            vaciosTipo: 15,         // Hoja Vacíos - Tipo
+            vaciosQty: 12,          // Hoja Vacíos - Cantidades
+            totalCliente: 35,       // Hoja Total Cliente - Cliente
+            totalClienteValor: 15  // Hoja Total Cliente - Valor
         }
     };
     // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
@@ -526,8 +526,8 @@
             
             const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'left');
             // CORRECCIÓN (Fix 3): Estilo de cliente solo número
-            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0.##", 'center'); // SOLO NÚMERO
-            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0.##", 'center'); // SOLO NÚMERO
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0", 'center'); // SOLO NÚMERO
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0", 'center'); // SOLO NÚMERO
             const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precios derecha
 
             const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'left');
@@ -556,9 +556,8 @@
                 // CORRECCIÓN (Fix 2): Aplicar anchos de Col A y B
                 const colWidths = [ 
                     { width: settings.columnWidths.col_A_LabelsClientes }, // Col A
-                    { width: settings.columnWidths.col_B_Products }      // Col B
                 ];
-                const START_COL = 3; // Columna 'C'
+                const START_COL = 2; // Columna 'B'
                 
                 // --- Fila 1: Info Fecha ---
                 // CORREGIDO (Fix 1): Poner valor en A1, sin merge
@@ -594,7 +593,7 @@
                     const presentacion = p.presentacion || 'S/P';
                     const precio = getPrice(p);
 
-                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 3 (C3, D3...)
+                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 3 (B3, C3...)
                     headerRowSegment.getCell(c).value = segment;
                     headerRowMarca.getCell(c).value = marca;
                     headerRowPresentacion.getCell(c).value = presentacion;
@@ -607,7 +606,7 @@
                     headerRowPrecio.getCell(c).style = headerPriceStyle;
 
                     // --- CORRECCIÓN (Fix 2): Ancho de Columna de Producto ---
-                    // Usar el ancho definido por el usuario, no calcularlo
+                    // CORRECCIÓN: Usar el ancho definido por el usuario
                     colWidths.push({ width: settings.columnWidths.products });
 
                     if (index > 0) {
@@ -675,7 +674,8 @@
                         
                         // CORREGIDO (Fix 3): Usar estilo SIN unidad
                         const baseStyle = (qU > 0) ? clientSaleStyle : clientQtyStyle;
-                        cell.style = { ...baseStyle }; // El numFmt '0.##' ya está en el estilo
+                        // CORRECCIÓN ERROR NUMFMT: Aplicar formato "0" (entero)
+                        cell.style = { ...baseStyle, numFmt: "0" }; 
                     });
                     // --- CORRECCIÓN (Fix 2): Re-agregado subtotal cliente ---
                     const subtotalCell = clientRow.getCell(subTotalCol);
@@ -1361,9 +1361,10 @@
             `;
             const w = currentSettings.columnWidths;
             // --- CORRECCIÓN: Poblar el contenedor de anchos de rubro ---
+            // CORREGIDO: IDs y etiquetas para el diseño A/B
             document.getElementById('rubro-widths-container').innerHTML = `
                 ${createWidthEditor('width_col_A_LabelsClientes', 'Col A (Etiquetas/Clientes)', w.col_A_LabelsClientes)}
-                ${createWidthEditor('width_col_B_Products', 'Col B en adelante (Productos)', w.col_B_Products)}
+                ${createWidthEditor('width_products', 'Cols Producto (B, C...)', w.products)}
                 ${createWidthEditor('width_subtotal', 'Col Sub Total', w.subtotal)}
             `;
 
@@ -1433,7 +1434,7 @@
         
         return {
             col_A_LabelsClientes: readVal('width_col_A_LabelsClientes', defaults.col_A_LabelsClientes),
-            col_B_Products: readVal('width_col_B_Products', defaults.col_B_Products),
+            products: readVal('width_products', defaults.products),
             subtotal: readVal('width_subtotal', defaults.subtotal), // RE-AGREGADO
             vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
             vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
