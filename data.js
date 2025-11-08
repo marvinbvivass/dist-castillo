@@ -12,23 +12,22 @@
 
     const REPORTE_DESIGN_CONFIG_PATH = 'config/reporteCierreVentas';
     
-    // --- NUEVOS VALORES POR DEFECTO ---
+    // --- VALORES POR DEFECTO ACTUALIZADOS ---
     const DEFAULT_REPORTE_SETTINGS = {
         showCargaInicial: true,
         showCargaRestante: true,
         showVaciosSheet: true,
         showClienteTotalSheet: true,
         styles: {
-            headerInfo: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: false },
-            headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true },
-            rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
-            rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true },
-            // NUEVO: Estilo para celdas con ventas > 0
-            rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true },
-            rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
-            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true }
+            // Añadido fontSize por defecto
+            headerInfo: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: false, fontSize: 10 },
+            headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true, fontSize: 10 },
+            rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 }
         },
-        // NUEVO: Anchos de columna por defecto
         columnWidths: {
             info: 15,          // Col A (Info Fecha/Usuario)
             labels: 25,        // Col B (Labels Clientes, Carga, etc.)
@@ -363,7 +362,8 @@
         // 1. Fuente (Font)
         style.font = {
             bold: config.bold || false,
-            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) } // Formato ARGB
+            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) }, // Formato ARGB
+            size: config.fontSize || 10 // AÑADIDO: Tamaño de letra
         };
 
         // 2. Relleno (Fill)
@@ -384,7 +384,7 @@
         }
         
         // 5. Alineación (opcional, se puede añadir si se desea)
-        // style.alignment = { vertical: 'middle', horizontal: 'left' };
+        style.alignment = { vertical: 'middle' }; // Añadido centrado vertical
 
         return style;
     }
@@ -985,17 +985,18 @@
         document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
     }
 
-    // --- MODIFICADO: createZoneEditor ahora es más simple ---
+    // --- MODIFICADO: createZoneEditor ahora incluye Tamaño de Letra ---
     function createZoneEditor(idPrefix, label, settings) {
         const s = settings; // 'settings' es el objeto de estilo (ej: s.styles.headerInfo)
         return `
         <div class="p-3 border rounded-lg bg-gray-50">
             <h4 class="font-semibold text-gray-700">${label}</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2 text-sm">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-sm items-center">
                 <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_bold" ${s.bold ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Negrita</span></label>
                 <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_border" ${s.border ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Bordes</span></label>
                 <label class="flex items-center space-x-2"><span>Fondo:</span><input type="color" id="${idPrefix}_fillColor" value="${s.fillColor || '#FFFFFF'}" class="h-6 w-10 border cursor-pointer p-0"></label>
                 <label class="flex items-center space-x-2"><span>Texto:</span><input type="color" id="${idPrefix}_fontColor" value="${s.fontColor || '#000000'}" class="h-6 w-10 border cursor-pointer p-0"></label>
+                <label class="flex items-center space-x-2"><span>Tamaño:</span><input type="number" id="${idPrefix}_fontSize" value="${s.fontSize || 10}" min="8" max="16" class="h-7 w-12 border cursor-pointer p-1 text-sm rounded-md"></label>
             </div>
         </div>`;
     }
@@ -1010,6 +1011,7 @@
         </div>`;
     }
 
+    // --- MODIFICADO: showReportDesignView ahora usa PESTAÑAS ---
     async function showReportDesignView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -1018,61 +1020,117 @@
                 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
                 input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
                 input[type="color"]::-moz-color-swatch { border: none; border-radius: 2px; }
+                /* Estilos para pestañas */
+                .design-tab-btn {
+                    padding: 0.5rem 1rem;
+                    cursor: pointer;
+                    border: 1px solid transparent;
+                    border-bottom: none;
+                    margin-bottom: -1px;
+                    background-color: #f9fafb; /* bg-gray-50 */
+                    color: #6b7280; /* text-gray-500 */
+                    border-radius: 0.375rem 0.375rem 0 0; /* rounded-t-md */
+                }
+                .design-tab-btn.active {
+                    background-color: #ffffff; /* bg-white */
+                    color: #3b82f6; /* text-blue-600 */
+                    font-weight: 600; /* font-semibold */
+                    border-color: #e5e7eb; /* border-gray-200 */
+                }
             </style>
             <div class="p-4 pt-8">
-                <div class="container mx-auto max-w-2xl">
-                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                <div class="container mx-auto max-w-3xl">
+                    <div class="bg-white/90 backdrop-blur-sm p-6 md:p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Diseño de Reporte de Cierre</h1>
                         <p class="text-center text-gray-600 mb-6">Define los estilos visuales y la visibilidad de las secciones del reporte Excel.</p>
                         
                         <div id="design-loader" class="text-center text-gray-500 p-4">Cargando configuración...</div>
                         
-                        <div id="design-form-container" class="hidden space-y-6 text-left">
+                        <form id="design-form-container" class="hidden text-left">
                             
-                            <!-- NUEVA SECCIÓN: Ancho de Columnas -->
-                            <div>
-                                <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Unidades Excel)</h3>
-                                <div id="column-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
-                                    Cargando...
-                                </div>
-                            </div>
-                            
-                            <!-- SECCIÓN EXISTENTE: Estilos de Zonas -->
-                            <div>
-                                <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas</h3>
-                                <div id="style-zones-container" class="space-y-3 mt-4">
-                                    Cargando...
-                                </div>
+                            <!-- Contenedor de Pestañas -->
+                            <div id="design-tabs" class="flex border-b border-gray-200 mb-4 overflow-x-auto text-sm">
+                                <button type="button" class="design-tab-btn active" data-tab="general">General</button>
+                                <button type="button" class="design-tab-btn" data-tab="rubro">Hoja Rubros</button>
+                                <button type="button" class="design-tab-btn" data-tab="vacios">Hoja Vacíos</button>
+                                <button type="button" class="design-tab-btn" data-tab="totales">Hoja Totales</button>
                             </div>
 
-                            <!-- SECCIÓN EXISTENTE: Visibilidad -->
-                            <div>
-                                <h3 class="text-lg font-semibold border-b pb-2 mt-4">Visibilidad de Secciones</h3>
-                                <div class="space-y-2 mt-4">
-                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                        <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Mostrar fila "CARGA INICIAL"</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                        <input type="checkbox" id="chk_showCargaRestante" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Mostrar fila "CARGA RESTANTE"</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                        <input type="checkbox" id="chk_showVaciosSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Incluir hoja "Reporte Vacíos"</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                        <input type="checkbox" id="chk_showClienteTotalSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <span>Incluir hoja "Total Por Cliente"</span>
-                                    </label>
+                            <!-- Contenido de Pestañas -->
+                            <div id="design-tab-content" class="space-y-6">
+
+                                <!-- Pestaña General (Visibilidad) -->
+                                <div id="tab-content-general" class="space-y-4">
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Visibilidad de Secciones</h3>
+                                    <div class="space-y-2 mt-4">
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Mostrar fila "CARGA INICIAL" (en Hojas Rubro)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showCargaRestante" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Mostrar fila "CARGA RESTANTE" (en Hojas Rubro)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showVaciosSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Incluir hoja "Reporte Vacíos"</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showClienteTotalSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Incluir hoja "Total Por Cliente"</span>
+                                        </label>
+                                    </div>
                                 </div>
+
+                                <!-- Pestaña Hoja Rubros (Estilos y Anchos) -->
+                                <div id="tab-content-rubro" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Rubros)</h3>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        ${createWidthEditor('width_info', 'Info (Fecha/Usuario)', 0)}
+                                        ${createWidthEditor('width_labels', 'Etiquetas (Cliente, Carga)', 0)}
+                                        ${createWidthEditor('width_products', 'Productos (Default)', 0)}
+                                        ${createWidthEditor('width_subtotal', 'Sub Total', 0)}
+                                    </div>
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Rubros)</h3>
+                                    <div class="space-y-3 mt-4">
+                                        ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', DEFAULT_REPORTE_SETTINGS.styles.headerInfo)}
+                                        ${createZoneEditor('headerProducts', 'Cabecera Productos', DEFAULT_REPORTE_SETTINGS.styles.headerProducts)}
+                                        ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', DEFAULT_REPORTE_SETTINGS.styles.rowCargaInicial)}
+                                        ${createZoneEditor('rowDataClients', 'Filas Clientes (Celdas Vacías)', DEFAULT_REPORTE_SETTINGS.styles.rowDataClients)}
+                                        ${createZoneEditor('rowDataClientsSale', 'Filas Clientes (Venta > 0)', DEFAULT_REPORTE_SETTINGS.styles.rowDataClientsSale)} 
+                                        ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', DEFAULT_REPORTE_SETTINGS.styles.rowCargaRestante)}
+                                        ${createZoneEditor('rowTotals', 'Fila "TOTALES"', DEFAULT_REPORTE_SETTINGS.styles.rowTotals)}
+                                    </div>
+                                </div>
+
+                                <!-- Pestaña Hoja Vacíos (Anchos) -->
+                                <div id="tab-content-vacios" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Vacíos)</h3>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        ${createWidthEditor('width_vaciosCliente', 'Cliente', 0)}
+                                        ${createWidthEditor('width_vaciosTipo', 'Tipo Vacío', 0)}
+                                        ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', 0)}
+                                        <div></div> <!-- Placeholder for grid -->
+                                    </div>
+                                </div>
+
+                                <!-- Pestaña Hoja Totales (Anchos) -->
+                                <div id="tab-content-totales" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Totales)</h3>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        ${createWidthEditor('width_totalCliente', 'Cliente', 0)}
+                                        ${createWidthEditor('width_totalClienteValor', 'Gasto Total', 0)}
+                                    </div>
+                                </div>
+
                             </div>
 
-                            <div class="flex flex-col sm:flex-row gap-4 pt-6">
-                                <button id="saveDesignBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Diseño</button>
-                                <button id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            <!-- Botones de Acción -->
+                            <div class="flex flex-col sm:flex-row gap-4 pt-6 mt-6 border-t">
+                                <button type="button" id="saveDesignBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Diseño</button>
+                                <button type="button" id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                             </div>
-                        </div>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -1081,64 +1139,79 @@
         document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('saveDesignBtn').addEventListener('click', handleSaveReportDesign);
 
+        // --- Lógica de Pestañas ---
+        const tabsContainer = document.getElementById('design-tabs');
+        const tabContents = document.querySelectorAll('#design-tab-content > div');
+        tabsContainer.addEventListener('click', (e) => {
+            const clickedTab = e.target.closest('.design-tab-btn');
+            if (!clickedTab) return;
+
+            const tabId = clickedTab.dataset.tab;
+            
+            // Actualizar botones
+            tabsContainer.querySelectorAll('.design-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            clickedTab.classList.add('active');
+            
+            // Actualizar contenido
+            tabContents.forEach(content => {
+                if (content.id === `tab-content-${tabId}`) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
+            });
+        });
+
+        // --- Carga de Datos ---
         const loader = document.getElementById('design-loader');
         const formContainer = document.getElementById('design-form-container');
-        const styleContainer = document.getElementById('style-zones-container');
-        const widthContainer = document.getElementById('column-widths-container'); // NUEVO
         
         try {
             const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(docRef);
             
-            // --- MODIFICADO: Merge profundo manual ---
             let currentSettings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); // Copia profunda
             if (docSnap.exists()) {
                 const savedSettings = docSnap.data();
-                // Merge nivel superior
                 currentSettings = { ...currentSettings, ...savedSettings };
-                // Merge Nivel 2: styles
                 currentSettings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
-                // Merge Nivel 2: columnWidths (NUEVO)
                 currentSettings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
             }
 
-            // Poblar Visibilidad
+            // Poblar Pestaña General (Visibilidad)
             document.getElementById('chk_showCargaInicial').checked = currentSettings.showCargaInicial;
             document.getElementById('chk_showCargaRestante').checked = currentSettings.showCargaRestante;
             document.getElementById('chk_showVaciosSheet').checked = currentSettings.showVaciosSheet;
             document.getElementById('chk_showClienteTotalSheet').checked = currentSettings.showClienteTotalSheet;
 
-            // Poblar Estilos
+            // Poblar Pestaña Hoja Rubros (Estilos y Anchos)
             const s = currentSettings.styles;
-            styleContainer.innerHTML = `
+            document.getElementById('tab-content-rubro').querySelector('#style-zones-container').innerHTML = `
                 ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
                 ${createZoneEditor('headerProducts', 'Cabecera Productos', s.headerProducts)}
                 ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', s.rowCargaInicial)}
-                ${createZoneEditor('rowDataClients', 'Filas de Clientes (Celdas Vacías)', s.rowDataClients)}
-                ${createZoneEditor('rowDataClientsSale', 'Filas de Clientes (Celdas con Venta > 0)', s.rowDataClientsSale)} 
+                ${createZoneEditor('rowDataClients', 'Filas Clientes (Celdas Vacías)', s.rowDataClients)}
+                ${createZoneEditor('rowDataClientsSale', 'Filas Clientes (Venta > 0)', s.rowDataClientsSale)} 
                 ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', s.rowCargaRestante)}
                 ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
             `;
-            
-            // --- NUEVO: Poblar Ancho de Columnas ---
             const w = currentSettings.columnWidths;
-            widthContainer.innerHTML = `
-                ${createWidthEditor('width_info', 'Hoja Rubro: Info (A)', w.info)}
-                ${createWidthEditor('width_labels', 'Hoja Rubro: Etiquetas (B)', w.labels)}
-                ${createWidthEditor('width_products', 'Hoja Rubro: Productos (C, D...)', w.products)}
-                ${createWidthEditor('width_subtotal', 'Hoja Rubro: Sub Total', w.subtotal)}
-                ${createWidthEditor('width_vaciosCliente', 'Hoja Vacíos: Cliente', w.vaciosCliente)}
-                ${createWidthEditor('width_vaciosTipo', 'Hoja Vacíos: Tipo', w.vaciosTipo)}
-                ${createWidthEditor('width_vaciosQty', 'Hoja Vacíos: Cantidades', w.vaciosQty)}
-                ${createWidthEditor('width_totalCliente', 'Hoja Totales: Cliente', w.totalCliente)}
-                ${createWidthEditor('width_totalClienteValor', 'Hoja Totales: Valor', w.totalClienteValor)}
-            `;
-            // Añadir un div vacío si el número es impar para mantener el grid
-            if (Object.keys(w).length % 2 !== 0) {
-                widthContainer.innerHTML += `<div></div>`;
-            }
-            // --- FIN NUEVO ---
+            document.getElementById('width_info').value = w.info;
+            document.getElementById('width_labels').value = w.labels;
+            document.getElementById('width_products').value = w.products;
+            document.getElementById('width_subtotal').value = w.subtotal;
+
+            // Poblar Pestaña Hoja Vacíos (Anchos)
+            document.getElementById('width_vaciosCliente').value = w.vaciosCliente;
+            document.getElementById('width_vaciosTipo').value = w.vaciosTipo;
+            document.getElementById('width_vaciosQty').value = w.vaciosQty;
+
+            // Poblar Pestaña Hoja Totales (Anchos)
+            document.getElementById('width_totalCliente').value = w.totalCliente;
+            document.getElementById('width_totalClienteValor').value = w.totalClienteValor;
 
             loader.classList.add('hidden');
             formContainer.classList.remove('hidden');
@@ -1156,6 +1229,7 @@
         const borderEl = document.getElementById(`${idPrefix}_border`);
         const fillColorEl = document.getElementById(`${idPrefix}_fillColor`);
         const fontColorEl = document.getElementById(`${idPrefix}_fontColor`);
+        const fontSizeEl = document.getElementById(`${idPrefix}_fontSize`); // AÑADIDO
 
         // Usar valores por defecto si los elementos no se encuentran
         const defaults = DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || 
@@ -1165,7 +1239,8 @@
             bold: boldEl ? boldEl.checked : (defaults.bold || false),
             border: borderEl ? borderEl.checked : (defaults.border || false),
             fillColor: fillColorEl ? fillColorEl.value : (defaults.fillColor || '#FFFFFF'),
-            fontColor: fontColorEl ? fontColorEl.value : (defaults.fontColor || '#000000')
+            fontColor: fontColorEl ? fontColorEl.value : (defaults.fontColor || '#000000'),
+            fontSize: fontSizeEl ? (parseInt(fontSizeEl.value, 10) || 10) : (defaults.fontSize || 10) // AÑADIDO
         };
     }
 
