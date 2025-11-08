@@ -10,6 +10,13 @@
     let mapInstance = null;
     let mapMarkers = new Map();
 
+    // --- CORRECCIÓN: Declarar variables de caché de ordenamiento ---
+    let _sortPreferenceCache = null;
+    let _rubroOrderMapCache = null;
+    let _segmentoOrderMapCache = null;
+    const SORT_CONFIG_PATH = 'config/productSortOrder'; 
+    // --- FIN CORRECCIÓN ---
+
     const REPORTE_DESIGN_CONFIG_PATH = 'config/reporteCierreVentas';
     
     // --- VALORES POR DEFECTO ACTUALIZADOS ---
@@ -1360,7 +1367,16 @@
 
     async function getGlobalProductSortFunction() {
         if (!_sortPreferenceCache) {
-            try { const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); const dSnap=await _getDoc(dRef); if(dSnap.exists()&&dSnap.data().order){ _sortPreferenceCache=dSnap.data().order; const expKeys=new Set(['rubro','segmento','marca','presentacion']); if(_sortPreferenceCache.length!==expKeys.size||!_sortPreferenceCache.every(k=>expKeys.has(k))){_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} } else {_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} }
+            try { 
+                // --- CORRECCIÓN: 'SORT_CONFIG_PATH' se movió al inicio del archivo ---
+                const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); 
+                const dSnap=await _getDoc(dRef); 
+                if(dSnap.exists()&&dSnap.data().order){ 
+                    _sortPreferenceCache=dSnap.data().order; 
+                    const expKeys=new Set(['rubro','segmento','marca','presentacion']); 
+                    if(_sortPreferenceCache.length!==expKeys.size||!_sortPreferenceCache.every(k=>expKeys.has(k))){_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} 
+                } else {_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} 
+            }
             catch (error) { console.error("Error cargando pref orden:", error); _sortPreferenceCache=['segmento','marca','presentacion','rubro']; }
         }
         if (!_rubroOrderMapCache) { _rubroOrderMapCache={}; try { const rRef=_collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); const snap=await _getDocs(rRef); snap.docs.forEach(d=>{const data=d.data(); _rubroOrderMapCache[data.name]=data.orden??9999;}); } catch (e) { console.warn("No se pudo obtener orden rubros.", e); } }
