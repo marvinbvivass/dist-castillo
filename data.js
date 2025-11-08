@@ -329,20 +329,21 @@
     function createXLSXStyle(styleConfig, borderStyle) {
         if (!styleConfig) styleConfig = { bold: false, border: false, fillColor: '#FFFFFF', fontColor: '#000000' };
         
-        const cleanFill = styleConfig.fillColor.substring(1);
-        const cleanFont = styleConfig.fontColor.substring(1);
+        const cleanFill = (styleConfig.fillColor || "#FFFFFF").substring(1);
+        const cleanFont = (styleConfig.fontColor || "#000000").substring(1);
         
         const style = {
             font: {
                 bold: styleConfig.bold || false,
-                color: { rgb: cleanFont }
+                color: { rgb: "FF" + cleanFont }
             },
             fill: {
                 patternType: "solid",
-                fgColor: { rgb: cleanFill }
+                fgColor: { rgb: "FF" + cleanFill }
             }
         };
-        if (styleConfig.border) {
+
+        if (styleConfig.border && borderStyle) {
             style.border = borderStyle;
         }
         return style;
@@ -358,6 +359,7 @@
             const docSnap = await _getDoc(designDocRef);
             if (docSnap.exists()) {
                 settings = { ...DEFAULT_REPORTE_SETTINGS, ...docSnap.data() };
+                settings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(docSnap.data().styles || {}) };
             } 
         } catch (err) {
             console.warn("Error al cargar diseño de reporte, usando default:", err);
@@ -391,7 +393,6 @@
             const totalsStyle = createXLSXStyle(s.rowTotals, thinBorderStyle);
             const totalsQtyStyle = { ...totalsStyle, numFmt: "0.##" };
             const totalsPriceStyle = { ...totalsStyle, numFmt: "$0.00" };
-
 
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
