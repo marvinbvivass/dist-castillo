@@ -15,16 +15,22 @@
         showCargaInicial: true,
         showCargaRestante: true,
         showVaciosSheet: true,
-        showClienteTotalSheet: true
+        showClienteTotalSheet: true,
+        styles: {
+            headerInfo: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: false },
+            headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true },
+            rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
+            rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true },
+            rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
+            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true }
+        }
     };
 
     function getDisplayQty(qU, p) {
         if (!qU || qU === 0) return 0; 
-        
         const vP = p.ventaPor || {und: true};
         const uCj = p.unidadesPorCaja || 1;
         const uPaq = p.unidadesPorPaquete || 1;
-
         if (vP.cj && uCj > 0) {
             const val = (qU / uCj);
             return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
@@ -320,6 +326,28 @@
         return { finalData, userInfo };
     }
 
+    function createXLSXStyle(styleConfig, borderStyle) {
+        if (!styleConfig) styleConfig = { bold: false, border: false, fillColor: '#FFFFFF', fontColor: '#000000' };
+        
+        const cleanFill = styleConfig.fillColor.substring(1);
+        const cleanFont = styleConfig.fontColor.substring(1);
+        
+        const style = {
+            font: {
+                bold: styleConfig.bold || false,
+                color: { rgb: cleanFont }
+            },
+            fill: {
+                patternType: "solid",
+                fgColor: { rgb: cleanFill }
+            }
+        };
+        if (styleConfig.border) {
+            style.border = borderStyle;
+        }
+        return style;
+    }
+
     async function exportSingleClosingToExcel(closingData) {
         if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
         
@@ -342,14 +370,29 @@
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
-            const borderStyle = { style: "thin", color: { auto: 1 } };
-            const borders = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle };
-            const boldStyle = { font: { bold: true }, border: borders };
-            const dataStyle = { border: borders };
-            const priceStyle = { numFmt: "$0.00", border: borders };
-            const qtyStyle = { numFmt: "0.##", border: borders }; 
-            const subTotalStyle = { font: { bold: true }, numFmt: "$0.00", border: borders };
+            const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
+            const s = settings.styles;
+
+            const headerInfoStyle = createXLSXStyle(s.headerInfo, thinBorderStyle);
+            const headerProductsStyle = createXLSXStyle(s.headerProducts, thinBorderStyle);
+            const headerPriceStyle = { ...headerProductsStyle, numFmt: "$0.00" };
+            const headerSubtotalStyle = { ...headerProductsStyle, font: { ...headerProductsStyle.font, bold: true } };
             
+            const cargaInicialStyle = createXLSXStyle(s.rowCargaInicial, thinBorderStyle);
+            const cargaInicialQtyStyle = { ...cargaInicialStyle, numFmt: "0.##" };
+            
+            const clientDataStyle = createXLSXStyle(s.rowDataClients, thinBorderStyle);
+            const clientQtyStyle = { ...clientDataStyle, numFmt: "0.##" };
+            const clientPriceStyle = { ...clientDataStyle, numFmt: "$0.00" };
+
+            const cargaRestanteStyle = createXLSXStyle(s.rowCargaRestante, thinBorderStyle);
+            const cargaRestanteQtyStyle = { ...cargaRestanteStyle, numFmt: "0.##" };
+
+            const totalsStyle = createXLSXStyle(s.rowTotals, thinBorderStyle);
+            const totalsQtyStyle = { ...totalsStyle, numFmt: "0.##" };
+            const totalsPriceStyle = { ...totalsStyle, numFmt: "$0.00" };
+
+
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
                 if (p.ventaPor?.cj && precios.cj > 0) return Number(precios.cj.toFixed(2));
@@ -366,10 +409,10 @@
                 const START_COL = 2; 
                 const START_ROW = 0; 
                 
-                const headerRowSegment = [null, { v: "SEGMENTO", s: boldStyle }];
-                const headerRowMarca = [null, { v: "MARCA", s: boldStyle }];
-                const headerRowPresentacion = [null, { v: "PRESENTACION", s: boldStyle }];
-                const headerRowPrecio = [null, { v: "PRECIO", s: boldStyle }];
+                const headerRowSegment = [null, { v: "SEGMENTO", s: headerProductsStyle }];
+                const headerRowMarca = [null, { v: "MARCA", s: headerProductsStyle }];
+                const headerRowPresentacion = [null, { v: "PRESENTACION", s: headerProductsStyle }];
+                const headerRowPrecio = [null, { v: "PRECIO", s: headerProductsStyle }];
                 let lastSegment = null;
                 let lastMarca = null;
                 let segmentColStart = START_COL;
@@ -381,10 +424,10 @@
                     const marca = p.marca || 'S/M';
                     const presentacion = p.presentacion || 'S/P';
                     const precio = getPrice(p);
-                    headerRowSegment[c] = { v: segment, s: dataStyle };
-                    headerRowMarca[c] = { v: marca, s: dataStyle };
-                    headerRowPresentacion[c] = { v: presentacion, s: dataStyle };
-                    headerRowPrecio[c] = { v: precio, t: 'n', z: '$0.00', s: priceStyle };
+                    headerRowSegment[c] = { v: segment, s: headerProductsStyle };
+                    headerRowMarca[c] = { v: marca, s: headerProductsStyle };
+                    headerRowPresentacion[c] = { v: presentacion, s: headerProductsStyle };
+                    headerRowPrecio[c] = { v: precio, t: 'n', s: headerPriceStyle };
                     const priceLen = precio.toFixed(2).length;
                     const w = Math.max(segment.length, marca.length, presentacion.length, priceLen);
                     colWchs[index] = Math.max(colWchs[index] || 10, w + 2); 
@@ -405,7 +448,7 @@
                 if (lastProdCol >= segmentColStart) { merges.push({ s: { r: START_ROW, c: segmentColStart }, e: { r: START_ROW, c: lastProdCol } }); }
                 if (lastProdCol >= marcaColStart) { merges.push({ s: { r: START_ROW + 1, c: marcaColStart }, e: { r: START_ROW + 1, c: lastProdCol } }); }
                 const subTotalCol = START_COL + sortedProducts.length;
-                headerRowSegment[subTotalCol] = { v: "Sub Total", s: boldStyle };
+                headerRowSegment[subTotalCol] = { v: "Sub Total", s: headerSubtotalStyle };
                 merges.push({ s: { r: START_ROW, c: subTotalCol }, e: { r: START_ROW + 3, c: subTotalCol } });
                 colWidths.push({ wch: 15 }); 
                 colWchs.forEach(w => colWidths.push({ wch: w }));
@@ -414,50 +457,50 @@
                 ws_data.push(headerRowPresentacion);
                 ws_data.push(headerRowPrecio);
                 ws_data.push([]); 
-                ws_data[0][0] = { v: "FECHA:", s: { font: { bold: true } } };
-                ws_data[0][1] = { v: fechaCierre, t: 's' }; 
-                ws_data[1][0] = { v: "USUARIO:", s: { font: { bold: true } } };
-                ws_data[1][1] = { v: usuarioEmail, t: 's' }; 
+                ws_data[0][0] = { v: "FECHA:", s: headerInfoStyle };
+                ws_data[0][1] = { v: fechaCierre, t: 's', s: headerInfoStyle }; 
+                ws_data[1][0] = { v: "USUARIO:", s: headerInfoStyle };
+                ws_data[1][1] = { v: usuarioEmail, t: 's', s: headerInfoStyle }; 
 
                 if (settings.showCargaInicial) {
-                    const cargaInicialRow = [null, { v: "CARGA INICIAL", s: boldStyle }];
+                    const cargaInicialRow = [null, { v: "CARGA INICIAL", s: cargaInicialStyle }];
                     sortedProducts.forEach(p => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
-                        cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 'n', s: qtyStyle }); 
+                        cargaInicialRow.push({ v: getDisplayQty(initialStock, p), t: 'n', s: cargaInicialQtyStyle }); 
                     });
-                    cargaInicialRow[subTotalCol] = null; 
+                    cargaInicialRow[subTotalCol] = { v: null, s: cargaInicialStyle }; 
                     ws_data.push(cargaInicialRow);
                 }
 
                 ws_data.push([]); 
                 sortedClients.forEach(clientName => {
-                    const clientRow = [null, { v: clientName, s: dataStyle }]; 
+                    const clientRow = [null, { v: clientName, s: clientDataStyle }]; 
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach(p => {
                         const qU = clientSales.products[p.id] || 0;
-                        clientRow.push({ v: getDisplayQty(qU, p), t: 'n', s: qtyStyle }); 
+                        clientRow.push({ v: getDisplayQty(qU, p), t: 'n', s: clientQtyStyle }); 
                     });
-                    clientRow[subTotalCol] = { v: clientSales.totalValue, t: 'n', z: '$0.00', s: priceStyle };
+                    clientRow[subTotalCol] = { v: clientSales.totalValue, t: 'n', s: clientPriceStyle };
                     ws_data.push(clientRow);
                 });
                 ws_data.push([]); 
 
                 if (settings.showCargaRestante) {
-                    const cargaRestanteRow = [null, { v: "CARGA RESTANTE", s: boldStyle }];
+                    const cargaRestanteRow = [null, { v: "CARGA RESTANTE", s: cargaRestanteStyle }];
                     sortedProducts.forEach(p => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
-                        cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 'n', s: qtyStyle }); 
+                        cargaRestanteRow.push({ v: getDisplayQty(currentStock, p), t: 'n', s: cargaRestanteQtyStyle }); 
                     });
-                    cargaRestanteRow[subTotalCol] = null; 
+                    cargaRestanteRow[subTotalCol] = { v: null, s: cargaRestanteStyle }; 
                     ws_data.push(cargaRestanteRow);
                 }
 
-                const totalesRow = [null, { v: "TOTALES", s: boldStyle }];
+                const totalesRow = [null, { v: "TOTALES", s: totalsStyle }];
                 sortedProducts.forEach(p => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
-                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 'n', s: qtyStyle }); 
+                    totalesRow.push({ v: getDisplayQty(totalSold, p), t: 'n', s: totalsQtyStyle }); 
                 });
-                totalesRow[subTotalCol] = { v: rubroTotalValue, t: 'n', z: '$0.00', s: subTotalStyle };
+                totalesRow[subTotalCol] = { v: rubroTotalValue, t: 'n', s: totalsPriceStyle };
                 ws_data.push(totalesRow);
                 const ws = XLSX.utils.aoa_to_sheet(ws_data);
                 ws['!merges'] = merges;
@@ -689,37 +732,65 @@
         document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
     }
 
+    function createZoneEditor(idPrefix, label, settings) {
+        const s = settings;
+        return `
+        <div class="p-3 border rounded-lg bg-gray-50">
+            <h4 class="font-semibold text-gray-700">${label}</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+                <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_bold" ${s.bold ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Negrita</span></label>
+                <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_border" ${s.border ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Bordes</span></label>
+                <label class="flex items-center space-x-2"><span>Fondo:</span><input type="color" id="${idPrefix}_fillColor" value="${s.fillColor}" class="h-6 w-10 border cursor-pointer"></label>
+                <label class="flex items-center space-x-2"><span>Texto:</span><input type="color" id="${idPrefix}_fontColor" value="${s.fontColor}" class="h-6 w-10 border cursor-pointer"></label>
+            </div>
+        </div>`;
+    }
+
     async function showReportDesignView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
+            <style>
+                input[type="color"] { -webkit-appearance: none; -moz-appearance: none; appearance: none; background: none; border: 1px solid #ccc; padding: 0; }
+                input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+                input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+                input[type="color"]::-moz-color-swatch { border: none; border-radius: 2px; }
+            </style>
             <div class="p-4 pt-8">
-                <div class="container mx-auto max-w-lg">
+                <div class="container mx-auto max-w-2xl">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Diseño de Reporte de Cierre</h1>
-                        <p class="text-center text-gray-600 mb-6">Selecciona los elementos que deseas incluir en el archivo Excel de Cierre de Ventas.</p>
+                        <p class="text-center text-gray-600 mb-6">Define los estilos visuales y la visibilidad de las secciones del reporte Excel.</p>
                         
                         <div id="design-loader" class="text-center text-gray-500 p-4">Cargando configuración...</div>
                         
-                        <div id="design-form-container" class="hidden space-y-4 text-left">
-                            <h3 class="text-lg font-semibold border-b pb-2">Secciones Principales (por Rubro)</h3>
-                            <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                <span>Mostrar fila "CARGA INICIAL"</span>
-                            </label>
-                            <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                <input type="checkbox" id="chk_showCargaRestante" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                <span>Mostrar fila "CARGA RESTANTE"</span>
-                            </label>
+                        <div id="design-form-container" class="hidden space-y-6 text-left">
+                            <div>
+                                <h3 class="text-lg font-semibold border-b pb-2">Estilos de Zonas</h3>
+                                <div id="style-zones-container" class="space-y-3 mt-4">
+                                </div>
+                            </div>
 
-                            <h3 class="text-lg font-semibold border-b pb-2 mt-6">Hojas Adicionales</h3>
-                            <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                <input type="checkbox" id="chk_showVaciosSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                <span>Incluir hoja "Reporte Vacíos"</span>
-                            </label>
-                            <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                <input type="checkbox" id="chk_showClienteTotalSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                <span>Incluir hoja "Total Por Cliente"</span>
-                            </label>
+                            <div>
+                                <h3 class="text-lg font-semibold border-b pb-2 mt-6">Visibilidad de Secciones</h3>
+                                <div class="space-y-2 mt-4">
+                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Mostrar fila "CARGA INICIAL"</span>
+                                    </label>
+                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="chk_showCargaRestante" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Mostrar fila "CARGA RESTANTE"</span>
+                                    </label>
+                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="chk_showVaciosSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Incluir hoja "Reporte Vacíos"</span>
+                                    </label>
+                                    <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                        <input type="checkbox" id="chk_showClienteTotalSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span>Incluir hoja "Total Por Cliente"</span>
+                                    </label>
+                                </div>
+                            </div>
 
                             <div class="flex flex-col sm:flex-row gap-4 pt-6">
                                 <button id="saveDesignBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Diseño</button>
@@ -736,6 +807,7 @@
 
         const loader = document.getElementById('design-loader');
         const formContainer = document.getElementById('design-form-container');
+        const styleContainer = document.getElementById('style-zones-container');
         
         try {
             const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
@@ -745,12 +817,23 @@
             let currentSettings = { ...DEFAULT_REPORTE_SETTINGS };
             if (docSnap.exists()) {
                 currentSettings = { ...DEFAULT_REPORTE_SETTINGS, ...docSnap.data() };
+                currentSettings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(docSnap.data().styles || {}) };
             }
 
             document.getElementById('chk_showCargaInicial').checked = currentSettings.showCargaInicial;
             document.getElementById('chk_showCargaRestante').checked = currentSettings.showCargaRestante;
             document.getElementById('chk_showVaciosSheet').checked = currentSettings.showVaciosSheet;
             document.getElementById('chk_showClienteTotalSheet').checked = currentSettings.showClienteTotalSheet;
+
+            const s = currentSettings.styles;
+            styleContainer.innerHTML = `
+                ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
+                ${createZoneEditor('headerProducts', 'Cabecera Productos (Segmento, Marca, etc.)', s.headerProducts)}
+                ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', s.rowCargaInicial)}
+                ${createZoneEditor('rowDataClients', 'Filas de Clientes (Datos)', s.rowDataClients)}
+                ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', s.rowCargaRestante)}
+                ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
+            `;
 
             loader.classList.add('hidden');
             formContainer.classList.remove('hidden');
@@ -762,6 +845,15 @@
         }
     }
 
+    function readZoneEditor(idPrefix) {
+        return {
+            bold: document.getElementById(`${idPrefix}_bold`).checked,
+            border: document.getElementById(`${idPrefix}_border`).checked,
+            fillColor: document.getElementById(`${idPrefix}_fillColor`).value,
+            fontColor: document.getElementById(`${idPrefix}_fontColor`).value
+        };
+    }
+
     async function handleSaveReportDesign() {
         _showModal('Progreso', 'Guardando diseño...');
 
@@ -769,7 +861,15 @@
             showCargaInicial: document.getElementById('chk_showCargaInicial').checked,
             showCargaRestante: document.getElementById('chk_showCargaRestante').checked,
             showVaciosSheet: document.getElementById('chk_showVaciosSheet').checked,
-            showClienteTotalSheet: document.getElementById('chk_showClienteTotalSheet').checked
+            showClienteTotalSheet: document.getElementById('chk_showClienteTotalSheet').checked,
+            styles: {
+                headerInfo: readZoneEditor('headerInfo'),
+                headerProducts: readZoneEditor('headerProducts'),
+                rowCargaInicial: readZoneEditor('rowCargaInicial'),
+                rowDataClients: readZoneEditor('rowDataClients'),
+                rowCargaRestante: readZoneEditor('rowCargaRestante'),
+                rowTotals: readZoneEditor('rowTotals')
+            }
         };
 
         try {
