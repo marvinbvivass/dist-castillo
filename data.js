@@ -11,6 +11,8 @@
     let mapMarkers = new Map();
 
     const REPORTE_DESIGN_CONFIG_PATH = 'config/reporteCierreVentas';
+    
+    // --- NUEVOS VALORES POR DEFECTO ---
     const DEFAULT_REPORTE_SETTINGS = {
         showCargaInicial: true,
         showCargaRestante: true,
@@ -21,10 +23,25 @@
             headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true },
             rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
             rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true },
+            // NUEVO: Estilo para celdas con ventas > 0
+            rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true },
             rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true },
             rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true }
+        },
+        // NUEVO: Anchos de columna por defecto
+        columnWidths: {
+            info: 15,          // Col A (Info Fecha/Usuario)
+            labels: 25,        // Col B (Labels Clientes, Carga, etc.)
+            products: 12,      // Default para productos (C, D, E...)
+            subtotal: 15,      // Col "Sub Total"
+            vaciosCliente: 25, // Hoja Vacíos - Cliente
+            vaciosTipo: 15,    // Hoja Vacíos - Tipo
+            vaciosQty: 12,     // Hoja Vacíos - Cantidades
+            totalCliente: 35,  // Hoja Total Cliente - Cliente
+            totalClienteValor: 15 // Hoja Total Cliente - Valor
         }
     };
+    // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
 
     // Devuelve solo el número, en la unidad de venta principal (Cj > Paq > Und)
     function getDisplayQty(qU, p) {
@@ -373,7 +390,7 @@
     }
 
     /**
-     * [NUEVA FUNCIÓN DE EXPORTACIÓN CON EXCELJS]
+     * [FUNCIÓN DE EXPORTACIÓN ACTUALIZADA CON EXCELJS]
      * Reescritura completa de la función de exportación para usar ExcelJS.
      */
     async function exportSingleClosingToExcel(closingData) {
@@ -384,16 +401,21 @@
         }
 
         const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
-        let settings = { ...DEFAULT_REPORTE_SETTINGS }; 
+        // --- MODIFICADO: Usar _.cloneDeep o similar (JSON.parse(JSON.stringify)) para evitar mutación
+        let settings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); 
         try {
             const designDocRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(designDocRef);
             if (docSnap.exists()) {
-                settings = { ...DEFAULT_REPORTE_SETTINGS, ...docSnap.data() };
-                settings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(docSnap.data().styles || {}) };
+                const savedSettings = docSnap.data();
+                // Merge profundo manual simple para evitar problemas
+                settings = { ...settings, ...savedSettings };
+                settings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
+                settings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
             } 
         } catch (err) {
             console.warn("Error al cargar diseño de reporte, usando default:", err);
+            // settings ya es DEFAULT_REPORTE_SETTINGS
         }
         _showModal('Progreso', 'Generando Excel con su diseño...'); 
 
@@ -415,9 +437,11 @@
             const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null);
             const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, "0.##");
             
+            // --- MODIFICADO: Añadido clientSaleStyle ---
             const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null);
-            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0.##");
-            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00");
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0.##"); // Estilo para celdas vacías (0)
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0.##"); // Estilo para celdas con venta (> 0)
+            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00"); // Estilo para subtotal cliente
 
             const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null);
             const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, "0.##");
@@ -441,7 +465,11 @@
                 const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
                 const worksheet = workbook.addWorksheet(sheetName);
 
-                const colWidths = [ { width: 15 }, { width: 25 } ]; // Col A (Info), Col B (Labels)
+                // --- MODIFICADO: Ancho de columnas desde settings ---
+                const colWidths = [ 
+                    { width: settings.columnWidths.info }, 
+                    { width: settings.columnWidths.labels } 
+                ];
                 const START_COL = 3; // Columna 'C'
                 
                 // --- Fila 1: Info Fecha ---
@@ -491,7 +519,8 @@
 
                     const priceLen = precio.toFixed(2).length;
                     const w = Math.max(segment.length, marca.length, presentacion.length, priceLen);
-                    colWidths.push({ width: Math.max(w + 2, 10) });
+                    // --- MODIFICADO: Ancho de producto desde settings (como mínimo) ---
+                    colWidths.push({ width: Math.max(w + 2, settings.columnWidths.products) });
 
                     if (index > 0) {
                         if (segment !== lastSegment) {
@@ -515,7 +544,8 @@
                 worksheet.getCell(1, subTotalCol).value = "Sub Total";
                 worksheet.getCell(1, subTotalCol).style = headerSubtotalStyle;
                 worksheet.mergeCells(1, subTotalCol, 4, subTotalCol);
-                colWidths.push({ width: 15 });
+                // --- MODIFICADO: Ancho subtotal desde settings ---
+                colWidths.push({ width: settings.columnWidths.subtotal });
                 
                 worksheet.columns = colWidths;
                 
@@ -541,18 +571,22 @@
                 sortedClients.forEach(clientName => {
                     const clientRow = worksheet.getRow(currentRowNum++);
                     clientRow.getCell(2).value = clientName;
-                    clientRow.getCell(2).style = clientDataStyle;
+                    clientRow.getCell(2).style = clientDataStyle; // Estilo para el nombre del cliente
                     
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach((p, index) => {
                         const qU = clientSales.products[p.id] || 0;
                         const cell = clientRow.getCell(START_COL + index);
                         cell.value = getDisplayQty(qU, p);
-                        cell.style = clientQtyStyle;
+                        
+                        // --- MODIFICADO: Lógica de estilo condicional ---
+                        // Si la cantidad es > 0, usar 'clientSaleStyle', si no, usar 'clientQtyStyle' (que es el normal)
+                        cell.style = (qU > 0) ? clientSaleStyle : clientQtyStyle;
+                        // --- FIN MODIFICADO ---
                     });
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
-                    subtotalCell.style = clientPriceStyle;
+                    subtotalCell.style = clientPriceStyle; // Estilo para el subtotal del cliente
                 });
 
                 currentRowNum++; // Fila vacía
@@ -593,7 +627,14 @@
             
             if (settings.showVaciosSheet && cliVacios.length > 0) { 
                 const wsVacios = workbook.addWorksheet('Reporte Vacíos');
-                wsVacios.columns = [ { width: 25 }, { width: 15 }, { width: 12 }, { width: 12 }, { width: 10 } ];
+                // --- MODIFICADO: Ancho de columnas desde settings ---
+                wsVacios.columns = [ 
+                    { width: settings.columnWidths.vaciosCliente }, 
+                    { width: settings.columnWidths.vaciosTipo }, 
+                    { width: settings.columnWidths.vaciosQty }, 
+                    { width: settings.columnWidths.vaciosQty }, 
+                    { width: settings.columnWidths.vaciosQty } 
+                ];
                 wsVacios.addRow(['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto']);
                 
                 cliVacios.forEach(cli => {
@@ -611,7 +652,11 @@
             const { clientTotals, grandTotalValue } = finalData;
             if (settings.showClienteTotalSheet) {
                 const wsClientes = workbook.addWorksheet('Total Por Cliente');
-                wsClientes.columns = [ { width: 35 }, { width: 15 } ];
+                // --- MODIFICADO: Ancho de columnas desde settings ---
+                wsClientes.columns = [ 
+                    { width: settings.columnWidths.totalCliente }, 
+                    { width: settings.columnWidths.totalClienteValor } 
+                ];
                 wsClientes.addRow(['Cliente', 'Gasto Total']);
                 
                 const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
@@ -940,17 +985,28 @@
         document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
     }
 
+    // --- MODIFICADO: createZoneEditor ahora es más simple ---
     function createZoneEditor(idPrefix, label, settings) {
-        const s = settings;
+        const s = settings; // 'settings' es el objeto de estilo (ej: s.styles.headerInfo)
         return `
         <div class="p-3 border rounded-lg bg-gray-50">
             <h4 class="font-semibold text-gray-700">${label}</h4>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2 text-sm">
                 <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_bold" ${s.bold ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Negrita</span></label>
                 <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_border" ${s.border ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Bordes</span></label>
-                <label class="flex items-center space-x-2"><span>Fondo:</span><input type="color" id="${idPrefix}_fillColor" value="${s.fillColor}" class="h-6 w-10 border cursor-pointer"></label>
-                <label classD="flex items-center space-x-2"><span>Texto:</span><input type="color" id="${idPrefix}_fontColor" value="${s.fontColor}" class="h-6 w-10 border cursor-pointer"></label>
+                <label class="flex items-center space-x-2"><span>Fondo:</span><input type="color" id="${idPrefix}_fillColor" value="${s.fillColor || '#FFFFFF'}" class="h-6 w-10 border cursor-pointer p-0"></label>
+                <label class="flex items-center space-x-2"><span>Texto:</span><input type="color" id="${idPrefix}_fontColor" value="${s.fontColor || '#000000'}" class="h-6 w-10 border cursor-pointer p-0"></label>
             </div>
+        </div>`;
+    }
+
+    // --- MODIFICADO: createWidthEditor (NUEVA FUNCIÓN) ---
+    // Función auxiliar para crear inputs de ancho
+    function createWidthEditor(id, label, value) {
+        return `
+        <div class="flex items-center justify-between">
+            <label for="${id}" class="text-sm font-medium text-gray-700">${label}:</label>
+            <input type="number" id="${id}" value="${value}" min="5" max="50" step="1" class="w-20 px-2 py-1 border rounded-lg text-sm">
         </div>`;
     }
 
@@ -972,15 +1028,26 @@
                         <div id="design-loader" class="text-center text-gray-500 p-4">Cargando configuración...</div>
                         
                         <div id="design-form-container" class="hidden space-y-6 text-left">
+                            
+                            <!-- NUEVA SECCIÓN: Ancho de Columnas -->
                             <div>
-                                <h3 class="text-lg font-semibold border-b pb-2">Estilos de Zonas</h3>
+                                <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Unidades Excel)</h3>
+                                <div id="column-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                    Cargando...
+                                </div>
+                            </div>
+                            
+                            <!-- SECCIÓN EXISTENTE: Estilos de Zonas -->
+                            <div>
+                                <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas</h3>
                                 <div id="style-zones-container" class="space-y-3 mt-4">
-                                Ladeando...
+                                    Cargando...
                                 </div>
                             </div>
 
+                            <!-- SECCIÓN EXISTENTE: Visibilidad -->
                             <div>
-                                <h3 class="text-lg font-semibold border-b pb-2 mt-6">Visibilidad de Secciones</h3>
+                                <h3 class="text-lg font-semibold border-b pb-2 mt-4">Visibilidad de Secciones</h3>
                                 <div class="space-y-2 mt-4">
                                     <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
                                         <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -1017,32 +1084,61 @@
         const loader = document.getElementById('design-loader');
         const formContainer = document.getElementById('design-form-container');
         const styleContainer = document.getElementById('style-zones-container');
+        const widthContainer = document.getElementById('column-widths-container'); // NUEVO
         
         try {
             const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(docRef);
             
-            let currentSettings = { ...DEFAULT_REPORTE_SETTINGS };
+            // --- MODIFICADO: Merge profundo manual ---
+            let currentSettings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); // Copia profunda
             if (docSnap.exists()) {
-                currentSettings = { ...DEFAULT_REPORTE_SETTINGS, ...docSnap.data() };
-                currentSettings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(docSnap.data().styles || {}) };
+                const savedSettings = docSnap.data();
+                // Merge nivel superior
+                currentSettings = { ...currentSettings, ...savedSettings };
+                // Merge Nivel 2: styles
+                currentSettings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
+                // Merge Nivel 2: columnWidths (NUEVO)
+                currentSettings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
             }
 
+            // Poblar Visibilidad
             document.getElementById('chk_showCargaInicial').checked = currentSettings.showCargaInicial;
             document.getElementById('chk_showCargaRestante').checked = currentSettings.showCargaRestante;
             document.getElementById('chk_showVaciosSheet').checked = currentSettings.showVaciosSheet;
             document.getElementById('chk_showClienteTotalSheet').checked = currentSettings.showClienteTotalSheet;
 
+            // Poblar Estilos
             const s = currentSettings.styles;
             styleContainer.innerHTML = `
                 ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
-                ${createZoneEditor('headerProducts', 'Cabecera Productos (Segmento, Marca, etc.)', s.headerProducts)}
+                ${createZoneEditor('headerProducts', 'Cabecera Productos', s.headerProducts)}
                 ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', s.rowCargaInicial)}
-                ${createZoneEditor('rowDataClients', 'Filas de Clientes (Datos)', s.rowDataClients)}
+                ${createZoneEditor('rowDataClients', 'Filas de Clientes (Celdas Vacías)', s.rowDataClients)}
+                ${createZoneEditor('rowDataClientsSale', 'Filas de Clientes (Celdas con Venta > 0)', s.rowDataClientsSale)} 
                 ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', s.rowCargaRestante)}
                 ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
             `;
+            
+            // --- NUEVO: Poblar Ancho de Columnas ---
+            const w = currentSettings.columnWidths;
+            widthContainer.innerHTML = `
+                ${createWidthEditor('width_info', 'Hoja Rubro: Info (A)', w.info)}
+                ${createWidthEditor('width_labels', 'Hoja Rubro: Etiquetas (B)', w.labels)}
+                ${createWidthEditor('width_products', 'Hoja Rubro: Productos (C, D...)', w.products)}
+                ${createWidthEditor('width_subtotal', 'Hoja Rubro: Sub Total', w.subtotal)}
+                ${createWidthEditor('width_vaciosCliente', 'Hoja Vacíos: Cliente', w.vaciosCliente)}
+                ${createWidthEditor('width_vaciosTipo', 'Hoja Vacíos: Tipo', w.vaciosTipo)}
+                ${createWidthEditor('width_vaciosQty', 'Hoja Vacíos: Cantidades', w.vaciosQty)}
+                ${createWidthEditor('width_totalCliente', 'Hoja Totales: Cliente', w.totalCliente)}
+                ${createWidthEditor('width_totalClienteValor', 'Hoja Totales: Valor', w.totalClienteValor)}
+            `;
+            // Añadir un div vacío si el número es impar para mantener el grid
+            if (Object.keys(w).length % 2 !== 0) {
+                widthContainer.innerHTML += `<div></div>`;
+            }
+            // --- FIN NUEVO ---
 
             loader.classList.add('hidden');
             formContainer.classList.remove('hidden');
@@ -1054,16 +1150,40 @@
         }
     }
 
+    // --- MODIFICADO: readZoneEditor ahora es más robusto ---
     function readZoneEditor(idPrefix) {
-         // Corrección: Leer el color de texto
+        const boldEl = document.getElementById(`${idPrefix}_bold`);
+        const borderEl = document.getElementById(`${idPrefix}_border`);
+        const fillColorEl = document.getElementById(`${idPrefix}_fillColor`);
         const fontColorEl = document.getElementById(`${idPrefix}_fontColor`);
-        const fontColor = fontColorEl ? fontColorEl.value : '#000000';
+
+        // Usar valores por defecto si los elementos no se encuentran
+        const defaults = DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || 
+                         (idPrefix === 'rowDataClientsSale' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients : {});
 
         return {
-            bold: document.getElementById(`${idPrefix}_bold`).checked,
-            border: document.getElementById(`${idPrefix}_border`).checked,
-            fillColor: document.getElementById(`${idPrefix}_fillColor`).value,
-            fontColor: fontColor
+            bold: boldEl ? boldEl.checked : (defaults.bold || false),
+            border: borderEl ? borderEl.checked : (defaults.border || false),
+            fillColor: fillColorEl ? fillColorEl.value : (defaults.fillColor || '#FFFFFF'),
+            fontColor: fontColorEl ? fontColorEl.value : (defaults.fontColor || '#000000')
+        };
+    }
+
+    // --- NUEVO: readWidthInputs ---
+    function readWidthInputs() {
+        const defaults = DEFAULT_REPORTE_SETTINGS.columnWidths;
+        const readVal = (id, def) => parseInt(document.getElementById(id)?.value, 10) || def;
+        
+        return {
+            info: readVal('width_info', defaults.info),
+            labels: readVal('width_labels', defaults.labels),
+            products: readVal('width_products', defaults.products),
+            subtotal: readVal('width_subtotal', defaults.subtotal),
+            vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
+            vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
+            vaciosQty: readVal('width_vaciosQty', defaults.vaciosQty),
+            totalCliente: readVal('width_totalCliente', defaults.totalCliente),
+            totalClienteValor: readVal('width_totalClienteValor', defaults.totalClienteValor)
         };
     }
 
@@ -1075,20 +1195,24 @@
             showCargaRestante: document.getElementById('chk_showCargaRestante').checked,
             showVaciosSheet: document.getElementById('chk_showVaciosSheet').checked,
             showClienteTotalSheet: document.getElementById('chk_showClienteTotalSheet').checked,
+            // --- MODIFICADO: Leer estilos y anchos ---
             styles: {
                 headerInfo: readZoneEditor('headerInfo'),
                 headerProducts: readZoneEditor('headerProducts'),
                 rowCargaInicial: readZoneEditor('rowCargaInicial'),
                 rowDataClients: readZoneEditor('rowDataClients'),
+                rowDataClientsSale: readZoneEditor('rowDataClientsSale'), // NUEVO
                 rowCargaRestante: readZoneEditor('rowCargaRestante'),
                 rowTotals: readZoneEditor('rowTotals')
-            }
+            },
+            columnWidths: readWidthInputs() // NUEVO
+            // --- FIN MODIFICADO ---
         };
 
         try {
             const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
-            await _setDoc(docRef, newSettings); 
+            await _setDoc(docRef, newSettings); // _setDoc sobrescribe, lo cual está bien aquí
             _showModal('Éxito', 'Diseño guardado correctamente.', showDataView); 
         } catch (error) {
             console.error("Error guardando diseño:", error);
@@ -1096,10 +1220,6 @@
         }
     }
 
-    let _sortPreferenceCache = null;
-    let _rubroOrderMapCache = null;
-    let _segmentoOrderMapCache = null;
-    const SORT_CONFIG_PATH = 'config/productSortOrder'; 
     async function getGlobalProductSortFunction() {
         if (!_sortPreferenceCache) {
             try { const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); const dSnap=await _getDoc(dRef); if(dSnap.exists()&&dSnap.data().order){ _sortPreferenceCache=dSnap.data().order; const expKeys=new Set(['rubro','segmento','marca','presentacion']); if(_sortPreferenceCache.length!==expKeys.size||!_sortPreferenceCache.every(k=>expKeys.has(k))){_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} } else {_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} }
