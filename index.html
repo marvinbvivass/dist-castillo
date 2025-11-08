@@ -206,7 +206,12 @@
     <script src="ventas.js" defer></script>
     <script src="obsequios.js" defer></script>
 
+    <!--
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    -->
+    
+    <!-- PASO 1: Reemplazar la librería de Excel por una que SÍ soporta estilos -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     
     <script type="module" defer> 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
