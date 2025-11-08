@@ -327,26 +327,33 @@
     }
 
     /**
-     * [CAMBIO ROBUSTO]
-     * Esta función solo crea el objeto de estilo base (fuente y relleno).
-     * Los bordes y formatos de número se aplican por separado.
+     * [SOLUCIÓN ROBUSTA v3]
+     * Esta función construye un objeto de estilo completo (fuente, relleno, borde, numFmt)
+     * a partir de una configuración, de forma segura.
      */
-    function createXLSXStyle(styleConfig) {
-        if (!styleConfig) styleConfig = { bold: false, fillColor: '#FFFFFF', fontColor: '#000000' };
-        
-        const cleanFill = (styleConfig.fillColor || "#FFFFFF").substring(1);
-        const cleanFont = (styleConfig.fontColor || "#000000").substring(1);
-        
+    function buildStyle(config, borderStyle, numFmt = null) {
+        // Objeto base con valores por defecto seguros
         const style = {
             font: {
-                bold: styleConfig.bold || false,
-                color: { rgb: cleanFont } // Usar 6-dígitos RGB
+                bold: config.bold || false,
+                color: { rgb: (config.fontColor || "#000000").substring(1) } // 6-dígitos RGB
             },
             fill: {
                 patternType: "solid",
-                fgColor: { rgb: cleanFill } // Usar 6-dígitos RGB
+                fgColor: { rgb: (config.fillColor || "#FFFFFF").substring(1) } // 6-dígitos RGB
             }
         };
+        
+        // Añadir bordes SÓLO si se solicita
+        if (config.border && borderStyle) {
+            style.border = borderStyle;
+        }
+        
+        // Añadir formato de número SÓLO si se proporciona
+        if (numFmt) {
+            style.numFmt = numFmt;
+        }
+        
         return style;
     }
 
@@ -373,41 +380,35 @@
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
-            // --- INICIO DE LÓGICA DE ESTILO ROBUSTA ---
+            // --- INICIO DE LÓGICA DE ESTILO ROBUSTA v3 ---
             const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
-            
-            // Función helper para aplicar estilos y bordes de forma segura
-            const applyStyle = (config) => {
-                const style = createXLSXStyle(config); // Solo fuente y relleno
-                if (config.border) {
-                    style.border = thinBorderStyle; // Añadir bordes si se especifica
-                }
-                return style;
-            };
-
             const s = settings.styles;
-            
-            // Crear los estilos finales combinando base, bordes y formatos de número
-            const headerInfoStyle = applyStyle(s.headerInfo);
-            const headerProductsStyle = applyStyle(s.headerProducts);
-            const headerPriceStyle = { ...headerProductsStyle, numFmt: "$0.00" };
-            // Asegurarse de que 'bold' se mantenga si se sobreescribe 'font'
-            const headerSubtotalStyle = { ...headerProductsStyle, font: { ...headerProductsStyle.font, bold: true } };
-            
-            const cargaInicialStyle = applyStyle(s.rowCargaInicial);
-            const cargaInicialQtyStyle = { ...cargaInicialStyle, numFmt: "0.##" };
-            
-            const clientDataStyle = applyStyle(s.rowDataClients);
-            const clientQtyStyle = { ...clientDataStyle, numFmt: "0.##" };
-            const clientPriceStyle = { ...clientDataStyle, numFmt: "$0.00" };
 
-            const cargaRestanteStyle = applyStyle(s.rowCargaRestante);
-            const cargaRestanteQtyStyle = { ...cargaRestanteStyle, numFmt: "0.##" };
+            // Construir CADA estilo que necesitamos, uno por uno
+            const headerInfoStyle = buildStyle(s.headerInfo, thinBorderStyle);
+            
+            const headerProductsStyle = buildStyle(s.headerProducts, thinBorderStyle);
+            const headerPriceStyle = buildStyle(s.headerProducts, thinBorderStyle, "$0.00");
+            // Para el subtotal, forzamos bold
+            const headerSubtotalStyleConfig = { ...s.headerProducts, bold: true };
+            const headerSubtotalStyle = buildStyle(headerSubtotalStyleConfig, thinBorderStyle);
 
-            const totalsStyle = applyStyle(s.rowTotals);
-            const totalsQtyStyle = { ...totalsStyle, numFmt: "0.##" };
-            const totalsPriceStyle = { ...totalsStyle, numFmt: "$0.00" };
-            // --- FIN DE LÓGICA DE ESTILO ROBUSTA ---
+            const cargaInicialStyle = buildStyle(s.rowCargaInicial, thinBorderStyle);
+            const cargaInicialQtyStyle = buildStyle(s.rowCargaInicial, thinBorderStyle, "0.##");
+            
+            const clientDataStyle = buildStyle(s.rowDataClients, thinBorderStyle);
+            const clientQtyStyle = buildStyle(s.rowDataClients, thinBorderStyle, "0.##");
+            const clientPriceStyle = buildStyle(s.rowDataClients, thinBorderStyle, "$0.00");
+
+            const cargaRestanteStyle = buildStyle(s.rowCargaRestante, thinBorderStyle);
+            const cargaRestanteQtyStyle = buildStyle(s.rowCargaRestante, thinBorderStyle, "0.##");
+
+            const totalsStyle = buildStyle(s.rowTotals, thinBorderStyle);
+            const totalsQtyStyle = buildStyle(s.rowTotals, thinBorderStyle, "0.##");
+            // Para el total price, forzamos bold
+            const totalsPriceStyleConfig = { ...s.rowTotals, bold: true };
+            const totalsPriceStyle = buildStyle(totalsPriceStyleConfig, thinBorderStyle, "$0.00");
+            // --- FIN DE LÓGICA DE ESTILO ROBUSTA v3 ---
 
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
