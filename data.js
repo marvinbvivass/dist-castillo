@@ -326,8 +326,13 @@
         return { finalData, userInfo };
     }
 
-    function createXLSXStyle(styleConfig, borderStyle) {
-        if (!styleConfig) styleConfig = { bold: false, border: false, fillColor: '#FFFFFF', fontColor: '#000000' };
+    /**
+     * [CAMBIO ROBUSTO]
+     * Esta función solo crea el objeto de estilo base (fuente y relleno).
+     * Los bordes y formatos de número se aplican por separado.
+     */
+    function createXLSXStyle(styleConfig) {
+        if (!styleConfig) styleConfig = { bold: false, fillColor: '#FFFFFF', fontColor: '#000000' };
         
         const cleanFill = (styleConfig.fillColor || "#FFFFFF").substring(1);
         const cleanFont = (styleConfig.fontColor || "#000000").substring(1);
@@ -335,17 +340,13 @@
         const style = {
             font: {
                 bold: styleConfig.bold || false,
-                color: { rgb: "FF" + cleanFont }
+                color: { rgb: cleanFont } // Usar 6-dígitos RGB
             },
             fill: {
                 patternType: "solid",
-                fgColor: { rgb: "FF" + cleanFill }
+                fgColor: { rgb: cleanFill } // Usar 6-dígitos RGB
             }
         };
-
-        if (styleConfig.border && borderStyle) {
-            style.border = borderStyle;
-        }
         return style;
     }
 
@@ -372,27 +373,41 @@
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
 
+            // --- INICIO DE LÓGICA DE ESTILO ROBUSTA ---
             const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
-            const s = settings.styles;
+            
+            // Función helper para aplicar estilos y bordes de forma segura
+            const applyStyle = (config) => {
+                const style = createXLSXStyle(config); // Solo fuente y relleno
+                if (config.border) {
+                    style.border = thinBorderStyle; // Añadir bordes si se especifica
+                }
+                return style;
+            };
 
-            const headerInfoStyle = createXLSXStyle(s.headerInfo, thinBorderStyle);
-            const headerProductsStyle = createXLSXStyle(s.headerProducts, thinBorderStyle);
+            const s = settings.styles;
+            
+            // Crear los estilos finales combinando base, bordes y formatos de número
+            const headerInfoStyle = applyStyle(s.headerInfo);
+            const headerProductsStyle = applyStyle(s.headerProducts);
             const headerPriceStyle = { ...headerProductsStyle, numFmt: "$0.00" };
+            // Asegurarse de que 'bold' se mantenga si se sobreescribe 'font'
             const headerSubtotalStyle = { ...headerProductsStyle, font: { ...headerProductsStyle.font, bold: true } };
             
-            const cargaInicialStyle = createXLSXStyle(s.rowCargaInicial, thinBorderStyle);
+            const cargaInicialStyle = applyStyle(s.rowCargaInicial);
             const cargaInicialQtyStyle = { ...cargaInicialStyle, numFmt: "0.##" };
             
-            const clientDataStyle = createXLSXStyle(s.rowDataClients, thinBorderStyle);
+            const clientDataStyle = applyStyle(s.rowDataClients);
             const clientQtyStyle = { ...clientDataStyle, numFmt: "0.##" };
             const clientPriceStyle = { ...clientDataStyle, numFmt: "$0.00" };
 
-            const cargaRestanteStyle = createXLSXStyle(s.rowCargaRestante, thinBorderStyle);
+            const cargaRestanteStyle = applyStyle(s.rowCargaRestante);
             const cargaRestanteQtyStyle = { ...cargaRestanteStyle, numFmt: "0.##" };
 
-            const totalsStyle = createXLSXStyle(s.rowTotals, thinBorderStyle);
+            const totalsStyle = applyStyle(s.rowTotals);
             const totalsQtyStyle = { ...totalsStyle, numFmt: "0.##" };
             const totalsPriceStyle = { ...totalsStyle, numFmt: "$0.00" };
+            // --- FIN DE LÓGICA DE ESTILO ROBUSTA ---
 
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
