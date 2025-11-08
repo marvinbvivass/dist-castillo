@@ -40,7 +40,7 @@
             totalClienteValor: 15 // Hoja Total Cliente - Valor
         }
     };
-    // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
+    // --- FIN DE CAMBIOS EN VALORES POR DEFECKO ---
 
     // Devuelve solo el número, en la unidad de venta principal (Cj > Paq > Und)
     function getDisplayQty(qU, p) {
@@ -1085,41 +1085,32 @@
                                 <!-- Pestaña Hoja Rubros (Estilos y Anchos) -->
                                 <div id="tab-content-rubro" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Rubros)</h3>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
-                                        ${createWidthEditor('width_info', 'Info (Fecha/Usuario)', 0)}
-                                        ${createWidthEditor('width_labels', 'Etiquetas (Cliente, Carga)', 0)}
-                                        ${createWidthEditor('width_products', 'Productos (Default)', 0)}
-                                        ${createWidthEditor('width_subtotal', 'Sub Total', 0)}
+                                    <!-- CORREGIDO: Contenedor vacío -->
+                                    <div id="rubro-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
                                     </div>
                                     <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Rubros)</h3>
-                                    <div class="space-y-3 mt-4">
-                                        ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', DEFAULT_REPORTE_SETTINGS.styles.headerInfo)}
-                                        ${createZoneEditor('headerProducts', 'Cabecera Productos', DEFAULT_REPORTE_SETTINGS.styles.headerProducts)}
-                                        ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', DEFAULT_REPORTE_SETTINGS.styles.rowCargaInicial)}
-                                        ${createZoneEditor('rowDataClients', 'Filas Clientes (Celdas Vacías)', DEFAULT_REPORTE_SETTINGS.styles.rowDataClients)}
-                                        ${createZoneEditor('rowDataClientsSale', 'Filas Clientes (Venta > 0)', DEFAULT_REPORTE_SETTINGS.styles.rowDataClientsSale)} 
-                                        ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', DEFAULT_REPORTE_SETTINGS.styles.rowCargaRestante)}
-                                        ${createZoneEditor('rowTotals', 'Fila "TOTALES"', DEFAULT_REPORTE_SETTINGS.styles.rowTotals)}
+                                    <!-- CORREGIDO: Contenedor vacío -->
+                                    <div id="style-zones-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
                                     </div>
                                 </div>
 
                                 <!-- Pestaña Hoja Vacíos (Anchos) -->
                                 <div id="tab-content-vacios" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Vacíos)</h3>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
-                                        ${createWidthEditor('width_vaciosCliente', 'Cliente', 0)}
-                                        ${createWidthEditor('width_vaciosTipo', 'Tipo Vacío', 0)}
-                                        ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', 0)}
-                                        <div></div> <!-- Placeholder for grid -->
+                                    <!-- CORREGIDO: Contenedor vacío -->
+                                    <div id="vacios-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
                                     </div>
                                 </div>
 
                                 <!-- Pestaña Hoja Totales (Anchos) -->
                                 <div id="tab-content-totales" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Totales)</h3>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
-                                        ${createWidthEditor('width_totalCliente', 'Cliente', 0)}
-                                        ${createWidthEditor('width_totalClienteValor', 'Gasto Total', 0)}
+                                    <!-- CORREGIDO: Contenedor vacío -->
+                                    <div id="totales-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
                                     </div>
                                 </div>
 
@@ -1189,7 +1180,8 @@
 
             // Poblar Pestaña Hoja Rubros (Estilos y Anchos)
             const s = currentSettings.styles;
-            document.getElementById('tab-content-rubro').querySelector('#style-zones-container').innerHTML = `
+            // --- CORRECCIÓN: Apuntar al contenedor correcto ---
+            document.getElementById('style-zones-container').innerHTML = `
                 ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
                 ${createZoneEditor('headerProducts', 'Cabecera Productos', s.headerProducts)}
                 ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', s.rowCargaInicial)}
@@ -1199,19 +1191,29 @@
                 ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
             `;
             const w = currentSettings.columnWidths;
-            document.getElementById('width_info').value = w.info;
-            document.getElementById('width_labels').value = w.labels;
-            document.getElementById('width_products').value = w.products;
-            document.getElementById('width_subtotal').value = w.subtotal;
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de rubro ---
+            document.getElementById('rubro-widths-container').innerHTML = `
+                ${createWidthEditor('width_info', 'Info (Fecha/Usuario)', w.info)}
+                ${createWidthEditor('width_labels', 'Etiquetas (Cliente, Carga)', w.labels)}
+                ${createWidthEditor('width_products', 'Productos (Default)', w.products)}
+                ${createWidthEditor('width_subtotal', 'Sub Total', w.subtotal)}
+            `;
 
             // Poblar Pestaña Hoja Vacíos (Anchos)
-            document.getElementById('width_vaciosCliente').value = w.vaciosCliente;
-            document.getElementById('width_vaciosTipo').value = w.vaciosTipo;
-            document.getElementById('width_vaciosQty').value = w.vaciosQty;
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de vacíos ---
+            document.getElementById('vacios-widths-container').innerHTML = `
+                ${createWidthEditor('width_vaciosCliente', 'Cliente', w.vaciosCliente)}
+                ${createWidthEditor('width_vaciosTipo', 'Tipo Vacío', w.vaciosTipo)}
+                ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', w.vaciosQty)}
+                <div></div> <!-- Placeholder for grid -->
+            `;
 
             // Poblar Pestaña Hoja Totales (Anchos)
-            document.getElementById('width_totalCliente').value = w.totalCliente;
-            document.getElementById('width_totalClienteValor').value = w.totalClienteValor;
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de totales ---
+            document.getElementById('totales-widths-container').innerHTML = `
+                ${createWidthEditor('width_totalCliente', 'Cliente', w.totalCliente)}
+                ${createWidthEditor('width_totalClienteValor', 'Gasto Total', w.totalClienteValor)}
+            `;
 
             loader.classList.add('hidden');
             formContainer.classList.remove('hidden');
