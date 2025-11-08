@@ -42,22 +42,23 @@
             totalesTotalRow: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 11 }
         },
         columnWidths: {
-            info: 15,          // Col A (Info Fecha/Usuario)
-            labels: 25,        // Col B (Labels Clientes, Carga, etc.)
-            products: 12,      // Default para productos (C, D, E...)
-            subtotal: 15,      // Col "Sub Total"
-            vaciosCliente: 25, // Hoja Vacíos - Cliente
-            vaciosTipo: 15,    // Hoja Vacíos - Tipo
-            vaciosQty: 12,     // Hoja Vacíos - Cantidades
-            totalCliente: 35,  // Hoja Total Cliente - Cliente
-            totalClienteValor: 15 // Hoja Total Cliente - Valor
+            // CORRECCIÓN: Nombres de ancho de columna actualizados para reflejar el nuevo diseño
+            col_A_InfoClientes: 25, // Col A (Fecha/Usuario/Clientes)
+            col_B_Etiquetas: 15,    // Col B (Etiquetas: SEGMENTO, MARCA, etc.)
+            products: 12,           // Default para productos (C, D, E...)
+            subtotal: 15,           // RE-AGREGADO
+            vaciosCliente: 25,      // Hoja Vacíos - Cliente
+            vaciosTipo: 15,         // Hoja Vacíos - Tipo
+            vaciosQty: 12,          // Hoja Vacíos - Cantidades
+            totalCliente: 35,       // Hoja Total Cliente - Cliente
+            totalClienteValor: 15  // Hoja Total Cliente - Valor
         }
     };
     // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
 
     /**
      * Devuelve la cantidad y unidad de display.
-     * CORREGIDO: Revertido a la lógica fraccional (ej: 0.17 Cj)
+     * CORREGIDO: Lógica para mostrar Unds si no es entero Y se vende por Unds.
      */
     function getDisplayQty(qU, p) {
         if (!qU || qU === 0) return { value: 0, unit: 'Unds' }; // Devolver 0 Unds por defecto
@@ -67,25 +68,26 @@
         const uCj = p.unidadesPorCaja || 1;
         const uPaq = p.unidadesPorPaquete || 1;
         
-        // Priorizar Cj, incluso si es fraccional
+        // 1. Si se vende por Cajas y es un entero, USAR CAJAS
+        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
+            return { value: (qU / uCj), unit: 'Cj' };
+        }
+        // 2. Si se vende por Paq y es un entero, USAR PAQUETES
+        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
+            return { value: (qU / uPaq), unit: 'Paq' };
+        }
+        // 3. Si (se vende por Cj O Paq) PERO no es un entero, Y (se vende por Unds), USAR UNDS
+        if (qU > 0 && (vP.cj || vP.paq) && vP.und) {
+             return { value: qU, unit: 'Unds' };
+        }
+        // 4. Si se vende SÓLO por Cj/Paq (y no por Unds) y no es entero, mostrar decimal
         if (vP.cj && uCj > 0) {
-            const val = (qU / uCj);
-            // CORRECCIÓN LÓGICA UNDS: Si no es entero, y se vende por unds, mostrar unds
-            if (!Number.isInteger(val) && vP.und) {
-                return { value: qU, unit: 'Unds' };
-            }
-            return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Cj' };
+            return { value: parseFloat((qU / uCj).toFixed(2)), unit: 'Cj' };
         }
-        // Priorizar Paq, incluso si es fraccional
         if (vP.paq && uPaq > 0) {
-            const val = (qU / uPaq);
-            // CORRECCIÓN LÓGICA UNDS: Si no es entero, y se vende por unds, mostrar unds
-            if (!Number.isInteger(val) && vP.und) {
-                return { value: qU, unit: 'Unds' };
-            }
-            return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Paq' };
+            return { value: parseFloat((qU / uPaq).toFixed(2)), unit: 'Paq' };
         }
-        // Fallback a Unds
+        // 5. Fallback final (SÓLO se vende por Unds)
         return { value: qU, unit: 'Unds' };
     }
 
@@ -339,9 +341,9 @@
                 const prodParaReporte = {
                     id: p.id,
                     precios: p.precios,
-                    ventaPor: p.ventaPor || {und: true}, 
-                    unidadesPorCaja: p.unidadesPorCaja || 1, 
-                    unidadesPorPaquete: p.unidadesPorPaquete || 1, 
+                    ventaPor: prodInventario?.ventaPor || p.ventaPor || {und: true}, // Priorizar inventario
+                    unidadesPorCaja: prodInventario?.unidadesPorCaja || p.unidadesPorCaja || 1, // Priorizar inventario
+                    unidadesPorPaquete: prodInventario?.unidadesPorPaquete || p.unidadesPorPaquete || 1, // Priorizar inventario
                     rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
                     segmento: prodInventario?.segmento || p.segmento || 'S/S',
                     marca: prodInventario?.marca || p.marca || 'S/M',
@@ -473,7 +475,10 @@
             const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
             const workbook = new ExcelJS.Workbook();
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
-            const usuarioEmail = userInfo.email || (userInfo.nombre ? `${userInfo.nombre} ${userInfo.apellido}` : 'Usuario Desconocido');
+            // CORRECCIÓN (Fix 1): Usar nombre y apellido, no email
+            const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
+            const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
+
 
             // --- Definición de Estilos (usando la nueva buildExcelJSStyle) ---
             const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
@@ -483,6 +488,7 @@
             const headerInfoStyle = buildExcelJSStyle(s.headerInfo, s.headerInfo.border ? thinBorderStyle : null, null, 'left');
             const headerProductsStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
             const headerPriceStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            // --- CORRECCIÓN (Fix 2): Re-añadido headerSubtotalStyle ---
             const headerSubtotalStyle = buildExcelJSStyle({ ...s.headerProducts, bold: true }, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
 
             const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'left');
@@ -517,36 +523,36 @@
                 const worksheet = workbook.addWorksheet(sheetName);
 
                 // --- MODIFICADO: Ancho de columnas desde settings ---
+                // CORRECCIÓN (Fix 2): Aplicar anchos de Col A y B
                 const colWidths = [ 
-                    { width: settings.columnWidths.info }, 
-                    { width: settings.columnWidths.labels } 
+                    { width: settings.columnWidths.col_A_InfoClientes }, 
+                    { width: settings.columnWidths.col_B_Etiquetas } 
                 ];
                 const START_COL = 3; // Columna 'C'
                 
                 // --- Fila 1: Info Fecha ---
-                // CORREGIDO: Combinar celda y poner valor
-                worksheet.mergeCells('A1', 'B1');
-                worksheet.getCell('A1').value = `FECHA: ${fechaCierre}`;
+                // CORREGIDO (Fix 1): Poner valor en A1, sin merge
+                worksheet.getCell('A1').value = fechaCierre;
                 worksheet.getCell('A1').style = headerInfoStyle;
 
                 // --- Fila 2: Info Usuario ---
-                // CORREGIDO: Combinar celda y poner valor
-                worksheet.mergeCells('A2', 'B2');
-                worksheet.getCell('A2').value = `USUARIO: ${usuarioEmail}`;
+                // CORREGIDO (Fix 1): Poner valor en A2, sin merge
+                worksheet.getCell('A2').value = usuarioDisplay;
                 worksheet.getCell('A2').style = headerInfoStyle;
 
-                // --- Fila 1-4: Cabeceras de Producto ---
-                const headerRowSegment = worksheet.getRow(1);
-                const headerRowMarca = worksheet.getRow(2);
-                const headerRowPresentacion = worksheet.getRow(3);
-                const headerRowPrecio = worksheet.getRow(4);
+                // --- Fila 3-6: Cabeceras de Producto ---
+                // CORRECCIÓN (Fix 2): Mover filas de cabecera a 3,4,5,6
+                const headerRowSegment = worksheet.getRow(3);
+                const headerRowMarca = worksheet.getRow(4);
+                const headerRowPresentacion = worksheet.getRow(5);
+                const headerRowPrecio = worksheet.getRow(6);
 
                 // CORREGIDO (Fix 2): Poner etiquetas en Col B
                 headerRowSegment.getCell(2).value = "SEGMENTO";
                 headerRowMarca.getCell(2).value = "MARCA";
                 headerRowPresentacion.getCell(2).value = "PRESENTACION";
                 headerRowPrecio.getCell(2).value = "PRECIO";
-                [1,2,3,4].forEach(r => worksheet.getCell(r, 2).style = headerProductsStyle);
+                [3,4,5,6].forEach(r => worksheet.getCell(r, 2).style = headerProductsStyle);
                 
                 let lastSegment = null, lastMarca = null;
                 let segmentColStart = START_COL, marcaColStart = START_COL;
@@ -558,7 +564,7 @@
                     const presentacion = p.presentacion || 'S/P';
                     const precio = getPrice(p);
 
-                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 1 (C1, D1...)
+                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 3 (C3, D3...)
                     headerRowSegment.getCell(c).value = segment;
                     headerRowMarca.getCell(c).value = marca;
                     headerRowPresentacion.getCell(c).value = presentacion;
@@ -577,11 +583,11 @@
 
                     if (index > 0) {
                         if (segment !== lastSegment) {
-                            if (c - 1 >= segmentColStart) { worksheet.mergeCells(1, segmentColStart, 1, c - 1); }
+                            if (c - 1 >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, c - 1); } // Fila 3
                             segmentColStart = c;
                         }
                         if (marca !== lastMarca || segment !== lastSegment) {
-                            if (c - 1 >= marcaColStart) { worksheet.mergeCells(2, marcaColStart, 2, c - 1); }
+                            if (c - 1 >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, c - 1); } // Fila 4
                             marcaColStart = c;
                         }
                     }
@@ -590,24 +596,25 @@
                 });
 
                 const lastProdCol = START_COL + sortedProducts.length - 1;
-                if (lastProdCol >= segmentColStart) { worksheet.mergeCells(1, segmentColStart, 1, lastProdCol); }
-                if (lastProdCol >= marcaColStart) { worksheet.mergeCells(2, marcaColStart, 2, lastProdCol); }
+                if (lastProdCol >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, lastProdCol); } // Fila 3
+                if (lastProdCol >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, lastProdCol); } // Fila 4
                 
+                // --- CORRECCIÓN (Fix 2): Re-agregada columna Sub Total ---
                 const subTotalCol = START_COL + sortedProducts.length;
-                worksheet.getCell(1, subTotalCol).value = "Sub Total";
-                worksheet.getCell(1, subTotalCol).style = headerSubtotalStyle;
-                worksheet.mergeCells(1, subTotalCol, 4, subTotalCol);
-                // --- MODIFICADO: Ancho subtotal desde settings ---
+                worksheet.getCell(3, subTotalCol).value = "Sub Total";
+                worksheet.getCell(3, subTotalCol).style = headerSubtotalStyle;
+                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol);
                 colWidths.push({ width: settings.columnWidths.subtotal });
+                // --- FIN CORRECCIÓN ---
                 
                 worksheet.columns = colWidths;
                 
-                let currentRowNum = 6; // Empezar en fila 6
+                let currentRowNum = 8; // Empezar en fila 8 (después de cabeceras y fila 7 en blanco)
 
                 // --- Fila: CARGA INICIAL ---
                 if (settings.showCargaInicial) {
                     const cargaInicialRow = worksheet.getRow(currentRowNum++);
-                    cargaInicialRow.getCell(2).value = "CARGA INICIAL";
+                    cargaInicialRow.getCell(2).value = "CARGA INICIAL"; // Col B
                     cargaInicialRow.getCell(2).style = cargaInicialStyle;
                     sortedProducts.forEach((p, index) => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
@@ -615,7 +622,8 @@
                         // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(initialStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
+                        // CORRECCIÓN ERROR NUMFMT
+                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                     });
                     cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle; // Celda vacía con estilo
                 }
@@ -625,7 +633,7 @@
                 // --- Filas: Clientes ---
                 sortedClients.forEach(clientName => {
                     const clientRow = worksheet.getRow(currentRowNum++);
-                    clientRow.getCell(2).value = clientName;
+                    clientRow.getCell(2).value = clientName; // Col B
                     clientRow.getCell(2).style = clientDataStyle; // Estilo para el nombre del cliente
                     
                     const clientSales = clientData[clientName];
@@ -640,9 +648,11 @@
                         const baseStyle = (qU > 0) ? clientSaleStyle : clientQtyStyle;
                         cell.style = { ...baseStyle }; // El numFmt '0.##' ya está en el estilo
                     });
+                    // --- CORRECCIÓN (Fix 2): Re-agregado subtotal cliente ---
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
                     subtotalCell.style = clientPriceStyle; // Estilo para el subtotal del cliente
+                    // --- FIN CORRECCIÓN ---
                 });
 
                 currentRowNum++; // Fila vacía
@@ -650,7 +660,7 @@
                 // --- Fila: CARGA RESTANTE ---
                 if (settings.showCargaRestante) {
                     const cargaRestanteRow = worksheet.getRow(currentRowNum++);
-                    cargaRestanteRow.getCell(2).value = "CARGA RESTANTE";
+                    cargaRestanteRow.getCell(2).value = "CARGA RESTANTE"; // Col B
                     cargaRestanteRow.getCell(2).style = cargaRestanteStyle;
                     sortedProducts.forEach((p, index) => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
@@ -658,14 +668,14 @@
                         // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(currentStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
+                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                     });
                     cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle; // Celda vacía con estilo
                 }
 
                 // --- Fila: TOTALES ---
                 const totalesRow = worksheet.getRow(currentRowNum++);
-                totalesRow.getCell(2).value = "TOTALES";
+                totalesRow.getCell(2).value = "TOTALES"; // Col B
                 totalesRow.getCell(2).style = totalsStyle;
                 sortedProducts.forEach((p, index) => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
@@ -673,11 +683,13 @@
                     // CORREGIDO (Fix 3): Aplicar formato CON unidad
                     const qtyDisplay = getDisplayQty(totalSold, p);
                     cell.value = qtyDisplay.value;
-                    cell.style = { ...totalsQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
+                    cell.style = { ...totalsQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                 });
+                // --- CORRECCIÓN (Fix 2): Re-agregado subtotal totales ---
                 const totalCell = totalesRow.getCell(subTotalCol);
                 totalCell.value = rubroTotalValue;
                 totalCell.style = totalsPriceStyle;
+                // --- FIN CORRECCIÓN ---
             }
 
             // --- Hoja: Reporte Vacíos ---
@@ -964,7 +976,7 @@
             // CORRECCIÓN: Asegurarse de que getCell(hTitle) funciona
             const qtyCell = lastRow.getCell(hTitle);
             if (qtyCell) {
-                qtyCell.numFmt = `0.## "${item.Unidad}"`; // Formato: "10.5 Cajas"
+                qtyCell.numFmt = `0.## " ${item.Unidad}"`; // Formato: "10.5 Cajas"
             }
         });
 
@@ -1321,8 +1333,8 @@
             const w = currentSettings.columnWidths;
             // --- CORRECCIÓN: Poblar el contenedor de anchos de rubro ---
             document.getElementById('rubro-widths-container').innerHTML = `
-                ${createWidthEditor('width_info', 'Info (Fecha/Usuario)', w.info)}
-                ${createWidthEditor('width_labels', 'Etiquetas (Cliente, Carga)', w.labels)}
+                ${createWidthEditor('width_col_A_InfoClientes', 'Col A (Info/Clientes)', w.col_A_InfoClientes)}
+                ${createWidthEditor('width_col_B_Etiquetas', 'Col B (Etiquetas)', w.col_B_Etiquetas)}
                 ${createWidthEditor('width_products', 'Productos (Default)', w.products)}
                 ${createWidthEditor('width_subtotal', 'Sub Total', w.subtotal)}
             `;
@@ -1392,10 +1404,10 @@
         const readVal = (id, def) => parseInt(document.getElementById(id)?.value, 10) || def;
         
         return {
-            info: readVal('width_info', defaults.info),
-            labels: readVal('width_labels', defaults.labels),
+            col_A_InfoClientes: readVal('width_col_A_InfoClientes', defaults.col_A_InfoClientes),
+            col_B_Etiquetas: readVal('width_col_B_Etiquetas', defaults.col_B_Etiquetas),
             products: readVal('width_products', defaults.products),
-            subtotal: readVal('width_subtotal', defaults.subtotal),
+            subtotal: readVal('width_subtotal', defaults.subtotal), // RE-AGREGADO
             vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
             vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
             vaciosQty: readVal('width_vaciosQty', defaults.vaciosQty),
