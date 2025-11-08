@@ -57,7 +57,7 @@
 
     /**
      * Devuelve la cantidad y unidad de display.
-     * CORREGIDO: Ahora prioriza Unds si no es un número entero de Cj o Paq.
+     * CORREGIDO: Revertido a la lógica fraccional (ej: 0.17 Cj)
      */
     function getDisplayQty(qU, p) {
         if (!qU || qU === 0) return { value: 0, unit: 'Unds' }; // Devolver 0 Unds por defecto
@@ -67,15 +67,17 @@
         const uCj = p.unidadesPorCaja || 1;
         const uPaq = p.unidadesPorPaquete || 1;
         
-        // Priorizar Cajas SÓLO si es un número entero
-        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
-            return { value: (qU / uCj), unit: 'Cj' };
+        // Priorizar Cj, incluso si es fraccional
+        if (vP.cj && uCj > 0) {
+            const val = (qU / uCj);
+            return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Cj' };
         }
-        // Priorizar Paquetes SÓLO si es un número entero
-        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
-            return { value: (qU / uPaq), unit: 'Paq' };
+        // Priorizar Paq, incluso si es fraccional
+        if (vP.paq && uPaq > 0) {
+            const val = (qU / uPaq);
+            return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Paq' };
         }
-        // Si no es un paquete/caja entero, o si se vende por Unds, mostrar Unds
+        // Fallback a Unds
         return { value: qU, unit: 'Unds' };
     }
 
@@ -602,8 +604,8 @@
                         // CORREGIDO: Aplicar formato y valor dinámico
                         const qtyDisplay = getDisplayQty(initialStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = cargaInicialQtyStyle;
-                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
+                        // CORREGIDO: Error numFmt
+                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                     });
                     cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle; // Celda vacía con estilo
                 }
@@ -623,8 +625,9 @@
                         // CORREGIDO: Aplicar formato y valor dinámico
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = (qU > 0) ? clientSaleStyle : clientQtyStyle;
-                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
+                        const baseStyle = (qU > 0) ? clientSaleStyle : clientQtyStyle;
+                        // CORREGIDO: Error numFmt
+                        cell.style = { ...baseStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                     });
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
@@ -644,8 +647,8 @@
                         // CORREGIDO: Aplicar formato y valor dinámico
                         const qtyDisplay = getDisplayQty(currentStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = cargaRestanteQtyStyle;
-                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
+                        // CORREGIDO: Error numFmt
+                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                     });
                     cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle; // Celda vacía con estilo
                 }
@@ -660,8 +663,8 @@
                     // CORREGIDO: Aplicar formato y valor dinámico
                     const qtyDisplay = getDisplayQty(totalSold, p);
                     cell.value = qtyDisplay.value;
-                    cell.style = totalsQtyStyle;
-                    cell.numFmt = `0.## "${qtyDisplay.unit}"`;
+                    // CORREGIDO: Error numFmt
+                    cell.style = { ...totalsQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                 });
                 const totalCell = totalesRow.getCell(subTotalCol);
                 totalCell.value = rubroTotalValue;
@@ -691,9 +694,9 @@
                 
                 const headerRowVacios = wsVacios.getRow(1);
                 headerRowVacios.values = ['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto'];
-                headerRowVacios.getCell(1).style = vaciosHeaderStyle; // Estilo de texto
-                headerRowVacios.getCell(2).style = vaciosHeaderStyle; // Estilo de texto
-                // Centrar cabeceras numéricas
+                // CORREGIDO: Aplicar estilo a CADA celda de la cabecera
+                headerRowVacios.getCell(1).style = vaciosHeaderStyle;
+                headerRowVacios.getCell(2).style = vaciosHeaderStyle;
                 headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
                 headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
                 headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
@@ -738,14 +741,16 @@
                 
                 const headerRowTotales = wsClientes.getRow(1);
                 headerRowTotales.values = ['Cliente', 'Gasto Total'];
-                headerRowTotales.getCell(1).style = totalesHeaderStyle; // Estilo de texto
-                headerRowTotales.getCell(2).style = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'right'); // Estilo de precio
+                // CORREGIDO: Aplicar estilo a CADA celda
+                headerRowTotales.getCell(1).style = totalesHeaderStyle;
+                headerRowTotales.getCell(2).style = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'right');
                 // --- FIN MODIFICADO ---
                 
                 const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
                 sortedClientTotals.forEach(([clientName, totalValue]) => {
                     // --- MODIFICADO: Aplicar estilo de datos a fila ---
                     const row = wsClientes.addRow([clientName, Number(totalValue.toFixed(2))]);
+                    // CORREGIDO: Aplicar estilo a CADA celda
                     row.getCell(1).style = totalesDataStyle;
                     row.getCell(2).style = totalesDataPriceStyle;
                     // --- FIN MODIFICADO ---
@@ -753,6 +758,7 @@
                 
                 // --- MODIFICADO: Aplicar estilo a fila total ---
                 const totalRow = wsClientes.addRow(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+                // CORREGIDO: Aplicar estilo a CADA celda
                 totalRow.getCell(1).style = totalesTotalRowStyle;
                 totalRow.getCell(2).style = totalesTotalRowPriceStyle;
                 // --- FIN MODIFICADO ---
@@ -881,7 +887,7 @@
             let dQty = qtyDisplay.value;
             // Para estadísticas, sí queremos decimales si no es Unds
             if (qtyDisplay.unit !== 'Unds') {
-                dQty = totPer / (qtyDisplay.unit === 'Cj' ? p.unidadesPorCaja : p.unidadesPorPaquete);
+                dQty = totPer / (qtyDisplay.unit === 'Cj' ? (p.unidadesPorCaja || 1) : (p.unidadesPorPaquete || 1));
                 dQty = dQty.toFixed(1); // Mostrar un decimal para promedios
                 if(dQty.endsWith('.0')) dQty = dQty.slice(0,-2);
             } else {
@@ -909,7 +915,7 @@
             const qtyDisplay = getDisplayQty(totPer, p);
             let dQty = qtyDisplay.value;
             if (qtyDisplay.unit !== 'Unds') {
-                dQty = totPer / (qtyDisplay.unit === 'Cj' ? p.unidadesPorCaja : p.unidadesPorPaquete);
+                dQty = totPer / (qtyDisplay.unit === 'Cj' ? (p.unidadesPorCaja || 1) : (p.unidadesPorPaquete || 1));
                 dQty = parseFloat(dQty.toFixed(2)); // Usar 2 decimales para Excel
             } else {
                 dQty = parseFloat(dQty.toFixed(0)); // Asegurarse que es número
