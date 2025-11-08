@@ -26,7 +26,13 @@
             rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
             rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true, fontSize: 10 },
             rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
-            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 }
+            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            // --- AÑADIDOS ESTILOS PARA HOJAS VACÍOS Y TOTALES ---
+            vaciosHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            vaciosData: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            totalesHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            totalesData: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            totalesTotalRow: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 11 }
         },
         columnWidths: {
             info: 15,          // Col A (Info Fecha/Usuario)
@@ -40,7 +46,7 @@
             totalClienteValor: 15 // Hoja Total Cliente - Valor
         }
     };
-    // --- FIN DE CAMBIOS EN VALORES POR DEFECKO ---
+    // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
 
     // Devuelve solo el número, en la unidad de venta principal (Cj > Paq > Und)
     function getDisplayQty(qU, p) {
@@ -635,14 +641,28 @@
                     { width: settings.columnWidths.vaciosQty }, 
                     { width: settings.columnWidths.vaciosQty } 
                 ];
-                wsVacios.addRow(['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto']);
+
+                // --- MODIFICADO: Aplicar estilos a Hoja Vacíos ---
+                const vaciosHeaderStyle = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null);
+                const vaciosDataStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null);
+                
+                const headerRowVacios = wsVacios.getRow(1);
+                headerRowVacios.values = ['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto'];
+                headerRowVacios.style = vaciosHeaderStyle;
+                // --- FIN MODIFICADO ---
                 
                 cliVacios.forEach(cli => {
                     const movs = vaciosMovementsPorTipo[cli]; 
                     TIPOS_VACIO_GLOBAL.forEach(t => {
                         const mov = movs[t] || {entregados:0, devueltos:0}; 
                         if (mov.entregados > 0 || mov.devueltos > 0) {
-                            wsVacios.addRow([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            // --- MODIFICADO: Aplicar estilo de datos a fila ---
+                            const dataRow = wsVacios.addRow([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            dataRow.style = vaciosDataStyle;
+                            dataRow.getCell(3).numFmt = '0';
+                            dataRow.getCell(4).numFmt = '0';
+                            dataRow.getCell(5).numFmt = '0';
+                            // --- FIN MODIFICADO ---
                         }
                     });
                 }); 
@@ -657,17 +677,30 @@
                     { width: settings.columnWidths.totalCliente }, 
                     { width: settings.columnWidths.totalClienteValor } 
                 ];
-                wsClientes.addRow(['Cliente', 'Gasto Total']);
+
+                // --- MODIFICADO: Aplicar estilos a Hoja Totales ---
+                const totalesHeaderStyle = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null);
+                const totalesDataStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null);
+                const totalesTotalRowStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, "$#,##0.00");
+                
+                const headerRowTotales = wsClientes.getRow(1);
+                headerRowTotales.values = ['Cliente', 'Gasto Total'];
+                headerRowTotales.style = totalesHeaderStyle;
+                // --- FIN MODIFICADO ---
                 
                 const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
                 sortedClientTotals.forEach(([clientName, totalValue]) => {
+                    // --- MODIFICADO: Aplicar estilo de datos a fila ---
                     const row = wsClientes.addRow([clientName, Number(totalValue.toFixed(2))]);
+                    row.style = totalesDataStyle;
                     row.getCell(2).numFmt = "$#,##0.00";
+                    // --- FIN MODIFICADO ---
                 });
                 
+                // --- MODIFICADO: Aplicar estilo a fila total ---
                 const totalRow = wsClientes.addRow(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
-                totalRow.font = { bold: true };
-                totalRow.getCell(2).numFmt = "$#,##0.00";
+                totalRow.style = totalesTotalRowStyle;
+                // --- FIN MODIFICADO ---
             }
 
             // --- Descargar el archivo ---
@@ -1103,6 +1136,11 @@
                                     <div id="vacios-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
                                         <p>Cargando anchos...</p>
                                     </div>
+                                    <!-- --- AÑADIDO: Contenedor de Estilos Hoja Vacíos --- -->
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Vacíos)</h3>
+                                    <div id="vacios-styles-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
+                                    </div>
                                 </div>
 
                                 <!-- Pestaña Hoja Totales (Anchos) -->
@@ -1111,6 +1149,11 @@
                                     <!-- CORREGIDO: Contenedor vacío -->
                                     <div id="totales-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
                                         <p>Cargando anchos...</p>
+                                    </div>
+                                    <!-- --- AÑADIDO: Contenedor de Estilos Hoja Totales --- -->
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Totales)</h3>
+                                    <div id="totales-styles-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
                                     </div>
                                 </div>
 
@@ -1207,12 +1250,23 @@
                 ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', w.vaciosQty)}
                 <div></div> <!-- Placeholder for grid -->
             `;
+            // --- AÑADIDO: Poblar estilos Hoja Vacíos ---
+            document.getElementById('vacios-styles-container').innerHTML = `
+                ${createZoneEditor('vaciosHeader', 'Cabecera (Cliente, Tipo, etc.)', s.vaciosHeader)}
+                ${createZoneEditor('vaciosData', 'Filas de Datos', s.vaciosData)}
+            `;
 
             // Poblar Pestaña Hoja Totales (Anchos)
             // --- CORRECCIÓN: Poblar el contenedor de anchos de totales ---
             document.getElementById('totales-widths-container').innerHTML = `
                 ${createWidthEditor('width_totalCliente', 'Cliente', w.totalCliente)}
                 ${createWidthEditor('width_totalClienteValor', 'Gasto Total', w.totalClienteValor)}
+            `;
+            // --- AÑADIDO: Poblar estilos Hoja Totales ---
+            document.getElementById('totales-styles-container').innerHTML = `
+                ${createZoneEditor('totalesHeader', 'Cabecera (Cliente, Gasto)', s.totalesHeader)}
+                ${createZoneEditor('totalesData', 'Filas de Clientes', s.totalesData)}
+                ${createZoneEditor('totalesTotalRow', 'Fila "GRAN TOTAL"', s.totalesTotalRow)}
             `;
 
             loader.classList.add('hidden');
@@ -1235,7 +1289,8 @@
 
         // Usar valores por defecto si los elementos no se encuentran
         const defaults = DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || 
-                         (idPrefix === 'rowDataClientsSale' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients : {});
+                         (idPrefix === 'rowDataClientsSale' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients : 
+                         (DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || {})); // Fallback genérico
 
         return {
             bold: boldEl ? boldEl.checked : (defaults.bold || false),
@@ -1280,7 +1335,13 @@
                 rowDataClients: readZoneEditor('rowDataClients'),
                 rowDataClientsSale: readZoneEditor('rowDataClientsSale'), // NUEVO
                 rowCargaRestante: readZoneEditor('rowCargaRestante'),
-                rowTotals: readZoneEditor('rowTotals')
+                rowTotals: readZoneEditor('rowTotals'),
+                // --- AÑADIDO: Lectura de nuevos estilos ---
+                vaciosHeader: readZoneEditor('vaciosHeader'),
+                vaciosData: readZoneEditor('vaciosData'),
+                totalesHeader: readZoneEditor('totalesHeader'),
+                totalesData: readZoneEditor('totalesData'),
+                totalesTotalRow: readZoneEditor('totalesTotalRow')
             },
             columnWidths: readWidthInputs() // NUEVO
             // --- FIN MODIFICADO ---
