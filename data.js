@@ -55,21 +55,26 @@
     };
     // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
 
-    // Devuelve solo el número, en la unidad de venta principal (Cj > Paq > Und)
+    /**
+     * Devuelve la cantidad y unidad de display.
+     * CORREGIDO: Ahora prioriza Unds si no es un número entero de Cj o Paq.
+     */
     function getDisplayQty(qU, p) {
-        if (!qU || qU === 0) return 0; 
+        if (!qU || qU === 0) return { value: 0, unit: 'Unds' }; // Devolver 0 Unds por defecto
         const vP = p.ventaPor || {und: true};
         const uCj = p.unidadesPorCaja || 1;
         const uPaq = p.unidadesPorPaquete || 1;
-        if (vP.cj && uCj > 0) {
-            const val = (qU / uCj);
-            return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
+        
+        // Priorizar Cajas SÓLO si es un número entero
+        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
+            return { value: (qU / uCj), unit: 'Cj' };
         }
-        if (vP.paq && uPaq > 0) {
-            const val = (qU / uPaq);
-            return Number.isInteger(val) ? val : parseFloat(val.toFixed(2));
+        // Priorizar Paquetes SÓLO si es un número entero
+        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
+            return { value: (qU / uPaq), unit: 'Paq' };
         }
-        return qU;
+        // Si no es un paquete/caja entero, o si se vende por Unds, mostrar Unds
+        return { value: qU, unit: 'Unds' };
     }
 
     window.initData = function(dependencies) {
@@ -368,8 +373,9 @@
     /**
      * [NUEVA FUNCIÓN DE ESTILOS PARA EXCELJS]
      * Esta función construye un objeto de estilo COMPLETO para ExcelJS.
+     * CORREGIDO: Añadido horizontalAlign
      */
-    function buildExcelJSStyle(config, borderStyle, numFmt = null) {
+    function buildExcelJSStyle(config, borderStyle, numFmt = null, horizontalAlign = 'left') {
         const style = {};
         
         // 1. Fuente (Font)
@@ -397,9 +403,7 @@
         }
         
         // 5. Alineación (opcional, se puede añadir si se desea)
-        style.alignment = { vertical: 'middle' }; // Añadido centrado vertical
-
-        return style;
+        style.alignment = { vertical: 'middle', horizontal: horizontalAlign }; // Añadido centrado vertical y horizontal
     }
 
     /**
@@ -442,26 +446,26 @@
             const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
             const s = settings.styles;
 
-            const headerInfoStyle = buildExcelJSStyle(s.headerInfo, s.headerInfo.border ? thinBorderStyle : null); // Info puede no tener borde
-            const headerProductsStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null);
-            const headerPriceStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, "$#,##0.00");
-            const headerSubtotalStyle = buildExcelJSStyle({ ...s.headerProducts, bold: true }, s.headerProducts.border ? thinBorderStyle : null);
+            // CORREGIDO: Añadido 'left' alignment
+            const headerInfoStyle = buildExcelJSStyle(s.headerInfo, s.headerInfo.border ? thinBorderStyle : null, null, 'left');
+            const headerProductsStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
+            const headerPriceStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            const headerSubtotalStyle = buildExcelJSStyle({ ...s.headerProducts, bold: true }, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
 
-            const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null);
-            const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, "0.##");
+            const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'left');
+            const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
             
-            // --- MODIFICADO: Añadido clientSaleStyle ---
-            const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null);
-            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0.##"); // Estilo para celdas vacías (0)
-            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0.##"); // Estilo para celdas con venta (> 0)
-            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00"); // Estilo para subtotal cliente
+            const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'left');
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
+            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precios derecha
 
-            const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null);
-            const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, "0.##");
+            const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'left');
+            const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
 
-            const totalsStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null);
-            const totalsQtyStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, "0.##");
-            const totalsPriceStyle = buildExcelJSStyle({ ...s.rowTotals, bold: true }, s.rowTotals.border ? thinBorderStyle : null, "$#,##0.00");
+            const totalsStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'left');
+            const totalsQtyStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
+            const totalsPriceStyle = buildExcelJSStyle({ ...s.rowTotals, bold: true }, s.rowTotals.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precio derecha
             // --- Fin Estilos ---
 
             const getPrice = (p) => {
@@ -486,16 +490,16 @@
                 const START_COL = 3; // Columna 'C'
                 
                 // --- Fila 1: Info Fecha ---
-                worksheet.getCell('A1').value = "FECHA:";
-                worksheet.getCell('B1').value = fechaCierre;
+                // CORREGIDO: Combinar celda y poner valor
+                worksheet.mergeCells('A1', 'B1');
+                worksheet.getCell('A1').value = `FECHA: ${fechaCierre}`;
                 worksheet.getCell('A1').style = headerInfoStyle;
-                worksheet.getCell('B1').style = headerInfoStyle;
 
                 // --- Fila 2: Info Usuario ---
-                worksheet.getCell('A2').value = "USUARIO:";
-                worksheet.getCell('B2').value = usuarioEmail;
+                // CORREGIDO: Combinar celda y poner valor
+                worksheet.mergeCells('A2', 'B2');
+                worksheet.getCell('A2').value = `USUARIO: ${usuarioEmail}`;
                 worksheet.getCell('A2').style = headerInfoStyle;
-                worksheet.getCell('B2').style = headerInfoStyle;
 
                 // --- Fila 1-4: Cabeceras de Producto ---
                 const headerRowSegment = worksheet.getRow(1);
@@ -572,8 +576,11 @@
                     sortedProducts.forEach((p, index) => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
                         const cell = cargaInicialRow.getCell(START_COL + index);
-                        cell.value = getDisplayQty(initialStock, p);
+                        // CORREGIDO: Aplicar formato y valor dinámico
+                        const qtyDisplay = getDisplayQty(initialStock, p);
+                        cell.value = qtyDisplay.value;
                         cell.style = cargaInicialQtyStyle;
+                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
                     });
                     cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle; // Celda vacía con estilo
                 }
@@ -590,12 +597,11 @@
                     sortedProducts.forEach((p, index) => {
                         const qU = clientSales.products[p.id] || 0;
                         const cell = clientRow.getCell(START_COL + index);
-                        cell.value = getDisplayQty(qU, p);
-                        
-                        // --- MODIFICADO: Lógica de estilo condicional ---
-                        // Si la cantidad es > 0, usar 'clientSaleStyle', si no, usar 'clientQtyStyle' (que es el normal)
+                        // CORREGIDO: Aplicar formato y valor dinámico
+                        const qtyDisplay = getDisplayQty(qU, p);
+                        cell.value = qtyDisplay.value;
                         cell.style = (qU > 0) ? clientSaleStyle : clientQtyStyle;
-                        // --- FIN MODIFICADO ---
+                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
                     });
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
@@ -612,8 +618,11 @@
                     sortedProducts.forEach((p, index) => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
                         const cell = cargaRestanteRow.getCell(START_COL + index);
-                        cell.value = getDisplayQty(currentStock, p);
+                        // CORREGIDO: Aplicar formato y valor dinámico
+                        const qtyDisplay = getDisplayQty(currentStock, p);
+                        cell.value = qtyDisplay.value;
                         cell.style = cargaRestanteQtyStyle;
+                        cell.numFmt = `0.## "${qtyDisplay.unit}"`;
                     });
                     cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle; // Celda vacía con estilo
                 }
@@ -625,8 +634,11 @@
                 sortedProducts.forEach((p, index) => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
                     const cell = totalesRow.getCell(START_COL + index);
-                    cell.value = getDisplayQty(totalSold, p);
+                    // CORREGIDO: Aplicar formato y valor dinámico
+                    const qtyDisplay = getDisplayQty(totalSold, p);
+                    cell.value = qtyDisplay.value;
                     cell.style = totalsQtyStyle;
+                    cell.numFmt = `0.## "${qtyDisplay.unit}"`;
                 });
                 const totalCell = totalesRow.getCell(subTotalCol);
                 totalCell.value = rubroTotalValue;
@@ -650,12 +662,17 @@
                 ];
 
                 // --- MODIFICADO: Aplicar estilos a Hoja Vacíos ---
-                const vaciosHeaderStyle = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null);
-                const vaciosDataStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null);
+                const vaciosHeaderStyle = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'left');
+                const vaciosDataStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, null, 'left');
+                const vaciosDataNumStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, '0', 'center');
                 
                 const headerRowVacios = wsVacios.getRow(1);
                 headerRowVacios.values = ['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto'];
-                headerRowVacios.style = vaciosHeaderStyle;
+                headerRowVacios.style = vaciosHeaderStyle; // Aplica estilo general
+                // Centrar cabeceras numéricas
+                headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
+                headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
+                headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
                 // --- FIN MODIFICADO ---
                 
                 cliVacios.forEach(cli => {
@@ -665,10 +682,13 @@
                         if (mov.entregados > 0 || mov.devueltos > 0) {
                             // --- MODIFICADO: Aplicar estilo de datos a fila ---
                             const dataRow = wsVacios.addRow([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
-                            dataRow.style = vaciosDataStyle;
-                            dataRow.getCell(3).numFmt = '0';
-                            dataRow.getCell(4).numFmt = '0';
-                            dataRow.getCell(5).numFmt = '0';
+                            // Aplicar estilo de datos general (para texto)
+                            dataRow.getCell(1).style = vaciosDataStyle;
+                            dataRow.getCell(2).style = vaciosDataStyle;
+                            // Aplicar estilo numérico y centrado
+                            dataRow.getCell(3).style = vaciosDataNumStyle;
+                            dataRow.getCell(4).style = vaciosDataNumStyle;
+                            dataRow.getCell(5).style = vaciosDataNumStyle;
                             // --- FIN MODIFICADO ---
                         }
                     });
@@ -686,27 +706,31 @@
                 ];
 
                 // --- MODIFICADO: Aplicar estilos a Hoja Totales ---
-                const totalesHeaderStyle = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null);
-                const totalesDataStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null);
-                const totalesTotalRowStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, "$#,##0.00");
+                const totalesHeaderStyle = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'left');
+                const totalesDataStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, null, 'left');
+                const totalesDataPriceStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+                const totalesTotalRowStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, null, 'left');
+                const totalesTotalRowPriceStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, "$#,##0.00", 'right');
                 
                 const headerRowTotales = wsClientes.getRow(1);
                 headerRowTotales.values = ['Cliente', 'Gasto Total'];
                 headerRowTotales.style = totalesHeaderStyle;
+                headerRowTotales.getCell(2).style = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'right');
                 // --- FIN MODIFICADO ---
                 
                 const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
                 sortedClientTotals.forEach(([clientName, totalValue]) => {
                     // --- MODIFICADO: Aplicar estilo de datos a fila ---
                     const row = wsClientes.addRow([clientName, Number(totalValue.toFixed(2))]);
-                    row.style = totalesDataStyle;
-                    row.getCell(2).numFmt = "$#,##0.00";
+                    row.getCell(1).style = totalesDataStyle;
+                    row.getCell(2).style = totalesDataPriceStyle;
                     // --- FIN MODIFICADO ---
                 });
                 
                 // --- MODIFICADO: Aplicar estilo a fila total ---
                 const totalRow = wsClientes.addRow(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
-                totalRow.style = totalesTotalRowStyle;
+                totalRow.getCell(1).style = totalesTotalRowStyle;
+                totalRow.getCell(2).style = totalesTotalRowPriceStyle;
                 // --- FIN MODIFICADO ---
             }
 
@@ -827,12 +851,21 @@
             return (a.presentacion||'').localeCompare(b.presentacion||'');
         });
         productArray.forEach(p => { 
-            let dQty=0, dUnit='Unds'; const totPer = statsType==='general'?(p.totalUnidades/numWeeks):p.totalUnidades; 
-            if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} 
-            else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} 
-            else {dQty=totPer.toFixed(0);} 
+            // CORREGIDO: Usar getDisplayQty
+            const totPer = statsType==='general'?(p.totalUnidades/numWeeks):p.totalUnidades; 
+            const qtyDisplay = getDisplayQty(totPer, p);
+            let dQty = qtyDisplay.value;
+            // Para estadísticas, sí queremos decimales si no es Unds
+            if (qtyDisplay.unit !== 'Unds') {
+                dQty = totPer / (qtyDisplay.unit === 'Cj' ? p.unidadesPorCaja : p.unidadesPorPaquete);
+                dQty = dQty.toFixed(1); // Mostrar un decimal para promedios
+                if(dQty.endsWith('.0')) dQty = dQty.slice(0,-2);
+            } else {
+                dQty = dQty.toFixed(0); // Sin decimales para unidades
+            }
+
             const desc = `<span class="font-semibold">${p.segmento}</span> <span class="text-gray-700">${p.marca}</span> <span class="text-gray-500 font-light">${p.presentacion}</span>`;
-            tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b">${desc}</td><td class="py-2 px-3 border-b text-center font-bold">${dQty} <span class="font-normal text-xs">${dUnit}</span></td></tr>`; 
+            tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b">${desc}</td><td class="py-2 px-3 border-b text-center font-bold">${dQty} <span class="font-normal text-xs">${qtyDisplay.unit}</span></td></tr>`; 
         });
         tHTML += `</tbody></table>`; cont.innerHTML = `${tHTML}<div class="mt-6 text-center"><button id="downloadStatsBtn" class="px-6 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700">Descargar Excel</button></div>`;
         const dBt = document.getElementById('downloadStatsBtn'); if(dBt) dBt.addEventListener('click', handleDownloadStats);
@@ -847,20 +880,21 @@
         const sType = document.getElementById('stats-type').value; 
         const hTitle = sType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
         const dExport = _lastStatsData.map(p => { 
-            let dQty=0, dUnit='Unds'; const totPer=sType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
-            if(p.ventaPor?.cj&&p.unidadesPorCaja>0){dQty=(totPer/p.unidadesPorCaja).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Cajas';} 
-            else if(p.ventaPor?.paq&&p.unidadesPorPaquete>0){dQty=(totPer/p.unidadesPorPaquete).toFixed(1); if(dQty.endsWith('.0'))dQty=dQty.slice(0,-2); dUnit='Paq.';} 
-            else {dQty=totPer.toFixed(0);} 
-            
-            // --- CORRECCIÓN ---
-            // Añadir Segmento y Marca como columnas separadas para un mejor filtrado en Excel
+            // CORREGIDO: Usar getDisplayQty
+            const totPer = statsType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
+            const qtyDisplay = getDisplayQty(totPer, p);
+            let dQty = qtyDisplay.value;
+            if (qtyDisplay.unit !== 'Unds') {
+                dQty = totPer / (qtyDisplay.unit === 'Cj' ? p.unidadesPorCaja : p.unidadesPorPaquete);
+                dQty = parseFloat(dQty.toFixed(2)); // Usar 2 decimales para Excel
+            }
+
             return {
                 'Segmento': p.segmento || 'S/S',
                 'Marca': p.marca || 'S/M',
                 'Presentacion': p.presentacion || 'S/P',
-                [hTitle]: `${dQty} ${dUnit}`,
-                'ValorNumerico': parseFloat(dQty), // Columna oculta para ordenar
-                'Unidad': dUnit
+                'ValorNumerico': dQty,
+                'Unidad': qtyDisplay.unit
             }; 
         });
 
