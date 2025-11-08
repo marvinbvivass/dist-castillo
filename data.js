@@ -43,15 +43,14 @@
         },
         columnWidths: {
             // CORRECCIÓN: Nombres de ancho de columna actualizados para reflejar el nuevo diseño
-            col_A_InfoClientes: 25, // Col A (Fecha/Usuario/Clientes)
-            col_B_Etiquetas: 15,    // Col B (Etiquetas: SEGMENTO, MARCA, etc.)
-            products: 12,           // Default para productos (C, D, E...)
-            subtotal: 15,           // RE-AGREGADO
-            vaciosCliente: 25,      // Hoja Vacíos - Cliente
-            vaciosTipo: 15,         // Hoja Vacíos - Tipo
-            vaciosQty: 12,          // Hoja Vacíos - Cantidades
-            totalCliente: 35,       // Hoja Total Cliente - Cliente
-            totalClienteValor: 15  // Hoja Total Cliente - Valor
+            col_A_LabelsClientes: 25, // Col A (Fecha/Usuario/Clientes)
+            col_B_Products: 12,       // Default para productos (B, C, D...)
+            subtotal: 15,             // RE-AGREGADO
+            vaciosCliente: 25,        // Hoja Vacíos - Cliente
+            vaciosTipo: 15,           // Hoja Vacíos - Tipo
+            vaciosQty: 12,            // Hoja Vacíos - Cantidades
+            totalCliente: 35,         // Hoja Total Cliente - Cliente
+            totalClienteValor: 15    // Hoja Total Cliente - Valor
         }
     };
     // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
@@ -279,17 +278,46 @@
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
             const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId);
-            let headerHTML = `<tr class="sticky top-0 z-20 bg-gray-200"> <th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`;
-            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; });
-            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
+            
+            // CORREGIDO: Diseño de cabecera según la imagen
+            let headerHTML = `
+                <tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">SEGMENTO</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.segmento || 'S/S'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+            
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">MARCA</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.marca || 'S/M'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">PRESENTACION</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.presentacion || 'S/P'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Sub Total</th></tr>`;
+            
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">PRECIO</th>`;
+            finalProductOrder.forEach(p => { 
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                let displayPrecio = '$0.00';
+                if (p.ventaPor?.cj) displayPrecio = `$${(precios.cj || 0).toFixed(2)}`;
+                else if (p.ventaPor?.paq) displayPrecio = `$${(precios.paq || 0).toFixed(2)}`;
+                else displayPrecio = `$${(precios.und || 0).toFixed(2)}`;
+                headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${displayPrecio}</th>`; 
+            });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+
+
             let bodyHTML = ''; 
             sortedClients.forEach(cli => { 
                 bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; 
                 const cCli = clientData[cli]; 
                 finalProductOrder.forEach(p => { 
                     const qU=cCli.products[p.id]||0; 
-                    const qtyDisplay = getDisplayQty(qU, p); // Usa la función corregida
-                    let dQ = (qU > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
+                    const qtyDisplay = getDisplayQty(qU, p);
+                    // CORREGIDO: Mostrar solo el número para clientes
+                    let dQ = (qU > 0) ? `${qtyDisplay.value}` : '0';
                     bodyHTML+=`<td class="p-1 border text-center">${dQ}</td>`; 
                 }); 
                 bodyHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`; 
@@ -299,10 +327,12 @@
                 let tQ=0; 
                 sortedClients.forEach(cli => tQ+=clientData[cli].products[p.id]||0); 
                 const qtyDisplay = getDisplayQty(tQ, p); // Usa la función corregida
+                // CORREGIDO: Mostrar número + unidad para totales
                 let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
                 footerHTML+=`<td class="p-1 border text-center">${dT}</td>`; 
             }); 
             footerHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            
             let vHTML = ''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
             const vendedor = closingData.vendedorInfo || {};
             const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <div class="mb-4"> <p><strong>Vendedor:</strong> ${vendedor.nombre||''} ${vendedor.apellido||''}</p> <p><strong>Camión:</strong> ${vendedor.camion||'N/A'}</p> <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p> </div> <h3 class="text-xl mb-4">Reporte Cierre</h3> <div class="overflow-auto border" style="max-height: 40vh;"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${headerHTML}</thead> <tbody>${bodyHTML}</tbody> <tfoot>${footerHTML}</tfoot> </table> </div> ${vHTML} </div>`;
@@ -525,8 +555,8 @@
                 // --- MODIFICADO: Ancho de columnas desde settings ---
                 // CORRECCIÓN (Fix 2): Aplicar anchos de Col A y B
                 const colWidths = [ 
-                    { width: settings.columnWidths.col_A_InfoClientes }, 
-                    { width: settings.columnWidths.col_B_Etiquetas } 
+                    { width: settings.columnWidths.col_A_LabelsClientes }, // Col A
+                    { width: settings.columnWidths.col_B_Products }      // Col B
                 ];
                 const START_COL = 3; // Columna 'C'
                 
@@ -547,12 +577,12 @@
                 const headerRowPresentacion = worksheet.getRow(5);
                 const headerRowPrecio = worksheet.getRow(6);
 
-                // CORREGIDO (Fix 2): Poner etiquetas en Col B
-                headerRowSegment.getCell(2).value = "SEGMENTO";
-                headerRowMarca.getCell(2).value = "MARCA";
-                headerRowPresentacion.getCell(2).value = "PRESENTACION";
-                headerRowPrecio.getCell(2).value = "PRECIO";
-                [3,4,5,6].forEach(r => worksheet.getCell(r, 2).style = headerProductsStyle);
+                // CORREGIDO (Fix 2): Poner etiquetas en Col A (A3, A4, A5, A6)
+                headerRowSegment.getCell(1).value = "SEGMENTO";
+                headerRowMarca.getCell(1).value = "MARCA";
+                headerRowPresentacion.getCell(1).value = "PRESENTACION";
+                headerRowPrecio.getCell(1).value = "PRECIO";
+                [3,4,5,6].forEach(r => worksheet.getCell(r, 1).style = headerProductsStyle);
                 
                 let lastSegment = null, lastMarca = null;
                 let segmentColStart = START_COL, marcaColStart = START_COL;
@@ -576,10 +606,9 @@
                     headerRowPresentacion.getCell(c).style = headerProductsStyle;
                     headerRowPrecio.getCell(c).style = headerPriceStyle;
 
-                    const priceLen = precio.toFixed(2).length;
-                    const w = Math.max(segment.length, marca.length, presentacion.length, priceLen);
-                    // --- MODIFICADO: Ancho de producto desde settings (como mínimo) ---
-                    colWidths.push({ width: Math.max(w + 2, settings.columnWidths.products) });
+                    // --- CORRECCIÓN (Fix 2): Ancho de Columna de Producto ---
+                    // Usar el ancho definido por el usuario, no calcularlo
+                    colWidths.push({ width: settings.columnWidths.products });
 
                     if (index > 0) {
                         if (segment !== lastSegment) {
@@ -603,7 +632,7 @@
                 const subTotalCol = START_COL + sortedProducts.length;
                 worksheet.getCell(3, subTotalCol).value = "Sub Total";
                 worksheet.getCell(3, subTotalCol).style = headerSubtotalStyle;
-                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol);
+                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol); // Combinar de fila 3 a 6
                 colWidths.push({ width: settings.columnWidths.subtotal });
                 // --- FIN CORRECCIÓN ---
                 
@@ -614,8 +643,8 @@
                 // --- Fila: CARGA INICIAL ---
                 if (settings.showCargaInicial) {
                     const cargaInicialRow = worksheet.getRow(currentRowNum++);
-                    cargaInicialRow.getCell(2).value = "CARGA INICIAL"; // Col B
-                    cargaInicialRow.getCell(2).style = cargaInicialStyle;
+                    cargaInicialRow.getCell(1).value = "CARGA INICIAL"; // Col A
+                    cargaInicialRow.getCell(1).style = cargaInicialStyle;
                     sortedProducts.forEach((p, index) => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
                         const cell = cargaInicialRow.getCell(START_COL + index);
@@ -633,8 +662,8 @@
                 // --- Filas: Clientes ---
                 sortedClients.forEach(clientName => {
                     const clientRow = worksheet.getRow(currentRowNum++);
-                    clientRow.getCell(2).value = clientName; // Col B
-                    clientRow.getCell(2).style = clientDataStyle; // Estilo para el nombre del cliente
+                    clientRow.getCell(1).value = clientName; // Col A
+                    clientRow.getCell(1).style = clientDataStyle; // Estilo para el nombre del cliente
                     
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach((p, index) => {
@@ -660,8 +689,8 @@
                 // --- Fila: CARGA RESTANTE ---
                 if (settings.showCargaRestante) {
                     const cargaRestanteRow = worksheet.getRow(currentRowNum++);
-                    cargaRestanteRow.getCell(2).value = "CARGA RESTANTE"; // Col B
-                    cargaRestanteRow.getCell(2).style = cargaRestanteStyle;
+                    cargaRestanteRow.getCell(1).value = "CARGA RESTANTE"; // Col A
+                    cargaRestanteRow.getCell(1).style = cargaRestanteStyle;
                     sortedProducts.forEach((p, index) => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
                         const cell = cargaRestanteRow.getCell(START_COL + index);
@@ -675,8 +704,8 @@
 
                 // --- Fila: TOTALES ---
                 const totalesRow = worksheet.getRow(currentRowNum++);
-                totalesRow.getCell(2).value = "TOTALES"; // Col B
-                totalesRow.getCell(2).style = totalsStyle;
+                totalesRow.getCell(1).value = "TOTALES"; // Col A
+                totalesRow.getCell(1).style = totalsStyle;
                 sortedProducts.forEach((p, index) => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
                     const cell = totalesRow.getCell(START_COL + index);
@@ -1102,8 +1131,8 @@
             const cliCoords = _consolidatedClientsCache.filter(c => { if(!c.coordenadas)return false; const p=c.coordenadas.split(','); if(p.length!==2)return false; const lat=parseFloat(p[0]), lon=parseFloat(p[1]); return !isNaN(lat)&&!isNaN(lon)&&lat>=0&&lat<=13&&lon>=-74&&lon<=-59; });
             if (cliCoords.length === 0) { mapCont.innerHTML = '<p class="text-gray-500">No hay clientes con coordenadas válidas.</p>'; return; }
             let mapCenter = [7.77, -72.22]; let zoom = 13; mapInstance = L.map('client-map').setView(mapCenter, zoom); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(mapInstance);
-            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); const blueI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
-            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https://www.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
+            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); const blueI = new L.Icon({iconUrl:'https{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
+            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https{s}.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
             if(mGroup.length > 0) { const group = L.featureGroup(mGroup).addTo(mapInstance); mapInstance.fitBounds(group.getBounds().pad(0.1)); } else { mapCont.innerHTML = '<p class="text-gray-500">No se pudieron mostrar clientes.</p>'; return; }
             setupMapSearch(cliCoords);
         } catch (error) { console.error("Error mapa:", error); mapCont.innerHTML = `<p class="text-red-500">Error al cargar datos mapa.</p>`; }
@@ -1333,10 +1362,9 @@
             const w = currentSettings.columnWidths;
             // --- CORRECCIÓN: Poblar el contenedor de anchos de rubro ---
             document.getElementById('rubro-widths-container').innerHTML = `
-                ${createWidthEditor('width_col_A_InfoClientes', 'Col A (Info/Clientes)', w.col_A_InfoClientes)}
-                ${createWidthEditor('width_col_B_Etiquetas', 'Col B (Etiquetas)', w.col_B_Etiquetas)}
-                ${createWidthEditor('width_products', 'Productos (Default)', w.products)}
-                ${createWidthEditor('width_subtotal', 'Sub Total', w.subtotal)}
+                ${createWidthEditor('width_col_A_LabelsClientes', 'Col A (Etiquetas/Clientes)', w.col_A_LabelsClientes)}
+                ${createWidthEditor('width_col_B_Products', 'Col B en adelante (Productos)', w.col_B_Products)}
+                ${createWidthEditor('width_subtotal', 'Col Sub Total', w.subtotal)}
             `;
 
             // Poblar Pestaña Hoja Vacíos (Anchos)
@@ -1404,9 +1432,8 @@
         const readVal = (id, def) => parseInt(document.getElementById(id)?.value, 10) || def;
         
         return {
-            col_A_InfoClientes: readVal('width_col_A_InfoClientes', defaults.col_A_InfoClientes),
-            col_B_Etiquetas: readVal('width_col_B_Etiquetas', defaults.col_B_Etiquetas),
-            products: readVal('width_products', defaults.products),
+            col_A_LabelsClientes: readVal('width_col_A_LabelsClientes', defaults.col_A_LabelsClientes),
+            col_B_Products: readVal('width_col_B_Products', defaults.col_B_Products),
             subtotal: readVal('width_subtotal', defaults.subtotal), // RE-AGREGADO
             vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
             vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
