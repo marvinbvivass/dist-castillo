@@ -70,11 +70,19 @@
         // Priorizar Cj, incluso si es fraccional
         if (vP.cj && uCj > 0) {
             const val = (qU / uCj);
+            // CORRECCIÓN LÓGICA UNDS: Si no es entero, y se vende por unds, mostrar unds
+            if (!Number.isInteger(val) && vP.und) {
+                return { value: qU, unit: 'Unds' };
+            }
             return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Cj' };
         }
         // Priorizar Paq, incluso si es fraccional
         if (vP.paq && uPaq > 0) {
             const val = (qU / uPaq);
+            // CORRECCIÓN LÓGICA UNDS: Si no es entero, y se vende por unds, mostrar unds
+            if (!Number.isInteger(val) && vP.und) {
+                return { value: qU, unit: 'Unds' };
+            }
             return { value: Number.isInteger(val) ? val : parseFloat(val.toFixed(2)), unit: 'Paq' };
         }
         // Fallback a Unds
@@ -481,8 +489,9 @@
             const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
             
             const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'left');
-            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
-            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
+            // CORRECCIÓN (Fix 3): Estilo de cliente solo número
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0.##", 'center'); // SOLO NÚMERO
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0.##", 'center'); // SOLO NÚMERO
             const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precios derecha
 
             const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'left');
@@ -532,6 +541,7 @@
                 const headerRowPresentacion = worksheet.getRow(3);
                 const headerRowPrecio = worksheet.getRow(4);
 
+                // CORREGIDO (Fix 2): Poner etiquetas en Col B
                 headerRowSegment.getCell(2).value = "SEGMENTO";
                 headerRowMarca.getCell(2).value = "MARCA";
                 headerRowPresentacion.getCell(2).value = "PRESENTACION";
@@ -548,6 +558,7 @@
                     const presentacion = p.presentacion || 'S/P';
                     const precio = getPrice(p);
 
+                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 1 (C1, D1...)
                     headerRowSegment.getCell(c).value = segment;
                     headerRowMarca.getCell(c).value = marca;
                     headerRowPresentacion.getCell(c).value = presentacion;
@@ -601,10 +612,9 @@
                     sortedProducts.forEach((p, index) => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
                         const cell = cargaInicialRow.getCell(START_COL + index);
-                        // CORREGIDO: Aplicar formato y valor dinámico
+                        // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(initialStock, p);
                         cell.value = qtyDisplay.value;
-                        // CORREGIDO: Error numFmt
                         cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                     });
                     cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle; // Celda vacía con estilo
@@ -622,12 +632,13 @@
                     sortedProducts.forEach((p, index) => {
                         const qU = clientSales.products[p.id] || 0;
                         const cell = clientRow.getCell(START_COL + index);
-                        // CORREGIDO: Aplicar formato y valor dinámico
+                        
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
+                        
+                        // CORREGIDO (Fix 3): Usar estilo SIN unidad
                         const baseStyle = (qU > 0) ? clientSaleStyle : clientQtyStyle;
-                        // CORREGIDO: Error numFmt
-                        cell.style = { ...baseStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
+                        cell.style = { ...baseStyle }; // El numFmt '0.##' ya está en el estilo
                     });
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
@@ -644,10 +655,9 @@
                     sortedProducts.forEach((p, index) => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
                         const cell = cargaRestanteRow.getCell(START_COL + index);
-                        // CORREGIDO: Aplicar formato y valor dinámico
+                        // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(currentStock, p);
                         cell.value = qtyDisplay.value;
-                        // CORREGIDO: Error numFmt
                         cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                     });
                     cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle; // Celda vacía con estilo
@@ -660,10 +670,9 @@
                 sortedProducts.forEach((p, index) => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
                     const cell = totalesRow.getCell(START_COL + index);
-                    // CORREGIDO: Aplicar formato y valor dinámico
+                    // CORREGIDO (Fix 3): Aplicar formato CON unidad
                     const qtyDisplay = getDisplayQty(totalSold, p);
                     cell.value = qtyDisplay.value;
-                    // CORREGIDO: Error numFmt
                     cell.style = { ...totalsQtyStyle, numFmt: `0.## "${qtyDisplay.unit}"` };
                 });
                 const totalCell = totalesRow.getCell(subTotalCol);
@@ -697,9 +706,9 @@
                 // CORREGIDO: Aplicar estilo a CADA celda de la cabecera
                 headerRowVacios.getCell(1).style = vaciosHeaderStyle;
                 headerRowVacios.getCell(2).style = vaciosHeaderStyle;
-                headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
-                headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
-                headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'center');
+                headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
                 // --- FIN MODIFICADO ---
                 
                 cliVacios.forEach(cli => {
@@ -952,8 +961,11 @@
             });
             // Aplicar formato de número a la celda de cantidad
             const lastRow = worksheet.lastRow;
+            // CORRECCIÓN: Asegurarse de que getCell(hTitle) funciona
             const qtyCell = lastRow.getCell(hTitle);
-            qtyCell.numFmt = `0.## "${item.Unidad}"`; // Formato: "10.5 Cajas"
+            if (qtyCell) {
+                qtyCell.numFmt = `0.## "${item.Unidad}"`; // Formato: "10.5 Cajas"
+            }
         });
 
         const rubro = document.getElementById('stats-rubro-filter').value; 
@@ -1078,8 +1090,8 @@
             const cliCoords = _consolidatedClientsCache.filter(c => { if(!c.coordenadas)return false; const p=c.coordenadas.split(','); if(p.length!==2)return false; const lat=parseFloat(p[0]), lon=parseFloat(p[1]); return !isNaN(lat)&&!isNaN(lon)&&lat>=0&&lat<=13&&lon>=-74&&lon<=-59; });
             if (cliCoords.length === 0) { mapCont.innerHTML = '<p class="text-gray-500">No hay clientes con coordenadas válidas.</p>'; return; }
             let mapCenter = [7.77, -72.22]; let zoom = 13; mapInstance = L.map('client-map').setView(mapCenter, zoom); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(mapInstance);
-            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); const blueI = new L.Icon({iconUrl:'https{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
-            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https{s}.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
+            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); const blueI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
+            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https://www.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
             if(mGroup.length > 0) { const group = L.featureGroup(mGroup).addTo(mapInstance); mapInstance.fitBounds(group.getBounds().pad(0.1)); } else { mapCont.innerHTML = '<p class="text-gray-500">No se pudieron mostrar clientes.</p>'; return; }
             setupMapSearch(cliCoords);
         } catch (error) { console.error("Error mapa:", error); mapCont.innerHTML = `<p class="text-red-500">Error al cargar datos mapa.</p>`; }
