@@ -474,7 +474,7 @@
 
         document.getElementById('clienteForm').addEventListener('submit', agregarCliente);
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        document.getElementById('addSectorBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector', 'sector')); // Pass dropdown ID
+        document.getElementById('addSectorBtn').addEventListener('click', () => _showAddItemModal(SECTORES_COLLECTION_PATH, 'Sector', 'sector')); // Pass dropdown ID
         document.getElementById('getCoordsBtn').addEventListener('click', () => getCurrentCoordinates('coordenadas'));
     }
 
@@ -694,11 +694,14 @@
     }
 
 
-    function renderClientesList(elementId, readOnly = false, externalSearchTerm = null) {
+    /**
+     * Muestra la lista de clientes con filtros aplicados.
+     */
+    function renderClientesList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
         if (!container) return;
 
-        const searchTerm = externalSearchTerm !== null ? externalSearchTerm.toLowerCase() : (document.getElementById('search-input')?.value.toLowerCase() || '');
+        const searchTerm = (document.getElementById('search-input')?.value.toLowerCase() || '');
         const sectorFilter = document.getElementById('filter-sector')?.value || '';
         const incompletosFilter = document.getElementById('filter-incompletos')?.checked;
 
@@ -907,75 +910,11 @@
         }, 'Sí, Eliminar', null, true); // Trigger confirm logic
     };
 
-    function showValidatedAddItemModal(collectionPath, itemName, relatedDropdownId = null) {
-        const modalContainer = document.getElementById('modalContainer');
-        const modalContent = document.getElementById('modalContent');
-        if(!modalContainer || !modalContent) return;
+    // --- FUNCIÓN REDUNDANTE ELIMINADA ---
+    // La función 'showValidatedAddItemModal' se eliminó
+    // porque es una copia de 'showAddItemModal' (definida en index.html)
+    // que se recibe como la dependencia '_showAddItemModal'.
 
-        modalContent.innerHTML = `
-            <div class="text-center">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Agregar Nuevo ${itemName}</h3>
-                <form id="addItemForm" class="space-y-4">
-                    <input type="text" id="newItemInput" placeholder="Nombre del ${itemName}" class="w-full px-4 py-2 border rounded-lg" required>
-                    <button type="submit" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Agregar</button>
-                </form>
-                <p id="addItemMessage" class="text-sm mt-2 h-4"></p>
-                <div class="mt-4">
-                     <button id="closeItemBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cerrar</button>
-                </div>
-            </div>
-        `;
-        modalContainer.classList.remove('hidden');
-        setTimeout(() => document.getElementById('newItemInput')?.focus(), 50);
-
-        const newItemInput = document.getElementById('newItemInput');
-        const addItemMessage = document.getElementById('addItemMessage');
-
-        document.getElementById('closeItemBtn').addEventListener('click', () => modalContainer.classList.add('hidden'));
-
-        document.getElementById('addItemForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const newItemName = newItemInput.value.trim().toUpperCase();
-            if (!newItemName) return;
-
-            addItemMessage.textContent = '';
-            addItemMessage.classList.remove('text-green-600', 'text-red-600');
-            const submitButton = e.target.querySelector('button[type="submit"]');
-            submitButton.disabled = true;
-            submitButton.textContent = 'Verificando...';
-
-            try {
-                const collectionRef = _collection(_db, collectionPath);
-                // Check for existence using query
-                const q = _query(collectionRef, _where("name", "==", newItemName));
-                const snapshot = await _getDocs(q); // Use _getDocs
-
-                if (!snapshot.empty) {
-                    addItemMessage.classList.add('text-red-600');
-                    addItemMessage.textContent = `"${newItemName}" ya existe.`;
-                    newItemInput.select();
-                } else {
-                    await _addDoc(collectionRef, { name: newItemName }); // Use _addDoc
-                    addItemMessage.classList.add('text-green-600');
-                    addItemMessage.textContent = `¡"${newItemName}" agregado!`;
-                    newItemInput.value = '';
-                    newItemInput.focus();
-                     // Update the related dropdown if an ID was provided
-                     if (relatedDropdownId) {
-                         _populateDropdown(collectionPath, relatedDropdownId, itemName, newItemName); // Repopulate and select new
-                     }
-                    setTimeout(() => { addItemMessage.textContent = ''; }, 2000);
-                }
-            } catch (err) {
-                console.error(`Error validating/adding ${itemName}:`, err);
-                addItemMessage.classList.add('text-red-600');
-                addItemMessage.textContent = `Error al guardar o validar.`;
-            } finally {
-                 submitButton.disabled = false;
-                 submitButton.textContent = 'Agregar';
-            }
-        });
-    }
 
     function showDatosMaestrosSectoresView() {
         _mainContent.innerHTML = `
@@ -992,7 +931,7 @@
                 </div>
             </div>
         `;
-        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => showValidatedAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
+        document.getElementById('addSectorMaestroBtn').addEventListener('click', () => _showAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
         document.getElementById('backToClientesBtn').addEventListener('click', showFuncionesAvanzadasView);
         renderSectoresParaGestion();
     }
@@ -1404,4 +1343,3 @@
     };
 
 })();
-
