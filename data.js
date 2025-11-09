@@ -2,8 +2,6 @@
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
     let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc, _setDoc;
 
-    let _lastStatsData = [];
-    let _lastNumWeeks = 1;
     let _consolidatedClientsCache = [];
     let _filteredClientsCache = [];
 
@@ -120,7 +118,6 @@
                 <div class="space-y-4">
                     <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700">Cierres de Ventas</button>
                     <button id="designReportBtn" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700">Diseño de Reporte</button>
-                    <button id="productStatsBtn" class="w-full px-6 py-3 bg-teal-600 text-white rounded-lg shadow-md hover:bg-teal-700">Estadística Productos</button>
                     <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
                     <button id="clientMapBtn" class="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg shadow-md hover:bg-cyan-700">Mapa de Clientes</button>
                     <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver Menú</button>
@@ -129,7 +126,6 @@
         `;
         document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
         document.getElementById('designReportBtn').addEventListener('click', showReportDesignView);
-        document.getElementById('productStatsBtn').addEventListener('click', showProductStatsView);
         document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
         document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
@@ -523,7 +519,7 @@
             return;
         }
 
-        const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
+        const REPORTE_DESIGN_CONFIG_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
         // --- MODIFICADO: Usar _.cloneDeep o similar (JSON.parse(JSON.stringify)) para evitar mutación
         let settings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); 
         try {
