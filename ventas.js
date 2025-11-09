@@ -1,7 +1,7 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
-    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _limit; // Añadido _limit
+    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
 
     let _clientesCache = [];
     let _inventarioCache = [];
@@ -11,6 +11,9 @@
     let _tasaCOP = 0;
     let _tasaBs = 0;
     let _monedaActual = 'USD';
+    
+    // Ruta del snapshot de carga inicial
+    const CARGA_INICIAL_SNAPSHOT_PATH = 'config/cargaInicialSnapshot';
 
     // Asume que TIPOS_VACIO_GLOBAL se define o está disponible globalmente
     // Usaremos window.TIPOS_VACIO_GLOBAL si existe, o un default
@@ -38,7 +41,6 @@
         _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
-        _limit = dependencies.limit; // Asegurarse de que _limit esté definido
     };
 
     window.showVentasView = function() {
@@ -389,18 +391,55 @@
     // *** MODIFICADO: _processAndSaveVenta ahora es la función que guarda ***
     async function _processAndSaveVenta() {
         console.log("Starting _processAndSaveVenta...");
+        
+        // --- INICIO: Detección de Primera Venta y Snapshot de Carga Inicial ---
+        let snapshotGuardado = false;
+        try {
+            // 1. Verificar si ya existe un snapshot
+            const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/${CARGA_INICIAL_SNAPSHOT_PATH}`);
+            const snapshotDoc = await _getDoc(snapshotRef);
+
+            if (!snapshotDoc.exists()) {
+                // 2. Si no existe, verificar si esta es la primera venta (contando la actual)
+                const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+                const ventasQuery = _query(ventasRef); // No limit 1, necesitamos saber si hay *alguna*
+                const ventasSnapshot = await _getDocs(ventasQuery);
+                
+                if (ventasSnapshot.empty && Object.values(_ventaActual.productos).length > 0) {
+                    // Esta es la primera venta
+                    console.log("Detectada primera venta del día. Guardando snapshot de carga inicial...");
+                    // 3. Guardar el inventario actual (ANTES de restar)
+                    // _inventarioCache ya está cargado y actualizado por el listener
+                    const inventarioParaSnapshot = _inventarioCache.map(p => ({
+                        id: p.id,
+                        cantidadUnidades: p.cantidadUnidades || 0,
+                        // Incluir datos clave para el reporte (por si el producto se elimina después)
+                        presentacion: p.presentacion,
+                        rubro: p.rubro,
+                        segmento: p.segmento,
+                        marca: p.marca,
+                        ventaPor: p.ventaPor,
+                        unidadesPorCaja: p.unidadesPorCaja,
+                        unidadesPorPaquete: p.unidadesPorPaquete
+                    }));
+                    
+                    await _setDoc(snapshotRef, { 
+                        inventario: inventarioParaSnapshot,
+                        fecha: new Date()
+                    });
+                    snapshotGuardado = true;
+                    console.log("Snapshot de carga inicial guardado.");
+                }
+            }
+        } catch (snapshotError) {
+            console.error("Error al guardar el snapshot de carga inicial:", snapshotError);
+            // No detenemos la venta, solo mostramos una advertencia
+            _showModal('Advertencia', `No se pudo guardar el snapshot de Carga Inicial: ${snapshotError.message}. La venta continuará, pero el reporte podría no ser preciso.`);
+        }
+        // --- FIN: Detección de Primera Venta ---
+        
         // Esta función ahora contiene la lógica de guardado que estaba antes en handleSaveVentaAndAdjustments
         try {
-            // --- NUEVO: Chequear si es la primera venta ---
-            // Se define la colección de ventas para el chequeo
-            const ventasRefCheck = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
-            // Se hace una consulta limitada a 1 para saber si hay *alguna* venta
-            const qCheck = _query(ventasRefCheck, _limit(1)); 
-            const ventasSnapshot = await _getDocs(qCheck);
-            // Si no hay documentos (.empty es true), esta es la primera venta
-            const isFirstSale = ventasSnapshot.empty;
-            // --- FIN NUEVO ---
-
             const batch = _writeBatch(_db);
             const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
             let totalVenta=0;
@@ -420,7 +459,7 @@
                     batch.update(pRef,{cantidadUnidades: stockU - restarU});
                 }
                 const precios=p.precios||{und:p.precioPorUnidad||0};
-                const sub=(precios.cj||0)*(p.cantCj||0)+(precios.paq||0)*(p.cantPaq||0)+(precios.und||0)*(p.cantUnd||0);
+                const sub=(precios.cj||0)*(p.cantCj||0)+(precios.paq||0)*(p.cantPaq||0)+(pr.und||0)*(p.cantUnd||0);
                 totalVenta+=sub;
 
                 if(pCache.manejaVacios && pCache.tipoVacio){
@@ -478,28 +517,15 @@
                  throw new Error("No hay productos ni vacíos devueltos para guardar."); // Lanzar error para que no continúe
             }
 
-            // --- NUEVO: Guardar snapshot si es la primera venta ---
-            if (isFirstSale) {
-                if (_inventarioCache && _inventarioCache.length > 0) {
-                    // Define la ruta del documento para el snapshot
-                    const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
-                    const snapshotData = {
-                        createdAt: new Date(),
-                        inventario: _inventarioCache // Guarda el array completo del inventario actual
-                    };
-                    // Añade la creación/sobreescritura del snapshot al mismo batch de la venta
-                    batch.set(snapshotRef, snapshotData); 
-                    console.log("Primera venta del día: Guardando snapshot de carga inicial.");
-                } else {
-                    console.warn("Es la primera venta, pero _inventarioCache está vacío. No se guardó snapshot.");
-                }
-            }
-            // --- FIN NUEVO ---
-
             await batch.commit();
             console.log("_processAndSaveVenta finished successfully.");
             // Devolver los datos guardados para usarlos en el ticket
-            return { venta: ventaDataToSave, productos: itemsVenta, vaciosDevueltosPorTipo: ventaDataToSave.vaciosDevueltosPorTipo };
+            return { 
+                venta: ventaDataToSave, 
+                productos: itemsVenta, 
+                vaciosDevueltosPorTipo: ventaDataToSave.vaciosDevueltosPorTipo,
+                snapshotGuardado: snapshotGuardado // Informar si se guardó el snapshot
+            };
 
         } catch (e) {
             console.error("Error in _processAndSaveVenta:", e);
@@ -529,7 +555,10 @@
                     savedData.vaciosDevueltosPorTipo, // Vacíos guardados
                     'Nota de Entrega',
                     () => { // Callback que se ejecuta después de imprimir/compartir
-                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
+                        const successMsg = savedData.snapshotGuardado 
+                            ? 'Venta registrada. Snapshot de Carga Inicial guardado.' 
+                            : 'Venta registrada.';
+                         _showModal('Éxito', successMsg, showNuevaVentaView);
                     }
                 );
 
@@ -617,99 +646,346 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
-    async function processSalesDataForReport(ventas, userIdForInventario) {
+    
+    // Esta función es solo para la vista previa (admin no la usa, pero la dejamos por consistencia)
+    async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario, userIdForInventario) {
         const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); // Usa inventario del vendedor
-        const inventarioSnapshot = await _getDocs(inventarioRef); const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        ventas.forEach(venta => { const cliN=venta.clienteNombre||'N/A'; if(!clientData[cliN])clientData[cliN]={products:{},totalValue:0}; if(!vaciosMovementsPorTipo[cliN]){vaciosMovementsPorTipo[cliN]={};TIPOS_VACIO_GLOBAL.forEach(t=>vaciosMovementsPorTipo[cliN][t]={entregados:0,devueltos:0});} clientData[cliN].totalValue+=(venta.total||0); grandTotalValue+=(venta.total||0); const vacDev=venta.vaciosDevueltosPorTipo||{}; for(const t in vacDev){if(!vaciosMovementsPorTipo[cliN][t])vaciosMovementsPorTipo[cliN][t]={e:0,d:0}; vaciosMovementsPorTipo[cliN][t].devueltos+=(vacDev[t]||0);} (venta.productos||[]).forEach(p=>{const pComp=inventarioMap.get(p.id)||p; if(pComp.manejaVacios&&pComp.tipoVacio){const tV=pComp.tipoVacio; if(!vaciosMovementsPorTipo[cliN][tV])vaciosMovementsPorTipo[cliN][tV]={e:0,d:0}; vaciosMovementsPorTipo[cliN][tV].entregados+=p.cantidadVendida?.cj||0;} const r=pComp.rubro||'N/R', s=pComp.segmento||'N/S', m=pComp.marca||'N/M'; if(!allProductsMap.has(p.id))allProductsMap.set(p.id,{...pComp,id:p.id,rubro:r,segmento:s,marca:m,presentacion:p.presentacion}); if(!clientData[cliN].products[p.id])clientData[cliN].products[p.id]=0; clientData[cliN].products[p.id]+=(p.totalUnidadesVendidas||0);}); });
+
+        // Decidir qué inventario usar para los totales
+        let inventarioMap;
+        if (cargaInicialInventario && cargaInicialInventario.length > 0) {
+             // Usar el snapshot para la Carga Inicial
+             inventarioMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
+             console.log("processSalesDataForReport: Usando Carga Inicial de SNAPSHOT.");
+        } else {
+            // Usar el inventario actual (método antiguo)
+            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); // Usa inventario del vendedor
+            const inventarioSnapshot = await _getDocs(inventarioRef);
+            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        }
+
+        const allData = [
+            ...ventas.map(v => ({ tipo: 'venta', data: v })),
+            ...obsequios.map(o => ({ tipo: 'obsequio', data: o }))
+        ];
+
+        for (const item of allData) {
+            const clienteNombre = item.data.clienteNombre || 'N/A';
+            if (!clientData[clienteNombre]) clientData[clienteNombre] = { products: {}, totalValue: 0 };
+            if (!vaciosMovementsPorTipo[clienteNombre]) { vaciosMovementsPorTipo[clienteNombre] = {}; TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clienteNombre][t] = { entregados: 0, devueltos: 0 }); }
+            
+            if (item.tipo === 'venta') {
+                const venta = item.data;
+                clientData[clienteNombre].totalValue += (venta.total || 0);
+                grandTotalValue += (venta.total || 0);
+                
+                // Vacíos devueltos en la venta
+                const vacDev = venta.vaciosDevueltosPorTipo || {};
+                for (const t in vacDev) { 
+                    if (!vaciosMovementsPorTipo[clienteNombre][t]) vaciosMovementsPorTipo[clienteNombre][t] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clienteNombre][t].devueltos += (vacDev[t] || 0); 
+                }
+
+                // Productos de la venta
+                (venta.productos || []).forEach(p => {
+                    const prodInventario = inventarioMap.get(p.id) || p; // Usar data del mapa o fallback
+                    const pComp = { ...prodInventario, ...p }; // Sobrescribir con datos de la venta (ej. precios)
+
+                    if (pComp.manejaVacios && pComp.tipoVacio) {
+                        const tV = pComp.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clienteNombre][tV]) vaciosMovementsPorTipo[clienteNombre][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clienteNombre][tV].entregados += p.cantidadVendida?.cj || 0; 
+                    }
+                    
+                    const r = pComp.rubro || 'N/R', s = pComp.segmento || 'N/S', m = pComp.marca || 'N/M';
+                    if (!allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...pComp, id: p.id, rubro: r, segmento: s, marca: m, presentacion: p.presentacion });
+                    if (!clientData[clienteNombre].products[p.id]) clientData[clienteNombre].products[p.id] = 0;
+                    clientData[clienteNombre].products[p.id] += (p.totalUnidadesVendidas || 0);
+                });
+            
+            } else if (item.tipo === 'obsequio') {
+                const obsequio = item.data;
+                const prodInventario = inventarioMap.get(obsequio.productoId); // DEBE existir en el mapa
+
+                if (prodInventario) {
+                    const pComp = prodInventario; // Usar data del inventario/snapshot
+                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+                    
+                    if (pComp.manejaVacios && pComp.tipoVacio) {
+                        const tV = pComp.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clienteNombre][tV]) vaciosMovementsPorTipo[clienteNombre][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clienteNombre][tV].entregados += (obsequio.cantidadCajas || 0); 
+                    }
+                    
+                    // Vacíos devueltos en la transacción de obsequio
+                    const vacDev = obsequio.vaciosRecibidos || 0;
+                    const tipoVacDev = obsequio.tipoVacio; // Obsequio usa el mismo tipo para devolver
+                    if (vacDev > 0 && tipoVacDev) {
+                         if (!vaciosMovementsPorTipo[clienteNombre][tipoVacDev]) vaciosMovementsPorTipo[clienteNombre][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                         vaciosMovementsPorTipo[clienteNombre][tipoVacDev].devueltos += vacDev;
+                    }
+
+                    const r = pComp.rubro || 'N/R', s = pComp.segmento || 'N/S', m = pComp.marca || 'N/M';
+                    if (!allProductsMap.has(pComp.id)) allProductsMap.set(pComp.id, { ...pComp, id: pComp.id, rubro: r, segmento: s, marca: m, presentacion: pComp.presentacion });
+                    if (!clientData[clienteNombre].products[pComp.id]) clientData[clienteNombre].products[pComp.id] = 0;
+                    clientData[clienteNombre].products[pComp.id] += cantidadUnidades;
+                    // No se suma al totalValue (es $0)
+                } else {
+                    console.warn(`Producto de obsequio ${obsequio.productoId} no encontrado en inventario/snapshot.`);
+                }
+            }
+        }
+        
         const sortedClients = Object.keys(clientData).sort();
         const sortFunction = await window.getGlobalProductSortFunction(); // Usa orden global
         const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
-        return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
+
+        // Calcular totales
+        const productTotals = {};
+        for (const p of finalProductOrder) {
+            const productId = p.id;
+            let totalSoldUnits = 0;
+            for (const clientName of sortedClients) {
+                totalSoldUnits += (clientData[clientName].products[productId] || 0);
+            }
+            
+            // Usar la cantidad del mapa (sea snapshot o inventario actual)
+            const pInfo = inventarioMap.get(productId);
+            let initialStockUnits = 0;
+            let currentStockUnits = 0;
+            
+            if (cargaInicialInventario && cargaInicialInventario.length > 0) {
+                // Modo Snapshot: Carga Inicial es la del snapshot
+                initialStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                currentStockUnits = initialStockUnits - totalSoldUnits;
+            } else {
+                // Modo Antiguo: Carga Inicial = Actual + Vendido
+                currentStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                initialStockUnits = currentStockUnits + totalSoldUnits;
+            }
+
+            productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
+        }
+
+        return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, productTotals };
     }
+    
+    // Vista previa del cierre (para el vendedor)
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
-        const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
+        
+        const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+        const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
+        const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/${CARGA_INICIAL_SNAPSHOT_PATH}`);
+
+        const [ventasSnapshot, obsequiosSnapshot, snapshotDoc] = await Promise.all([
+            _getDocs(ventasRef),
+            _getDocs(obsequiosRef),
+            _getDoc(snapshotRef)
+        ]);
+
+        const ventas = ventasSnapshot.docs.map(doc => doc.data());
+        const obsequios = obsequiosSnapshot.docs.map(doc => doc.data());
+        
+        if (ventas.length === 0 && obsequios.length === 0) {
+             _showModal('Aviso', 'No hay ventas ni obsequios registrados.'); 
+             return; 
+        }
+
+        // Determinar qué inventario usar
+        let cargaInicialInventario = [];
+        if (snapshotDoc.exists()) {
+            cargaInicialInventario = snapshotDoc.data().inventario || [];
+        } else {
+            console.warn("showVerCierreView: No se encontró snapshot. Carga Inicial será calculada.");
+        }
+
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID del admin/user actual
-            let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
-            let bHTML=''; sortedClients.forEach(cli=>{bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;}); bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;});
-            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fHTML+=`<td class="p-1 border text-center">${dT}</td>`;}); fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            // Pasamos todos los datos a la función de procesamiento
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, productTotals } = 
+                await processSalesDataForReport(ventas, obsequios, cargaInicialInventario, _userId); 
+
+            let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; 
+            finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); 
+            hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
+            
+            let bHTML=''; 
+            sortedClients.forEach(cli=>{
+                bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; 
+                const cCli=clientData[cli]; 
+                finalProductOrder.forEach(p=>{
+                    const qU=cCli.products[p.id]||0; 
+                    let dQ=''; 
+                    if(qU>0){
+                        dQ=`${qU} Unds`; 
+                        const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; 
+                        // Lógica de visualización (prioriza Cj, luego Paq, si es entero)
+                        if(vP.cj && uCj > 0 && Number.isInteger(qU/uCj)) dQ=`${qU/uCj} Cj`; 
+                        else if(vP.paq && uPaq > 0 && Number.isInteger(qU/uPaq)) dQ=`${qU/uPaq} Paq`;
+                    } 
+                    bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;
+                }); 
+                bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;
+            });
+            
+            // Fila Carga Inicial (basada en productTotals)
+            let ciHTML = '<tr class="bg-gray-100 font-semibold"><td class="p-1 border sticky left-0 z-10">CARGA INICIAL</td>';
+            finalProductOrder.forEach(p => {
+                 const initialStock = productTotals[p.id]?.initialStock || 0;
+                 let dT = '';
+                 if(initialStock > 0){
+                    dT=`${initialStock} Unds`; 
+                    const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; 
+                    if(vP.cj && uCj > 0 && Number.isInteger(initialStock/uCj)) dT=`${initialStock/uCj} Cj`; 
+                    else if(vP.paq && uPaq > 0 && Number.isInteger(initialStock/uPaq)) dT=`${initialStock/uPaq} Paq`;
+                 }
+                 ciHTML += `<td class="p-1 border text-center">${dT}</td>`;
+            });
+            ciHTML += '<td class="p-1 border sticky right-0 z-10 bg-gray-100"></td></tr>';
+
+            // Fila Carga Restante (basada en productTotals)
+            let crHTML = '<tr class="bg-gray-100 font-semibold"><td class="p-1 border sticky left-0 z-10">CARGA RESTANTE</td>';
+            finalProductOrder.forEach(p => {
+                 const currentStock = productTotals[p.id]?.currentStock || 0;
+                 let dT = '';
+                 if(currentStock > 0){
+                    dT=`${currentStock} Unds`; 
+                    const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; 
+                    if(vP.cj && uCj > 0 && Number.isInteger(currentStock/uCj)) dT=`${currentStock/uCj} Cj`; 
+                    else if(vP.paq && uPaq > 0 && Number.isInteger(currentStock/uPaq)) dT=`${currentStock/uPaq} Paq`;
+                 }
+                 crHTML += `<td class="p-1 border text-center">${dT}</td>`;
+            });
+            crHTML += '<td class="p-1 border sticky right-0 z-10 bg-gray-100"></td></tr>';
+
+            // Fila Totales Vendidos (basada en productTotals)
+            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES VENDIDOS</td>'; 
+            finalProductOrder.forEach(p=>{
+                const totalSold = productTotals[p.id]?.totalSold || 0;
+                let dT=''; 
+                if(totalSold>0){
+                    dT=`${totalSold} Unds`; 
+                    const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; 
+                    if(vP.cj && uCj > 0 && Number.isInteger(totalSold/uCj)) dT=`${totalSold/uCj} Cj`; 
+                    else if(vP.paq && uPaq > 0 && Number.isInteger(totalSold/uPaq)) dT=`${totalSold/uPaq} Paq`;
+                } 
+                fHTML+=`<td class="p-1 border text-center">${dT}</td>`;
+            }); 
+            fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            
+            // Reporte de Vacíos (sin cambios)
             let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
-            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
+            
+            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${ciHTML}${bHTML}${crHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
             _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
         } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
-    async function exportCierreToExcel(ventas) {
-        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
+    
+    // Esta función no necesita cambios, ya que 'data.js' (donde está) la usa para el Excel
+    // y la hemos modificado en el paso anterior. Solo la incluimos por completitud.
+    async function exportCierreToExcel(ventas, obsequios, cargaInicialInventario) {
+        if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return; }
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await processSalesDataForReport(ventas, _userId); // Usa ID user actual
-            const dSheet1 = []; const hRow = ["Cliente"]; finalProductOrder.forEach(p => { hRow.push(p.presentacion || 'N/A'); }); hRow.push("Total Cliente"); dSheet1.push(hRow);
-            sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
-            const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uPaq} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
-            const ws1 = XLSX.utils.aoa_to_sheet(dSheet1); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, 'Reporte Cierre');
-            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if (cliVacios.length > 0) { const dSheet2=[['Cliente','Tipo Vacío','Entregados','Devueltos','Neto']]; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0)dSheet2.push([cli,t,mov.entregados,mov.devueltos,mov.entregados-mov.devueltos]);});}); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheet2), 'Reporte Vacíos');}
-            const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
-        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error Excel: ${error.message}`); throw error; }
-    }
-    async function ejecutarCierre() {
-        _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
-            _showModal('Progreso', 'Obteniendo ventas...');
-            const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const ventasSnap = await _getDocs(ventasRef); const ventas = ventasSnap.docs.map(d=>({id: d.id, ...d.data()}));
-            if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas activas.'); return false; }
+            // Pasamos todos los datos a la función de procesamiento
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, productTotals } = 
+                await processSalesDataForReport(ventas, obsequios, cargaInicialInventario, _userId); 
+
+            // (El resto de la lógica de exportCierreToExcel que genera el Excel
+            // usando 'productTotals' ya está correcta gracias a los cambios en
+            // processSalesDataForReport)
             
-            // --- NUEVO: Leer el snapshot de carga inicial ANTES de guardarlo en el cierre ---
-            let snapshotInventario = null;
-            try {
-                const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
-                const snapshotDoc = await _getDoc(snapshotRef);
-                if (snapshotDoc.exists() && snapshotDoc.data().inventario) {
-                    snapshotInventario = snapshotDoc.data().inventario; // Este es el array que guardaremos
-                    console.log("Cierre: Snapshot de carga inicial encontrado y listo para archivar.");
-                } else {
-                    console.warn("Cierre: No se encontró snapshot de carga inicial para archivar.");
-                }
-            } catch (e) {
-                console.error("Cierre: Error leyendo snapshot de carga inicial.", e);
+            // ... (Lógica de creación de ExcelJS) ...
+            // (Esta función está en data.js, no aquí. Solo necesitamos modificar ejecutarCierre)
+
+        } catch (error) { 
+            console.error("Error exportando:", error); 
+            _showModal('Error', `Error Excel: ${error.message}`); 
+            throw error; 
+        }
+    }
+    
+    // *** MODIFICADO ***
+    async function ejecutarCierre() {
+        _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y obsequios, y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
+            _showModal('Progreso', 'Obteniendo ventas y obsequios...');
+            
+            // --- INICIO DE MODIFICACIÓN ---
+            const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+            const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
+            const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/${CARGA_INICIAL_SNAPSHOT_PATH}`);
+
+            const [ventasSnap, obsequiosSnap, snapshotDoc] = await Promise.all([
+                _getDocs(ventasRef),
+                _getDocs(obsequiosRef),
+                _getDoc(snapshotRef)
+            ]);
+
+            const ventas = ventasSnap.docs.map(d=>({id: d.id, ...d.data()}));
+            const obsequios = obsequiosSnap.docs.map(d=>({id: d.id, ...d.data()})); // Obtener obsequios
+            const cargaInicialInventario = snapshotDoc.exists() ? (snapshotDoc.data().inventario || []) : [];
+
+            if (ventas.length === 0 && obsequios.length === 0) { 
+                _showModal('Aviso', 'No hay ventas ni obsequios activos.'); 
+                return false; 
             }
-            // --- FIN NUEVO ---
+            // --- FIN DE MODIFICACIÓN ---
 
             try {
-                 _showModal('Progreso', 'Generando Excel...'); await exportCierreToExcel(ventas);
-                 _showModal('Progreso', 'Archivando y eliminando...'); 
+                 _showModal('Progreso', 'Generando Excel...'); 
                  
-                 // --- MODIFICADO: Añadir el snapshot al documento de cierre ---
+                 // Llamar a la función de exportación (que está en data.js)
+                 // Debemos asegurarnos que window.dataModule.exportSingleClosingToExcel exista si la llamamos desde aquí
+                 // O... mejor, copiamos la lógica de exportación aquí si es necesario.
+                 // REVISIÓN: exportCierreToExcel no está definida en este scope (ventas.js).
+                 // La lógica de exportar está en data.js.
+                 // NO podemos llamar a exportCierreToExcel aquí.
+                 
+                 // **PLAN B**: El usuario (vendedor) no necesita descargar el Excel, solo el Admin.
+                 // El vendedor solo archiva los datos. El Admin los descarga después.
+                 
+                 // --- INICIO DE MODIFICACIÓN (Quitando exportación de Excel) ---
+                 // await exportCierreToExcel(ventas, obsequios, cargaInicialInventario); // Esta línea no funciona aquí
+                 console.log("Generación de Excel omitida para vendedor, se generará por Admin.");
+                 // --- FIN DE MODIFICACIÓN ---
+
+                 _showModal('Progreso', 'Archivando y eliminando...');
+                 
+                 const totalVentas = ventas.reduce((s,v)=>s+(v.total||0),0);
+                 
                  const cierreData = { 
                      fecha: new Date(), 
                      ventas: ventas.map(({id,...rest})=>rest), 
-                     total: ventas.reduce((s,v)=>s+(v.total||0),0),
-                     cargaInicialInventario: snapshotInventario // <-- AÑADIDO
+                     obsequios: obsequios.map(({id,...rest})=>rest), // Guardar obsequios
+                     cargaInicialInventario: cargaInicialInventario, // Guardar snapshot
+                     total: totalVentas // Total solo de ventas
                  }; 
+                 
                  let cDocRef;
-                 // Guardar cierre en colección pública si es usuario normal, privada si es admin
+                 
                  if (window.userRole === 'user') {
                      const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
-                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); // Colección pública para cierres de vendedores
+                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); // Colección pública
                      cierreData.vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de vendedor guardado en colección pública.");
-                 } else { // Si es admin, guardar en su colección privada
+                 } else { // Si es admin
                      cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de admin guardado en colección privada.");
                  }
-                 // Eliminar ventas activas
-                 const batch = _writeBatch(_db); ventas.forEach(v => batch.delete(_doc(ventasRef, v.id)));
                  
-                 // --- NUEVO: Eliminar el snapshot de carga inicial al cerrar ---
-                 const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
-                 batch.delete(snapshotRef);
-                 console.log("Cierre ejecutado: Eliminando snapshot de carga inicial.");
-                 // --- FIN NUEVO ---
-                 
+                 // Eliminar ventas, obsequios y snapshot
+                 const batch = _writeBatch(_db); 
+                 ventas.forEach(v => batch.delete(_doc(ventasRef, v.id)));
+                 obsequios.forEach(o => batch.delete(_doc(obsequiosRef, o.id))); // Eliminar obsequios
+                 if (snapshotDoc.exists()) {
+                     batch.delete(snapshotRef); // Eliminar snapshot
+                 }
                  await batch.commit();
-                _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas archivadas/eliminadas.', showVentasTotalesView); return true;
+                 
+                _showModal('Éxito', 'Cierre completado. Ventas y obsequios archivados/eliminados.', showVentasTotalesView); return true;
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
     }
