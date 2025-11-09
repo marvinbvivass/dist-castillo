@@ -1,6 +1,6 @@
 (function() {
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc, _setDoc;
+    let _collection, _getDocs, _query, _where, _populateDropdown, _getDoc, _doc, _setDoc;
 
     let _lastStatsData = [];
     let _lastNumWeeks = 1;
@@ -102,7 +102,6 @@
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
-        _orderBy = dependencies.orderBy;
         _populateDropdown = dependencies.populateDropdown;
         _getDoc = dependencies.getDoc;
         _doc = dependencies.doc;
@@ -222,8 +221,8 @@
                     <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
                     <td class="py-2 px-3 border-b text-center space-x-2">
-                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
-                        <button onclick="window.dataModule.handleDownloadSingleClosing('${cierre.id}')" title="Descargar" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle"> <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> </svg> </button>
+                        <button onclick="showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
+                        <button onclick="handleDownloadSingleClosing('${cierre.id}')" title="Descargar" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle"> <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> </svg> </button>
                     </td>
                 </tr> `;
         });
@@ -231,15 +230,73 @@
         container.innerHTML = tableHTML;
     }
 
-    async function _processSalesDataForModal(ventas, userIdForInventario) {
+    async function _processSalesDataForModal(ventas, userIdForInventario, closingData = null) {
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-        const inventarioSnapshot = await _getDocs(inventarioRef);
-        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        
+        // --- INICIO DE LA MODIFICACIÓN ---
+        // Ya no leemos el inventario actual del vendedor.
+        // En su lugar, intentamos leer el SNAPSHOT de Carga Inicial guardado.
+        
+        // 1. Determinar la fecha del cierre (¡cuidado con la zona horaria!)
+        // Asumimos que la fecha del cierre está en la zona horaria local correcta.
+        const closingDate = (closingData && closingData.fecha) ? closingData.fecha.toDate() : ( (ventas.length > 0 && ventas[0].fecha) ? ventas[0].fecha.toDate() : new Date() );
+        const year = closingDate.getFullYear();
+        const month = (closingDate.getMonth() + 1).toString().padStart(2, '0');
+        const day = closingDate.getDate().toString().padStart(2, '0');
+        const closingDateString = `${year}-${month}-${day}`;
+
+        let initialStockMap = null;
+        try {
+            const snapshotDocRef = _doc(_db, `artifacts/${_appId}/users/${userIdForInventario}/carga_snapshots/${closingDateString}`);
+            const snapshotDoc = await _getDoc(snapshotDocRef);
+            
+            if (snapshotDoc.exists()) {
+                console.log(`Reporte: Usando snapshot de Carga Inicial para ${closingDateString}.`);
+                // El snapshot guarda un mapa de ID -> Objeto Producto Completo
+                initialStockMap = snapshotDoc.data().inventario || {};
+            } else {
+                console.warn(`Reporte: No se encontró snapshot para ${closingDateString}. Se usará cálculo manual (puede ser inexacto si hubo reposición).`);
+                // Fallback: si no hay snapshot, cargamos el inventario actual (método antiguo)
+                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+                const inventarioSnapshot = await _getDocs(inventarioRef);
+                const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+                initialStockMap = {};
+                
+                // --- INICIO FALLBACK: Calcular Carga Inicial manualmente ---
+                // Calcular ventas totales por producto (necesario para el fallback)
+                const totalSalesMap = new Map();
+                ventas.forEach(v => (v.productos || []).forEach(p => {
+                    let cant = 0;
+                    if (p.cantidadVendida) {
+                        const uCj = p.unidadesPorCaja || 1;
+                        const uPaq = p.unidadesPorPaquete || 1;
+                        cant = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
+                    } else if (p.totalUnidadesVendidas) {
+                        cant = p.totalUnidadesVendidas;
+                    }
+                    totalSalesMap.set(p.id, (totalSalesMap.get(p.id) || 0) + cant);
+                }));
+                
+                inventarioMap.forEach((prod, id) => {
+                    const currentStock = prod.cantidadUnidades || 0;
+                    const totalSold = totalSalesMap.get(id) || 0;
+                    const initialStock = currentStock + totalSold;
+                    initialStockMap[id] = { ...prod, cantidadUnidades: initialStock }; // Guardamos el producto con la cantidad INICIAL calculada
+                });
+                // --- FIN FALLBACK ---
+            }
+        } catch (err) {
+            console.error("Error cargando snapshot o inventario para reporte:", err);
+            _showModal('Error', 'No se pudo cargar el inventario base para el reporte.');
+            return; // Salir si no podemos obtener datos base
+        }
+        // --- FIN DE LA MODIFICACIÓN ---
+
+
         ventas.forEach(venta => {
             const clientName = venta.clienteNombre || 'Cliente Desconocido';
             if (!clientData[clientName]) clientData[clientName] = { products: {}, totalValue: 0 };
@@ -249,7 +306,11 @@
             const vaciosDev = venta.vaciosDevueltosPorTipo || {};
             for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
             (venta.productos || []).forEach(p => {
-                 const prodComp = inventarioMap.get(p.id) || p;
+                 // --- MODIFICACIÓN ---
+                 // Usar la info del producto del SNAPSHOT, no del inventario vivo
+                 const prodComp = initialStockMap[p.id] || p; // Usar el producto del snapshot como base
+                 // --- FIN MODIFICACIÓN ---
+
                  if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
                  const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
                  if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
@@ -268,7 +329,10 @@
         });
         const sortedClients = Object.keys(clientData).sort();
         const sortFunction = await getGlobalProductSortFunction();
-        const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
+        // --- MODIFICACIÓN ---
+        // Construir la lista de productos basada en el snapshot (que es la Carga Inicial)
+        const finalProductOrder = Array.from(Object.values(initialStockMap)).sort(sortFunction);
+        // --- FIN MODIFICACIÓN ---
         return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
 
@@ -277,7 +341,10 @@
         if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId);
+            // --- MODIFICACIÓN ---
+            // La función ahora usa el Cierre completo, no solo las ventas
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId, closingData);
+            // --- FIN MODIFICACIÓN ---
             
             // CORREGIDO: Diseño de cabecera según la imagen
             let headerHTML = `
@@ -347,9 +414,58 @@
         const vaciosMovementsPorTipo = {};
         const allRubros = new Set();
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
-        const inventarioSnapshot = await _getDocs(inventarioRef); 
-        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        // --- INICIO DE LA MODIFICACIÓN ---
+        // 1. Determinar la fecha del cierre
+        const closingDate = (ventas.length > 0 && ventas[0].fecha) ? ventas[0].fecha.toDate() : new Date();
+        const year = closingDate.getFullYear();
+        const month = (closingDate.getMonth() + 1).toString().padStart(2, '0');
+        const day = closingDate.getDate().toString().padStart(2, '0');
+        const closingDateString = `${year}-${month}-${day}`;
+        
+        let initialStockMap = null; // Mapa de ID -> Objeto Producto
+        try {
+            const snapshotDocRef = _doc(_db, `artifacts/${_appId}/users/${userIdForInventario}/carga_snapshots/${closingDateString}`);
+            const snapshotDoc = await _getDoc(snapshotDocRef);
+            
+            if (snapshotDoc.exists()) {
+                console.log(`Reporte Excel: Usando snapshot de Carga Inicial para ${closingDateString}.`);
+                initialStockMap = snapshotDoc.data().inventario || {};
+            } else {
+                console.warn(`Reporte Excel: No se encontró snapshot para ${closingDateString}. Usando cálculo manual (puede ser inexacto).`);
+                // Fallback: Cargar inventario actual y sumar ventas (MÉTODO ANTIGUO)
+                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+                const inventarioSnapshot = await _getDocs(inventarioRef); 
+                const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+                
+                // Calcular ventas totales por producto (necesario para el fallback)
+                const totalSalesMap = new Map();
+                ventas.forEach(v => (v.productos || []).forEach(p => {
+                    let cant = 0;
+                    if (p.cantidadVendida) {
+                        const uCj = p.unidadesPorCaja || 1;
+                        const uPaq = p.unidadesPorPaquete || 1;
+                        cant = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
+                    } else if (p.totalUnidadesVendidas) {
+                        cant = p.totalUnidadesVendidas;
+                    }
+                    totalSalesMap.set(p.id, (totalSalesMap.get(p.id) || 0) + cant);
+                }));
+
+                initialStockMap = {};
+                inventarioMap.forEach((prod, id) => {
+                    const currentStock = prod.cantidadUnidades || 0;
+                    const totalSold = totalSalesMap.get(id) || 0;
+                    const initialStock = currentStock + totalSold;
+                    initialStockMap[id] = { ...prod, cantidadUnidades: initialStock }; // Guardamos el producto con la cantidad INICIAL calculada
+                });
+            }
+        } catch (err) {
+            console.error("Error crítico cargando datos base para Excel:", err);
+            throw new Error("No se pudo cargar el inventario base para el reporte Excel.");
+        }
+        // --- FIN DE LA MODIFICACIÓN ---
+
         const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
         const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
         ventas.forEach(venta => {
@@ -367,7 +483,7 @@
                 vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
             }
             (venta.productos || []).forEach(p => {
-                const prodInventario = inventarioMap.get(p.id); 
+                const prodInventario = initialStockMap[p.id]; // Usar el producto del snapshot
                 const prodParaReporte = {
                     id: p.id,
                     precios: p.precios,
@@ -413,19 +529,42 @@
         });
         const sortFunction = await getGlobalProductSortFunction();
         const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
+        
+        // --- MODIFICACIÓN ---
+        // Construir 'allRubros' y 'productsMap' a partir del 'initialStockMap'
+        const allProductsFromStock = Object.values(initialStockMap);
+        allProductsFromStock.forEach(p => allRubros.add(p.rubro || 'SIN RUBRO'));
+        // --- FIN MODIFICACIÓN ---
+        
         for (const rubroName of Array.from(allRubros).sort()) {
-            const rubroData = dataByRubro[rubroName];
-            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
+            const rubroData = dataByRubro[rubroName] || { clients: {}, totalValue: 0 };
+            
+            // --- MODIFICACIÓN ---
+            // Filtrar productos del snapshot por el rubro actual
+            const productsInRubro = allProductsFromStock.filter(p => (p.rubro || 'SIN RUBRO') === rubroName);
+            // Ordenar solo esos productos
+            const sortedProducts = productsInRubro.sort(sortFunction);
+            
+            // Poblar el productsMap de este rubro (necesario para el bucle de clientes)
+            rubroData.productsMap = new Map(sortedProducts.map(p => [p.id, p]));
+            // --- FIN MODIFICACIÓN ---
+            
             const sortedClients = Object.keys(rubroData.clients).sort();
             const productTotals = {};
             for (const p of sortedProducts) {
                 const productId = p.id;
                 let totalSoldUnits = 0;
                 for (const clientName of sortedClients) {
-                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
+                    totalSoldUnits += (rubroData.clients[clientName]?.products?.[productId] || 0);
                 }
-                const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
-                const initialStockUnits = currentStockUnits + totalSoldUnits;
+                
+                // --- MODIFICACIÓN ---
+                // La Carga Inicial AHORA ES el valor del snapshot
+                const initialStockUnits = initialStockMap[productId]?.cantidadUnidades || 0;
+                // Carga Restante AHORA ES Carga Inicial - Total Vendido
+                const currentStockUnits = initialStockUnits - totalSoldUnits;
+                // --- FIN MODIFICACIÓN ---
+                
                 productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
             }
             finalData.rubros[rubroName] = { clients: rubroData.clients, products: sortedProducts, sortedClients: sortedClients, totalValue: rubroData.totalValue, productTotals: productTotals };
@@ -1131,22 +1270,8 @@
             const cliCoords = _consolidatedClientsCache.filter(c => { if(!c.coordenadas)return false; const p=c.coordenadas.split(','); if(p.length!==2)return false; const lat=parseFloat(p[0]), lon=parseFloat(p[1]); return !isNaN(lat)&&!isNaN(lon)&&lat>=0&&lat<=13&&lon>=-74&&lon<=-59; });
             if (cliCoords.length === 0) { mapCont.innerHTML = '<p class="text-gray-500">No hay clientes con coordenadas válidas.</p>'; return; }
             let mapCenter = [7.77, -72.22]; let zoom = 13; mapInstance = L.map('client-map').setView(mapCenter, zoom); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(mapInstance);
-            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
-            
-            // --- INICIO DE LA CORRECCIÓN ---
-            // La 'iconUrl' estaba apuntando al servidor de mapas (un error de copiar y pegar)
-            // y además tenía un error tipográfico ('https{s}' en lugar de 'https://{s}').
-            // La URL correcta debe apuntar al marcador azul (blue marker).
-            const blueI = new L.Icon({
-                iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', 
-                shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', 
-                iconSize:[25,41],
-                iconAnchor:[12,41],
-                popupAnchor:[1,-34],
-                shadowSize:[41,41]
-            });
-            // --- FIN DE LA CORRECCIÓN ---
-
+            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); 
+            const blueI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
             mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https://www.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
             if(mGroup.length > 0) { const group = L.featureGroup(mGroup).addTo(mapInstance); mapInstance.fitBounds(group.getBounds().pad(0.1)); } else { mapCont.innerHTML = '<p class="text-gray-500">No se pudieron mostrar clientes.</p>'; return; }
             setupMapSearch(cliCoords);
@@ -1524,11 +1649,6 @@
                 } if (compRes !== 0) return compRes;
             } return 0;
         };
-    };
-
-    window.dataModule = { 
-        showClosingDetail, 
-        handleDownloadSingleClosing 
     };
 
 })();
