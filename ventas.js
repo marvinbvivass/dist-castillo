@@ -1,7 +1,7 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
-    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
+    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _limit; // Añadido _limit
 
     let _clientesCache = [];
     let _inventarioCache = [];
@@ -38,6 +38,7 @@
         _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
+        _limit = dependencies.limit; // Asegurarse de que _limit esté definido
     };
 
     window.showVentasView = function() {
@@ -390,6 +391,16 @@
         console.log("Starting _processAndSaveVenta...");
         // Esta función ahora contiene la lógica de guardado que estaba antes en handleSaveVentaAndAdjustments
         try {
+            // --- NUEVO: Chequear si es la primera venta ---
+            // Se define la colección de ventas para el chequeo
+            const ventasRefCheck = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`);
+            // Se hace una consulta limitada a 1 para saber si hay *alguna* venta
+            const qCheck = _query(ventasRefCheck, _limit(1)); 
+            const ventasSnapshot = await _getDocs(qCheck);
+            // Si no hay documentos (.empty es true), esta es la primera venta
+            const isFirstSale = ventasSnapshot.empty;
+            // --- FIN NUEVO ---
+
             const batch = _writeBatch(_db);
             const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
             let totalVenta=0;
@@ -466,6 +477,24 @@
                  console.warn("No se guardó la venta: sin productos ni vacíos devueltos.");
                  throw new Error("No hay productos ni vacíos devueltos para guardar."); // Lanzar error para que no continúe
             }
+
+            // --- NUEVO: Guardar snapshot si es la primera venta ---
+            if (isFirstSale) {
+                if (_inventarioCache && _inventarioCache.length > 0) {
+                    // Define la ruta del documento para el snapshot
+                    const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
+                    const snapshotData = {
+                        createdAt: new Date(),
+                        inventario: _inventarioCache // Guarda el array completo del inventario actual
+                    };
+                    // Añade la creación/sobreescritura del snapshot al mismo batch de la venta
+                    batch.set(snapshotRef, snapshotData); 
+                    console.log("Primera venta del día: Guardando snapshot de carga inicial.");
+                } else {
+                    console.warn("Es la primera venta, pero _inventarioCache está vacío. No se guardó snapshot.");
+                }
+            }
+            // --- FIN NUEVO ---
 
             await batch.commit();
             console.log("_processAndSaveVenta finished successfully.");
@@ -629,9 +658,35 @@
             _showModal('Progreso', 'Obteniendo ventas...');
             const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const ventasSnap = await _getDocs(ventasRef); const ventas = ventasSnap.docs.map(d=>({id: d.id, ...d.data()}));
             if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas activas.'); return false; }
+            
+            // --- NUEVO: Leer el snapshot de carga inicial ANTES de guardarlo en el cierre ---
+            let snapshotInventario = null;
+            try {
+                const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
+                const snapshotDoc = await _getDoc(snapshotRef);
+                if (snapshotDoc.exists() && snapshotDoc.data().inventario) {
+                    snapshotInventario = snapshotDoc.data().inventario; // Este es el array que guardaremos
+                    console.log("Cierre: Snapshot de carga inicial encontrado y listo para archivar.");
+                } else {
+                    console.warn("Cierre: No se encontró snapshot de carga inicial para archivar.");
+                }
+            } catch (e) {
+                console.error("Cierre: Error leyendo snapshot de carga inicial.", e);
+            }
+            // --- FIN NUEVO ---
+
             try {
                  _showModal('Progreso', 'Generando Excel...'); await exportCierreToExcel(ventas);
-                 _showModal('Progreso', 'Archivando y eliminando...'); const cierreData = { fecha: new Date(), ventas: ventas.map(({id,...rest})=>rest), total: ventas.reduce((s,v)=>s+(v.total||0),0) }; let cDocRef;
+                 _showModal('Progreso', 'Archivando y eliminando...'); 
+                 
+                 // --- MODIFICADO: Añadir el snapshot al documento de cierre ---
+                 const cierreData = { 
+                     fecha: new Date(), 
+                     ventas: ventas.map(({id,...rest})=>rest), 
+                     total: ventas.reduce((s,v)=>s+(v.total||0),0),
+                     cargaInicialInventario: snapshotInventario // <-- AÑADIDO
+                 }; 
+                 let cDocRef;
                  // Guardar cierre en colección pública si es usuario normal, privada si es admin
                  if (window.userRole === 'user') {
                      const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
@@ -645,7 +700,15 @@
                      console.log("Cierre de admin guardado en colección privada.");
                  }
                  // Eliminar ventas activas
-                 const batch = _writeBatch(_db); ventas.forEach(v => batch.delete(_doc(ventasRef, v.id))); await batch.commit();
+                 const batch = _writeBatch(_db); ventas.forEach(v => batch.delete(_doc(ventasRef, v.id)));
+                 
+                 // --- NUEVO: Eliminar el snapshot de carga inicial al cerrar ---
+                 const snapshotRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`);
+                 batch.delete(snapshotRef);
+                 console.log("Cierre ejecutado: Eliminando snapshot de carga inicial.");
+                 // --- FIN NUEVO ---
+                 
+                 await batch.commit();
                 _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas archivadas/eliminadas.', showVentasTotalesView); return true;
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
