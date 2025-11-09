@@ -15,8 +15,7 @@
     // Asume que TIPOS_VACIO_GLOBAL se define o está disponible globalmente
     // Usaremos window.TIPOS_VACIO_GLOBAL si existe, o un default
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-    // --- NUEVO: Definir ruta del snapshot ---
-    const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
+    // --- CORRECCIÓN: La definición de SNAPSHOT_DOC_PATH se mueve DENTRO de las funciones que la usan ---
 
     window.initVentas = function(dependencies) {
         _db = dependencies.db;
@@ -105,7 +104,7 @@
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         // --- FIX: Manejador de error de listener ---
         const unsubInventario = _onSnapshot(inventarioRef, snap => { 
-            _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
+            _inventarioCache = snap.docs.map(d => ({ id: doc.id, ...doc.data() })); 
             populateRubroFilter(); 
             if (_ventaActual.cliente) renderVentasInventario(); 
         }, err => { 
@@ -396,7 +395,8 @@
         console.log("Starting _processAndSaveVenta...");
         
         // --- INICIO: Lógica del Snapshot ---
-        // Verificar si es la primera venta (si no existe snapshot)
+        // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
+        const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
         const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
         try {
             const snapshotDoc = await _getDoc(snapshotRef);
@@ -648,6 +648,8 @@
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
         
         // --- NUEVO: Cargar snapshot si existe ---
+        // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
+        const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
         let cargaInicialInventario = [];
         try {
             const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
@@ -721,6 +723,8 @@
             }
             
             // --- MODIFICADO: Leer snapshot de carga inicial ---
+            // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
+            const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
             let cargaInicialInventario = [];
             const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
             try {
