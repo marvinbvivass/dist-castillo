@@ -104,7 +104,7 @@
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         // --- FIX: Manejador de error de listener ---
         const unsubInventario = _onSnapshot(inventarioRef, snap => { 
-            _inventarioCache = snap.docs.map(d => ({ id: doc.id, ...doc.data() })); 
+            _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             populateRubroFilter(); 
             if (_ventaActual.cliente) renderVentasInventario(); 
         }, err => { 
