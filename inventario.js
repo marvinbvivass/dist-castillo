@@ -552,31 +552,60 @@
             const vPor = p.ventaPor || {und:true};
             const cStockU = p.cantidadUnidades||0;
 
-            // --- Lógica para el <select> ---
+            // --- Lógica para el <select> o texto estático ---
             let optionsHTML = '';
             let factors = {};
-            let defaultUnit = 'und'; // Default siempre es 'Und'
-            
+            let defaultUnit = 'und';
+            let unitLabels = { cj: 'Cj.', paq: 'Paq.', und: 'Und.' };
+
             // Construir opciones y factores
             if(vPor.cj){ 
-                const factor = p.unidadesPorCaja||1;
-                optionsHTML += `<option value="cj" data-factor="${factor}">Cj.</option>`; 
-                factors['cj'] = factor;
-                defaultUnit = 'cj'; // Priorizar Cj si existe
+                factors['cj'] = p.unidadesPorCaja||1;
+                optionsHTML += `<option value="cj" data-factor="${factors['cj']}">Cj.</option>`; 
+                defaultUnit = 'cj';
             }
             if(vPor.paq){ 
-                const factor = p.unidadesPorPaquete||1;
-                optionsHTML += `<option value="paq" data-factor="${factor}">Paq.</option>`; 
-                factors['paq'] = factor;
-                if(defaultUnit === 'und') defaultUnit = 'paq'; // Priorizar Paq sobre Und
+                factors['paq'] = p.unidadesPorPaquete||1;
+                optionsHTML += `<option value="paq" data-factor="${factors['paq']}">Paq.</option>`; 
+                if(defaultUnit === 'und') defaultUnit = 'paq';
             }
             if(vPor.und){ 
-                optionsHTML += `<option value="und" data-factor="1">Und.</option>`; 
                 factors['und'] = 1;
+                optionsHTML += `<option value="und" data-factor="1">Und.</option>`; 
+                // defaultUnit es 'und' por defecto, así que no es necesario cambiarlo si es el único
             }
             
-            // Establecer el 'selected' en el string HTML
-            optionsHTML = optionsHTML.replace(`value="${defaultUnit}"`, `value="${defaultUnit}" selected`);
+            const numOptions = Object.keys(factors).length;
+            let unitElementHTML = '';
+
+            if (numOptions > 1) {
+                // Hay múltiples opciones: renderizar <select>
+                optionsHTML = optionsHTML.replace(`value="${defaultUnit}"`, `value="${defaultUnit}" selected`);
+                unitElementHTML = `
+                    <select data-doc-id="${p.id}" class="w-20 ml-2 p-1 border rounded-lg text-sm bg-gray-50 ajuste-unit-select">
+                        ${optionsHTML}
+                    </select>`;
+            } else {
+                // Solo hay una opción (o ninguna, aunque 'und' es el fallback)
+                // Si no hay factores (raro), default a 'und'
+                if (numOptions === 0) {
+                    factors['und'] = 1;
+                    defaultUnit = 'und';
+                }
+                // Si hay 1, defaultUnit ya se habrá establecido a 'cj', 'paq', o 'und'
+                const singleUnitKey = numOptions === 1 ? Object.keys(factors)[0] : 'und';
+                const singleUnitLabel = unitLabels[singleUnitKey];
+                const singleUnitFactor = factors[singleUnitKey];
+                defaultUnit = singleUnitKey; // Asegurarse de que defaultUnit sea el correcto
+
+                unitElementHTML = `
+                    <span data-doc-id="${p.id}" 
+                          data-factor="${singleUnitFactor}" 
+                          data-unit-key="${singleUnitKey}"
+                          class="w-20 ml-2 p-1 text-sm text-gray-700 text-center ajuste-unit-static">
+                        ${singleUnitLabel}
+                    </span>`;
+            }
 
             const cStockDispU = Math.floor(cStockU / (factors[defaultUnit] || 1)); // Cantidad actual en la unidad de medida ELEGIDA
 
@@ -589,9 +618,7 @@
                     <td class="py-2 px-4 border-b text-center align-middle">
                         <div class="flex items-center justify-center">
                             <input type="number" value="${cStockDispU}" data-doc-id="${p.id}" min="0" step="1" class="w-20 p-1 text-center border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ajuste-qty-input">
-                            <select data-doc-id="${p.id}" class="w-20 ml-2 p-1 border rounded-lg text-sm bg-gray-50 ajuste-unit-select">
-                                ${optionsHTML}
-                            </select>
+                            ${unitElementHTML}
                         </div>
                     </td>
                 </tr>`;
@@ -636,19 +663,29 @@
 
             // --- Lógica para obtener el factor ---
             const unitSelect = document.querySelector(`.ajuste-unit-select[data-doc-id="${docId}"]`);
-            if (!unitSelect) {
-                console.warn(`No se encontró select para ${docId}`);
+            const unitStatic = document.querySelector(`.ajuste-unit-static[data-doc-id="${docId}"]`);
+            
+            let conversionFactor = 1;
+
+            if (unitSelect) {
+                // Es un dropdown
+                const selectedUnit = unitSelect.value;
+                const selectedOption = unitSelect.querySelector(`option[value="${selectedUnit}"]`);
+                if (!selectedOption) {
+                     console.warn(`No se encontró option seleccionada para ${docId}`);
+                     invalidValues = true;
+                     return;
+                }
+                conversionFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
+            } else if (unitStatic) {
+                // Es un span estático
+                conversionFactor = parseInt(unitStatic.dataset.factor, 10) || 1;
+            } else {
+                // Error: No se encontró ni select ni span
+                console.warn(`No se encontró elemento de unidad (select o static) para ${docId}`);
                 invalidValues = true;
                 return; // No se puede procesar
             }
-            const selectedUnit = unitSelect.value; // 'cj', 'paq', 'und'
-            const selectedOption = unitSelect.querySelector(`option[value="${selectedUnit}"]`);
-            if (!selectedOption) {
-                 console.warn(`No se encontró option seleccionada para ${docId}`);
-                 invalidValues = true;
-                 return;
-            }
-            const conversionFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
             // --- Fin lógica factor ---
 
              // Validar entrada: no vacío, número entero no negativo
