@@ -278,17 +278,30 @@
             const vaciosDev = venta.vaciosDevueltosPorTipo || {};
             for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
             (venta.productos || []).forEach(p => {
-                 const prodComp = initialStockMap[p.id] || p;
+                 const prodInventario = initialStockMap[p.id];
+                 const prodParaReporte = {
+                    id: p.id,
+                    precios: p.precios,
+                    ventaPor: prodInventario?.ventaPor || p.ventaPor || {und: true},
+                    unidadesPorCaja: prodInventario?.unidadesPorCaja || p.unidadesPorCaja || 1,
+                    unidadesPorPaquete: prodInventario?.unidadesPorPaquete || p.unidadesPorPaquete || 1,
+                    rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
+                    segmento: prodInventario?.segmento || p.segmento || 'S/S',
+                    marca: prodInventario?.marca || p.marca || 'S/M',
+                    presentacion: prodInventario?.presentacion || p.presentacion || 'S/P',
+                    manejaVacios: prodInventario?.manejaVacios || p.manejaVacios || false,
+                    tipoVacio: prodInventario?.tipoVacio || p.tipoVacio || null
+                };
 
-                 if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
-                 const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
-                 if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
+                 if (prodParaReporte && prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) { const tipoV = prodParaReporte.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
+                 const rubro = prodParaReporte.rubro;
+                 if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodParaReporte, id: p.id });
                  if (p.id && !clientData[clientName].products[p.id]) clientData[clientName].products[p.id] = 0;
                  
                  let cantidadUnidades = 0;
                  if (p.cantidadVendida) { 
-                     const uCj = p.unidadesPorCaja || 1;
-                     const uPaq = p.unidadesPorPaquete || 1;
+                     const uCj = prodParaReporte.unidadesPorCaja || 1;
+                     const uPaq = prodParaReporte.unidadesPorPaquete || 1;
                      cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
                  } else if (p.totalUnidadesVendidas) { 
                      cantidadUnidades = p.totalUnidadesVendidas;
@@ -465,8 +478,8 @@
                 }
                 let cantidadUnidades = 0;
                 if (p.cantidadVendida) { 
-                    const uCj = p.unidadesPorCaja || 1;
-                    const uPaq = p.unidadesPorPaquete || 1;
+                    const uCj = prodParaReporte.unidadesPorCaja || 1;
+                    const uPaq = prodParaReporte.unidadesPorPaquete || 1;
                     cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
                 } else if (p.totalUnidadesVendidas) { 
                     cantidadUnidades = p.totalUnidadesVendidas;
