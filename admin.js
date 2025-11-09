@@ -143,17 +143,73 @@
     }
 
     async function handleBackupBeforeClean() {
-        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return false; }
+        // --- CORRECCIÓN: Revisar si ExcelJS está cargado, no XLSX ---
+        if (typeof ExcelJS === 'undefined') { 
+            _showModal('Error', 'Librería ExcelJS no cargada.'); 
+            return false; 
+        }
         _showModal('Progreso', 'Generando respaldo...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
-        const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); const wb = XLSX.utils.book_new(); let sheetsAdded = 0;
+        const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); 
+        
+        // --- CORRECCIÓN: Usar ExcelJS ---
+        const wb = new ExcelJS.Workbook(); 
+        let sheetsAdded = 0;
         try {
             const fetchData = async (path) => { try { const snap = await _getDocs(_collection(_db, path)); return snap.docs.map(d => ({ id: d.id, ...d.data() })); } catch (err) { console.error(`Error backup ${path}:`, err); return []; } };
-            if (cleanInv) { const inv = await fetchData(`artifacts/${_appId}/users/${_userId}/inventario`), rub = await fetchData(`artifacts/${_appId}/users/${_userId}/rubros`), seg = await fetchData(`artifacts/${_appId}/users/${_userId}/segmentos`), mar = await fetchData(`artifacts/${_appId}/users/${_userId}/marcas`); if(inv.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(inv),'Inventario_Admin');sheetsAdded++;} if(rub.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rub),'Rubros_Admin');sheetsAdded++;} if(seg.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(seg),'Segmentos_Admin');sheetsAdded++;} if(mar.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(mar),'Marcas_Admin');sheetsAdded++;} }
-            if (cleanCli) { const cli = await fetchData(`artifacts/${pubProjId}/public/data/clientes`), sec = await fetchData(`artifacts/${pubProjId}/public/data/sectores`); if(cli.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cli),'Clientes_Public');sheetsAdded++;} if(sec.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sec),'Sectores_Public');sheetsAdded++;} }
-            if (cleanVen) { const vAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/ventas`), cAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/cierres`), cPub = await fetchData(`public_data/${_appId}/user_closings`); if(vAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(vAdm),'Ventas_Admin');sheetsAdded++;} if(cAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cAdm),'Cierres_Admin');sheetsAdded++;} if(cPub.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cPub),'Cierres_Vendedores');sheetsAdded++;} }
-            if (cleanObs) { const oAdm = await fetchData(`artifacts/${_appId}/users/${_userId}/obsequios_entregados`); const admConfRef = _doc(_db,`artifacts/${_appId}/users/${_userId}/config/obsequio`); const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); const [admConfS, pubConfS] = await Promise.allSettled([_getDoc(admConfRef), _getDoc(pubConfRef)]); const confs=[]; if(admConfS.status==='fulfilled'&&admConfS.value.exists())confs.push({origen:'admin',...admConfS.value.data()}); if(pubConfS.status==='fulfilled'&&pubConfS.value.exists())confs.push({origen:'public',...pubConfS.value.data()}); if(oAdm.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(oAdm),'Obsequios_Admin');sheetsAdded++;} if(confs.length>0){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(confs),'Config_Obsequio');sheetsAdded++;} }
-            if (sheetsAdded > 0) { XLSX.writeFile(wb, `Respaldo_Limpieza_${today}.xlsx`); _showModal('Respaldo Descargado', `Archivo "Respaldo_Limpieza_${today}.xlsx" generado.`, null, 'OK'); await new Promise(r=>setTimeout(r,1500)); return true; }
+            
+            // Helper para añadir hoja con datos
+            const addSheet = (workbook, sheetName, data) => {
+                if (data.length === 0) return;
+                const ws = workbook.addWorksheet(sheetName);
+                // Crear cabeceras dinámicamente
+                const headers = Array.from(new Set(data.flatMap(row => Object.keys(row))));
+                ws.columns = headers.map(h => ({ header: h, key: h, width: 20 }));
+                ws.getRow(1).font = { bold: true };
+                ws.addRows(data);
+                sheetsAdded++;
+            };
+
+            if (cleanInv) { 
+                addSheet(wb, 'Inventario_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/inventario`));
+                addSheet(wb, 'Rubros_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/rubros`));
+                addSheet(wb, 'Segmentos_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/segmentos`));
+                addSheet(wb, 'Marcas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/marcas`));
+            }
+            if (cleanCli) { 
+                addSheet(wb, 'Clientes_Public', await fetchData(`artifacts/${pubProjId}/public/data/clientes`));
+                addSheet(wb, 'Sectores_Public', await fetchData(`artifacts/${pubProjId}/public/data/sectores`));
+            }
+            if (cleanVen) { 
+                addSheet(wb, 'Ventas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/ventas`));
+                addSheet(wb, 'Cierres_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/cierres`));
+                addSheet(wb, 'Cierres_Vendedores', await fetchData(`public_data/${_appId}/user_closings`));
+            }
+            if (cleanObs) { 
+                addSheet(wb, 'Obsequios_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
+                const admConfRef = _doc(_db,`artifacts/${_appId}/users/${_userId}/config/obsequio`); 
+                const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); 
+                const [admConfS, pubConfS] = await Promise.allSettled([_getDoc(admConfRef), _getDoc(pubConfRef)]); 
+                const confs=[]; 
+                if(admConfS.status==='fulfilled'&&admConfS.value.exists())confs.push({origen:'admin',...admConfS.value.data()}); 
+                if(pubConfS.status==='fulfilled'&&pubConfS.value.exists())confs.push({origen:'public',...pubConfS.value.data()}); 
+                addSheet(wb, 'Config_Obsequio', confs);
+            }
+            
+            if (sheetsAdded > 0) { 
+                // Descargar usando ExcelJS
+                const buffer = await wb.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `Respaldo_Limpieza_${today}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+
+                _showModal('Respaldo Descargado', `Archivo "Respaldo_Limpieza_${today}.xlsx" generado.`, null, 'OK'); await new Promise(r=>setTimeout(r,1500)); return true; 
+            }
             else { _showModal('Aviso', 'No se encontraron datos para respaldar.', null, 'OK'); await new Promise(r=>setTimeout(r,1500)); return true; }
         } catch (error) { console.error("Error respaldo:", error); _showModal('Error Respaldo', `Error: ${error.message}. Limpieza cancelada.`); await new Promise(r=>setTimeout(r,1500)); return false; }
         finally { const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); }
@@ -238,13 +294,101 @@
         document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
     }
     async function handleExportInventario() {
-        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; } _showModal('Progreso', 'Generando Excel...');
-        try { const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); const rOMap = await getRubroOrderMapAdmin(); const sOMap = await getSegmentoOrderMapAdmin();
+        // --- CORRECCIÓN ---
+        // Se cambió la librería de 'XLSX' (SheetJS) a 'ExcelJS' para soportar estilos.
+        // La función de exportar inventario no se había actualizado.
+        
+        // 1. Revisar la librería correcta (ExcelJS)
+        if (typeof ExcelJS === 'undefined') { 
+            _showModal('Error', 'Librería ExcelJS no cargada.'); 
+            return; 
+        }
+        _showModal('Progreso', 'Generando Excel...');
+        
+        try { 
+            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); 
+            const snap = await _getDocs(invRef); 
+            let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
+            const rOMap = await getRubroOrderMapAdmin(); 
+            const sOMap = await getSegmentoOrderMapAdmin();
+            
+            // 2. Ordenar datos (lógica existente, sin cambios)
             inv.sort((a,b)=>{ const rOA=rOMap[a.rubro]??9999, rOB=rOMap[b.rubro]??9999; if(rOA!==rOB) return rOA-rOB; const sOA=sOMap[a.segmento]??9999, sOB=sOMap[b.segmento]??9999; if(sOA!==sOB) return sOA-sOB; const mC=(a.marca||'').localeCompare(b.marca||''); if(mC!==0) return mC; return (a.presentacion||'').localeCompare(b.presentacion||''); });
-            const dExport = inv.map(p=>({'Rubro':p.rubro||'','Segmento':p.segmento||'','Marca':p.marca||'','Presentacion':p.presentacion||'','CantidadActualUnidades':p.cantidadUnidades||0,'VentaPorUnd':p.ventaPor?.und?'SI':'NO','VentaPorPaq':p.ventaPor?.paq?'SI':'NO','VentaPorCj':p.ventaPor?.cj?'SI':'NO','UnidadesPorPaquete':p.unidadesPorPaquete||'','UnidadesPorCaja':p.unidadesPorCaja||'','PrecioUnd':p.precios?.und||'','PrecioPaq':p.precios?.paq||'','PrecioCj':p.precios?.cj||'','ManejaVacios':p.manejaVacios?'SI':'NO','TipoVacio':p.tipoVacio||'','IVA':p.iva!==undefined?`${p.iva}%`:''}));
-            const ws = XLSX.utils.json_to_sheet(dExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Inventario'); const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Inventario_${today}.xlsx`);
-            const modal = document.getElementById('modalContainer'); if(modal) modal.classList.add('hidden');
-        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error: ${error.message}`); }
+            
+            // 3. Mapear datos (lógica existente, sin cambios)
+            const dExport = inv.map(p=>({
+                'Rubro':p.rubro||'',
+                'Segmento':p.segmento||'',
+                'Marca':p.marca||'',
+                'Presentacion':p.presentacion||'',
+                'CantidadActualUnidades':p.cantidadUnidades||0,
+                'VentaPorUnd':p.ventaPor?.und?'SI':'NO',
+                'VentaPorPaq':p.ventaPor?.paq?'SI':'NO',
+                'VentaPorCj':p.ventaPor?.cj?'SI':'NO',
+                'UnidadesPorPaquete':p.unidadesPorPaquete||'',
+                'UnidadesPorCaja':p.unidadesPorCaja||'',
+                'PrecioUnd':p.precios?.und||'',
+                'PrecioPaq':p.precios?.paq||'',
+                'PrecioCj':p.precios?.cj||'',
+                'ManejaVacios':p.manejaVacios?'SI':'NO',
+                'TipoVacio':p.tipoVacio||'',
+                'IVA':p.iva!==undefined?`${p.iva}%`:''
+            }));
+
+            // 4. Crear el Excel usando ExcelJS (Lógica nueva)
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Inventario');
+            
+            // Definir columnas basadas en las claves de dExport
+            worksheet.columns = [
+                { header: 'Rubro', key: 'Rubro', width: 20 },
+                { header: 'Segmento', key: 'Segmento', width: 20 },
+                { header: 'Marca', key: 'Marca', width: 25 },
+                { header: 'Presentacion', key: 'Presentacion', width: 35 },
+                { header: 'CantidadActualUnidades', key: 'CantidadActualUnidades', width: 15, style: { numFmt: '0' } },
+                { header: 'VentaPorUnd', key: 'VentaPorUnd', width: 10 },
+                { header: 'VentaPorPaq', key: 'VentaPorPaq', width: 10 },
+                { header: 'VentaPorCj', key: 'VentaPorCj', width: 10 },
+                { header: 'UnidadesPorPaquete', key: 'UnidadesPorPaquete', width: 15, style: { numFmt: '0' } },
+                { header: 'UnidadesPorCaja', key: 'UnidadesPorCaja', width: 15, style: { numFmt: '0' } },
+                { header: 'PrecioUnd', key: 'PrecioUnd', width: 12, style: { numFmt: '$#,##0.00' } },
+                { header: 'PrecioPaq', key: 'PrecioPaq', width: 12, style: { numFmt: '$#,##0.00' } },
+                { header: 'PrecioCj', key: 'PrecioCj', width: 12, style: { numFmt: '$#,##0.00' } },
+                { header: 'ManejaVacios', key: 'ManejaVacios', width: 10 },
+                { header: 'TipoVacio', key: 'TipoVacio', width: 15 },
+                { header: 'IVA', key: 'IVA', width: 8, style: { numFmt: '0"%"' } }
+            ];
+            
+            // Poner cabecera en negrita
+            worksheet.getRow(1).font = { bold: true };
+            
+            // Añadir los datos
+            worksheet.addRows(dExport);
+            
+            // 5. Descargar el archivo (Lógica nueva)
+            const today = new Date().toISOString().slice(0, 10); 
+            const fileName = `Inventario_${today}.xlsx`;
+            
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+
+            const modal = document.getElementById('modalContainer'); 
+            if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                 modal.classList.add('hidden');
+            }
+            
+        } catch (error) { 
+            console.error("Error exportando:", error); 
+            _showModal('Error', `Error: ${error.message}`); 
+        }
+        // --- FIN CORRECCIÓN ---
     }
     function showImportInventarioView() {
         _mainContent.innerHTML = `
