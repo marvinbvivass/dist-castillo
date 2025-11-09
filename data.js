@@ -231,7 +231,7 @@
         container.innerHTML = tableHTML;
     }
 
-    async function _processSalesDataForModal(ventas, userIdForInventario) {
+    async function _processSalesDataForModal(ventas, userIdForInventario, cargaInicialSnapshot = null) {
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
@@ -240,6 +240,19 @@
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
         const inventarioSnapshot = await _getDocs(inventarioRef);
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+        // --- NUEVO: Cargar snapshot de carga inicial ---
+        let cargaInicialMap = null;
+        let snapshotFound = false;
+        if (cargaInicialSnapshot && Array.isArray(cargaInicialSnapshot)) {
+            cargaInicialMap = new Map(cargaInicialSnapshot.map(p => [p.id, p]));
+            snapshotFound = true;
+            console.log("Reporte Modal: Snapshot de carga inicial encontrado DENTRO del cierre.");
+        } else {
+            console.warn("Reporte Modal: No se encontro info capture de Carga Inicial en el cierre. Usando inventario actual como base.");
+        }
+        // --- FIN NUEVO ---
+
         ventas.forEach(venta => {
             const clientName = venta.clienteNombre || 'Cliente Desconocido';
             if (!clientData[clientName]) clientData[clientName] = { products: {}, totalValue: 0 };
@@ -249,7 +262,8 @@
             const vaciosDev = venta.vaciosDevueltosPorTipo || {};
             for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
             (venta.productos || []).forEach(p => {
-                 const prodComp = inventarioMap.get(p.id) || p;
+                 // --- MODIFICADO: Priorizar snapshot, luego inventario, luego producto de venta ---
+                 const prodComp = (snapshotFound ? cargaInicialMap.get(p.id) : null) || inventarioMap.get(p.id) || p;
                  if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
                  const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
                  if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
@@ -277,7 +291,8 @@
         if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId);
+            // --- MODIFICADO: Pasamos el snapshot (si existe) a la función de procesamiento ---
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId, closingData.cargaInicialInventario || null);
             
             // CORREGIDO: Diseño de cabecera según la imagen
             let headerHTML = `
@@ -340,7 +355,7 @@
         } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
 
-    async function processSalesDataForReport(ventas, userIdForInventario) {
+    async function processSalesDataForReport(ventas, userIdForInventario, cargaInicialSnapshot = null) {
         const dataByRubro = {};
         const clientTotals = {}; 
         let grandTotalValue = 0;
@@ -352,6 +367,20 @@
         const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
         const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
+
+        // --- MODIFICADO: Ya no buscamos en Firestore, usamos el argumento ---
+        let cargaInicialMap = null;
+        let snapshotFound = false;
+        if (cargaInicialSnapshot && Array.isArray(cargaInicialSnapshot)) {
+            cargaInicialMap = new Map(cargaInicialSnapshot.map(p => [p.id, p]));
+            snapshotFound = true;
+            console.log("Reporte: Snapshot de carga inicial encontrado DENTRO del cierre.");
+        } else {
+            // Mensaje solicitado si no se encuentra el snapshot en el cierre
+            console.warn("Reporte: No se encontro info capture de Carga Inicial en el cierre. Se calculará la carga inicial.");
+        }
+        // --- FIN MODIFICADO ---
+
         ventas.forEach(venta => {
             const clientName = venta.clienteNombre || 'Cliente Desconocido';
             const ventaTotalCliente = venta.total || 0;
@@ -367,7 +396,8 @@
                 vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
             }
             (venta.productos || []).forEach(p => {
-                const prodInventario = inventarioMap.get(p.id); 
+                // --- MODIFICADO: Priorizar info del snapshot o del inventario actual ---
+                const prodInventario = (snapshotFound ? cargaInicialMap.get(p.id) : null) || inventarioMap.get(p.id); 
                 const prodParaReporte = {
                     id: p.id,
                     precios: p.precios,
@@ -425,7 +455,18 @@
                     totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
                 }
                 const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
-                const initialStockUnits = currentStockUnits + totalSoldUnits;
+                
+                // --- MODIFICADO: Determinar Carga Inicial ---
+                let initialStockUnits;
+                if (snapshotFound && cargaInicialMap.has(productId)) {
+                    // Usar el stock del snapshot
+                    initialStockUnits = cargaInicialMap.get(productId)?.cantidadUnidades || 0;
+                } else {
+                    // Fallback al cálculo anterior
+                    initialStockUnits = currentStockUnits + totalSoldUnits;
+                }
+                // --- FIN MODIFICADO ---
+
                 productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
             }
             finalData.rubros[rubroName] = { clients: rubroData.clients, products: sortedProducts, sortedClients: sortedClients, totalValue: rubroData.totalValue, productTotals: productTotals };
@@ -502,7 +543,11 @@
         _showModal('Progreso', 'Generando Excel con su diseño...'); 
 
         try {
-            const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
+            // --- MODIFICADO: Extraer el snapshot del closingData y pasarlo ---
+            const cargaInicialSnapshot = closingData.cargaInicialInventario || null;
+            const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId, cargaInicialSnapshot);
+            // --- FIN MODIFICADO ---
+            
             const workbook = new ExcelJS.Workbook();
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             // CORRECCIÓN (Fix 1): Usar nombre y apellido, no email
