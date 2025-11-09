@@ -4,7 +4,8 @@
     // Variables locales del módulo
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal;
-    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
+    // --- MODIFICACIÓN: Añadida dependencia _deleteDoc ---
+    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _deleteDoc;
 
     // Estado específico del módulo
     let _clientesCache = [];
@@ -38,10 +39,12 @@
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
         _getDocs = dependencies.getDocs;
-        _writeBatch = dependencies.writeBatch; // Aunque no lo usemos directamente, lo mantenemos por si acaso
+        _writeBatch = dependencies.writeBatch; 
         _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
+        // --- MODIFICACIÓN: Añadir _deleteDoc ---
+        _deleteDoc = dependencies.deleteDoc;
     };
 
     /**
@@ -814,6 +817,8 @@
                         <th class="py-2 px-3 border-b text-center">Cjs Entreg.</th>
                         <th class="py-2 px-3 border-b text-center">Vacíos Recib.</th>
                         <th class="py-2 px-3 border-b text-left">Observación</th>
+                        <!-- MODIFICACIÓN: Añadir columna de Acciones -->
+                        <th class="py-2 px-3 border-b text-center">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -828,6 +833,11 @@
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.cantidadCajas || 0}</td>
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.vaciosRecibidos || 0}</td>
                     <td class="py-2 px-3 border-b text-xs">${reg.observacion || ''}</td>
+                    <!-- MODIFICACIÓN: Añadir botones de Acción -->
+                    <td class="py-2 px-3 border-b text-center space-x-1">
+                        <button onclick="window.obsequiosModule.editObsequio('${reg.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Edt</button>
+                        <button onclick="window.obsequiosModule.deleteObsequio('${reg.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Del</button>
+                    </td>
                 </tr> `;
         });
         tableHTML += '</tbody></table>';
@@ -877,6 +887,232 @@
     }
 
 
+    // --- INICIO: NUEVAS FUNCIONES PARA EDITAR Y ELIMINAR ---
+
+    /**
+     * Muestra el modal para editar un registro de obsequio existente.
+     */
+    async function editObsequio(obsequioId) {
+        const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
+        if (!obsequio) {
+            _showModal('Error', 'No se encontró el registro de obsequio para editar.');
+            return;
+        }
+
+        // Cargar el producto de inventario para obtener el stock actual y unidades/caja
+        if (_inventarioCache.length === 0) await _loadInventarioUsuario();
+        const producto = _inventarioCache.find(p => p.id === obsequio.productoId);
+        if (!producto) {
+            _showModal('Error', 'El producto asociado a este obsequio ya no existe en tu inventario. No se puede editar.');
+            return;
+        }
+
+        const unidadesPorCaja = producto.unidadesPorCaja || 1;
+        const stockActualUnidades = producto.cantidadUnidades || 0;
+        const stockActualCajas = Math.floor(stockActualUnidades / unidadesPorCaja);
+        
+        // El stock máximo es el stock actual MÁS lo que se entregó originalmente
+        const stockMaximoCajas = stockActualCajas + obsequio.cantidadCajas;
+
+        const modalContentHTML = `
+            <form id="editObsequioForm" class="text-left space-y-4">
+                <p><span class="font-medium">Cliente:</span> ${obsequio.clienteNombre}</p>
+                <p><span class="font-medium">Producto:</span> ${obsequio.productoNombre}</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="editCantidadEntregada" class="block text-gray-700 font-medium mb-1">Cajas Entregadas:</label>
+                        <input type="number" id="editCantidadEntregada" value="${obsequio.cantidadCajas}" min="0" max="${stockMaximoCajas}" class="w-full px-4 py-2 border rounded-lg" required>
+                        <p class="text-xs text-gray-500 mt-1">Stock disponible total (actual + este obsequio): ${stockMaximoCajas} cajas</p>
+                    </div>
+                    <div>
+                        <label for="editVaciosRecibidos" class="block text-gray-700 font-medium mb-1">Vacíos Recibidos:</label>
+                        <input type="number" id="editVaciosRecibidos" value="${obsequio.vaciosRecibidos}" min="0" class="w-full px-4 py-2 border rounded-lg">
+                        <p class="text-xs text-gray-500 mt-1">Tipo: ${obsequio.tipoVacio}</p>
+                    </div>
+                </div>
+                <div>
+                    <label for="editObservacion" class="block text-gray-700 font-medium mb-1">Información/Observación:</label>
+                    <textarea id="editObservacion" rows="3" class="w-full px-4 py-2 border rounded-lg" placeholder="Motivo de la entrega...">${obsequio.observacion || ''}</textarea>
+                </div>
+            </form>
+        `;
+
+        _showModal(
+            'Editar Obsequio', 
+            modalContentHTML,
+            () => {
+                // Pasar el 'obsequio' original y el 'producto' (para unidades/caja) a la función de guardado
+                handleGuardarEdicionObsequio(obsequio, producto);
+            },
+            'Guardar Cambios',
+            null,
+            true // triggerConfirmLogic
+        );
+    }
+
+    /**
+     * Guarda los cambios de un obsequio editado mediante una transacción.
+     */
+    async function handleGuardarEdicionObsequio(obsequioOriginal, producto) {
+        const form = document.getElementById('editObsequioForm');
+        if (!form) return;
+
+        const nuevaCantidadCajas = parseInt(form.editCantidadEntregada.value, 10);
+        const nuevosVaciosRecibidos = parseInt(form.editVaciosRecibidos.value, 10);
+        const nuevaObservacion = form.editObservacion.value.trim();
+
+        if (isNaN(nuevaCantidadCajas) || isNaN(nuevosVaciosRecibidos) || nuevaCantidadCajas < 0 || nuevosVaciosRecibidos < 0) {
+            _showModal('Error', 'Las cantidades deben ser números positivos.');
+            return false; // Evita que el modal se cierre
+        }
+        
+        const unidadesPorCaja = producto.unidadesPorCaja || 1;
+        const stockActualUnidades = producto.cantidadUnidades || 0;
+        const stockMaximoUnidades = stockActualUnidades + (obsequioOriginal.cantidadCajas * unidadesPorCaja);
+        const nuevasUnidadesRequeridas = nuevaCantidadCajas * unidadesPorCaja;
+
+        if (nuevasUnidadesRequeridas > stockMaximoUnidades) {
+             _showModal('Error', `Stock insuficiente. El stock máximo (incluyendo este obsequio) es ${Math.floor(stockMaximoUnidades / unidadesPorCaja)} cajas.`);
+             return false; // Evita que el modal se cierre
+        }
+
+        // Calcular Deltas (Diferencias)
+        const deltaCajas = nuevaCantidadCajas - obsequioOriginal.cantidadCajas;
+        const deltaVacios = nuevosVaciosRecibidos - obsequioOriginal.vaciosRecibidos;
+        const deltaUnidadesStock = deltaCajas * unidadesPorCaja;
+
+        // Si no hay cambios, no hacer nada
+        if (deltaCajas === 0 && deltaVacios === 0 && nuevaObservacion === obsequioOriginal.observacion) {
+            _showModal('Aviso', 'No se detectaron cambios.');
+            return true; // Cierra el modal
+        }
+
+        _showModal('Progreso', 'Guardando cambios...');
+
+        try {
+            const obsequioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`, obsequioOriginal.id);
+            const inventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, obsequioOriginal.productoId);
+            const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, obsequioOriginal.clienteId);
+
+            await _runTransaction(_db, async (transaction) => {
+                // 1. Leer inventario y cliente DENTRO de la transacción
+                const inventarioDoc = await transaction.get(inventarioRef);
+                const clienteDoc = await transaction.get(clienteRef);
+
+                if (!inventarioDoc.exists()) throw "El producto de obsequio no existe en el inventario.";
+                if (!clienteDoc.exists()) throw "El cliente no existe.";
+                
+                // 2. Validar stock DENTRO de la transacción
+                const stockActualTrans = inventarioDoc.data().cantidadUnidades || 0;
+                // El nuevo stock será el stock actual MENOS el delta de unidades
+                const nuevoStockUnidades = stockActualTrans - deltaUnidadesStock; 
+                
+                if (nuevoStockUnidades < 0) {
+                    // Esta validación es una doble comprobación contra la validación de stockMaximoCajas
+                    throw `Stock insuficiente DENTRO de la transacción. Disponible: ${Math.floor(stockActualTrans / unidadesPorCaja)} cajas.`;
+                }
+
+                // 3. Calcular nuevo saldo de vacíos
+                const clienteData = clienteDoc.data();
+                const saldoVaciosActual = clienteData.saldoVacios || {};
+                const tipoVacio = obsequioOriginal.tipoVacio;
+                const saldoActualTipo = saldoVaciosActual[tipoVacio] || 0;
+                
+                // Ajustar el saldo actual con los DELTAS
+                // deltaCajas > 0: más deuda. deltaVacios > 0: menos deuda.
+                const nuevoSaldoTipo = saldoActualTipo + deltaCajas - deltaVacios;
+                const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacio]: nuevoSaldoTipo };
+
+                // 4. Escribir todas las actualizaciones
+                transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
+                transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
+                transaction.update(obsequioRef, {
+                    cantidadCajas: nuevaCantidadCajas,
+                    vaciosRecibidos: nuevosVaciosRecibidos,
+                    observacion: nuevaObservacion,
+                    fechaModificacion: new Date()
+                });
+            });
+
+            _showModal('Éxito', 'Obsequio actualizado correctamente.');
+            await handleSearchObsequios(); // Refrescar la lista
+
+        } catch (error) {
+            console.error("Error al editar obsequio:", error);
+            _showModal('Error', `No se pudo actualizar la entrega: ${error.message || error}`);
+        }
+    }
+
+
+    /**
+     * Elimina un registro de obsequio y revierte los cambios en inventario y saldos.
+     */
+    async function deleteObsequio(obsequioId) {
+        const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
+        if (!obsequio) {
+            _showModal('Error', 'No se encontró el registro de obsequio para eliminar.');
+            return;
+        }
+
+        _showModal('Confirmar Eliminación', `¿Eliminar este obsequio? Esta acción <strong>restaurará ${obsequio.cantidadCajas} caja(s)</strong> a tu inventario y <strong>revertirá el ajuste de vacíos</strong> en el cliente <strong>${obsequio.clienteNombre}</strong>.`, async () => {
+            _showModal('Progreso', 'Revertiendo y eliminando...');
+
+            try {
+                const obsequioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`, obsequioId);
+                const inventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, obsequio.productoId);
+                const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, obsequio.clienteId);
+
+                await _runTransaction(_db, async (transaction) => {
+                    // 1. Leer todos los documentos
+                    const inventarioDoc = await transaction.get(inventarioRef);
+                    const clienteDoc = await transaction.get(clienteRef);
+                    // No es necesario leer obsequioRef si ya tenemos los datos, solo lo borramos.
+
+                    if (!inventarioDoc.exists()) throw "El producto de obsequio ya no existe en el inventario.";
+                    if (!clienteDoc.exists()) throw "El cliente no existe.";
+                    
+                    // 2. Calcular reversión de inventario
+                    const inventarioData = inventarioDoc.data();
+                    const unidadesPorCaja = inventarioData.unidadesPorCaja || 1;
+                    const unidadesARestaurar = obsequio.cantidadCajas * unidadesPorCaja;
+                    const stockActual = inventarioData.cantidadUnidades || 0;
+                    const nuevoStockUnidades = stockActual + unidadesARestaurar; // Añadir de vuelta
+
+                    // 3. Calcular reversión de saldo de vacíos
+                    const clienteData = clienteDoc.data();
+                    const saldoVaciosActual = clienteData.saldoVacios || {};
+                    const tipoVacio = obsequio.tipoVacio;
+                    const saldoActualTipo = saldoVaciosActual[tipoVacio] || 0;
+                    
+                    // Revertir la fórmula original: (saldoActualTipo - cantidadEntregada + vaciosRecibidos)
+                    const nuevoSaldoTipo = saldoActualTipo - obsequio.cantidadCajas + obsequio.vaciosRecibidos;
+                    const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacio]: nuevoSaldoTipo };
+
+                    // 4. Escribir actualizaciones y borrado
+                    transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
+                    transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
+                    transaction.delete(obsequioRef); // Eliminar el registro del obsequio
+                });
+
+                _showModal('Éxito', 'Obsequio eliminado y revertido correctamente.');
+                await handleSearchObsequios(); // Refrescar la lista
+
+            } catch (error) {
+                console.error("Error al eliminar obsequio:", error);
+                _showModal('Error', `No se pudo eliminar la entrega: ${error.message || error}`);
+            }
+        }, 'Sí, Eliminar y Revertir', null, true); // triggerConfirmLogic
+    }
+
+
+    // --- FIN: NUEVAS FUNCIONES ---
+
+
+    // --- MODIFICACIÓN: Exponer el módulo ---
+    window.obsequiosModule = {
+        editObsequio,
+        deleteObsequio
+    };
+
 })(); // Fin del IIFE
-
-
