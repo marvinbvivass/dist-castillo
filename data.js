@@ -1,6 +1,6 @@
 (function() {
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _populateDropdown, _getDoc, _doc, _setDoc;
+    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc, _setDoc;
 
     let _lastStatsData = [];
     let _lastNumWeeks = 1;
@@ -10,19 +10,23 @@
     let mapInstance = null;
     let mapMarkers = new Map();
 
+    // --- CORRECCIÓN: Declarar variables de caché de ordenamiento ---
     let _sortPreferenceCache = null;
     let _rubroOrderMapCache = null;
     let _segmentoOrderMapCache = null;
     const SORT_CONFIG_PATH = 'config/productSortOrder'; 
+    // --- FIN CORRECCIÓN ---
 
     const REPORTE_DESIGN_CONFIG_PATH = 'config/reporteCierreVentas';
     
+    // --- VALORES POR DEFECTO ACTUALIZADOS ---
     const DEFAULT_REPORTE_SETTINGS = {
         showCargaInicial: true,
         showCargaRestante: true,
         showVaciosSheet: true,
         showClienteTotalSheet: true,
         styles: {
+            // Añadido fontSize por defecto
             headerInfo: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: false, fontSize: 10 },
             headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
             rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
@@ -30,6 +34,7 @@
             rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true, fontSize: 10 },
             rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
             rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            // --- AÑADIDOS ESTILOS PARA HOJAS VACÍOS Y TOTALES ---
             vaciosHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
             vaciosData: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
             totalesHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
@@ -37,40 +42,51 @@
             totalesTotalRow: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 11 }
         },
         columnWidths: {
-            col_A_LabelsClientes: 25,
-            products: 12,
-            subtotal: 15,
-            vaciosCliente: 25,
-            vaciosTipo: 15,
-            vaciosQty: 12,
-            totalCliente: 35,
-            totalClienteValor: 15
+            // CORRECCIÓN: Nombres de ancho de columna actualizados para reflejar el nuevo diseño
+            col_A_LabelsClientes: 25, // Col A (Etiquetas/Clientes)
+            products: 12,           // Default para productos (B, C, D...)
+            subtotal: 15,           // RE-AGREGADO
+            vaciosCliente: 25,      // Hoja Vacíos - Cliente
+            vaciosTipo: 15,         // Hoja Vacíos - Tipo
+            vaciosQty: 12,          // Hoja Vacíos - Cantidades
+            totalCliente: 35,       // Hoja Total Cliente - Cliente
+            totalClienteValor: 15  // Hoja Total Cliente - Valor
         }
     };
+    // --- FIN DE CAMBIOS EN VALORES POR DEFECTO ---
 
+    /**
+     * Devuelve la cantidad y unidad de display.
+     * CORREGIDO: Lógica para mostrar Unds si no es entero Y se vende por Unds.
+     */
     function getDisplayQty(qU, p) {
-        if (!qU || qU === 0) return { value: 0, unit: 'Unds' };
-        if (!p) return { value: qU, unit: 'Unds' };
+        if (!qU || qU === 0) return { value: 0, unit: 'Unds' }; // Devolver 0 Unds por defecto
+        if (!p) return { value: qU, unit: 'Unds' }; // Fallback si p no existe
 
         const vP = p.ventaPor || {und: true};
         const uCj = p.unidadesPorCaja || 1;
         const uPaq = p.unidadesPorPaquete || 1;
         
+        // 1. Si se vende por Cajas y es un entero, USAR CAJAS
         if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
             return { value: (qU / uCj), unit: 'Cj' };
         }
+        // 2. Si se vende por Paq y es un entero, USAR PAQUETES
         if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
             return { value: (qU / uPaq), unit: 'Paq' };
         }
+        // 3. Si (se vende por Cj O Paq) PERO no es un entero, Y (se vende por Unds), USAR UNDS
         if (qU > 0 && (vP.cj || vP.paq) && vP.und) {
              return { value: qU, unit: 'Unds' };
         }
+        // 4. Si se vende SÓLO por Cj/Paq (y no por Unds) y no es entero, mostrar decimal
         if (vP.cj && uCj > 0) {
             return { value: parseFloat((qU / uCj).toFixed(2)), unit: 'Cj' };
         }
         if (vP.paq && uPaq > 0) {
             return { value: parseFloat((qU / uPaq).toFixed(2)), unit: 'Paq' };
         }
+        // 5. Fallback final (SÓLO se vende por Unds)
         return { value: qU, unit: 'Unds' };
     }
 
@@ -86,6 +102,7 @@
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
+        _orderBy = dependencies.orderBy;
         _populateDropdown = dependencies.populateDropdown;
         _getDoc = dependencies.getDoc;
         _doc = dependencies.doc;
@@ -205,8 +222,8 @@
                     <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
                     <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
                     <td class="py-2 px-3 border-b text-center space-x-2">
-                        <button onclick="showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
-                        <button onclick="handleDownloadSingleClosing('${cierre.id}')" title="Descargar" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle"> <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> </svg> </button>
+                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
+                        <button onclick="window.dataModule.handleDownloadSingleClosing('${cierre.id}')" title="Descargar" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle"> <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> </svg> </button>
                     </td>
                 </tr> `;
         });
@@ -214,61 +231,15 @@
         container.innerHTML = tableHTML;
     }
 
-    async function _processSalesDataForModal(ventas, userIdForInventario, closingData = null) {
+    async function _processSalesDataForModal(ventas, userIdForInventario) {
         const clientData = {};
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        
-        const closingDate = (closingData && closingData.fecha) ? closingData.fecha.toDate() : ( (ventas.length > 0 && ventas[0].fecha) ? ventas[0].fecha.toDate() : new Date() );
-        const year = closingDate.getFullYear();
-        const month = (closingDate.getMonth() + 1).toString().padStart(2, '0');
-        const day = closingDate.getDate().toString().padStart(2, '0');
-        const closingDateString = `${year}-${month}-${day}`;
-
-        let initialStockMap = null;
-        try {
-            const snapshotDocRef = _doc(_db, `artifacts/${_appId}/users/${userIdForInventario}/carga_snapshots/${closingDateString}`);
-            const snapshotDoc = await _getDoc(snapshotDocRef);
-            
-            if (snapshotDoc.exists()) {
-                console.log(`Reporte: Usando snapshot de Carga Inicial para ${closingDateString}.`);
-                initialStockMap = snapshotDoc.data().inventario || {};
-            } else {
-                console.warn(`Reporte: No se encontró snapshot para ${closingDateString}. Se usará cálculo manual (puede ser inexacto si hubo reposición).`);
-                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-                const inventarioSnapshot = await _getDocs(inventarioRef);
-                const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-                initialStockMap = {};
-                
-                const totalSalesMap = new Map();
-                ventas.forEach(v => (v.productos || []).forEach(p => {
-                    let cant = 0;
-                    if (p.cantidadVendida) {
-                        const uCj = p.unidadesPorCaja || 1;
-                        const uPaq = p.unidadesPorPaquete || 1;
-                        cant = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
-                    } else if (p.totalUnidadesVendidas) {
-                        cant = p.totalUnidadesVendidas;
-                    }
-                    totalSalesMap.set(p.id, (totalSalesMap.get(p.id) || 0) + cant);
-                }));
-                
-                inventarioMap.forEach((prod, id) => {
-                    const currentStock = prod.cantidadUnidades || 0;
-                    const totalSold = totalSalesMap.get(id) || 0;
-                    const initialStock = currentStock + totalSold;
-                    initialStockMap[id] = { ...prod, cantidadUnidades: initialStock };
-                });
-            }
-        } catch (err) {
-            console.error("Error cargando snapshot o inventario para reporte:", err);
-            _showModal('Error', 'No se pudo cargar el inventario base para el reporte.');
-            return;
-        }
-
-
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+        const inventarioSnapshot = await _getDocs(inventarioRef);
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         ventas.forEach(venta => {
             const clientName = venta.clienteNombre || 'Cliente Desconocido';
             if (!clientData[clientName]) clientData[clientName] = { products: {}, totalValue: 0 };
@@ -278,30 +249,16 @@
             const vaciosDev = venta.vaciosDevueltosPorTipo || {};
             for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
             (venta.productos || []).forEach(p => {
-                 const prodInventario = initialStockMap[p.id];
-                 const prodParaReporte = {
-                    id: p.id,
-                    precios: p.precios,
-                    ventaPor: prodInventario?.ventaPor || p.ventaPor || {und: true},
-                    unidadesPorCaja: prodInventario?.unidadesPorCaja || p.unidadesPorCaja || 1,
-                    unidadesPorPaquete: prodInventario?.unidadesPorPaquete || p.unidadesPorPaquete || 1,
-                    rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
-                    segmento: prodInventario?.segmento || p.segmento || 'S/S',
-                    marca: prodInventario?.marca || p.marca || 'S/M',
-                    presentacion: prodInventario?.presentacion || p.presentacion || 'S/P',
-                    manejaVacios: prodInventario?.manejaVacios || p.manejaVacios || false,
-                    tipoVacio: prodInventario?.tipoVacio || p.tipoVacio || null
-                };
-
-                 if (prodParaReporte && prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) { const tipoV = prodParaReporte.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
-                 const rubro = prodParaReporte.rubro;
-                 if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodParaReporte, id: p.id });
+                 const prodComp = inventarioMap.get(p.id) || p;
+                 if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
+                 const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
+                 if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
                  if (p.id && !clientData[clientName].products[p.id]) clientData[clientName].products[p.id] = 0;
                  
                  let cantidadUnidades = 0;
                  if (p.cantidadVendida) { 
-                     const uCj = prodParaReporte.unidadesPorCaja || 1;
-                     const uPaq = prodParaReporte.unidadesPorPaquete || 1;
+                     const uCj = p.unidadesPorCaja || 1;
+                     const uPaq = p.unidadesPorPaquete || 1;
                      cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
                  } else if (p.totalUnidadesVendidas) { 
                      cantidadUnidades = p.totalUnidadesVendidas;
@@ -311,7 +268,7 @@
         });
         const sortedClients = Object.keys(clientData).sort();
         const sortFunction = await getGlobalProductSortFunction();
-        const finalProductOrder = Array.from(Object.values(initialStockMap)).sort(sortFunction);
+        const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
         return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
 
@@ -320,8 +277,9 @@
         if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId, closingData);
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = await _processSalesDataForModal(closingData.ventas, closingData.vendedorInfo.userId);
             
+            // CORREGIDO: Diseño de cabecera según la imagen
             let headerHTML = `
                 <tr class="sticky top-0 z-20 bg-gray-200">
                     <th class="p-1 border sticky left-0 z-30 bg-gray-200">SEGMENTO</th>`;
@@ -358,6 +316,7 @@
                 finalProductOrder.forEach(p => { 
                     const qU=cCli.products[p.id]||0; 
                     const qtyDisplay = getDisplayQty(qU, p);
+                    // CORREGIDO: Mostrar solo el número para clientes
                     let dQ = (qU > 0) ? `${qtyDisplay.value}` : '0';
                     bodyHTML+=`<td class="p-1 border text-center">${dQ}</td>`; 
                 }); 
@@ -367,7 +326,8 @@
             finalProductOrder.forEach(p => { 
                 let tQ=0; 
                 sortedClients.forEach(cli => tQ+=clientData[cli].products[p.id]||0); 
-                const qtyDisplay = getDisplayQty(tQ, p);
+                const qtyDisplay = getDisplayQty(tQ, p); // Usa la función corregida
+                // CORREGIDO: Mostrar número + unidad para totales
                 let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
                 footerHTML+=`<td class="p-1 border text-center">${dT}</td>`; 
             }); 
@@ -380,60 +340,16 @@
         } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
 
-    async function processSalesDataForReport(ventas, userIdForInventario, closingData = null) {
+    async function processSalesDataForReport(ventas, userIdForInventario) {
         const dataByRubro = {};
         const clientTotals = {}; 
         let grandTotalValue = 0;
         const vaciosMovementsPorTipo = {};
         const allRubros = new Set();
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-
-        const closingDate = (closingData && closingData.fecha) ? closingData.fecha.toDate() : ( (ventas.length > 0 && ventas[0].fecha) ? ventas[0].fecha.toDate() : new Date() );
-        const year = closingDate.getFullYear();
-        const month = (closingDate.getMonth() + 1).toString().padStart(2, '0');
-        const day = closingDate.getDate().toString().padStart(2, '0');
-        const closingDateString = `${year}-${month}-${day}`;
-        
-        let initialStockMap = null;
-        try {
-            const snapshotDocRef = _doc(_db, `artifacts/${_appId}/users/${userIdForInventario}/carga_snapshots/${closingDateString}`);
-            const snapshotDoc = await _getDoc(snapshotDocRef);
-            
-            if (snapshotDoc.exists()) {
-                console.log(`Reporte Excel: Usando snapshot de Carga Inicial para ${closingDateString}.`);
-                initialStockMap = snapshotDoc.data().inventario || {};
-            } else {
-                console.warn(`Reporte Excel: No se encontró snapshot para ${closingDateString}. Usando cálculo manual (puede ser inexacto).`);
-                const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
-                const inventarioSnapshot = await _getDocs(inventarioRef); 
-                const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-                
-                const totalSalesMap = new Map();
-                ventas.forEach(v => (v.productos || []).forEach(p => {
-                    let cant = 0;
-                    if (p.cantidadVendida) {
-                        const uCj = p.unidadesPorCaja || 1;
-                        const uPaq = p.unidadesPorPaquete || 1;
-                        cant = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
-                    } else if (p.totalUnidadesVendidas) {
-                        cant = p.totalUnidadesVendidas;
-                    }
-                    totalSalesMap.set(p.id, (totalSalesMap.get(p.id) || 0) + cant);
-                }));
-
-                initialStockMap = {};
-                inventarioMap.forEach((prod, id) => {
-                    const currentStock = prod.cantidadUnidades || 0;
-                    const totalSold = totalSalesMap.get(id) || 0;
-                    const initialStock = currentStock + totalSold;
-                    initialStockMap[id] = { ...prod, cantidadUnidades: initialStock };
-                });
-            }
-        } catch (err) {
-            console.error("Error crítico cargando datos base para Excel:", err);
-            throw new Error("No se pudo cargar el inventario base para el reporte Excel.");
-        }
-
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+        const inventarioSnapshot = await _getDocs(inventarioRef); 
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
         const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
         ventas.forEach(venta => {
@@ -451,13 +367,13 @@
                 vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
             }
             (venta.productos || []).forEach(p => {
-                const prodInventario = initialStockMap[p.id];
+                const prodInventario = inventarioMap.get(p.id); 
                 const prodParaReporte = {
                     id: p.id,
                     precios: p.precios,
-                    ventaPor: prodInventario?.ventaPor || p.ventaPor || {und: true},
-                    unidadesPorCaja: prodInventario?.unidadesPorCaja || p.unidadesPorCaja || 1,
-                    unidadesPorPaquete: prodInventario?.unidadesPorPaquete || p.unidadesPorPaquete || 1,
+                    ventaPor: prodInventario?.ventaPor || p.ventaPor || {und: true}, // Priorizar inventario
+                    unidadesPorCaja: prodInventario?.unidadesPorCaja || p.unidadesPorCaja || 1, // Priorizar inventario
+                    unidadesPorPaquete: prodInventario?.unidadesPorPaquete || p.unidadesPorPaquete || 1, // Priorizar inventario
                     rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
                     segmento: prodInventario?.segmento || p.segmento || 'S/S',
                     marca: prodInventario?.marca || p.marca || 'S/M',
@@ -478,8 +394,8 @@
                 }
                 let cantidadUnidades = 0;
                 if (p.cantidadVendida) { 
-                    const uCj = prodParaReporte.unidadesPorCaja || 1;
-                    const uPaq = prodParaReporte.unidadesPorPaquete || 1;
+                    const uCj = p.unidadesPorCaja || 1;
+                    const uPaq = p.unidadesPorPaquete || 1;
                     cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
                 } else if (p.totalUnidadesVendidas) { 
                     cantidadUnidades = p.totalUnidadesVendidas;
@@ -497,30 +413,19 @@
         });
         const sortFunction = await getGlobalProductSortFunction();
         const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
-        
-        const allProductsFromStock = Object.values(initialStockMap);
-        allProductsFromStock.forEach(p => allRubros.add(p.rubro || 'SIN RUBRO'));
-        
         for (const rubroName of Array.from(allRubros).sort()) {
-            const rubroData = dataByRubro[rubroName] || { clients: {}, totalValue: 0 };
-            
-            const productsInRubro = allProductsFromStock.filter(p => (p.rubro || 'SIN RUBRO') === rubroName);
-            const sortedProducts = productsInRubro.sort(sortFunction);
-            
-            rubroData.productsMap = new Map(sortedProducts.map(p => [p.id, p]));
-            
+            const rubroData = dataByRubro[rubroName];
+            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
             const sortedClients = Object.keys(rubroData.clients).sort();
             const productTotals = {};
             for (const p of sortedProducts) {
                 const productId = p.id;
                 let totalSoldUnits = 0;
                 for (const clientName of sortedClients) {
-                    totalSoldUnits += (rubroData.clients[clientName]?.products?.[productId] || 0);
+                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
                 }
-                
-                const initialStockUnits = initialStockMap[productId]?.cantidadUnidades || 0;
-                const currentStockUnits = initialStockUnits - totalSoldUnits;
-                
+                const currentStockUnits = inventarioMap.get(productId)?.cantidadUnidades || 0;
+                const initialStockUnits = currentStockUnits + totalSoldUnits;
                 productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
             }
             finalData.rubros[rubroName] = { clients: rubroData.clients, products: sortedProducts, sortedClients: sortedClients, totalValue: rubroData.totalValue, productTotals: productTotals };
@@ -528,86 +433,110 @@
         return { finalData, userInfo };
     }
 
+    /**
+     * [NUEVA FUNCIÓN DE ESTILOS PARA EXCELJS]
+     * Esta función construye un objeto de estilo COMPLETO para ExcelJS.
+     * CORREGIDO: Añadido horizontalAlign
+     */
     function buildExcelJSStyle(config, borderStyle, numFmt = null, horizontalAlign = 'left') {
         const style = {};
         
+        // 1. Fuente (Font)
         style.font = {
             bold: config.bold || false,
-            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) },
-            size: config.fontSize || 10
+            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) }, // Formato ARGB
+            size: config.fontSize || 10 // AÑADIDO: Tamaño de letra
         };
 
+        // 2. Relleno (Fill)
         style.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FF' + (config.fillColor || "#FFFFFF").substring(1) }
+            fgColor: { argb: 'FF' + (config.fillColor || "#FFFFFF").substring(1) } // Formato ARGB
         };
 
+        // 3. Bordes (Border)
         if (config.border && borderStyle) {
             style.border = borderStyle;
         }
 
+        // 4. Formato de Número (Number Format)
         if (numFmt) {
             style.numFmt = numFmt;
         }
         
-        style.alignment = { vertical: 'middle', horizontal: horizontalAlign };
+        // 5. Alineación (opcional, se puede añadir si se desea)
+        style.alignment = { vertical: 'middle', horizontal: horizontalAlign }; // Añadido centrado vertical y horizontal
 
         return style;
     }
 
+    /**
+     * [FUNCIÓN DE EXPORTACIÓN ACTUALIZADA CON EXCELJS]
+     * Reescritura completa de la función de exportación para usar ExcelJS.
+     */
     async function exportSingleClosingToExcel(closingData) {
+        // Verificar si ExcelJS está cargado
         if (typeof ExcelJS === 'undefined') {
             _showModal('Error', 'Librería ExcelJS no cargada. No se puede exportar.');
             return;
         }
 
         const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
+        // --- MODIFICADO: Usar _.cloneDeep o similar (JSON.parse(JSON.stringify)) para evitar mutación
         let settings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); 
         try {
             const designDocRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(designDocRef);
             if (docSnap.exists()) {
                 const savedSettings = docSnap.data();
+                // Merge profundo manual simple para evitar problemas
                 settings = { ...settings, ...savedSettings };
                 settings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
                 settings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
             } 
         } catch (err) {
             console.warn("Error al cargar diseño de reporte, usando default:", err);
+            // settings ya es DEFAULT_REPORTE_SETTINGS
         }
         _showModal('Progreso', 'Generando Excel con su diseño...'); 
 
         try {
-            const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId, closingData);
+            const { finalData, userInfo } = await processSalesDataForReport(closingData.ventas, closingData.vendedorInfo.userId);
             const workbook = new ExcelJS.Workbook();
             const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
+            // CORRECCIÓN (Fix 1): Usar nombre y apellido, no email
             const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
             const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
 
 
+            // --- Definición de Estilos (usando la nueva buildExcelJSStyle) ---
             const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
             const s = settings.styles;
 
+            // CORREGIDO: Añadido 'left' alignment
             const headerInfoStyle = buildExcelJSStyle(s.headerInfo, s.headerInfo.border ? thinBorderStyle : null, null, 'left');
             const headerProductsStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
             const headerPriceStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            // --- CORRECCIÓN (Fix 2): Re-añadido headerSubtotalStyle ---
             const headerSubtotalStyle = buildExcelJSStyle({ ...s.headerProducts, bold: true }, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
 
             const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'left');
-            const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'center');
+            const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
             
             const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'left');
-            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0", 'center');
-            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0", 'center');
-            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            // CORRECCIÓN (Fix 3): Estilo de cliente solo número
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0", 'center'); // SOLO NÚMERO
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0", 'center'); // SOLO NÚMERO
+            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precios derecha
 
             const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'left');
-            const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'center');
+            const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
 
             const totalsStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'left');
-            const totalsQtyStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'center');
-            const totalsPriceStyle = buildExcelJSStyle({ ...s.rowTotals, bold: true }, s.rowTotals.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            const totalsQtyStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'center'); // Cantidades centradas
+            const totalsPriceStyle = buildExcelJSStyle({ ...s.rowTotals, bold: true }, s.rowTotals.border ? thinBorderStyle : null, "$#,##0.00", 'right'); // Precio derecha
+            // --- Fin Estilos ---
 
             const getPrice = (p) => {
                 const precios = p.precios || { und: p.precioPorUnidad || 0 };
@@ -623,22 +552,31 @@
                 const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
                 const worksheet = workbook.addWorksheet(sheetName);
 
+                // --- MODIFICADO: Ancho de columnas desde settings ---
+                // CORRECCIÓN (Fix 2): Aplicar anchos de Col A y B
                 const colWidths = [ 
-                    { width: settings.columnWidths.col_A_LabelsClientes },
+                    { width: settings.columnWidths.col_A_LabelsClientes }, // Col A
                 ];
-                const START_COL = 2;
+                const START_COL = 2; // Columna 'B'
                 
+                // --- Fila 1: Info Fecha ---
+                // CORREGIDO (Fix 1): Poner valor en A1, sin merge
                 worksheet.getCell('A1').value = fechaCierre;
                 worksheet.getCell('A1').style = headerInfoStyle;
 
+                // --- Fila 2: Info Usuario ---
+                // CORREGIDO (Fix 1): Poner valor en A2, sin merge
                 worksheet.getCell('A2').value = usuarioDisplay;
                 worksheet.getCell('A2').style = headerInfoStyle;
 
+                // --- Fila 3-6: Cabeceras de Producto ---
+                // CORRECCIÓN (Fix 2): Mover filas de cabecera a 3,4,5,6
                 const headerRowSegment = worksheet.getRow(3);
                 const headerRowMarca = worksheet.getRow(4);
                 const headerRowPresentacion = worksheet.getRow(5);
                 const headerRowPrecio = worksheet.getRow(6);
 
+                // CORREGIDO (Fix 2): Poner etiquetas en Col A (A3, A4, A5, A6)
                 headerRowSegment.getCell(1).value = "SEGMENTO";
                 headerRowMarca.getCell(1).value = "MARCA";
                 headerRowPresentacion.getCell(1).value = "PRESENTACION";
@@ -655,25 +593,29 @@
                     const presentacion = p.presentacion || 'S/P';
                     const precio = getPrice(p);
 
+                    // CORREGIDO (Fix 2): Cabeceras de producto empiezan en Fila 3 (B3, C3...)
                     headerRowSegment.getCell(c).value = segment;
                     headerRowMarca.getCell(c).value = marca;
                     headerRowPresentacion.getCell(c).value = presentacion;
                     headerRowPrecio.getCell(c).value = precio;
 
+                    // Aplicar estilos a cabeceras
                     headerRowSegment.getCell(c).style = headerProductsStyle;
                     headerRowMarca.getCell(c).style = headerProductsStyle;
                     headerRowPresentacion.getCell(c).style = headerProductsStyle;
                     headerRowPrecio.getCell(c).style = headerPriceStyle;
 
+                    // --- CORRECCIÓN (Fix 2): Ancho de Columna de Producto ---
+                    // CORRECCIÓN: Usar el ancho definido por el usuario
                     colWidths.push({ width: settings.columnWidths.products });
 
                     if (index > 0) {
                         if (segment !== lastSegment) {
-                            if (c - 1 >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, c - 1); }
+                            if (c - 1 >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, c - 1); } // Fila 3
                             segmentColStart = c;
                         }
                         if (marca !== lastMarca || segment !== lastSegment) {
-                            if (c - 1 >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, c - 1); }
+                            if (c - 1 >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, c - 1); } // Fila 4
                             marcaColStart = c;
                         }
                     }
@@ -682,39 +624,45 @@
                 });
 
                 const lastProdCol = START_COL + sortedProducts.length - 1;
-                if (lastProdCol >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, lastProdCol); }
-                if (lastProdCol >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, lastProdCol); }
+                if (lastProdCol >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, lastProdCol); } // Fila 3
+                if (lastProdCol >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, lastProdCol); } // Fila 4
                 
+                // --- CORRECCIÓN (Fix 2): Re-agregada columna Sub Total ---
                 const subTotalCol = START_COL + sortedProducts.length;
                 worksheet.getCell(3, subTotalCol).value = "Sub Total";
                 worksheet.getCell(3, subTotalCol).style = headerSubtotalStyle;
-                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol);
+                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol); // Combinar de fila 3 a 6
                 colWidths.push({ width: settings.columnWidths.subtotal });
+                // --- FIN CORRECCIÓN ---
                 
                 worksheet.columns = colWidths;
                 
-                let currentRowNum = 8;
+                let currentRowNum = 8; // Empezar en fila 8 (después de cabeceras y fila 7 en blanco)
 
+                // --- Fila: CARGA INICIAL ---
                 if (settings.showCargaInicial) {
                     const cargaInicialRow = worksheet.getRow(currentRowNum++);
-                    cargaInicialRow.getCell(1).value = "CARGA INICIAL";
+                    cargaInicialRow.getCell(1).value = "CARGA INICIAL"; // Col A
                     cargaInicialRow.getCell(1).style = cargaInicialStyle;
                     sortedProducts.forEach((p, index) => {
                         const initialStock = productTotals[p.id]?.initialStock || 0;
                         const cell = cargaInicialRow.getCell(START_COL + index);
+                        // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(initialStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                        // CORRECCIÓN ERROR NUMFMT
+                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                     });
-                    cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle;
+                    cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle; // Celda vacía con estilo
                 }
 
-                currentRowNum++;
+                currentRowNum++; // Fila vacía
 
+                // --- Filas: Clientes ---
                 sortedClients.forEach(clientName => {
                     const clientRow = worksheet.getRow(currentRowNum++);
-                    clientRow.getCell(1).value = clientName;
-                    clientRow.getCell(1).style = clientDataStyle;
+                    clientRow.getCell(1).value = clientName; // Col A
+                    clientRow.getCell(1).style = clientDataStyle; // Estilo para el nombre del cliente
                     
                     const clientSales = clientData[clientName];
                     sortedProducts.forEach((p, index) => {
@@ -724,51 +672,63 @@
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
                         
+                        // CORREGIDO (Fix 3): Usar estilo SIN unidad
                         const baseStyle = (qU > 0) ? clientSaleStyle : clientQtyStyle;
+                        // CORRECCIÓN ERROR NUMFMT: Aplicar formato "0" (entero)
                         cell.style = { ...baseStyle, numFmt: "0" }; 
                     });
+                    // --- CORRECCIÓN (Fix 2): Re-agregado subtotal cliente ---
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
-                    subtotalCell.style = clientPriceStyle;
+                    subtotalCell.style = clientPriceStyle; // Estilo para el subtotal del cliente
+                    // --- FIN CORRECCIÓN ---
                 });
 
-                currentRowNum++;
+                currentRowNum++; // Fila vacía
 
+                // --- Fila: CARGA RESTANTE ---
                 if (settings.showCargaRestante) {
                     const cargaRestanteRow = worksheet.getRow(currentRowNum++);
-                    cargaRestanteRow.getCell(1).value = "CARGA RESTANTE";
+                    cargaRestanteRow.getCell(1).value = "CARGA RESTANTE"; // Col A
                     cargaRestanteRow.getCell(1).style = cargaRestanteStyle;
                     sortedProducts.forEach((p, index) => {
                         const currentStock = productTotals[p.id]?.currentStock || 0;
                         const cell = cargaRestanteRow.getCell(START_COL + index);
+                        // CORREGIDO (Fix 3): Aplicar formato CON unidad
                         const qtyDisplay = getDisplayQty(currentStock, p);
                         cell.value = qtyDisplay.value;
-                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                     });
-                    cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle;
+                    cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle; // Celda vacía con estilo
                 }
 
+                // --- Fila: TOTALES ---
                 const totalesRow = worksheet.getRow(currentRowNum++);
-                totalesRow.getCell(1).value = "TOTALES";
+                totalesRow.getCell(1).value = "TOTALES"; // Col A
                 totalesRow.getCell(1).style = totalsStyle;
                 sortedProducts.forEach((p, index) => {
                     const totalSold = productTotals[p.id]?.totalSold || 0;
                     const cell = totalesRow.getCell(START_COL + index);
+                    // CORREGIDO (Fix 3): Aplicar formato CON unidad
                     const qtyDisplay = getDisplayQty(totalSold, p);
                     cell.value = qtyDisplay.value;
-                    cell.style = { ...totalsQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                    cell.style = { ...totalsQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` }; // Añadido espacio
                 });
+                // --- CORRECCIÓN (Fix 2): Re-agregado subtotal totales ---
                 const totalCell = totalesRow.getCell(subTotalCol);
                 totalCell.value = rubroTotalValue;
                 totalCell.style = totalsPriceStyle;
+                // --- FIN CORRECCIÓN ---
             }
 
+            // --- Hoja: Reporte Vacíos ---
             const { vaciosMovementsPorTipo } = finalData;
             const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
             const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
             
             if (settings.showVaciosSheet && cliVacios.length > 0) { 
                 const wsVacios = workbook.addWorksheet('Reporte Vacíos');
+                // --- MODIFICADO: Ancho de columnas desde settings ---
                 wsVacios.columns = [ 
                     { width: settings.columnWidths.vaciosCliente }, 
                     { width: settings.columnWidths.vaciosTipo }, 
@@ -777,42 +737,52 @@
                     { width: settings.columnWidths.vaciosQty } 
                 ];
 
+                // --- MODIFICADO: Aplicar estilos a Hoja Vacíos ---
                 const vaciosHeaderStyle = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'left');
                 const vaciosDataStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, null, 'left');
                 const vaciosDataNumStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, '0', 'center');
                 
                 const headerRowVacios = wsVacios.getRow(1);
                 headerRowVacios.values = ['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto'];
+                // CORREGIDO: Aplicar estilo a CADA celda de la cabecera
                 headerRowVacios.getCell(1).style = vaciosHeaderStyle;
                 headerRowVacios.getCell(2).style = vaciosHeaderStyle;
                 headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
                 headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
                 headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                // --- FIN MODIFICADO ---
                 
                 cliVacios.forEach(cli => {
                     const movs = vaciosMovementsPorTipo[cli]; 
                     TIPOS_VACIO_GLOBAL.forEach(t => {
                         const mov = movs[t] || {entregados:0, devueltos:0}; 
                         if (mov.entregados > 0 || mov.devueltos > 0) {
+                            // --- MODIFICADO: Aplicar estilo de datos a fila ---
                             const dataRow = wsVacios.addRow([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            // Aplicar estilo de datos general (para texto)
                             dataRow.getCell(1).style = vaciosDataStyle;
                             dataRow.getCell(2).style = vaciosDataStyle;
+                            // Aplicar estilo numérico y centrado
                             dataRow.getCell(3).style = vaciosDataNumStyle;
                             dataRow.getCell(4).style = vaciosDataNumStyle;
                             dataRow.getCell(5).style = vaciosDataNumStyle;
+                            // --- FIN MODIFICADO ---
                         }
                     });
                 }); 
             }
 
+            // --- Hoja: Total Por Cliente ---
             const { clientTotals, grandTotalValue } = finalData;
             if (settings.showClienteTotalSheet) {
                 const wsClientes = workbook.addWorksheet('Total Por Cliente');
+                // --- MODIFICADO: Ancho de columnas desde settings ---
                 wsClientes.columns = [ 
                     { width: settings.columnWidths.totalCliente }, 
                     { width: settings.columnWidths.totalClienteValor } 
                 ];
 
+                // --- MODIFICADO: Aplicar estilos a Hoja Totales ---
                 const totalesHeaderStyle = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'left');
                 const totalesDataStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, null, 'left');
                 const totalesDataPriceStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, "$#,##0.00", 'right');
@@ -821,21 +791,30 @@
                 
                 const headerRowTotales = wsClientes.getRow(1);
                 headerRowTotales.values = ['Cliente', 'Gasto Total'];
+                // CORREGIDO: Aplicar estilo a CADA celda
                 headerRowTotales.getCell(1).style = totalesHeaderStyle;
                 headerRowTotales.getCell(2).style = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'right');
+                // --- FIN MODIFICADO ---
                 
                 const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
                 sortedClientTotals.forEach(([clientName, totalValue]) => {
+                    // --- MODIFICADO: Aplicar estilo de datos a fila ---
                     const row = wsClientes.addRow([clientName, Number(totalValue.toFixed(2))]);
+                    // CORREGIDO: Aplicar estilo a CADA celda
                     row.getCell(1).style = totalesDataStyle;
                     row.getCell(2).style = totalesDataPriceStyle;
+                    // --- FIN MODIFICADO ---
                 });
                 
+                // --- MODIFICADO: Aplicar estilo a fila total ---
                 const totalRow = wsClientes.addRow(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+                // CORREGIDO: Aplicar estilo a CADA celda
                 totalRow.getCell(1).style = totalesTotalRowStyle;
                 totalRow.getCell(2).style = totalesTotalRowPriceStyle;
+                // --- FIN MODIFICADO ---
             }
 
+            // --- Descargar el archivo ---
             const vendedor = closingData.vendedorInfo || {}; 
             const fecha = closingData.fecha.toDate().toISOString().slice(0, 10); 
             const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
@@ -952,15 +931,17 @@
             return (a.presentacion||'').localeCompare(b.presentacion||'');
         });
         productArray.forEach(p => { 
+            // CORREGIDO: Usar getDisplayQty
             const totPer = statsType==='general'?(p.totalUnidades/numWeeks):p.totalUnidades; 
             const qtyDisplay = getDisplayQty(totPer, p);
             let dQty = qtyDisplay.value;
+            // Para estadísticas, sí queremos decimales si no es Unds
             if (qtyDisplay.unit !== 'Unds') {
                 dQty = totPer / (qtyDisplay.unit === 'Cj' ? (p.unidadesPorCaja || 1) : (p.unidadesPorPaquete || 1));
-                dQty = dQty.toFixed(1);
+                dQty = dQty.toFixed(1); // Mostrar un decimal para promedios
                 if(dQty.endsWith('.0')) dQty = dQty.slice(0,-2);
             } else {
-                dQty = dQty.toFixed(0);
+                dQty = dQty.toFixed(0); // Sin decimales para unidades
             }
 
             const desc = `<span class="font-semibold">${p.segmento}</span> <span class="text-gray-700">${p.marca}</span> <span class="text-gray-500 font-light">${p.presentacion}</span>`;
@@ -970,20 +951,24 @@
         const dBt = document.getElementById('downloadStatsBtn'); if(dBt) dBt.addEventListener('click', handleDownloadStats);
     }
     
+    /**
+     * [NUEVA FUNCIÓN DE EXPORTACIÓN CON EXCELJS]
+     */
     async function handleDownloadStats() {
         if (_lastStatsData.length === 0 || typeof ExcelJS === 'undefined') { _showModal('Aviso', _lastStatsData.length === 0 ? 'No hay datos.' : 'Librería ExcelJS no cargada.'); return; }
         
         const sType = document.getElementById('stats-type').value; 
         const hTitle = sType === 'general' ? 'Prom. Semanal' : 'Total Vendido';
         const dExport = _lastStatsData.map(p => { 
+            // CORREGIDO: Usar getDisplayQty
             const totPer = statsType==='general'?(p.totalUnidades/_lastNumWeeks):p.totalUnidades; 
             const qtyDisplay = getDisplayQty(totPer, p);
             let dQty = qtyDisplay.value;
             if (qtyDisplay.unit !== 'Unds') {
                 dQty = totPer / (qtyDisplay.unit === 'Cj' ? (p.unidadesPorCaja || 1) : (p.unidadesPorPaquete || 1));
-                dQty = parseFloat(dQty.toFixed(2));
+                dQty = parseFloat(dQty.toFixed(2)); // Usar 2 decimales para Excel
             } else {
-                dQty = parseFloat(dQty.toFixed(0));
+                dQty = parseFloat(dQty.toFixed(0)); // Asegurarse que es número
             }
 
             return {
@@ -1006,18 +991,21 @@
         ];
         worksheet.getRow(1).font = { bold: true };
         
+        // Añadir filas manualmente para controlar el tipo
         dExport.forEach(item => {
             worksheet.addRow({
                 'Segmento': item.Segmento,
                 'Marca': item.Marca,
                 'Presentacion': item.Presentacion,
-                [hTitle]: item['ValorNumerico'],
-                'Unidad': item.Unidad
+                [hTitle]: item['ValorNumerico'], // Guardar como número
+                'Unidad': item.Unidad // Guardar unidad por separado (opcional)
             });
+            // Aplicar formato de número a la celda de cantidad
             const lastRow = worksheet.lastRow;
+            // CORRECCIÓN: Asegurarse de que getCell(hTitle) funciona
             const qtyCell = lastRow.getCell(hTitle);
             if (qtyCell) {
-                qtyCell.numFmt = `0.## " ${item.Unidad}"`;
+                qtyCell.numFmt = `0.## " ${item.Unidad}"`; // Formato: "10.5 Cajas"
             }
         });
 
@@ -1075,6 +1063,9 @@
         tHTML += '</tbody></table>'; cont.innerHTML = tHTML;
     }
     
+    /**
+     * [NUEVA FUNCIÓN DE EXPORTACIÓN CON EXCELJS]
+     */
     async function handleDownloadFilteredClients() {
          if (typeof ExcelJS === 'undefined' || _filteredClientsCache.length === 0) { _showModal('Aviso', typeof ExcelJS === 'undefined'?'Librería ExcelJS no cargada.':'No hay clientes.'); return; }
         
@@ -1140,9 +1131,8 @@
             const cliCoords = _consolidatedClientsCache.filter(c => { if(!c.coordenadas)return false; const p=c.coordenadas.split(','); if(p.length!==2)return false; const lat=parseFloat(p[0]), lon=parseFloat(p[1]); return !isNaN(lat)&&!isNaN(lon)&&lat>=0&&lat<=13&&lon>=-74&&lon<=-59; });
             if (cliCoords.length === 0) { mapCont.innerHTML = '<p class="text-gray-500">No hay clientes con coordenadas válidas.</p>'; return; }
             let mapCenter = [7.77, -72.22]; let zoom = 13; mapInstance = L.map('client-map').setView(mapCenter, zoom); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(mapInstance);
-            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); 
-            const blueI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
-            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https://www.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
+            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); const blueI = new L.Icon({iconUrl:'https{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
+            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https{s}.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
             if(mGroup.length > 0) { const group = L.featureGroup(mGroup).addTo(mapInstance); mapInstance.fitBounds(group.getBounds().pad(0.1)); } else { mapCont.innerHTML = '<p class="text-gray-500">No se pudieron mostrar clientes.</p>'; return; }
             setupMapSearch(cliCoords);
         } catch (error) { console.error("Error mapa:", error); mapCont.innerHTML = `<p class="text-red-500">Error al cargar datos mapa.</p>`; }
@@ -1154,8 +1144,9 @@
         document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
     }
 
+    // --- MODIFICADO: createZoneEditor ahora incluye Tamaño de Letra ---
     function createZoneEditor(idPrefix, label, settings) {
-        const s = settings;
+        const s = settings; // 'settings' es el objeto de estilo (ej: s.styles.headerInfo)
         return `
         <div class="p-3 border rounded-lg bg-gray-50">
             <h4 class="font-semibold text-gray-700">${label}</h4>
@@ -1169,6 +1160,8 @@
         </div>`;
     }
 
+    // --- MODIFICADO: createWidthEditor (NUEVA FUNCIÓN) ---
+    // Función auxiliar para crear inputs de ancho
     function createWidthEditor(id, label, value) {
         return `
         <div class="flex items-center justify-between">
@@ -1177,6 +1170,7 @@
         </div>`;
     }
 
+    // --- MODIFICADO: showReportDesignView ahora usa PESTAÑAS ---
     async function showReportDesignView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -1185,21 +1179,22 @@
                 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
                 input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
                 input[type="color"]::-moz-color-swatch { border: none; border-radius: 2px; }
+                /* Estilos para pestañas */
                 .design-tab-btn {
                     padding: 0.5rem 1rem;
                     cursor: pointer;
                     border: 1px solid transparent;
                     border-bottom: none;
                     margin-bottom: -1px;
-                    background-color: #f9fafb;
-                    color: #6b7280;
-                    border-radius: 0.375rem 0.375rem 0 0;
+                    background-color: #f9fafb; /* bg-gray-50 */
+                    color: #6b7280; /* text-gray-500 */
+                    border-radius: 0.375rem 0.375rem 0 0; /* rounded-t-md */
                 }
                 .design-tab-btn.active {
-                    background-color: #ffffff;
-                    color: #3b82f6;
-                    font-weight: 600;
-                    border-color: #e5e7eb;
+                    background-color: #ffffff; /* bg-white */
+                    color: #3b82f6; /* text-blue-600 */
+                    font-weight: 600; /* font-semibold */
+                    border-color: #e5e7eb; /* border-gray-200 */
                 }
             </style>
             <div class="p-4 pt-8">
@@ -1212,6 +1207,7 @@
                         
                         <form id="design-form-container" class="hidden text-left">
                             
+                            <!-- Contenedor de Pestañas -->
                             <div id="design-tabs" class="flex border-b border-gray-200 mb-4 overflow-x-auto text-sm">
                                 <button type="button" class="design-tab-btn active" data-tab="general">General</button>
                                 <button type="button" class="design-tab-btn" data-tab="rubro">Hoja Rubros</button>
@@ -1219,8 +1215,10 @@
                                 <button type="button" class="design-tab-btn" data-tab="totales">Hoja Totales</button>
                             </div>
 
+                            <!-- Contenido de Pestañas -->
                             <div id="design-tab-content" class="space-y-6">
 
+                                <!-- Pestaña General (Visibilidad) -->
                                 <div id="tab-content-general" class="space-y-4">
                                     <h3 class="text-lg font-semibold border-b pb-2 mt-4">Visibilidad de Secciones</h3>
                                     <div class="space-y-2 mt-4">
@@ -1243,33 +1241,42 @@
                                     </div>
                                 </div>
 
+                                <!-- Pestaña Hoja Rubros (Estilos y Anchos) -->
                                 <div id="tab-content-rubro" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Rubros)</h3>
+                                    <!-- CORREGIDO: Contenedor vacío -->
                                     <div id="rubro-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
                                         <p>Cargando anchos...</p>
                                     </div>
                                     <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Rubros)</h3>
+                                    <!-- CORREGIDO: Contenedor vacío -->
                                     <div id="style-zones-container" class="space-y-3 mt-4">
                                         <p>Cargando estilos...</p>
                                     </div>
                                 </div>
 
+                                <!-- Pestaña Hoja Vacíos (Anchos) -->
                                 <div id="tab-content-vacios" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Vacíos)</h3>
+                                    <!-- CORREGIDO: Contenedor vacío -->
                                     <div id="vacios-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
                                         <p>Cargando anchos...</p>
                                     </div>
+                                    <!-- --- AÑADIDO: Contenedor de Estilos Hoja Vacíos --- -->
                                     <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Vacíos)</h3>
                                     <div id="vacios-styles-container" class="space-y-3 mt-4">
                                         <p>Cargando estilos...</p>
                                     </div>
                                 </div>
 
+                                <!-- Pestaña Hoja Totales (Anchos) -->
                                 <div id="tab-content-totales" class="space-y-6 hidden">
                                     <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Totales)</h3>
+                                    <!-- CORREGIDO: Contenedor vacío -->
                                     <div id="totales-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
                                         <p>Cargando anchos...</p>
                                     </div>
+                                    <!-- --- AÑADIDO: Contenedor de Estilos Hoja Totales --- -->
                                     <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Totales)</h3>
                                     <div id="totales-styles-container" class="space-y-3 mt-4">
                                         <p>Cargando estilos...</p>
@@ -1278,6 +1285,7 @@
 
                             </div>
 
+                            <!-- Botones de Acción -->
                             <div class="flex flex-col sm:flex-row gap-4 pt-6 mt-6 border-t">
                                 <button type="button" id="saveDesignBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Diseño</button>
                                 <button type="button" id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
@@ -1291,6 +1299,7 @@
         document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('saveDesignBtn').addEventListener('click', handleSaveReportDesign);
 
+        // --- Lógica de Pestañas ---
         const tabsContainer = document.getElementById('design-tabs');
         const tabContents = document.querySelectorAll('#design-tab-content > div');
         tabsContainer.addEventListener('click', (e) => {
@@ -1299,11 +1308,13 @@
 
             const tabId = clickedTab.dataset.tab;
             
+            // Actualizar botones
             tabsContainer.querySelectorAll('.design-tab-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             clickedTab.classList.add('active');
             
+            // Actualizar contenido
             tabContents.forEach(content => {
                 if (content.id === `tab-content-${tabId}`) {
                     content.classList.remove('hidden');
@@ -1313,6 +1324,7 @@
             });
         });
 
+        // --- Carga de Datos ---
         const loader = document.getElementById('design-loader');
         const formContainer = document.getElementById('design-form-container');
         
@@ -1321,7 +1333,7 @@
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(docRef);
             
-            let currentSettings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS));
+            let currentSettings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); // Copia profunda
             if (docSnap.exists()) {
                 const savedSettings = docSnap.data();
                 currentSettings = { ...currentSettings, ...savedSettings };
@@ -1329,12 +1341,15 @@
                 currentSettings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
             }
 
+            // Poblar Pestaña General (Visibilidad)
             document.getElementById('chk_showCargaInicial').checked = currentSettings.showCargaInicial;
             document.getElementById('chk_showCargaRestante').checked = currentSettings.showCargaRestante;
             document.getElementById('chk_showVaciosSheet').checked = currentSettings.showVaciosSheet;
             document.getElementById('chk_showClienteTotalSheet').checked = currentSettings.showClienteTotalSheet;
 
+            // Poblar Pestaña Hoja Rubros (Estilos y Anchos)
             const s = currentSettings.styles;
+            // --- CORRECCIÓN: Apuntar al contenedor correcto ---
             document.getElementById('style-zones-container').innerHTML = `
                 ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
                 ${createZoneEditor('headerProducts', 'Cabecera Productos', s.headerProducts)}
@@ -1345,27 +1360,35 @@
                 ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
             `;
             const w = currentSettings.columnWidths;
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de rubro ---
+            // CORREGIDO: IDs y etiquetas para el diseño A/B
             document.getElementById('rubro-widths-container').innerHTML = `
                 ${createWidthEditor('width_col_A_LabelsClientes', 'Col A (Etiquetas/Clientes)', w.col_A_LabelsClientes)}
                 ${createWidthEditor('width_products', 'Cols Producto (B, C...)', w.products)}
                 ${createWidthEditor('width_subtotal', 'Col Sub Total', w.subtotal)}
             `;
 
+            // Poblar Pestaña Hoja Vacíos (Anchos)
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de vacíos ---
             document.getElementById('vacios-widths-container').innerHTML = `
                 ${createWidthEditor('width_vaciosCliente', 'Cliente', w.vaciosCliente)}
                 ${createWidthEditor('width_vaciosTipo', 'Tipo Vacío', w.vaciosTipo)}
                 ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', w.vaciosQty)}
-                <div></div>
+                <div></div> <!-- Placeholder for grid -->
             `;
+            // --- AÑADIDO: Poblar estilos Hoja Vacíos ---
             document.getElementById('vacios-styles-container').innerHTML = `
                 ${createZoneEditor('vaciosHeader', 'Cabecera (Cliente, Tipo, etc.)', s.vaciosHeader)}
                 ${createZoneEditor('vaciosData', 'Filas de Datos', s.vaciosData)}
             `;
 
+            // Poblar Pestaña Hoja Totales (Anchos)
+            // --- CORRECCIÓN: Poblar el contenedor de anchos de totales ---
             document.getElementById('totales-widths-container').innerHTML = `
                 ${createWidthEditor('width_totalCliente', 'Cliente', w.totalCliente)}
                 ${createWidthEditor('width_totalClienteValor', 'Gasto Total', w.totalClienteValor)}
             `;
+            // --- AÑADIDO: Poblar estilos Hoja Totales ---
             document.getElementById('totales-styles-container').innerHTML = `
                 ${createZoneEditor('totalesHeader', 'Cabecera (Cliente, Gasto)', s.totalesHeader)}
                 ${createZoneEditor('totalesData', 'Filas de Clientes', s.totalesData)}
@@ -1382,26 +1405,29 @@
         }
     }
 
+    // --- MODIFICADO: readZoneEditor ahora es más robusto ---
     function readZoneEditor(idPrefix) {
         const boldEl = document.getElementById(`${idPrefix}_bold`);
         const borderEl = document.getElementById(`${idPrefix}_border`);
         const fillColorEl = document.getElementById(`${idPrefix}_fillColor`);
         const fontColorEl = document.getElementById(`${idPrefix}_fontColor`);
-        const fontSizeEl = document.getElementById(`${idPrefix}_fontSize`);
+        const fontSizeEl = document.getElementById(`${idPrefix}_fontSize`); // AÑADIDO
 
+        // Usar valores por defecto si los elementos no se encuentran
         const defaults = DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || 
                          (idPrefix === 'rowDataClientsSale' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients : 
-                         (DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || {}));
+                         (DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || {})); // Fallback genérico
 
         return {
             bold: boldEl ? boldEl.checked : (defaults.bold || false),
             border: borderEl ? borderEl.checked : (defaults.border || false),
             fillColor: fillColorEl ? fillColorEl.value : (defaults.fillColor || '#FFFFFF'),
             fontColor: fontColorEl ? fontColorEl.value : (defaults.fontColor || '#000000'),
-            fontSize: fontSizeEl ? (parseInt(fontSizeEl.value, 10) || 10) : (defaults.fontSize || 10)
+            fontSize: fontSizeEl ? (parseInt(fontSizeEl.value, 10) || 10) : (defaults.fontSize || 10) // AÑADIDO
         };
     }
 
+    // --- NUEVO: readWidthInputs ---
     function readWidthInputs() {
         const defaults = DEFAULT_REPORTE_SETTINGS.columnWidths;
         const readVal = (id, def) => parseInt(document.getElementById(id)?.value, 10) || def;
@@ -1409,7 +1435,7 @@
         return {
             col_A_LabelsClientes: readVal('width_col_A_LabelsClientes', defaults.col_A_LabelsClientes),
             products: readVal('width_products', defaults.products),
-            subtotal: readVal('width_subtotal', defaults.subtotal),
+            subtotal: readVal('width_subtotal', defaults.subtotal), // RE-AGREGADO
             vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
             vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
             vaciosQty: readVal('width_vaciosQty', defaults.vaciosQty),
@@ -1426,27 +1452,30 @@
             showCargaRestante: document.getElementById('chk_showCargaRestante').checked,
             showVaciosSheet: document.getElementById('chk_showVaciosSheet').checked,
             showClienteTotalSheet: document.getElementById('chk_showClienteTotalSheet').checked,
+            // --- MODIFICADO: Leer estilos y anchos ---
             styles: {
                 headerInfo: readZoneEditor('headerInfo'),
                 headerProducts: readZoneEditor('headerProducts'),
                 rowCargaInicial: readZoneEditor('rowCargaInicial'),
                 rowDataClients: readZoneEditor('rowDataClients'),
-                rowDataClientsSale: readZoneEditor('rowDataClientsSale'),
+                rowDataClientsSale: readZoneEditor('rowDataClientsSale'), // NUEVO
                 rowCargaRestante: readZoneEditor('rowCargaRestante'),
                 rowTotals: readZoneEditor('rowTotals'),
+                // --- AÑADIDO: Lectura de nuevos estilos ---
                 vaciosHeader: readZoneEditor('vaciosHeader'),
                 vaciosData: readZoneEditor('vaciosData'),
                 totalesHeader: readZoneEditor('totalesHeader'),
                 totalesData: readZoneEditor('totalesData'),
                 totalesTotalRow: readZoneEditor('totalesTotalRow')
             },
-            columnWidths: readWidthInputs()
+            columnWidths: readWidthInputs() // NUEVO
+            // --- FIN MODIFICADO ---
         };
 
         try {
             const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
-            await _setDoc(docRef, newSettings);
+            await _setDoc(docRef, newSettings); // _setDoc sobrescribe, lo cual está bien aquí
             _showModal('Éxito', 'Diseño guardado correctamente.', showDataView); 
         } catch (error) {
             console.error("Error guardando diseño:", error);
@@ -1457,6 +1486,7 @@
     async function getGlobalProductSortFunction() {
         if (!_sortPreferenceCache) {
             try { 
+                // --- CORRECCIÓN: 'SORT_CONFIG_PATH' se movió al inicio del archivo ---
                 const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); 
                 const dSnap=await _getDoc(dRef); 
                 if(dSnap.exists()&&dSnap.data().order){ 
@@ -1481,7 +1511,10 @@
         };
     };
 
-    window.showClosingDetail = showClosingDetail;
-    window.handleDownloadSingleClosing = handleDownloadSingleClosing;
+    window.dataModule = { 
+        showClosingDetail, 
+        handleDownloadSingleClosing 
+    };
 
 })();
+
