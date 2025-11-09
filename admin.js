@@ -174,7 +174,27 @@
         if (cleanVen) { colsToDelPub.push({ path: `public_data/${_appId}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
         if (cleanObs) { const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); try { await _deleteDoc(pubConfRef); console.log("Deleted public obsequio config."); } catch(e){ console.warn("Could not delete public obsequio config:", e.code); } }
 
-        const privColsToClean = []; if(cleanInv){privColsToClean.push({sub:'inventario',n:'Inventario'}); privColsToClean.push({sub:'rubros',n:'Rubros'}); privColsToClean.push({sub:'segmentos',n:'Segmentos'}); privColsToClean.push({sub:'marcas',n:'Marcas'});} if(cleanVen){privColsToClean.push({sub:'ventas',n:'Ventas'}); privColsToClean.push({sub:'cierres',n:'Cierres'});} if(cleanObs){privColsToClean.push({sub:'obsequios_entregados',n:'Obsequios Entregados'}); privColsToClean.push({sub:'config/obsequio',n:'Config Obsequio Privada',isDoc:true});}
+        const privColsToClean = []; 
+        if(cleanInv){
+            privColsToClean.push({sub:'inventario',n:'Inventario'}); 
+            privColsToClean.push({sub:'rubros',n:'Rubros'}); 
+            privColsToClean.push({sub:'segmentos',n:'Segmentos'}); 
+            privColsToClean.push({sub:'marcas',n:'Marcas'});
+            // --- AÑADIDOS ---
+            privColsToClean.push({sub:'config/productSortOrder',n:'Config Orden Catálogo',isDoc:true});
+            privColsToClean.push({sub:'config/reporteCierreVentas',n:'Config Diseño Reporte',isDoc:true});
+        } 
+        if(cleanVen){
+            privColsToClean.push({sub:'ventas',n:'Ventas'}); 
+            privColsToClean.push({sub:'cierres',n:'Cierres'});
+            // --- AÑADIDO ---
+            privColsToClean.push({sub:'config/cargaInicialSnapshot',n:'Snapshot Carga Inicial',isDoc:true});
+        } 
+        if(cleanObs){
+            privColsToClean.push({sub:'obsequios_entregados',n:'Obsequios Entregados'}); 
+            privColsToClean.push({sub:'config/obsequio',n:'Config Obsequio Privada',isDoc:true});
+        }
+        
         let errorsOccurred = false; let deletedDocCount = 0; let deletedColCount = 0;
 
         for (const colInfo of colsToDelPub) { _showModal('Progreso', `Eliminando ${colInfo.name}...`); try { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(colInfo.path); console.log(`Deleted ${count} docs from ${colInfo.name}`); deletedDocCount+=count; deletedColCount++; } catch (error) { console.error(`Error public ${colInfo.name}:`, error); errorsOccurred=true; _showModal('Error Parcial', `Error ${colInfo.name}: ${error.message}. Continuando...`, null, 'OK'); await new Promise(r=>setTimeout(r,2000)); } }
