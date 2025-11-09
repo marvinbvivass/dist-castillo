@@ -1,6 +1,7 @@
 (function() {
     let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
-    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc, _setDoc;
+    // _orderBy fue eliminado ya que no se utilizaba.
+    let _collection, _getDocs, _query, _where, _populateDropdown, _getDoc, _doc, _setDoc;
 
     let _lastStatsData = [];
     let _lastNumWeeks = 1;
@@ -102,7 +103,7 @@
         _getDocs = dependencies.getDocs;
         _query = dependencies.query;
         _where = dependencies.where;
-        _orderBy = dependencies.orderBy;
+        // _orderBy = dependencies.orderBy; // Eliminado, no se usaba
         _populateDropdown = dependencies.populateDropdown;
         _getDoc = dependencies.getDoc;
         _doc = dependencies.doc;
@@ -571,6 +572,44 @@
             finalData.rubros[rubroName] = { clients: rubroData.clients, products: sortedProducts, sortedClients: sortedClients, totalValue: rubroData.totalValue, productTotals: productTotals };
         }
         return { finalData, userInfo };
+    }
+
+    /**
+     * [NUEVA FUNCIÓN DE ESTILOS PARA EXCELJS]
+     * Esta función construye un objeto de estilo COMPLETO para ExcelJS.
+     * CORREGIDO: Añadido horizontalAlign
+     */
+    function buildExcelJSStyle(config, borderStyle, numFmt = null, horizontalAlign = 'left') {
+        const style = {};
+        
+        // 1. Fuente (Font)
+        style.font = {
+            bold: config.bold || false,
+            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) }, // Formato ARGB
+            size: config.fontSize || 10 // AÑADIDO: Tamaño de letra
+        };
+
+        // 2. Relleno (Fill)
+        style.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF' + (config.fillColor || "#FFFFFF").substring(1) } // Formato ARGB
+        };
+
+        // 3. Bordes (Border)
+        if (config.border && borderStyle) {
+            style.border = borderStyle;
+        }
+
+        // 4. Formato de Número (Number Format)
+        if (numFmt) {
+            style.numFmt = numFmt;
+        }
+        
+        // 5. Alineación (opcional, se puede añadir si se desea)
+        style.alignment = { vertical: 'middle', horizontal: horizontalAlign }; // Añadido centrado vertical y horizontal
+
+        return style;
     }
 
     /**
