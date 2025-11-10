@@ -133,6 +133,7 @@
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         // --- FIX: Manejador de error de listener ---
         const unsubInventario = _onSnapshot(inventarioRef, snap => { 
+            // --- CORRECCIÓN: 'doc' -> 'd' ---
             _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             populateRubroFilter(); 
             if (_ventaActual.cliente) renderVentasInventario(); 
@@ -173,7 +174,7 @@
 
     async function renderVentasInventario() {
         const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
+        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : filtInv;
         // Usa la función global para ordenar el inventario en la vista de venta
         const sortFunc = await window.getGlobalProductSortFunction();
         filtInv.sort(sortFunc);
@@ -646,11 +647,13 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
+    
+    // --- INICIO: COPIA DE data.js -> processSalesDataForReport (con correcciones) ---
+    // Esta función es necesaria para "Ver Cierre" del usuario normal.
     async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
-        // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
         const clientData = {}; 
-        const clientTotals = {}; // <-- Esta línea la corregimos antes
-        const dataByRubro = {}; // <-- ESTA LÍNEA FALTABA
+        const clientTotals = {}; // <-- CORREGIDO
+        const dataByRubro = {}; // <-- CORREGIDO
         let grandTotalValue = 0; 
         const allProductsMap = new Map(); 
         const vaciosMovementsPorTipo = {};
@@ -660,15 +663,12 @@
         let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
         
         if(hasSnapshot) {
-            // Usar el snapshot
-            console.log("processSalesDataForReport: Usando snapshot de Carga Inicial.");
+            console.log("processSalesDataForReport (ventas.js): Usando snapshot de Carga Inicial.");
             inventarioMap = new Map(cargaInicialInventario.map(p => [p.id, p]));
         } else {
-            // Fallback: Cargar inventario actual (método antiguo)
-            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual (método antiguo).");
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const inventarioSnapshot = await _getDocs(inventarioRef); 
-            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+            console.warn("processSalesDataForReport (ventas.js): No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
+            // Usar _inventarioCache (que ya debería estar cargado por 'loadDataForNewSale')
+            inventarioMap = new Map(_inventarioCache.map(p => [p.id, p]));
         }
 
         const allData = [
@@ -676,10 +676,9 @@
             ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
         ];
 
-        // --- NUEVO: Mapa para registrar si un cliente tuvo obsequios ---
         const clienteTieneObsequio = new Set();
         const allRubros = new Set();
-        let userInfo = {}; // <-- ESTA LÍNEA FALTABA
+        let userInfo = {}; // <-- CORREGIDO
 
         for (const item of allData) {
             const clientName = item.data.clienteNombre || 'Cliente Desconocido';
@@ -830,8 +829,13 @@
                 obsequiosMap: rubroData.obsequiosMap || new Set()
             };
         }
-        return { finalData, userInfo };
+        // --- INICIO DE LA CORRECCIÓN ---
+        // La función debe retornar 'grandTotalValue' para que 'showVerCierreView' pueda usarlo.
+        return { finalData, userInfo, grandTotalValue };
+        // --- FIN DE LA CORRECCIÓN ---
     }
+    // --- FIN: COPIA DE data.js ---
+
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
