@@ -932,9 +932,16 @@
             }
 
             const vendedor = closingData.vendedorInfo || {}; 
-            const fecha = closingData.fecha.toDate().toISOString().slice(0, 10); 
+            // --- CORRECCIÓN DE LA CORRECCIÓN ANTERIOR ---
+            // 'jsDate' fue definido dentro del bloque try/catch, pero esta línea está fuera.
+            // Movemos la definición de 'jsDate' y 'fechaCierre' al inicio de la función.
+            // Ah, no, la definición de 'jsDate' está bien, pero 'fecha' no está definida aquí.
+            // Necesitamos usar 'jsDate' que definimos arriba.
+            const fechaParaNombre = jsDate ? jsDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+            // --- FIN CORRECCIÓN ---
+            
             const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
-            const fileName = `Cierre_${vendNombre}_${fecha}.xlsx`;
+            const fileName = `Cierre_${vendNombre}_${fechaParaNombre}.xlsx`;
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
