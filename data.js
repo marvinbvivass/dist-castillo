@@ -643,7 +643,20 @@
             );
             
             const workbook = new ExcelJS.Workbook();
-            const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
+            
+            // --- INICIO DE LA CORRECCIÓN ---
+            // Obtenemos el objeto fecha.
+            const fechaObjeto = closingData.fecha;
+            
+            // Verificamos si es un Timestamp de Firebase (tiene .toDate()) o si ya es un JS Date.
+            const jsDate = (fechaObjeto && typeof fechaObjeto.toDate === 'function') 
+                            ? fechaObjeto.toDate()  // Es un Timestamp, lo convertimos
+                            : fechaObjeto;          // Ya es un Date (creado con new Date())
+
+            // Usamos la variable jsDate (que ahora sí es un Date)
+            const fechaCierre = jsDate ? jsDate.toLocaleDateString('es-ES') : 'Fecha Inválida';
+            // --- FIN DE LA CORRECCIÓN ---
+            
             const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
             const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
 
