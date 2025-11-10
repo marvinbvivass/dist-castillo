@@ -1,1027 +1,1438 @@
 (function() {
-    let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
-    let _showMainMenu, _showModal, _activeListeners;
-    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where;
+    let _db, _appId, _userId, _mainContent, _floatingControls, _showMainMenu, _showModal;
+    let _collection, _getDocs, _query, _where, _orderBy, _populateDropdown, _getDoc, _doc, _setDoc;
 
-    let _clientesCache = [];
-    let _inventarioCache = [];
-    let _ventasGlobal = [];
-    let _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} };
-    let _originalVentaForEdit = null;
-    let _tasaCOP = 0;
-    let _tasaBs = 0;
-    let _monedaActual = 'USD';
+    let _consolidatedClientsCache = [];
+    let _filteredClientsCache = [];
 
-    // Asume que TIPOS_VACIO_GLOBAL se define o está disponible globalmente
-    // Usaremos window.TIPOS_VACIO_GLOBAL si existe, o un default
-    const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-    // --- CORRECCIÓN: La definición de SNAPSHOT_DOC_PATH se mueve DENTRO de las funciones que la usan ---
+    let mapInstance = null;
+    let mapMarkers = new Map();
 
-    window.initVentas = function(dependencies) {
+    let _sortPreferenceCache = null;
+    let _rubroOrderMapCache = null;
+    let _segmentoOrderMapCache = null;
+    const SORT_CONFIG_PATH = 'config/productSortOrder'; 
+
+    const REPORTE_DESIGN_CONFIG_PATH = 'artifacts/ventas-9a210/public/data/config/reporteCierreVentas';
+    
+    const DEFAULT_REPORTE_SETTINGS = {
+        showCargaInicial: true,
+        showCargaRestante: true,
+        showVaciosSheet: true,
+        showClienteTotalSheet: true,
+        styles: {
+            headerInfo: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: false, fontSize: 10 },
+            headerProducts: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowCargaInicial: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowDataClients: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            rowDataClientsSale: { bold: false, fillColor: "#F3FDE8", fontColor: "#000000", border: true, fontSize: 10 },
+            rowDataClientsObsequio: { bold: false, fillColor: "#E0F2FE", fontColor: "#000000", border: true, fontSize: 10 },
+            rowCargaRestante: { bold: true, fillColor: "#FFFFFF", fontColor: "#000000", border: true, fontSize: 10 },
+            rowTotals: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            vaciosHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            vaciosData: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            totalesHeader: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 10 },
+            totalesData: { bold: false, fillColor: "#FFFFFF", fontColor: "#333333", border: true, fontSize: 10 },
+            totalesTotalRow: { bold: true, fillColor: "#EFEFEF", fontColor: "#000000", border: true, fontSize: 11 }
+        },
+        columnWidths: {
+            col_A_LabelsClientes: 25,
+            products: 12,
+            subtotal: 15,
+            vaciosCliente: 25,
+            vaciosTipo: 15,
+            vaciosQty: 12,
+            totalCliente: 35,
+            totalClienteValor: 15
+        }
+    };
+
+    function getDisplayQty(qU, p) {
+        if (!qU || qU === 0) return { value: 0, unit: 'Unds' };
+        if (!p) return { value: qU, unit: 'Unds' };
+
+        const vP = p.ventaPor || {und: true};
+        const uCj = p.unidadesPorCaja || 1;
+        const uPaq = p.unidadesPorPaquete || 1;
+        
+        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
+            return { value: (qU / uCj), unit: 'Cj' };
+        }
+        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
+            return { value: (qU / uPaq), unit: 'Paq' };
+        }
+        if (qU > 0 && (vP.cj || vP.paq) && vP.und) {
+             return { value: qU, unit: 'Unds' };
+        }
+        if (vP.cj && uCj > 0) {
+            return { value: parseFloat((qU / uCj).toFixed(2)), unit: 'Cj' };
+        }
+        if (vP.paq && uPaq > 0) {
+            return { value: parseFloat((qU / uPaq).toFixed(2)), unit: 'Paq' };
+        }
+        return { value: qU, unit: 'Unds' };
+    }
+
+    function buildExcelJSStyle(config, borderStyle, numFmt = null, horizontalAlign = 'left') {
+        const style = {};
+        
+        style.font = {
+            bold: config.bold || false,
+            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) },
+            size: config.fontSize || 10
+        };
+
+        style.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF' + (config.fillColor || "#FFFFFF").substring(1) }
+        };
+
+        if (config.border && borderStyle) {
+            style.border = borderStyle;
+        }
+
+        if (numFmt) {
+            style.numFmt = numFmt;
+        }
+        
+        style.alignment = { vertical: 'middle', horizontal: horizontalAlign };
+
+        return style;
+    }
+
+    window.initData = function(dependencies) {
         _db = dependencies.db;
-        _userId = dependencies.userId;
-        _userRole = dependencies.userRole;
         _appId = dependencies.appId;
+        _userId = dependencies.userId; 
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
-        _activeListeners = dependencies.activeListeners;
         _collection = dependencies.collection;
-        _onSnapshot = dependencies.onSnapshot;
-        _doc = dependencies.doc;
-        _getDoc = dependencies.getDoc;
-        _addDoc = dependencies.addDoc;
-        _setDoc = dependencies.setDoc;
-        _deleteDoc = dependencies.deleteDoc;
         _getDocs = dependencies.getDocs;
-        _writeBatch = dependencies.writeBatch;
-        _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
+        _orderBy = dependencies.orderBy;
+        _populateDropdown = dependencies.populateDropdown;
+        _getDoc = dependencies.getDoc;
+        _doc = dependencies.doc;
+        _setDoc = dependencies.setDoc; 
     };
 
-    window.showVentasView = function() {
-        if (_floatingControls) _floatingControls.classList.add('hidden');
+    window.showDataView = function() {
+        if (mapInstance) {
+            mapInstance.remove(); mapInstance = null;
+        }
+        _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                <h1 class="text-3xl font-bold text-gray-800 mb-6">Gestión de Ventas</h1>
+                <h1 class="text-3xl font-bold text-gray-800 mb-6">Módulo de Datos</h1>
                 <div class="space-y-4">
-                    <button id="nuevaVentaBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Nueva Venta</button>
-                    <button id="ventasTotalesBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600">Ventas Totales</button>
-                    <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                    <button id="closingDataBtn" class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700">Cierres de Ventas</button>
+                    <button id="designReportBtn" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700">Diseño de Reporte</button>
+                    <button id="consolidatedClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700">Clientes Consolidados</button>
+                    <button id="clientMapBtn" class="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg shadow-md hover:bg-cyan-700">Mapa de Clientes</button>
+                    <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver Menú</button>
                 </div>
             </div> </div> </div>
         `;
-        document.getElementById('nuevaVentaBtn').addEventListener('click', showNuevaVentaView);
-        document.getElementById('ventasTotalesBtn').addEventListener('click', showVentasTotalesView);
+        document.getElementById('closingDataBtn').addEventListener('click', showClosingDataView);
+        document.getElementById('designReportBtn').addEventListener('click', showReportDesignView);
+        document.getElementById('consolidatedClientsBtn').addEventListener('click', showConsolidatedClientsView);
+        document.getElementById('clientMapBtn').addEventListener('click', showClientMapView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
-    }
-
-    function showNuevaVentaView() {
-        _originalVentaForEdit = null;
-        if (_floatingControls) _floatingControls.classList.add('hidden');
-        _monedaActual = 'USD';
-        _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} };
-        TIPOS_VACIO.forEach(tipo => _ventaActual.vaciosDevueltosPorTipo[tipo] = 0);
-        _mainContent.innerHTML = `
-            <div class="p-2 w-full"> <div class="bg-white/90 backdrop-blur-sm p-3 sm:p-4 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 1rem);">
-                <div id="venta-header-section" class="mb-2">
-                    <div class="flex justify-between items-center mb-2"> <h2 class="text-lg font-bold">Nueva Venta</h2> <button id="backToVentasBtn" class="px-3 py-1.5 bg-gray-400 text-white text-xs rounded-lg shadow-md hover:bg-gray-500">Volver</button> </div>
-                    <div id="client-search-container"> <label for="clienteSearch" class="block font-medium mb-2">Cliente:</label> <div class="relative"><input type="text" id="clienteSearch" placeholder="Buscar..." class="w-full px-4 py-2 border rounded-lg"><div id="clienteDropdown" class="autocomplete-list hidden"></div></div> </div>
-                    <div id="client-display-container" class="hidden flex-wrap items-center justify-between gap-2"> <p class="flex-grow text-sm"><span class="font-medium">Cliente:</span> <span id="selected-client-name" class="font-bold"></span></p> <div id="tasasContainer" class="flex flex-row items-center gap-2"> <div class="flex items-center space-x-1"> <label for="tasaCopInput" class="text-xs">COP:</label> <input type="number" id="tasaCopInput" placeholder="4000" class="w-16 px-1 py-1 text-sm border rounded-lg"> </div> <div class="flex items-center space-x-1"> <label for="tasaBsInput" class="text-xs">Bs.:</label> <input type="number" id="tasaBsInput" placeholder="36.5" class="w-16 px-1 py-1 text-sm border rounded-lg"> </div> </div> </div>
-                </div>
-                <div id="vacios-devueltos-section" class="mb-2 hidden"> <h3 class="text-sm font-semibold text-cyan-700 mb-1">Vacíos Devueltos:</h3> <div class="grid grid-cols-3 gap-2"> ${TIPOS_VACIO.map(tipo => `<div> <label for="vacios-${tipo.replace(/\s+/g, '-')}" class="text-xs mb-1 block">${tipo}</label> <input type="number" min="0" value="0" id="vacios-${tipo.replace(/\s+/g, '-')}" class="w-16 p-1 text-center border rounded-md" data-tipo-vacio="${tipo}" oninput="window.ventasModule.handleTipoVacioChange(event)"> </div>`).join('')} </div> </div>
-                <div id="inventarioTableContainer" class="hidden animate-fade-in flex-grow flex flex-col overflow-hidden">
-                    <div id="rubro-filter-container" class="mb-2"> <label for="rubroFilter" class="text-xs font-medium">Filtrar Rubro:</label> <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> </div>
-                    <div class="overflow-auto flex-grow rounded-lg shadow"> <table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0"><tr class="uppercase text-xs"><th class="py-2 px-2 text-center w-24">Cant</th><th class="py-2 px-2 text-left">Producto</th><th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th><th class="py-2 px-1 text-center">Stock</th></tr></thead><tbody id="inventarioTableBody" class="text-gray-600"></tbody></table> </div>
-                </div>
-                <div id="venta-footer-section" class="mt-2 flex items-center justify-between hidden"> <span id="ventaTotal" class="text-base font-bold">$0.00</span> <button id="generarTicketBtn" class="px-5 py-2 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600">Generar Ticket</button> </div>
-            </div> </div>
-        `;
-        const clienteSearchInput = document.getElementById('clienteSearch');
-        clienteSearchInput.addEventListener('input', () => { const term = clienteSearchInput.value.toLowerCase(); const filtered = _clientesCache.filter(c=>(c.nombreComercial||'').toLowerCase().includes(term)||(c.nombrePersonal||'').toLowerCase().includes(term)); renderClienteDropdown(filtered); document.getElementById('clienteDropdown').classList.remove('hidden'); });
-        const savedTasa = localStorage.getItem('tasaCOP'); if (savedTasa) { _tasaCOP = parseFloat(savedTasa); document.getElementById('tasaCopInput').value = _tasaCOP; }
-        const savedTasaBs = localStorage.getItem('tasaBs'); if (savedTasaBs) { _tasaBs = parseFloat(savedTasaBs); document.getElementById('tasaBsInput').value = _tasaBs; }
-        document.getElementById('tasaCopInput').addEventListener('input', (e) => { _tasaCOP = parseFloat(e.target.value) || 0; localStorage.setItem('tasaCOP', _tasaCOP); if (_monedaActual === 'COP') { renderVentasInventario(); updateVentaTotal(); } });
-        document.getElementById('tasaBsInput').addEventListener('input', (e) => { _tasaBs = parseFloat(e.target.value) || 0; localStorage.setItem('tasaBs', _tasaBs); if (_monedaActual === 'Bs') { renderVentasInventario(); updateVentaTotal(); } });
-        document.getElementById('rubroFilter').addEventListener('change', renderVentasInventario);
-        document.getElementById('generarTicketBtn').addEventListener('click', generarTicket); // Llama a la nueva lógica
-        document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-        loadDataForNewSale();
-    }
-
-    function loadDataForNewSale() {
-        const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
-        // --- FIX: Manejador de error de listener ---
-        const unsubClientes = _onSnapshot(clientesRef, snap => { _clientesCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); }, err => { 
-            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-                console.log(`Ventas (clientes) listener error ignored (assumed logout): ${err.code}`);
-                return;
-            }
-            console.error("Error clientes:", err); 
-        });
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        // --- FIX: Manejador de error de listener ---
-        const unsubInventario = _onSnapshot(inventarioRef, snap => { 
-            _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
-            populateRubroFilter(); 
-            if (_ventaActual.cliente) renderVentasInventario(); 
-        }, err => { 
-            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-                console.log(`Ventas (inventario) listener error ignored (assumed logout): ${err.code}`);
-                return;
-            }
-            console.error("Error inventario:", err); 
-            const b = document.getElementById('inventarioTableBody'); if(b) b.innerHTML = '<tr><td colspan="4" class="text-red-500">Error inventario</td></tr>'; 
-        });
-        _activeListeners.push(unsubClientes, unsubInventario);
-    }
-
-    function populateRubroFilter() {
-        const rF = document.getElementById('rubroFilter'); if(!rF) return;
-        const rubros = [...new Set(_inventarioCache.map(p => p.rubro))].sort(); const cV = rF.value;
-        rF.innerHTML = '<option value="">Todos</option>'; rubros.forEach(r => { if(r) rF.innerHTML += `<option value="${r}">${r}</option>`; }); rF.value = rubros.includes(cV) ? cV : '';
-    }
-
-    function renderClienteDropdown(filteredClients) {
-        const cD = document.getElementById('clienteDropdown'); if(!cD) return; cD.innerHTML = '';
-        filteredClients.forEach(cli => { const i = document.createElement('div'); i.className = 'autocomplete-item'; i.textContent = `${cli.nombreComercial} (${cli.nombrePersonal})`; i.addEventListener('click', () => selectCliente(cli)); cD.appendChild(i); });
-    }
-
-    function selectCliente(cliente) {
-        _ventaActual.cliente = cliente; document.getElementById('client-search-container').classList.add('hidden'); document.getElementById('clienteDropdown').classList.add('hidden');
-        document.getElementById('selected-client-name').textContent = cliente.nombreComercial; document.getElementById('client-display-container').classList.remove('hidden');
-        document.getElementById('inventarioTableContainer').classList.remove('hidden'); document.getElementById('venta-footer-section').classList.remove('hidden'); document.getElementById('vacios-devueltos-section').classList.remove('hidden');
-        renderVentasInventario();
-    }
-
-    function toggleMoneda() {
-        const cycle = ['USD', 'COP', 'Bs'], rates = { 'USD': 1, 'COP': _tasaCOP, 'Bs': _tasaBs }; let cI = cycle.indexOf(_monedaActual), nI = (cI + 1) % cycle.length;
-        while (nI !== cI) { if (rates[cycle[nI]] > 0) { _monedaActual = cycle[nI]; renderVentasInventario(); updateVentaTotal(); return; } nI = (nI + 1) % cycle.length; }
-        _showModal('Aviso', (_tasaCOP <= 0 && _tasaBs <= 0) ? 'Ingresa tasas para alternar.' : 'Ingresa tasa válida (> 0).');
-    }
-
-    async function renderVentasInventario() {
-        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
-        // Usa la función global para ordenar el inventario en la vista de venta
-        const sortFunc = await window.getGlobalProductSortFunction();
-        filtInv.sort(sortFunc);
-        body.innerHTML = '';
-        if (filtInv.length === 0) { body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">No hay productos ${selRubro ? 'en este rubro' : ''}.</td></tr>`; return; }
-        let lastHKey = null;
-        // Obtiene el primer criterio de ordenamiento de la preferencia global (si existe)
-        const fSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
-        filtInv.forEach(prod => {
-            const curHVal = prod[fSortKey] || `Sin ${fSortKey}`; if (curHVal !== lastHKey) { lastHKey = curHVal; const hRow = document.createElement('tr'); hRow.innerHTML = `<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold sticky top-[calc(theme(height.10))] z-[9]">${lastHKey}</td>`; body.appendChild(hRow); }
-            const vPor = prod.ventaPor || { und: true }, vActProd = _ventaActual.productos[prod.id] || {}, precios = prod.precios || { und: prod.precioPorUnidad || 0 };
-            const fPrice = (v) => { if (isNaN(v)) v=0; if (_monedaActual==='COP'&&_tasaCOP>0) return `COP ${(Math.ceil((v*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; if (_monedaActual==='Bs'&&_tasaBs>0) return `Bs.S ${(v*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; return `$${v.toFixed(2)}`; };
-            const cRow = (t, c, max, pT, stockT, descT) => { const r=document.createElement('tr'); r.className='border-b hover:bg-gray-50'; r.innerHTML=`<td class="py-2 px-2 text-center align-middle"> <input type="number" min="0" max="${max}" value="${c}" class="w-16 p-1 text-center border rounded-md" data-product-id="${prod.id}" data-tipo-venta="${t}" oninput="window.ventasModule.handleQuantityChange(event)"> </td> <td class="py-2 px-2 text-left align-middle"> ${descT} <span class="text-xs text-gray-500">${prod.marca || 'S/M'}</span> </td> <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${fPrice(pT)}</td> <td class="py-2 px-1 text-center align-middle">${stockT}</td>`; body.appendChild(r); };
-            const stockU = prod.cantidadUnidades || 0;
-            if (vPor.cj) { const uCj=prod.unidadesPorCaja||1, maxCj=Math.floor(stockU/uCj); cRow('cj', vActProd.cantCj||0, maxCj, precios.cj||0, `${maxCj} Cj`, `${prod.presentacion} (Cj/${uCj} und)`); }
-            if (vPor.paq) { const uPaq=prod.unidadesPorPaquete||1, maxPaq=Math.floor(stockU/uPaq); cRow('paq', vActProd.cantPaq||0, maxPaq, precios.paq||0, `${maxPaq} Paq`, `${prod.presentacion} (Paq/${uPaq} und)`); }
-            if (vPor.und) { cRow('und', vActProd.cantUnd||0, stockU, precios.und||0, `${stockU} Und`, `${prod.presentacion} (Und)`); }
-        }); updateVentaTotal();
-    }
-
-    function handleQuantityChange(event) {
-        const inp=event.target, pId=inp.dataset.productId, tV=inp.dataset.tipoVenta, prod=_inventarioCache.find(p=>p.id===pId); if(!prod) return; if(!_ventaActual.productos[pId]) _ventaActual.productos[pId]={...prod, cantCj:0,cantPaq:0,cantUnd:0,totalUnidadesVendidas:0};
-        const qty=parseInt(inp.value,10)||0; _ventaActual.productos[pId][`cant${tV[0].toUpperCase()+tV.slice(1)}`]=qty; const pV=_ventaActual.productos[pId], uCj=pV.unidadesPorCaja||1, uPaq=pV.unidadesPorPaquete||1;
-        const totU=(pV.cantCj*uCj)+(pV.cantPaq*uPaq)+(pV.cantUnd||0); const stockU=prod.cantidadUnidades||0; if(totU>stockU){ _showModal('Stock Insuficiente',`Ajustado.`); let ex=totU-stockU; if(tV==='cj')inp.value=Math.max(0,qty-Math.ceil(ex/uCj)); else if(tV==='paq')inp.value=Math.max(0,qty-Math.ceil(ex/uPaq)); else inp.value=Math.max(0,qty-ex); handleQuantityChange({target:inp}); return; }
-        pV.totalUnidadesVendidas=totU; if(totU===0&&pV.cantCj===0&&pV.cantPaq===0&&pV.cantUnd===0) delete _ventaActual.productos[pId]; updateVentaTotal();
     };
 
-    function handleTipoVacioChange(event) { const inp=event.target, tipo=inp.dataset.tipoVacio, cant=parseInt(inp.value,10)||0; if(tipo&&_ventaActual.vaciosDevueltosPorTipo.hasOwnProperty(tipo)) _ventaActual.vaciosDevueltosPorTipo[tipo]=cant; }
+    async function showClosingDataView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cierres de Vendedores</h1>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg items-end">
+                    <div> <label for="userFilter" class="block text-sm font-medium">Vendedor:</label> <select id="userFilter" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm"> <option value="">Todos</option> </select> </div>
+                    <div> <label for="fechaDesde" class="block text-sm font-medium">Desde:</label> <input type="date" id="fechaDesde" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm"> </div>
+                    <div> <label for="fechaHasta" class="block text-sm font-medium">Hasta:</label> <input type="date" id="fechaHasta" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm"> </div>
+                    <button id="searchCierresBtn" class="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700">Buscar</button>
+                </div>
+                <div id="cierres-list-container" class="overflow-x-auto max-h-96"> <p class="text-center text-gray-500">Seleccione filtros.</p> </div>
+                <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+            </div> </div> </div>
+        `;
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
+        document.getElementById('searchCierresBtn').addEventListener('click', handleSearchClosings);
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('fechaDesde').value = today; document.getElementById('fechaHasta').value = today;
+        await populateUserFilter();
+    };
 
-    function updateVentaTotal() {
-        const tEl=document.getElementById('ventaTotal'); if(!tEl) return;
-        const tUSD=Object.values(_ventaActual.productos).reduce((s,p)=>{const pr=p.precios||{und:p.precioPorUnidad||0}; return s+(pr.cj||0)*(p.cantCj||0)+(pr.paq||0)*(p.cantPaq||0)+(pr.und||0)*(p.cantUnd||0);},0);
-        if(_monedaActual==='COP'&&_tasaCOP>0)tEl.textContent=`Total: COP ${(Math.ceil((tUSD*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; else if(_monedaActual==='Bs'&&_tasaBs>0)tEl.textContent=`Total: Bs.S ${(tUSD*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; else tEl.textContent=`Total: $${tUSD.toFixed(2)}`;
+    async function populateUserFilter() {
+        const userFilterSelect = document.getElementById('userFilter');
+        if (!userFilterSelect) return;
+        try {
+            const usersRef = _collection(_db, "users");
+            const snapshot = await _getDocs(usersRef);
+            snapshot.docs.forEach(doc => {
+                const user = doc.data();
+                const option = document.createElement('option');
+                option.value = doc.id;
+                option.textContent = `${user.nombre || ''} ${user.apellido || user.email} (${user.camion || 'N/A'})`;
+                userFilterSelect.appendChild(option);
+            });
+        } catch (error) { console.error("Error cargando usuarios filtro:", error); }
     }
 
-    // Funciones de Ticket (sin cambios)
-    function createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo = 'ticket') {
-        const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
-        const clienteNombre = venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre;
-        const clienteNombrePersonal = (venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '';
-        let total = 0;
-        let productosHTML = '';
-        const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || (p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) ));
-
-        productosVendidos.forEach(p => {
-            const precios = p.precios || { und: p.precioPorUnidad || 0 };
-            const cant = p.cantidadVendida || { cj: p.cantCj || 0, paq: p.cantPaq || 0, und: p.cantUnd || 0 };
-            const uCj = p.unidadesPorCaja || 1;
-            const uPaq = p.unidadesPorPaquete || 1;
-            let desc = `${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`;
-            let qtyText = '', priceText = '', subtotal = 0;
-
-            if (cant.cj > 0) {
-                subtotal = (precios.cj || 0) * cant.cj;
-                qtyText = `${cant.cj} CJ`;
-                priceText = `$${(precios.cj || 0).toFixed(2)}`;
-            } else if (cant.paq > 0) {
-                subtotal = (precios.paq || 0) * cant.paq;
-                qtyText = `${cant.paq} PAQ`;
-                priceText = `$${(precios.paq || 0).toFixed(2)}`;
-            } else if (cant.und > 0) {
-                subtotal = (precios.und || 0) * cant.und;
-                qtyText = `${cant.und} UND`;
-                priceText = `$${(precios.und || 0).toFixed(2)}`;
-            } else {
-                return; // No mostrar si no hay cantidad
+    async function handleSearchClosings() {
+        const container = document.getElementById('cierres-list-container');
+        container.innerHTML = `<p class="text-center text-gray-500">Buscando...</p>`;
+        const selectedUserId = document.getElementById('userFilter').value;
+        const fechaDesdeStr = document.getElementById('fechaDesde').value;
+        const fechaHastaStr = document.getElementById('fechaHasta').value;
+        if (!fechaDesdeStr || !fechaHastaStr) {
+            _showModal('Error', 'Seleccione ambas fechas.');
+            container.innerHTML = `<p class="text-center text-gray-500">Seleccione rango.</p>`; return;
+        }
+        const fechaDesde = new Date(fechaDesdeStr + 'T00:00:00Z');
+        const fechaHasta = new Date(fechaHastaStr + 'T23:59:59Z');
+        try {
+            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            let q = _query(closingsRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<=", fechaHasta));
+            const snapshot = await _getDocs(q);
+            let closings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            if (selectedUserId) {
+                closings = closings.filter(c => c.vendedorInfo && c.vendedorInfo.userId === selectedUserId);
             }
-            total += subtotal;
+            window.tempClosingsData = closings; 
+            renderClosingsList(closings);
+        } catch (error) {
+            console.error("Error buscando cierres:", error);
+            container.innerHTML = `<p class="text-center text-red-500">Error al buscar.</p>`;
+        }
+    }
 
-            productosHTML += `
-                 <tr class="align-top">
-                    <td class="py-2 pr-2 text-left" style="width: 55%;"><div style="line-height: 1.2;">${desc}</div></td>
-                    <td class="py-2 px-2 text-center" style="width: 15%;">${qtyText}</td>
-                    <td class="py-2 px-2 text-right" style="width: 15%;">${priceText}</td>
-                    <td class="py-2 pl-2 text-right font-bold" style="width: 15%;">$${subtotal.toFixed(2)}</td>
-                </tr>
-            `;
+    function renderClosingsList(closings) {
+        const container = document.getElementById('cierres-list-container');
+        if (closings.length === 0) {
+            container.innerHTML = `<p class="text-center text-gray-500">No se encontraron cierres.</p>`; return;
+        }
+        closings.sort((a, b) => b.fecha.toDate() - a.fecha.toDate()); 
+        let tableHTML = `
+            <table class="min-w-full bg-white text-sm">
+                <thead class="bg-gray-200 sticky top-0 z-10"> <tr>
+                    <th class="py-2 px-3 border-b text-left">Fecha</th> <th class="py-2 px-3 border-b text-left">Vendedor</th>
+                    <th class="py-2 px-3 border-b text-left">Camión</th> <th class="py-2 px-3 border-b text-right">Total</th>
+                    <th class="py-2 px-3 border-b text-center">Acciones</th>
+                </tr> </thead> <tbody>`;
+        closings.forEach(cierre => {
+            const vendedor = cierre.vendedorInfo || {};
+            tableHTML += `
+                <tr class="hover:bg-gray-50">
+                    <td class="py-2 px-3 border-b">${cierre.fecha.toDate().toLocaleDateString('es-ES')}</td>
+                    <td class="py-2 px-3 border-b">${vendedor.nombre || ''} ${vendedor.apellido || ''}</td>
+                    <td class="py-2 px-3 border-b">${vendedor.camion || 'N/A'}</td>
+                    <td class="py-2 px-3 border-b text-right font-semibold">$${(cierre.total || 0).toFixed(2)}</td>
+                    <td class="py-2 px-3 border-b text-center space-x-2">
+                        <button onclick="window.dataModule.showClosingDetail('${cierre.id}')" class="px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Ver</button>
+                        <button onclick="window.dataModule.handleDownloadSingleClosing('${cierre.id}')" title="Descargar" class="p-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 align-middle"> <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"> <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /> </svg> </button>
+                    </td>
+                </tr> `;
         });
-
-        let vaciosHTML = '';
-        const tiposConDev = Object.entries(vaciosDevueltosPorTipo || {}).filter(([t, c]) => c > 0);
-        if (tiposConDev.length > 0) {
-            vaciosHTML = `<div class="text-3xl mt-6 border-t border-black border-dashed pt-4"> <p>ENVASES DEVUELTOS:</p> <table class="w-full text-3xl mt-2"><tbody>`;
-            tiposConDev.forEach(([t, c]) => {
-                vaciosHTML += `<tr><td class="py-1 pr-2 text-left" style="width: 70%;">${t}</td><td class="py-1 pl-2 text-right" style="width: 30%;">${c} CJ</td></tr>`;
-            });
-            vaciosHTML += `</tbody></table></div>`;
-        }
-
-        const titulo = tipo === 'factura' ? 'FACTURA FISCAL' : 'TICKET DE VENTA';
-
-        return `
-            <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
-                <div class="text-center">
-                    <h2 class="text-4xl uppercase">${titulo}</h2>
-                    <p class="text-3xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
-                </div>
-                <div class="text-3xl mt-8">
-                    <p>FECHA: ${fecha}</p>
-                    <p>CLIENTE: ${clienteNombre}</p>
-                </div>
-                <table class="w-full text-3xl mt-6">
-                    <thead>
-                        <tr>
-                            <th class="pb-2 text-left">DESCRIPCION</th>
-                            <th class="pb-2 text-center">CANT</th>
-                            <th class="pb-2 text-right">PRECIO</th>
-                            <th class="pb-2 text-right">SUBTOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${productosHTML}
-                    </tbody>
-                </table>
-                <div class="text-right text-3xl mt-4 pr-2">
-                    <p class="border-t border-black pt-2 font-bold">TOTAL: $${total.toFixed(2)}</p>
-                </div>
-                ${vaciosHTML}
-                <div class="text-center mt-16">
-                    <p class="border-t border-black w-96 mx-auto"></p>
-                    <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
-                </div>
-                <hr class="border-dashed border-black mt-6">
-            </div>`;
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
     }
-    function createRawTextTicket(venta, productos, vaciosDevueltosPorTipo) {
-        const fecha = venta.fecha ? (venta.fecha.toDate ? venta.fecha.toDate().toLocaleDateString('es-ES') : new Date(venta.fecha).toLocaleDateString('es-ES')) : new Date().toLocaleDateString('es-ES');
-        const toTitleCase = (str) => { if (!str) return ''; return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()); };
-        const clienteNombre = toTitleCase(venta.cliente ? venta.cliente.nombreComercial : venta.clienteNombre);
-        const clienteNombrePersonal = toTitleCase((venta.cliente ? venta.cliente.nombrePersonal : venta.clienteNombrePersonal) || '');
-        const LINE_WIDTH = 48; let total = 0; let ticket = '';
-        const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
-        const wordWrap = (text, maxWidth) => { const lines = []; if (!text) return lines; let currentLine = ''; const words = text.split(' '); for (const word of words) { if ((currentLine + ' ' + word).trim().length > maxWidth) { if(currentLine.length > 0) lines.push(currentLine.trim()); currentLine = word; } else { currentLine = (currentLine + ' ' + word).trim(); } } if (currentLine) lines.push(currentLine.trim()); return lines; };
 
-        ticket += center('Distribuidora Castillo Yañez') + '\n';
-        ticket += center('Nota de Entrega') + '\n';
-        ticket += center('(no valido como factura fiscal)') + '\n\n';
-
-        const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH);
-        wrappedClientName.forEach(line => { ticket += line + '\n'; });
-        ticket += `Fecha: ${fecha}\n`;
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
-
-        const productosVendidos = productos.filter(p => (p.totalUnidadesVendidas || (p.cantidadVendida && (p.cantidadVendida.cj > 0 || p.cantidadVendida.paq > 0 || p.cantidadVendida.und > 0)) ));
-
-        if (productosVendidos.length > 0) {
-            ticket += 'Producto'.padEnd(26) + 'Cant'.padStart(6) + 'Precio'.padStart(8) + 'Subt'.padStart(8) + '\n';
-            productosVendidos.forEach(p => {
-                const precios = p.precios || { und: p.precioPorUnidad || 0 };
-                const cant = p.cantidadVendida || { cj: p.cantCj || 0, paq: p.cantPaq || 0, und: p.cantUnd || 0 };
-                let desc = toTitleCase(`${p.segmento || ''} ${p.marca || ''} ${p.presentacion}`);
-                let qtyText = '', priceText = '', subtotal = 0;
-
-                if (cant.cj > 0) {
-                    subtotal = (precios.cj || 0) * cant.cj;
-                    qtyText = `${cant.cj} CJ`;
-                    priceText = `$${(precios.cj || 0).toFixed(2)}`;
-                } else if (cant.paq > 0) {
-                    subtotal = (precios.paq || 0) * cant.paq;
-                    qtyText = `${cant.paq} PQ`;
-                    priceText = `$${(precios.paq || 0).toFixed(2)}`;
-                } else if (cant.und > 0) {
-                    subtotal = (precios.und || 0) * cant.und;
-                    qtyText = `${cant.und} UN`;
-                    priceText = `$${(precios.und || 0).toFixed(2)}`;
-                } else { return; }
-                total += subtotal;
-
-                const wrappedDesc = wordWrap(desc, 25); // Max width for description column
-                wrappedDesc.forEach((line, index) => {
-                    const qtyStr = index === wrappedDesc.length - 1 ? qtyText : '';
-                    const priceStr = index === wrappedDesc.length - 1 ? priceText : '';
-                    const subtStr = index === wrappedDesc.length - 1 ? `$${subtotal.toFixed(2)}` : '';
-                    ticket += line.padEnd(26) + qtyStr.padStart(6) + priceStr.padStart(8) + subtStr.padStart(8) + '\n';
-                });
-            });
-        }
-
-        const tiposConDev = Object.entries(vaciosDevueltosPorTipo || {}).filter(([t, c]) => c > 0);
-        if (tiposConDev.length > 0) {
-            ticket += '-'.repeat(LINE_WIDTH) + '\n';
-            ticket += center('ENVASES DEVUELTOS') + '\n';
-            tiposConDev.forEach(([t, c]) => {
-                const tipoStr = t; const cantStr = `${c} CJ`;
-                ticket += tipoStr.padEnd(LINE_WIDTH - cantStr.length) + cantStr + '\n';
-            });
-        }
-
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        const totalString = `TOTAL: $${total.toFixed(2)}`;
-        ticket += totalString.padStart(LINE_WIDTH, ' ') + '\n\n';
-        ticket += '\n\n\n\n';
-        ticket += center('________________________') + '\n';
-        ticket += center(clienteNombrePersonal) + '\n\n';
-        ticket += '-'.repeat(LINE_WIDTH) + '\n';
-        return ticket;
-    }
-    // Funciones handleShareTicket, handleShareRawText, copyToClipboard, legacyCopyToClipboard (solo reciben callback)
-    async function handleShareTicket(htmlContent, callbackDespuesDeCompartir) {
-         _showModal('Progreso', 'Generando imagen...');
-        const tempDiv = document.createElement('div'); tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.innerHTML = htmlContent; document.body.appendChild(tempDiv);
-        const ticketElement = document.getElementById('temp-ticket-for-image');
-        if (!ticketElement) { _showModal('Error', 'No se pudo encontrar elemento ticket.'); document.body.removeChild(tempDiv); if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(false); return; }
-        try { await new Promise(resolve => setTimeout(resolve, 100)); const canvas = await html2canvas(ticketElement, { scale: 3 }); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            if (navigator.share && blob) { await navigator.share({ files: [new File([blob], "venta.png", { type: "image/png" })], title: "Ticket de Venta" }); }
-            else { _showModal('Error', 'Función compartir no disponible.'); }
-            if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(true);
-        } catch(e) { _showModal('Error', `No se pudo generar/compartir: ${e.message}`); if(callbackDespuesDeCompartir) callbackDespuesDeCompartir(false); }
-        finally { document.body.removeChild(tempDiv); }
-    }
-    async function handleShareRawText(textContent, callbackDespuesDeCompartir) {
-        let success = false;
-         if (navigator.share) { try { await navigator.share({ title: 'Ticket de Venta', text: textContent }); success = true; } catch (err) { console.warn("Share API error:", err.name); } }
-         else { try { legacyCopyToClipboard(textContent, (copySuccess) => { success = copySuccess; }); } catch (copyErr) { console.error('Fallback copy failed:', copyErr); } } // Pasar callback a legacy
-         // Asegurarse de llamar al callback DESPUÉS de intentar, incluso si legacyCopyToClipboard es asíncrono en su modal
-         // Usar un pequeño timeout si legacyCopyToClipboard no retorna directamente el estado
-         setTimeout(() => {
-            if (callbackDespuesDeCompartir) callbackDespuesDeCompartir(success);
-         }, 100); // Pequeña espera por si el modal de legacyCopyToClipboard es lento
-    }
-    function copyToClipboard(textContent, callbackDespuesDeCopia) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(textContent)
-                .then(() => { _showModal('Copiado', 'Texto copiado.'); if(callbackDespuesDeCopia) callbackDespuesDeCopia(true); })
-                .catch(err => legacyCopyToClipboard(textContent, callbackDespuesDeCopia)); // Fallback
+    async function _processSalesDataForModal(ventas, obsequios, cargaInicialInventario, userIdForInventario) {
+        const clientData = {};
+        const clientTotals = {}; 
+        let grandTotalValue = 0;
+        const allProductsMap = new Map();
+        const vaciosMovementsPorTipo = {};
+        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+        
+        let inventarioMap;
+        if (cargaInicialInventario && cargaInicialInventario.length > 0) {
+             inventarioMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
+             console.log("_processSalesDataForModal: Usando Carga Inicial de SNAPSHOT.");
         } else {
-            legacyCopyToClipboard(textContent, callbackDespuesDeCopia); // Fallback directo
+            console.warn("_processSalesDataForModal: No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+            const inventarioSnapshot = await _getDocs(inventarioRef);
+            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         }
-    }
-    function legacyCopyToClipboard(textContent, callbackDespuesDeCopia) {
-        const textArea = document.createElement("textarea"); textArea.value = textContent; textArea.style.position = "fixed"; textArea.style.left = "-9999px"; document.body.appendChild(textArea); textArea.select();
-        let success = false;
-        try { document.execCommand('copy'); _showModal('Copiado', 'Texto copiado.'); success = true;}
-        catch (err) { console.error('Fallback copy failed:', err); _showModal('Error', 'No se pudo copiar el texto.'); success = false;}
-        finally { document.body.removeChild(textArea); if(callbackDespuesDeCopia) callbackDespuesDeCopia(success); }
-    }
-    // *** MODIFICADO: showSharingOptions ahora recibe callbackFinal ***
-    function showSharingOptions(venta, productos, vaciosDevueltosPorTipo, tipo, callbackFinal) {
-        const modalContent = `<div class="text-center"><h3 class="text-xl font-bold mb-4">Generar ${tipo}</h3><p class="mb-6">Elige formato.</p><div class="space-y-4"><button id="printTextBtn" class="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Imprimir (Texto)</button><button id="shareImageBtn" class="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600">Compartir (Imagen)</button></div></div>`;
-        _showModal('Elige opción', modalContent, null, ''); // Sin botón 'Confirmar' por defecto
-        // Llama al callbackFinal *después* de intentar compartir/imprimir
-        document.getElementById('printTextBtn').addEventListener('click', () => { const rawText = createRawTextTicket(venta, productos, vaciosDevueltosPorTipo); handleShareRawText(rawText, callbackFinal); });
-        document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, callbackFinal); });
-    }
 
-    // *** MODIFICADO: _processAndSaveVenta ahora es la función que guarda ***
-    async function _processAndSaveVenta() {
-        console.log("Starting _processAndSaveVenta...");
-        
-        // --- INICIO: Lógica del Snapshot ---
-        // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
-        const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
-        const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
-        try {
-            const snapshotDoc = await _getDoc(snapshotRef);
-            if (!snapshotDoc.exists()) {
-                // No existe, es la primera venta. Guardar snapshot.
-                console.log("Primera venta del día detectada. Guardando snapshot de inventario...");
-                if (_inventarioCache && _inventarioCache.length > 0) {
-                    await _setDoc(snapshotRef, { inventario: _inventarioCache, fecha: new Date() });
-                    console.log("Snapshot de carga inicial guardado.");
-                } else {
-                    console.warn("No hay inventario en caché para guardar en snapshot.");
-                }
-            }
-        } catch (snapError) {
-            console.error("Error al verificar/guardar snapshot de carga inicial:", snapError);
-            // No detenemos la venta, pero sí avisamos.
-            _showModal('Advertencia', 'No se pudo guardar la Carga Inicial (snapshot). El reporte de cierre podría no ser exacto.');
-        }
-        // --- FIN: Lógica del Snapshot ---
+        const allData = [
+            ...ventas.map(v => ({ tipo: 'venta', data: v })),
+            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
+        ];
 
-        // Esta función ahora contiene la lógica de guardado que estaba antes en handleSaveVentaAndAdjustments
-        try {
-            const batch = _writeBatch(_db);
-            const ventaRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`));
-            let totalVenta=0;
-            const itemsVenta=[];
-            const vaciosChanges={}; // tipoVacio: cambio_neto_para_saldo_cliente
-            const prodsParaGuardar = Object.values(_ventaActual.productos);
-
-            for(const p of prodsParaGuardar){
-                const pCache=_inventarioCache.find(i=>i.id===p.id);
-                if(!pCache) throw new Error(`Producto ${p.presentacion} no encontrado en caché.`);
-                const stockU=pCache.cantidadUnidades||0;
-                const restarU=p.totalUnidadesVendidas||0;
-                if(restarU < 0) throw new Error(`Cantidad inválida para ${p.presentacion}.`);
-                if(stockU < restarU) throw new Error(`Stock insuficiente para ${p.presentacion}. Disponible: ${stockU}, Vendido: ${restarU}`);
-                if(restarU > 0){
-                    const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,p.id);
-                    batch.update(pRef,{cantidadUnidades: stockU - restarU});
-                }
-                const precios=p.precios||{und:p.precioPorUnidad||0};
-                const sub=(precios.cj||0)*(p.cantCj||0)+(precios.paq||0)*(p.cantPaq||0)+(precios.und||0)*(p.cantUnd||0);
-                totalVenta+=sub;
-
-                if(pCache.manejaVacios && pCache.tipoVacio){
-                    const tV=pCache.tipoVacio;
-                    const cjV=p.cantCj||0;
-                    if(cjV > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) + cjV; // Aumenta deuda cliente
-                }
-
-                if(restarU > 0) {
-                     itemsVenta.push({
-                         id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null,
-                         precios:p.precios, ventaPor:p.ventaPor,
-                         unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja,
-                         cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0},
-                         totalUnidadesVendidas:p.totalUnidadesVendidas,
-                         iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null
-                     });
-                }
-            }
-
-            for(const tV in _ventaActual.vaciosDevueltosPorTipo){
-                const dev=_ventaActual.vaciosDevueltosPorTipo[tV]||0;
-                if(dev > 0) vaciosChanges[tV] = (vaciosChanges[tV] || 0) - dev; // Disminuye deuda cliente
-            }
-
-            if(Object.values(vaciosChanges).some(c => c !== 0)){
-                const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_ventaActual.cliente.id);
-                await _runTransaction(_db,async(t)=>{
-                    const cliDoc=await t.get(cliRef);
-                    if(!cliDoc.exists()) throw "Cliente no existe.";
-                    const cliData=cliDoc.data();
-                    const sVac = cliData.saldoVacios || {};
-                    for(const tV in vaciosChanges){
-                        const ch=vaciosChanges[tV];
-                        if(ch !== 0) sVac[tV] = (sVac[tV] || 0) + ch;
-                    }
-                    t.update(cliRef,{saldoVacios: sVac});
-                });
-            }
-
-            const ventaDataToSave = {
-                clienteId:_ventaActual.cliente.id,
-                clienteNombre:_ventaActual.cliente.nombreComercial||_ventaActual.cliente.nombrePersonal,
-                clienteNombrePersonal:_ventaActual.cliente.nombrePersonal,
-                fecha:new Date(),
-                total:totalVenta,
-                productos:itemsVenta,
-                vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo
-            };
-
-             if (itemsVenta.length > 0 || Object.values(_ventaActual.vaciosDevueltosPorTipo).some(v => v > 0)) {
-                batch.set(ventaRef, ventaDataToSave);
-            } else {
-                 console.warn("No se guardó la venta: sin productos ni vacíos devueltos.");
-                 throw new Error("No hay productos ni vacíos devueltos para guardar."); // Lanzar error para que no continúe
-            }
-
-            await batch.commit();
-            console.log("_processAndSaveVenta finished successfully.");
-            // Devolver los datos guardados para usarlos en el ticket
-            return { venta: ventaDataToSave, productos: itemsVenta, vaciosDevueltosPorTipo: ventaDataToSave.vaciosDevueltosPorTipo };
-
-        } catch (e) {
-            console.error("Error in _processAndSaveVenta:", e);
-            throw e; // Relanzar el error para que sea capturado por generarTicket
-        }
-    }
-
-    // *** MODIFICADO: generarTicket ahora confirma, llama a _processAndSaveVenta, y LUEGO muestra opciones ***
-    async function generarTicket() {
-        if (!_ventaActual.cliente) { _showModal('Error', 'Selecciona cliente.'); return; }
-        const prods = Object.values(_ventaActual.productos);
-        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo).some(c => c > 0);
-        if (prods.length === 0 && !hayVac) { _showModal('Error', 'Agrega productos o registra vacíos devueltos.'); return; }
-
-        // 1. Mostrar modal de confirmación para GUARDAR
-        _showModal('Confirmar Venta', '¿Guardar esta transacción?', async () => {
-            _showModal('Progreso', 'Guardando transacción...'); // Mostrar progreso mientras se guarda
-            try {
-                // 2. Llamar a la función que guarda y ajusta (y crea snapshot si es necesario)
-                const savedData = await _processAndSaveVenta();
-
-                // 3. Si tuvo éxito, AHORA mostrar las opciones de ticket
-                // Pasar showNuevaVentaView como callback final
-                showSharingOptions(
-                    { cliente: _ventaActual.cliente, fecha: savedData.venta.fecha }, // Datos básicos
-                    savedData.productos, // Productos guardados
-                    savedData.vaciosDevueltosPorTipo, // Vacíos guardados
-                    'Nota de Entrega',
-                    () => { // Callback que se ejecuta después de imprimir/compartir
-                         _showModal('Éxito', 'Venta registrada y ticket generado/compartido.', showNuevaVentaView);
-                    }
-                );
-
-            } catch (saveError) {
-                // Si _processAndSaveVenta falló, mostrar el error
-                console.error("Error al guardar venta:", saveError);
-                 const progressModal = document.getElementById('modalContainer'); // Cerrar modal de progreso si aún está visible
-                 if(progressModal && !modalContainer.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                      progressModal.classList.add('hidden');
-                 }
-                _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
-            }
+        for (const item of allData) {
+            const clientName = item.data.clienteNombre || 'Cliente Desconocido';
+            if (!clientData[clientName]) clientData[clientName] = { products: {}, totalValue: 0 };
+            if (!vaciosMovementsPorTipo[clientName]) { vaciosMovementsPorTipo[clientName] = {}; TIPOS_VACIO_GLOBAL.forEach(tipo => vaciosMovementsPorTipo[clientName][tipo] = { entregados: 0, devueltos: 0 }); }
             
-            // --- ¡CORRECCIÓN AÑADIDA AQUÍ! ---
-            // Esto evita que el modal de "Confirmar" se cierre antes de que 
-            // aparezca el modal de "showSharingOptions".
-            return false; 
-            // --- FIN DE LA CORRECCIÓN ---
-
-        }, 'Sí, guardar', () => { /* No hacer nada si cancela la confirmación */ }, true); // True para indicar lógica de confirmación (mostrar progreso)
-    }
-
-    function showVentasTotalesView() {
-        if (_floatingControls) _floatingControls.classList.add('hidden');
-        _mainContent.innerHTML = `
-            <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
-                <div class="space-y-4">
-                    <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                    <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
-                </div>
-                <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-            </div> </div> </div>
-        `;
-        document.getElementById('ventasActualesBtn').addEventListener('click', showVentasActualesView);
-        document.getElementById('cierreVentasBtn').addEventListener('click', showCierreSubMenuView);
-        document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
-    }
-
-    function showVentasActualesView() {
-        if (_floatingControls) _floatingControls.classList.add('hidden');
-        _mainContent.innerHTML = `
-            <div class="p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-xl">
-                <div class="flex justify-between items-center mb-6"> <h2 class="text-2xl font-bold">Ventas Actuales</h2> <button id="backToVentasTotalesBtn" class="px-4 py-2 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> </div>
-                <div id="ventasListContainer" class="overflow-x-auto"><p class="text-center text-gray-500">Cargando...</p></div>
-            </div> </div>
-        `;
-        document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
-        renderVentasList();
-    }
-
-    function renderVentasList() {
-        const cont = document.getElementById('ventasListContainer'); if (!cont) return;
-        const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
-        // --- FIX: Manejador de error de listener ---
-        const unsub = _onSnapshot(q, (snap) => {
-            _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); _ventasGlobal.sort((a,b)=>(b.fecha?.toDate()??0)-(a.fecha?.toDate()??0));
-            if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
-            let tHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0 z-10"><tr> <th class="py-2 px-3 border-b text-left">Cliente</th> <th class="py-2 px-3 border-b text-left">Fecha</th> <th class="py-2 px-3 border-b text-right">Total</th> <th class="py-2 px-3 border-b text-center">Acciones</th> </tr></thead><tbody>`;
-            _ventasGlobal.forEach(v => { const fV=v.fecha?.toDate?v.fecha.toDate():new Date(0); const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; });
-            tHTML += `</tbody></table>`; cont.innerHTML = tHTML;
-        }, (err) => { 
-            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-                console.log(`Ventas (lista) listener error ignored (assumed logout): ${err.code}`);
-                return;
-            }
-            console.error("Error lista ventas:", err); 
-            if(cont) cont.innerHTML = `<p class="text-red-500">Error al cargar.</p>`; 
-        });
-        _activeListeners.push(unsub);
-    }
-
-    function showCierreSubMenuView() {
-         _mainContent.innerHTML = `
-            <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Cierre de Ventas</h2>
-                <div class="space-y-4">
-                    <button id="verCierreBtn" class="w-full px-6 py-3 bg-cyan-500 text-white rounded-lg shadow-md hover:bg-cyan-600">Ver Cierre</button>
-                    <button id="ejecutarCierreBtn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg shadow-md hover:bg-red-700">Ejecutar Cierre</button>
-                </div>
-                <button id="backToVentasTotalesBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
-            </div> </div> </div>
-        `;
-        document.getElementById('verCierreBtn').addEventListener('click', showVerCierreView);
-        document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
-        document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
-    }
-    
-    // --- PASO 3: ELIMINAR LA FUNCIÓN DUPLICADA ---
-    // La función `processSalesDataForReport` que estaba aquí (aprox. 175 líneas) ha sido eliminada.
-    // --- FIN PASO 3 ---
-
-    async function showVerCierreView() {
-        _showModal('Progreso', 'Generando reporte...');
-        const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
-        
-        // --- NUEVO: Cargar obsequios ---
-        const obsequiosSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
-        const obsequios = obsequiosSnapshot.docs.map(doc => doc.data());
-
-        // --- NUEVO: Cargar snapshot si existe ---
-        const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
-        let cargaInicialInventario = [];
-        let hasSnapshot = false; // <-- REFACTOR: Determinar hasSnapshot aquí
-        try {
-            const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
-            const snapshotDoc = await _getDoc(snapshotRef);
-            if (snapshotDoc.exists() && snapshotDoc.data().inventario) {
-                cargaInicialInventario = snapshotDoc.data().inventario;
-                hasSnapshot = true; // <-- REFACTOR: Setear hasSnapshot aquí
-            }
-        } catch (snapError) {
-            console.warn("Error al leer snapshot para 'Ver Cierre':", snapError);
-        }
-        // --- FIN NUEVO ---
-
-        if (ventas.length === 0 && obsequios.length === 0) { _showModal('Aviso', 'No hay ventas ni obsequios.'); return; }
-        
-        try {
-            // --- PASO 2.1: LLAMAR A LA FUNCIÓN CENTRALIZADA ---
-            if (!window.dataModule || typeof window.dataModule._processSalesDataForModal !== 'function') {
-                throw new Error("El módulo de datos (dataModule) o su función _processSalesDataForModal no está cargado.");
-            }
-            const { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = 
-                await window.dataModule._processSalesDataForModal(
-                    ventas, 
-                    obsequios, 
-                    cargaInicialInventario,
-                    _userId // Pasar el userId actual
-                );
-            // --- FIN PASO 2.1 ---
-            
-            let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
-            let bHTML=''; 
-            
-            sortedClients.forEach(cli=>{
-                const cCli = clientData[cli]; 
+            if (item.tipo === 'venta') {
+                const venta = item.data;
+                const ventaTotalCliente = venta.total || 0;
+                clientData[clientName].totalValue += ventaTotalCliente;
+                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+                grandTotalValue += ventaTotalCliente;
                 
-                // Determinar si este cliente en esta fila es solo obsequio
-                // --- REFACTOR: Usar clientTotals (que viene de la función central) ---
+                const vaciosDev = venta.vaciosDevueltosPorTipo || {};
+                for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
+                
+                (venta.productos || []).forEach(p => {
+                    const prodComp = inventarioMap.get(p.id) || p;
+                    if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
+                    const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
+                    if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
+                    if (p.id && !clientData[clientName].products[p.id]) clientData[clientName].products[p.id] = 0;
+                    
+                    let cantidadUnidades = 0;
+                    if (p.cantidadVendida) { 
+                        const uCj = p.unidadesPorCaja || 1;
+                        const uPaq = p.unidadesPorPaquete || 1;
+                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
+                    } else if (p.totalUnidadesVendidas) { 
+                        cantidadUnidades = p.totalUnidadesVendidas;
+                    }
+                    if(p.id) clientData[clientName].products[p.id] += cantidadUnidades;
+                });
+
+            } else if (item.tipo === 'obsequio') {
+                const obsequio = item.data;
+                const prodInventario = inventarioMap.get(obsequio.productoId);
+
+                if (prodInventario) {
+                    const pComp = prodInventario;
+                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+
+                    if (pComp.manejaVacios && pComp.tipoVacio) {
+                        const tV = pComp.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
+                    }
+                    
+                    const vacDev = obsequio.vaciosRecibidos || 0;
+                    const tipoVacDev = obsequio.tipoVacio;
+                    if (vacDev > 0 && tipoVacDev) {
+                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
+                    }
+
+                    const r = pComp.rubro || 'N/R', s = pComp.segmento || 'N/S', m = pComp.marca || 'N/M';
+                    if (pComp.id && !allProductsMap.has(pComp.id)) allProductsMap.set(pComp.id, { ...pComp, id: pComp.id, rubro: r, segmento: s, marca: m, presentacion: pComp.presentacion });
+                    if (pComp.id && !clientData[clientName].products[pComp.id]) clientData[clientName].products[pComp.id] = 0;
+                    clientData[clientName].products[pComp.id] += cantidadUnidades;
+                }
+            }
+        }
+        
+        const sortedClients = Object.keys(clientData).sort();
+        const sortFunction = await getGlobalProductSortFunction();
+        const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
+        return { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
+    }
+
+    async function showClosingDetail(closingId) {
+        const closingData = window.tempClosingsData?.find(c => c.id === closingId);
+        if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
+        _showModal('Progreso', 'Generando reporte detallado...');
+        try {
+            const { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = 
+                await _processSalesDataForModal(
+                    closingData.ventas || [], 
+                    closingData.obsequios || [], 
+                    closingData.cargaInicialInventario || [], 
+                    closingData.vendedorInfo.userId
+                );
+            
+            let headerHTML = `
+                <tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">SEGMENTO</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.segmento || 'S/S'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+            
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">MARCA</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.marca || 'S/M'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">PRESENTACION</th>`;
+            finalProductOrder.forEach(p => { headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${p.presentacion || 'S/P'}</th>`; });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Sub Total</th></tr>`;
+            
+            headerHTML += `<tr class="sticky top-0 z-20 bg-gray-200">
+                    <th class="p-1 border sticky left-0 z-30 bg-gray-200">PRECIO</th>`;
+            finalProductOrder.forEach(p => { 
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                let displayPrecio = '$0.00';
+                if (p.ventaPor?.cj) displayPrecio = `$${(precios.cj || 0).toFixed(2)}`;
+                else if (p.ventaPor?.paq) displayPrecio = `$${(precios.paq || 0).toFixed(2)}`;
+                else displayPrecio = `$${(precios.und || 0).toFixed(2)}`;
+                headerHTML += `<th class="p-1 border whitespace-nowrap text-xs">${displayPrecio}</th>`; 
+            });
+            headerHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200"></th></tr>`;
+
+
+            let bodyHTML = ''; 
+            sortedClients.forEach(cli => { 
+                const cCli = clientData[cli];
                 const esSoloObsequio = !clientTotals.hasOwnProperty(cli) && cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
                 const rowClass = esSoloObsequio ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-blue-50';
                 const clientNameDisplay = esSoloObsequio ? `${cli} (OBSEQUIO)` : cli;
 
-                bHTML+=`<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
-                finalProductOrder.forEach(p=>{
+                bodyHTML += `<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
+                finalProductOrder.forEach(p => { 
                     const qU=cCli.products[p.id]||0; 
-                    
-                    // --- PASO 2.2: LLAMAR A LA FUNCIÓN DE AYUDA CENTRALIZADA ---
-                    const qtyDisplay = (window.dataModule && typeof window.dataModule.getDisplayQty === 'function') 
-                                        ? window.dataModule.getDisplayQty(qU, p)
-                                        : { value: qU, unit: 'Unds' }; // Fallback
-                    // --- FIN PASO 2.2 ---
-                                        
-                    let dQ = (qU > 0) ? `${qtyDisplay.value}` : '';
-                    let cellClass = '';
-                    if (qU > 0 && esSoloObsequio) {
-                        cellClass = 'font-bold';
-                        dQ += ` ${qtyDisplay.unit}`; // Añadir unidad solo a obsequios en esta vista
-                    }
+                    const qtyDisplay = getDisplayQty(qU, p);
+                    let dQ = (qU > 0) ? `${qtyDisplay.value}` : '0';
+                    const cellClass = (qU > 0 && esSoloObsequio) ? 'font-bold' : '';
+                    if (qU > 0 && esSoloObsequio) dQ += ` ${qtyDisplay.unit}`;
 
-                    bHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`;
+                    bodyHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`; 
                 }); 
-                bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;
+                bodyHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`; 
             });
-
-            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; 
-            finalProductOrder.forEach(p=>{
+            let footerHTML = '<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; 
+            finalProductOrder.forEach(p => { 
                 let tQ=0; 
-                sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); 
-                
-                // --- PASO 2.2 (REPETIDO): LLAMAR A LA FUNCIÓN DE AYUDA CENTRALIZADA ---
-                const qtyDisplay = (window.dataModule && typeof window.dataModule.getDisplayQty === 'function')
-                                    ? window.dataModule.getDisplayQty(tQ, p)
-                                    : { value: tQ, unit: 'Unds' }; // Fallback
-                // --- FIN PASO 2.2 ---
-                                    
+                sortedClients.forEach(cli => tQ+=clientData[cli].products[p.id]||0); 
+                const qtyDisplay = getDisplayQty(tQ, p);
                 let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
-                fHTML+=`<td class="p-1 border text-center">${dT}</td>`;
+                footerHTML+=`<td class="p-1 border text-center">${dT}</td>`; 
             }); 
-            fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            footerHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
             
-            let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
+            let vHTML = ''; 
+            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
             
-            // --- REFACTOR: Usar la variable local hasSnapshot ---
-            const snapshotWarning = hasSnapshot ? '' : '<p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg my-4"><strong>Aviso:</strong> No se encontró Carga Inicial. Los totales de inventario se calculan desde el stock actual (método antiguo).</p>';
-            
-            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> ${snapshotWarning} <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
-            _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
-        } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
-    }
-    
-    // --- MODIFICACIÓN: `ejecutarCierre` ---
-    async function ejecutarCierre() {
-        _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
-            _showModal('Progreso', 'Obteniendo ventas y obsequios...');
-            
-            // --- MODIFICADO: Leer Ventas, Obsequios y Snapshot ---
-            const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); 
-            const ventasSnap = await _getDocs(ventasRef); 
-            const ventas = ventasSnap.docs.map(d=>({id: d.id, ...d.data()}));
-            
-            const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
-            const obsequiosSnap = await _getDocs(obsequiosRef);
-            const obsequios = obsequiosSnap.docs.map(d => ({id: d.id, ...d.data()}));
-
-            if (ventas.length === 0 && obsequios.length === 0) { 
-                _showModal('Aviso', 'No hay ventas ni obsequios activos.'); 
-                return false; 
+            if(cliVacios.length > 0){ 
+                vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; 
+                cliVacios.forEach(cli => {
+                    const movs = vaciosMovementsPorTipo[cli]; 
+                    const clienteTuvoVenta = clientTotals.hasOwnProperty(cli);
+                    const clientNameDisplay = clienteTuvoVenta ? cli : `${cli} (OBSEQUIO)`;
+                    
+                    TIPOS_VACIO_GLOBAL.forEach(t => {
+                        const mov = movs[t] || {entregados:0, devueltos:0}; 
+                        if(mov.entregados > 0 || mov.devueltos > 0){
+                            const neto = mov.entregados - mov.devueltos; 
+                            const nClass = neto > 0 ? 'text-red-600' : (neto < 0 ? 'text-green-600' : ''); 
+                            vHTML+=`<tr><td>${clientNameDisplay}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto > 0 ? `+${neto}` : neto}</td></tr>`;
+                        }
+                    });
+                }); 
+                vHTML+='</tbody></table></div>';
             }
             
-            // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
-            const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
-            let cargaInicialInventario = [];
-            const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
-            try {
-                const snapshotDoc = await _getDoc(snapshotRef);
-                if (snapshotDoc.exists() && snapshotDoc.data().inventario) {
-                    cargaInicialInventario = snapshotDoc.data().inventario;
-                    console.log("Snapshot de Carga Inicial encontrado para el cierre.");
-                } else {
-                    console.warn("No se encontró snapshot de Carga Inicial para el cierre.");
-                }
-            } catch (snapError) {
-                console.error("Error al leer snapshot de Carga Inicial durante el cierre:", snapError);
-                _showModal('Advertencia', 'Error al leer Carga Inicial (snapshot). El reporte podría no ser exacto.');
-            }
-            // --- FIN MODIFICACIÓN LECTURA ---
-
-            try {
-                 _showModal('Progreso', 'Generando Excel...'); 
-                 
-                 let vendedorInfo = {};
-                 if (window.userRole === 'user') {
-                     const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
-                     vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
-                 }
-
-                 const cierreData = { 
-                     fecha: new Date(), 
-                     ventas: ventas.map(({id,...rest})=>rest), 
-                     obsequios: obsequios.map(({id,...rest})=>rest),
-                     total: ventas.reduce((s,v)=>s+(v.total||0),0),
-                     cargaInicialInventario: cargaInicialInventario,
-                     vendedorInfo: vendedorInfo
-                 }; 
-
-                 // --- MODIFICADO: Llamar a la función de exportación global de data.js ---
-                 if (window.dataModule && typeof window.dataModule.exportSingleClosingToExcel === 'function') {
-                    await window.dataModule.exportSingleClosingToExcel(cierreData);
-                 } else {
-                    console.error("Error: window.dataModule.exportSingleClosingToExcel no está definida.");
-                    _showModal('Advertencia', 'No se pudo generar el archivo Excel (función no encontrada), pero el cierre continuará.');
-                 }
-                 
-                 _showModal('Progreso', 'Archivando y eliminando...'); 
-                 
-                 let cDocRef;
-                 
-                 if (window.userRole === 'user') {
-                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`));
-                     await _setDoc(cDocRef, cierreData);
-                     console.log("Cierre de vendedor guardado en colección pública.");
-                 } else { 
-                     cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
-                     await _setDoc(cDocRef, cierreData);
-                     console.log("Cierre de admin guardado en colección privada.");
-                 }
-                 
-                 const batch = _writeBatch(_db); 
-                 ventas.forEach(v => batch.delete(_doc(ventasRef, v.id)));
-                 obsequios.forEach(o => batch.delete(_doc(obsequiosRef, o.id)));
-                 batch.delete(snapshotRef);
-                 await batch.commit();
-
-                _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas y obsequios archivados/eliminados.', showVentasTotalesView); return true;
-            } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
-        }, 'Sí, Ejecutar Cierre', null, true);
+            const vendedor = closingData.vendedorInfo || {};
+            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <div class="mb-4"> <p><strong>Vendedor:</strong> ${vendedor.nombre||''} ${vendedor.apellido||''}</p> <p><strong>Camión:</strong> ${vendedor.camion||'N/A'}</p> <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p> </div> <h3 class="text-xl mb-4">Reporte Cierre</h3> <div class="overflow-auto border" style="max-height: 40vh;"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${headerHTML}</thead> <tbody>${bodyHTML}</tbody> <tfoot>${footerHTML}</tfoot> </table> </div> ${vHTML} </div>`;
+            _showModal(`Detalle Cierre`, reportHTML, null, 'Cerrar');
+        } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
-    function showPastSaleOptions(ventaId, tipo = 'ticket') {
-        console.log("showPastSaleOptions called with ID:", ventaId);
-        const venta = _ventasGlobal.find(v => v.id === ventaId);
-        if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
-        const productosFormateados = (venta.productos || []).map(p => ({
-            ...p,
-            cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
-            totalUnidadesVendidas: p.totalUnidadesVendidas || 0,
-            precios: p.precios || { und: 0, paq: 0, cj: 0 }
-        }));
-        showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
-    }
-    function editVenta(ventaId) {
-        console.log("editVenta called with ID:", ventaId);
-        const venta = _ventasGlobal.find(v => v.id === ventaId);
-        if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
-         _originalVentaForEdit = JSON.parse(JSON.stringify(venta));
-        showEditVentaView(venta);
-    }
-    function deleteVenta(ventaId) {
-        console.log("deleteVenta called with ID:", ventaId);
-         const venta = _ventasGlobal.find(v => v.id === ventaId);
-         if (!venta) {
-            _showModal('Error', 'Venta no encontrada en la lista actual.');
-            return;
-         }
 
-        _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
-            _showModal('Progreso', 'Eliminando venta y ajustando datos...');
-            try {
-                const ventaRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/ventas`, ventaId);
-                const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
-
-                await _runTransaction(_db, async (transaction) => {
-                    console.log("Transaction: Reading venta and cliente...");
-                    const ventaDoc = await transaction.get(ventaRef);
-                    const clienteDoc = await transaction.get(clienteRef);
-
-                    if (!ventaDoc.exists()) throw new Error("La venta ya no existe.");
-
-                    const ventaData = ventaDoc.data();
-                    const clienteData = clienteDoc.exists() ? clienteDoc.data() : null;
-                    const productosVendidos = ventaData.productos || [];
-
-                    const inventarioRefs = {};
-                    const productoIds = productosVendidos.map(p => p.id).filter(id => id);
-                    console.log(`Transaction: Reading ${productoIds.length} inventory items...`);
-                    const inventarioDocsMap = new Map();
-                    if (productoIds.length > 0) {
-                        const uniqueProductIds = [...new Set(productoIds)];
-                        const inventarioGetPromises = uniqueProductIds.map(id => {
-                            const ref = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
-                            inventarioRefs[id] = ref;
-                            return transaction.get(ref);
-                        });
-                        const inventarioDocs = await Promise.all(inventarioGetPromises);
-                        inventarioDocs.forEach((docSnap, index) => {
-                            inventarioDocsMap.set(uniqueProductIds[index], docSnap);
-                        });
-                    }
-                    console.log("Transaction: All reads completed.");
-
-                    const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
-                    const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual };
-                    const ajustesInventario = [];
-                    const ajustesVaciosNetos = {};
-
-                    for (const productoVendido of productosVendidos) {
-                        const unidadesARestaurar = productoVendido.totalUnidadesVendidas || 0;
-                        if (unidadesARestaurar > 0) {
-                            const productoInventarioRef = inventarioRefs[productoVendido.id];
-                            if (productoInventarioRef) {
-                                ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar, id: productoVendido.id });
-                            } else {
-                                console.warn(`No se encontró ref de inventario para producto ${productoVendido.id} en la venta.`);
-                            }
-                        }
-
-                        if (productoVendido.manejaVacios && productoVendido.tipoVacio) {
-                            const tipo = productoVendido.tipoVacio;
-                            const cajasEntregadas = productoVendido.cantidadVendida?.cj || 0;
-                            if (cajasEntregadas > 0) {
-                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas;
-                            }
-                        }
-                    }
-
-                    const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
-                    for (const tipo in vaciosDevueltosEnVenta) {
-                        const cajasDevueltas = vaciosDevueltosEnVenta[tipo] || 0;
-                        if (cajasDevueltas > 0) {
-                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas;
-                        }
-                    }
-
-                    console.log("Transaction: Starting writes...");
-
-                    for (const ajuste of ajustesInventario) {
-                         const invDoc = inventarioDocsMap.get(ajuste.id);
-                         const stockActual = invDoc && invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
-                         const nuevoStock = stockActual + ajuste.cantidad;
-                         console.log(`Transaction: Updating inventory ${ajuste.id}. Old: ${stockActual}, Adjustment: ${ajuste.cantidad}, New: ${nuevoStock}`);
-                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true });
-                    }
-
-                    let saldoVaciosModificado = false;
-                    if (clienteDoc.exists()) {
-                        for (const tipo in ajustesVaciosNetos) {
-                            const ajuste = ajustesVaciosNetos[tipo];
-                            if (ajuste !== 0) {
-                                nuevosSaldoVaciosCliente[tipo] = (nuevosSaldoVaciosCliente[tipo] || 0) + ajuste;
-                                saldoVaciosModificado = true;
-                            }
-                        }
-                        if (saldoVaciosModificado) {
-                            console.log("Transaction: Updating client empty balance.", nuevosSaldoVaciosCliente);
-                            transaction.update(clienteRef, { saldoVacios: nuevosSaldoVaciosCliente });
-                        } else {
-                            console.log("Transaction: No client empty balance changes needed.");
-                        }
-                    } else {
-                         console.warn("Transaction: Client doc does not exist, skipping empty balance update.");
-                    }
-
-                    console.log("Transaction: Deleting sale document.");
-                    transaction.delete(ventaRef);
-
-                    console.log("Transaction: All writes queued.");
-                });
-
-                _showModal('Éxito', 'Venta eliminada. Inventario y saldos de vacíos ajustados.');
-
-            } catch (error) {
-                console.error("Error eliminando/revirtiendo venta:", error);
-                _showModal('Error', `No se pudo eliminar/revertir la venta: ${error.message}`);
-            }
-        }, 'Sí, Eliminar y Revertir', null, true);
-    }
-    async function showEditVentaView(venta) {
-        if (_floatingControls) _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
-        _mainContent.innerHTML = `
-            <div class="p-2 sm:p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
-                <div id="venta-header-section" class="mb-4">
-                    <div class="flex justify-between items-center mb-4"> <h2 class="text-xl font-bold">Editando Venta</h2> <button id="backToVentasBtn" class="px-4 py-2 bg-gray-400 text-white text-sm rounded-lg shadow-md hover:bg-gray-500">Volver</button> </div>
-                    <div class="p-4 bg-gray-100 rounded-lg"> <p><span class="font-medium">Cliente:</span> <span class="font-bold">${venta.clienteNombre||'N/A'}</span></p> <p class="text-sm"><span class="font-medium">Fecha Orig:</span> ${venta.fecha?.toDate?venta.fecha.toDate().toLocaleString('es-ES'):'N/A'}</p> </div>
-                </div>
-                <div id="vacios-devueltos-section" class="mb-4"> <h3 class="text-sm font-semibold text-cyan-700 mb-1">Vacíos Devueltos:</h3> <div class="grid grid-cols-3 gap-2"> ${TIPOS_VACIO.map(t => `<div><label for="vacios-${t.replace(/\s+/g,'-')}" class="text-xs mb-1 block">${t}</label><input type="number" min="0" value="${venta.vaciosDevueltosPorTipo?(venta.vaciosDevueltosPorTipo[t]||0):0}" id="vacios-${t.replace(/\s+/g,'-')}" class="w-16 p-1 text-center border rounded-md" data-tipo-vacio="${t}" oninput="window.ventasModule.handleTipoVacioChange(event)"></div>`).join('')} </div> </div>
-                <div id="inventarioTableContainer" class="animate-fade-in flex-grow flex flex-col overflow-hidden">
-                    <div class="mb-2"> <label for="rubroFilter" class="text-xs">Filtrar Rubro:</label> <select id="rubroFilter" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> </div>
-                    <div class="overflow-auto flex-grow rounded-lg shadow"> <table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0 z-10"><tr class="uppercase"> <th class="py-2 px-1 text-center">Cant.</th> <th class="py-2 px-2 text-left">Producto</th> <th class="py-2 px-2 text-left price-toggle" onclick="window.ventasModule.toggleMoneda()">Precio</th> <th class="py-2 px-1 text-center">Stock Disp.</th> </tr></thead><tbody id="inventarioTableBody" class="text-gray-600"></tbody></table> </div>
-                </div>
-                <div id="venta-footer-section" class="mt-4 flex items-center justify-between"> <span id="ventaTotal" class="text-lg font-bold">$0.00</span> <button id="saveChangesBtn" class="px-6 py-3 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600">Guardar Cambios</button> </div>
-            </div> </div>
-        `;
-        document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada); document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
-        _showModal('Progreso', 'Cargando datos...');
-        try {
-            const invSnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`)); _inventarioCache = invSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            _ventaActual = { cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal }, productos: (venta.productos||[]).reduce((acc,p)=>{const pComp=_inventarioCache.find(inv=>inv.id===p.id)||p; const cant=p.cantidadVendida||{}; acc[p.id]={...pComp, cantCj:cant.cj||0, cantPaq:cant.paq||0, cantUnd:cant.und||0, totalUnidadesVendidas:p.totalUnidadesVendidas||0}; return acc;},{}), vaciosDevueltosPorTipo: venta.vaciosDevueltosPorTipo||{} };
-            TIPOS_VACIO.forEach(t => { if(!_ventaActual.vaciosDevueltosPorTipo[t]) _ventaActual.vaciosDevueltosPorTipo[t]=0; });
-            document.getElementById('rubroFilter').addEventListener('change', renderEditVentasInventario); populateRubroFilter(); document.getElementById('rubroFilter').value = '';
-            renderEditVentasInventario(); updateVentaTotal(); document.getElementById('modalContainer').classList.add('hidden');
-        } catch (error) { console.error("Error cargando edit:", error); _showModal('Error', `Error: ${error.message}`); showVentasActualesView(); }
-    }
-    async function renderEditVentasInventario() {
-        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; let invToShow = _inventarioCache.filter(p => _originalVentaForEdit.productos.some(oP => oP.id === p.id) || (p.cantidadUnidades || 0) > 0);
-        if (selRubro) invToShow = invToShow.filter(p => p.rubro === selRubro);
-        const sortFunc = await window.getGlobalProductSortFunction(); invToShow.sort(sortFunc); body.innerHTML = '';
-        if (invToShow.length === 0) { body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">No hay productos ${selRubro ? 'en este rubro' : ''}.</td></tr>`; return; }
-        let lastHKey = null; const fSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
-        invToShow.forEach(prod => {
-             const curHVal = prod[fSortKey] || `Sin ${fSortKey}`; if (curHVal !== lastHKey) { lastHKey = curHVal; const hRow=document.createElement('tr'); hRow.innerHTML=`<td colspan="4" class="py-1 px-2 bg-gray-100 font-bold sticky top-[calc(theme(height.10))] z-[9]">${lastHKey}</td>`; body.appendChild(hRow); }
-             const vPor=prod.ventaPor||{und:true}, vActProd=_ventaActual.productos[prod.id]||{}, origVProd=_originalVentaForEdit.productos.find(p=>p.id===prod.id), precios=prod.precios||{und:prod.precioPorUnidad||0};
-             const fPrice = (v) => { if (isNaN(v)) v=0; if (_monedaActual==='COP'&&_tasaCOP>0) return `COP ${(Math.ceil((v*_tasaCOP)/100)*100).toLocaleString('es-CO')}`; if (_monedaActual==='Bs'&&_tasaBs>0) return `Bs.S ${(v*_tasaBs).toLocaleString('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2})}`; return `$${v.toFixed(2)}`; };
-             const cERow = (t, cC, pT, descT) => { const cStockU=prod.cantidadUnidades||0, origQtySold = origVProd?.cantidadVendida?.[t] ?? 0; let factor=t==='cj'?(prod.unidadesPorCaja||1):t==='paq'?(prod.unidadesPorPaquete||1):1; const maxUAvail=cStockU+(origQtySold*factor); const maxInp=Math.floor(maxUAvail/factor); const stockDispT=Math.floor(cStockU/factor); const r=document.createElement('tr'); r.className='border-b hover:bg-gray-50'; r.innerHTML=`<td class="py-2 px-1 text-center align-middle"> <input type="number" min="0" max="${maxInp}" value="${cC}" class="w-16 p-1 text-center border rounded-md" data-product-id="${prod.id}" data-tipo-venta="${t}" oninput="window.ventasModule.handleQuantityChange(event)"> </td> <td class="py-2 px-2 text-left align-middle">${descT} <span class="text-xs text-gray-500">${prod.marca||'S/M'}</span></td> <td class="py-2 px-2 text-left align-middle font-semibold price-toggle" onclick="window.ventasModule.toggleMoneda()">${fPrice(pT)}</td> <td class="py-2 px-1 text-center align-middle">${stockDispT} ${t.toUpperCase()}</td>`; body.appendChild(r); };
-             if (vPor.cj) { const uCj=prod.unidadesPorCaja||1; cERow('cj', vActProd.cantCj||0, precios.cj||0, `${prod.presentacion} (Cj/${uCj} und)`); }
-             if (vPor.paq) { const uPaq=prod.unidadesPorPaquete||1; cERow('paq', vActProd.cantPaq||0, precios.paq||0, `${prod.presentacion} (Paq/${uPaq} und)`); }
-             if (vPor.und) { cERow('und', vActProd.cantUnd||0, precios.und||0, `${prod.presentacion} (Und)`); }
-        }); updateVentaTotal();
-    }
-    async function handleGuardarVentaEditada() {
-        if (!_originalVentaForEdit) { _showModal('Error', 'Venta original no encontrada.'); return; }
-        const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0);
-        const hayVac = Object.values(_ventaActual.vaciosDevueltosPorTipo || {}).some(c => c > 0);
-        // Permitir guardar aunque no haya productos si hay vacíos (o viceversa), pero no si ambos están vacíos
-        if (prods.length === 0 && !hayVac && Object.values(_originalVentaForEdit.vaciosDevueltosPorTipo || {}).every(c => c === 0)) {
-            _showModal('Error', 'La venta editada no puede quedar completamente vacía.'); return;
+    async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario, userIdForInventario) {
+        const dataByRubro = {};
+        const clientTotals = {}; 
+        let grandTotalValue = 0;
+        const vaciosMovementsPorTipo = {};
+        const allRubros = new Set();
+        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+        
+        let inventarioMap;
+        let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
+        
+        if(hasSnapshot) {
+             inventarioMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
+             console.log("processSalesDataForReport: Usando Carga Inicial de SNAPSHOT guardado.");
+        } else {
+            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+            const inventarioSnapshot = await _getDocs(inventarioRef); 
+            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         }
 
-        _showModal('Confirmar Cambios', '¿Guardar cambios? Stock y saldos se ajustarán.', async () => {
-            _showModal('Progreso', 'Guardando y ajustando...');
-            try {
-                const batch=_writeBatch(_db); const origProds=new Map((_originalVentaForEdit.productos||[]).map(p=>[p.id,p])); const newProds=new Map(Object.values(_ventaActual.productos).map(p=>[p.id,p])); const allPIds=new Set([...origProds.keys(),...newProds.keys()]); const vaciosAdj={}; TIPOS_VACIO.forEach(t=>vaciosAdj[t]=0);
-                for(const pId of allPIds){ const origP=origProds.get(pId), newP=newProds.get(pId), pCache=_inventarioCache.find(p=>p.id===pId); if(!pCache)continue; const origU=origP?(origP.totalUnidadesVendidas||0):0, newU=newP?(newP.totalUnidadesVendidas||0):0, deltaU=origU-newU; // deltaU > 0 significa que se devolvió stock
-                    if(deltaU!==0){ const cStockU=pCache.cantidadUnidades||0, fStockU=cStockU+deltaU; if(fStockU<0)throw new Error(`Stock insuficiente "${pCache.presentacion}" (${fStockU} unidades). Ajuste requerido: ${deltaU}.`); const pRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/inventario`,pId); batch.update(pRef,{cantidadUnidades:fStockU}); }
-                    if(pCache.manejaVacios&&pCache.tipoVacio){ const tV=pCache.tipoVacio, origCj=origP?.cantidadVendida?.cj||0, newCj=newP?.cantCj||0, deltaCj=newCj-origCj; if(vaciosAdj.hasOwnProperty(tV))vaciosAdj[tV]+=deltaCj; } } // deltaCj > 0 significa que se entregaron más vacíos (aumenta deuda)
-                const origVac=_originalVentaForEdit.vaciosDevueltosPorTipo||{}, newVac=_ventaActual.vaciosDevueltosPorTipo||{}; TIPOS_VACIO.forEach(t=>{const origD=origVac[t]||0, newD=newVac[t]||0, deltaD=newD-origD; if(vaciosAdj.hasOwnProperty(t))vaciosAdj[t]-=deltaD;}); // deltaD > 0 significa que se recibieron más vacíos (disminuye deuda)
-                if(Object.values(vaciosAdj).some(a=>a!==0)){const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId); try{await _runTransaction(_db,async(t)=>{const cliDoc=await t.get(cliRef); if(!cliDoc.exists())return; const cliData=cliDoc.data(), sVac=cliData.saldoVacios||{}; for(const tV in vaciosAdj){const adj=vaciosAdj[tV]; if(adj!==0) sVac[tV]=(sVac[tV]||0)+adj;} t.update(cliRef,{saldoVacios:sVac});});} catch(transErr){console.error(`Error ajustando vacíos cli ${_originalVentaForEdit.clienteId}:`,transErr); _showModal('Advertencia','No se pudieron ajustar los saldos de vacíos del cliente.');}} // Continuar aunque falle ajuste de saldo
-                let nTotal=0; const nItems=Object.values(_ventaActual.productos).filter(p=>p.totalUnidadesVendidas>0).map(p=>{ const pr=p.precios||{und:p.precioPorUnidad||0}; const sub=(pr.cj||0)*(p.cantCj||0)+(pr.paq||0)*(p.cantPaq||0)+(pr.und||0)*(p.cantUnd||0); nTotal+=sub; const uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; const totURecalc=(p.cantCj||0)*uCj+(p.cantPaq||0)*uPaq+(p.cantUnd||0); return { id:p.id, presentacion:p.presentacion, rubro:p.rubro??null, marca:p.marca??null, segmento:p.segmento??null, precios:p.precios, ventaPor:p.ventaPor, unidadesPorPaquete:p.unidadesPorPaquete, unidadesPorCaja:p.unidadesPorCaja, cantidadVendida:{cj:p.cantCj||0,paq:p.cantPaq||0,und:p.cantUnd||0}, totalUnidadesVendidas:totURecalc, iva:p.iva??0, manejaVacios:p.manejaVacios||false, tipoVacio:p.tipoVacio||null }; });
-                const vRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/ventas`,_originalVentaForEdit.id); batch.update(vRef,{productos:nItems, total:nTotal, vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo, fechaModificacion:new Date()});
-                await batch.commit(); _originalVentaForEdit=null; _showModal('Éxito','Venta actualizada.',showVentasActualesView);
-            } catch (error) { console.error("Error guardando edit:", error); _showModal('Error', `Error: ${error.message}`); }
-        }, 'Sí, Guardar', null, true);
+        const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
+        const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
+
+        const allData = [
+            ...ventas.map(v => ({ tipo: 'venta', data: v })),
+            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
+        ];
+
+        for (const item of allData) {
+            const clientName = item.data.clienteNombre || 'Cliente Desconocido';
+            
+            if (!vaciosMovementsPorTipo[clientName]) { 
+                vaciosMovementsPorTipo[clientName] = {}; 
+                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
+            }
+
+            if (item.tipo === 'venta') {
+                const venta = item.data;
+                const ventaTotalCliente = venta.total || 0;
+                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+                grandTotalValue += ventaTotalCliente;
+
+                const vacDev = venta.vaciosDevueltosPorTipo || {};
+                for (const t in vacDev) { 
+                    if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
+                }
+
+                (venta.productos || []).forEach(p => {
+                    const prodInventario = inventarioMap.get(p.id);
+                    const prodParaReporte = {
+                        ...(prodInventario || {}),
+                        ...p,
+                        id: p.id,
+                        rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
+                        segmento: prodInventario?.segmento || p.segmento || 'S/S',
+                        marca: prodInventario?.marca || p.marca || 'S/M',
+                    };
+                    
+                    const rubro = prodParaReporte.rubro;
+                    allRubros.add(rubro);
+                    if (!dataByRubro[rubro]) {
+                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
+                    }
+                    if (!dataByRubro[rubro].clients[clientName]) {
+                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
+                    }
+                    if (p.id && !dataByRubro[rubro].productsMap.has(p.id)) {
+                        dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); 
+                    }
+
+                    let cantidadUnidades = 0;
+                    if (p.cantidadVendida) { 
+                        const uCj = p.unidadesPorCaja || 1;
+                        const uPaq = p.unidadesPorPaquete || 1;
+                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
+                    } else if (p.totalUnidadesVendidas) { 
+                        cantidadUnidades = p.totalUnidadesVendidas;
+                    }
+                    
+                    const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) + (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) + (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
+                    
+                    if(p.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
+                    dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
+                    dataByRubro[rubro].totalValue += subtotalProducto;
+                    
+                    if (prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) {
+                        const tV = prodParaReporte.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
+                    }
+                });
+
+            } else if (item.tipo === 'obsequio') {
+                const obsequio = item.data;
+                const prodInventario = inventarioMap.get(obsequio.productoId);
+
+                if (prodInventario) {
+                    const pComp = { ...prodInventario };
+                    pComp.precios = { und: 0, paq: 0, cj: 0 };
+                    
+                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+                    const rubro = pComp.rubro || 'SIN RUBRO';
+                    
+                    allRubros.add(rubro);
+                    if (!dataByRubro[rubro]) {
+                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
+                    }
+                    if (!dataByRubro[rubro].clients[clientName]) {
+                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
+                    }
+                    if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
+                        dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
+                    }
+                    dataByRubro[rubro].obsequiosMap.add(pComp.id);
+
+                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
+                    
+                    if (pComp.manejaVacios && pComp.tipoVacio) {
+                        const tV = pComp.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
+                    }
+
+                    const vacDev = obsequio.vaciosRecibidos || 0;
+                    const tipoVacDev = obsequio.tipoVacio;
+                    if (vacDev > 0 && tipoVacDev) {
+                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
+                    }
+                } else {
+                     console.warn(`Producto de obsequio ${obsequio.productoId} no encontrado en inventario/snapshot.`);
+                }
+            }
+        }
+        
+        const sortFunction = await getGlobalProductSortFunction();
+        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
+
+        for (const rubroName of Array.from(allRubros).sort()) {
+            const rubroData = dataByRubro[rubroName];
+            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
+            const sortedClients = Object.keys(rubroData.clients).sort();
+            const productTotals = {};
+
+            for (const p of sortedProducts) {
+                const productId = p.id;
+                let totalSoldUnits = 0;
+                for (const clientName of sortedClients) {
+                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
+                }
+
+                const pInfo = inventarioMap.get(productId);
+                let initialStockUnits = 0;
+                let currentStockUnits = 0;
+                
+                if (hasSnapshot) {
+                    initialStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    currentStockUnits = initialStockUnits - totalSoldUnits;
+                } else {
+                    currentStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    initialStockUnits = currentStockUnits + totalSoldUnits;
+                }
+
+                productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
+            }
+            
+            finalData.rubros[rubroName] = { 
+                clients: rubroData.clients, 
+                products: sortedProducts, 
+                sortedClients: sortedClients, 
+                totalValue: rubroData.totalValue, 
+                productTotals: productTotals,
+                obsequiosMap: rubroData.obsequiosMap || new Set()
+            };
+        }
+        return { finalData, userInfo };
     }
 
-    window.ventasModule = {
-        toggleMoneda,
-        handleQuantityChange,
-        handleTipoVacioChange,
-        showPastSaleOptions,
-        editVenta,
-        deleteVenta,
-        invalidateCache: () => { /* No action needed */ }
+    async function exportSingleClosingToExcel(closingData) {
+        if (typeof ExcelJS === 'undefined') {
+            _showModal('Error', 'Librería ExcelJS no cargada. No se puede exportar.');
+            return;
+        }
+
+        const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
+        let settings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); 
+        try {
+            const designDocRef = _doc(_db, REPORTE_DESIGN_PATH);
+            const docSnap = await _getDoc(designDocRef);
+            if (docSnap.exists()) {
+                const savedSettings = docSnap.data();
+                settings = { ...settings, ...savedSettings };
+                settings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
+                settings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
+            } 
+        } catch (err) {
+            console.warn("Error al cargar diseño de reporte, usando default:", err);
+        }
+        _showModal('Progreso', 'Generando Excel con su diseño...'); 
+
+        try {
+            const { finalData, userInfo } = await processSalesDataForReport(
+                closingData.ventas || [], 
+                closingData.obsequios || [], 
+                closingData.cargaInicialInventario || [], 
+                closingData.vendedorInfo.userId
+            );
+            
+            const workbook = new ExcelJS.Workbook();
+            
+            // --- INICIO DE LA CORRECCIÓN ---
+            // Obtenemos el objeto fecha.
+            const fechaObjeto = closingData.fecha;
+            
+            // Verificamos si es un Timestamp de Firebase (tiene .toDate()) o si ya es un JS Date.
+            const jsDate = (fechaObjeto && typeof fechaObjeto.toDate === 'function') 
+                            ? fechaObjeto.toDate()  // Es un Timestamp, lo convertimos
+                            : fechaObjeto;          // Ya es un Date (creado con new Date())
+
+            // Usamos la variable jsDate (que ahora sí es un Date)
+            const fechaCierre = jsDate ? jsDate.toLocaleDateString('es-ES') : 'Fecha Inválida';
+            // --- FIN DE LA CORRECCIÓN ---
+            
+            const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
+            const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
+
+
+            const thinBorderStyle = { top: {style:"thin"}, bottom: {style:"thin"}, left: {style:"thin"}, right: {style:"thin"} };
+            const s = settings.styles;
+
+            const headerInfoStyle = buildExcelJSStyle(s.headerInfo, s.headerInfo.border ? thinBorderStyle : null, null, 'left');
+            const headerProductsStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
+            const headerPriceStyle = buildExcelJSStyle(s.headerProducts, s.headerProducts.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+            const headerSubtotalStyle = buildExcelJSStyle({ ...s.headerProducts, bold: true }, s.headerProducts.border ? thinBorderStyle : null, null, 'left');
+
+            const cargaInicialStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'left');
+            const cargaInicialQtyStyle = buildExcelJSStyle(s.rowCargaInicial, s.rowCargaInicial.border ? thinBorderStyle : null, null, 'center');
+            
+            const clientDataStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, null, 'left');
+            const clientQtyStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "0", 'center');
+            const clientSaleStyle = buildExcelJSStyle(s.rowDataClientsSale, s.rowDataClientsSale.border ? thinBorderStyle : null, "0", 'center');
+            const clientObsequioStyle = buildExcelJSStyle(s.rowDataClientsObsequio, s.rowDataClientsObsequio.border ? thinBorderStyle : null, "0", 'center');
+            
+            const clientPriceStyle = buildExcelJSStyle(s.rowDataClients, s.rowDataClients.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+
+            const cargaRestanteStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'left');
+            const cargaRestanteQtyStyle = buildExcelJSStyle(s.rowCargaRestante, s.rowCargaRestante.border ? thinBorderStyle : null, null, 'center');
+
+            const totalsStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'left');
+            const totalsQtyStyle = buildExcelJSStyle(s.rowTotals, s.rowTotals.border ? thinBorderStyle : null, null, 'center');
+            const totalsPriceStyle = buildExcelJSStyle({ ...s.rowTotals, bold: true }, s.rowTotals.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+
+            const getPrice = (p) => {
+                const precios = p.precios || { und: p.precioPorUnidad || 0 };
+                if (p.ventaPor?.cj && precios.cj > 0) return Number(precios.cj.toFixed(2));
+                if (p.ventaPor?.paq && precios.paq > 0) return Number(precios.paq.toFixed(2));
+                return Number((precios.und || 0).toFixed(2));
+            };
+
+            for (const rubroName in finalData.rubros) {
+                const rubroData = finalData.rubros[rubroName];
+                const { products: sortedProducts, sortedClients, clients: clientData, productTotals, totalValue: rubroTotalValue, obsequiosMap } = rubroData;
+                
+                const sheetName = rubroName.replace(/[\/\\?*\[\]]/g, '').substring(0, 31);
+                const worksheet = workbook.addWorksheet(sheetName);
+
+                const colWidths = [ 
+                    { width: settings.columnWidths.col_A_LabelsClientes },
+                ];
+                const START_COL = 2;
+                
+                worksheet.getCell('A1').value = fechaCierre;
+                worksheet.getCell('A1').style = headerInfoStyle;
+
+                worksheet.getCell('A2').value = usuarioDisplay;
+                worksheet.getCell('A2').style = headerInfoStyle;
+
+                const headerRowSegment = worksheet.getRow(3);
+                const headerRowMarca = worksheet.getRow(4);
+                const headerRowPresentacion = worksheet.getRow(5);
+                const headerRowPrecio = worksheet.getRow(6);
+
+                headerRowSegment.getCell(1).value = "SEGMENTO";
+                headerRowMarca.getCell(1).value = "MARCA";
+                headerRowPresentacion.getCell(1).value = "PRESENTACION";
+                headerRowPrecio.getCell(1).value = "PRECIO";
+                [3,4,5,6].forEach(r => worksheet.getCell(r, 1).style = headerProductsStyle);
+                
+                let lastSegment = null, lastMarca = null;
+                let segmentColStart = START_COL, marcaColStart = START_COL;
+
+                sortedProducts.forEach((p, index) => {
+                    const c = START_COL + index; 
+                    const segment = p.segmento || 'S/S';
+                    const marca = p.marca || 'S/M';
+                    const presentacion = p.presentacion || 'S/P';
+                    const precio = getPrice(p);
+
+                    headerRowSegment.getCell(c).value = segment;
+                    headerRowMarca.getCell(c).value = marca;
+                    headerRowPresentacion.getCell(c).value = presentacion;
+                    headerRowPrecio.getCell(c).value = precio;
+
+                    headerRowSegment.getCell(c).style = headerProductsStyle;
+                    headerRowMarca.getCell(c).style = headerProductsStyle;
+                    headerRowPresentacion.getCell(c).style = headerProductsStyle;
+                    const esObsequio = obsequiosMap.has(p.id);
+                    if (esObsequio && precio === 0) {
+                        headerRowPrecio.getCell(c).style = headerProductsStyle;
+                        headerRowPrecio.getCell(c).value = "OBSEQUIO";
+                    } else {
+                        headerRowPrecio.getCell(c).style = headerPriceStyle;
+                    }
+
+                    colWidths.push({ width: settings.columnWidths.products });
+
+                    if (index > 0) {
+                        if (segment !== lastSegment) {
+                            if (c - 1 >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, c - 1); }
+                            segmentColStart = c;
+                        }
+                        if (marca !== lastMarca || segment !== lastSegment) {
+                            if (c - 1 >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, c - 1); }
+                            marcaColStart = c;
+                        }
+                    }
+                    lastSegment = segment;
+                    lastMarca = marca;
+                });
+
+                const lastProdCol = START_COL + sortedProducts.length - 1;
+                if (lastProdCol >= segmentColStart) { worksheet.mergeCells(3, segmentColStart, 3, lastProdCol); }
+                if (lastProdCol >= marcaColStart) { worksheet.mergeCells(4, marcaColStart, 4, lastProdCol); }
+                
+                const subTotalCol = START_COL + sortedProducts.length;
+                worksheet.getCell(3, subTotalCol).value = "Sub Total";
+                worksheet.getCell(3, subTotalCol).style = headerSubtotalStyle;
+                worksheet.mergeCells(3, subTotalCol, 6, subTotalCol);
+                colWidths.push({ width: settings.columnWidths.subtotal });
+                
+                worksheet.columns = colWidths;
+                
+                let currentRowNum = 8;
+
+                if (settings.showCargaInicial) {
+                    const cargaInicialRow = worksheet.getRow(currentRowNum++);
+                    cargaInicialRow.getCell(1).value = "CARGA INICIAL";
+                    cargaInicialRow.getCell(1).style = cargaInicialStyle;
+                    sortedProducts.forEach((p, index) => {
+                        const initialStock = productTotals[p.id]?.initialStock || 0;
+                        const cell = cargaInicialRow.getCell(START_COL + index);
+                        const qtyDisplay = getDisplayQty(initialStock, p);
+                        cell.value = qtyDisplay.value;
+                        cell.style = { ...cargaInicialQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                    });
+                    cargaInicialRow.getCell(subTotalCol).style = cargaInicialStyle;
+                }
+
+                currentRowNum++;
+
+                sortedClients.forEach(clientName => {
+                    const clientRow = worksheet.getRow(currentRowNum++);
+                    
+                    const clientSales = clientData[clientName];
+                    const esSoloObsequio = !finalData.clientTotals.hasOwnProperty(clientName) && clientSales.totalValue === 0 && Object.values(clientSales.products).some(q => q > 0);
+                    const clientNameDisplay = esSoloObsequio ? `${clientName} (OBSEQUIO)` : clientName;
+
+                    clientRow.getCell(1).value = clientNameDisplay;
+                    clientRow.getCell(1).style = clientDataStyle;
+                    
+                    sortedProducts.forEach((p, index) => {
+                        const qU = clientSales.products[p.id] || 0;
+                        const cell = clientRow.getCell(START_COL + index);
+                        
+                        const qtyDisplay = getDisplayQty(qU, p);
+                        cell.value = qtyDisplay.value;
+                        
+                        const esObsequioEsteProducto = obsequiosMap.has(p.id);
+                        let baseStyle = clientQtyStyle;
+                        if (qU > 0) {
+                            baseStyle = esObsequioEsteProducto ? clientObsequioStyle : clientSaleStyle;
+                        }
+                        
+                        cell.style = { ...baseStyle, numFmt: "0" }; 
+                    });
+                    const subtotalCell = clientRow.getCell(subTotalCol);
+                    subtotalCell.value = clientSales.totalValue;
+                    subtotalCell.style = clientPriceStyle;
+                });
+
+                currentRowNum++;
+
+                if (settings.showCargaRestante) {
+                    const cargaRestanteRow = worksheet.getRow(currentRowNum++);
+                    cargaRestanteRow.getCell(1).value = "CARGA RESTANTE";
+                    cargaRestanteRow.getCell(1).style = cargaRestanteStyle;
+                    sortedProducts.forEach((p, index) => {
+                        const currentStock = productTotals[p.id]?.currentStock || 0;
+                        const cell = cargaRestanteRow.getCell(START_COL + index);
+                        const qtyDisplay = getDisplayQty(currentStock, p);
+                        cell.value = qtyDisplay.value;
+                        cell.style = { ...cargaRestanteQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                    });
+                    cargaRestanteRow.getCell(subTotalCol).style = cargaRestanteStyle;
+                }
+
+                const totalesRow = worksheet.getRow(currentRowNum++);
+                totalesRow.getCell(1).value = "TOTALES";
+                totalesRow.getCell(1).style = totalsStyle;
+                sortedProducts.forEach((p, index) => {
+                    const totalSold = productTotals[p.id]?.totalSold || 0;
+                    const cell = totalesRow.getCell(START_COL + index);
+                    const qtyDisplay = getDisplayQty(totalSold, p);
+                    cell.value = qtyDisplay.value;
+                    cell.style = { ...totalsQtyStyle, numFmt: `0.## " ${qtyDisplay.unit}"` };
+                });
+                const totalCell = totalesRow.getCell(subTotalCol);
+                totalCell.value = rubroTotalValue;
+                totalCell.style = totalsPriceStyle;
+            }
+
+            const { vaciosMovementsPorTipo } = finalData;
+            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
+            
+            if (settings.showVaciosSheet && cliVacios.length > 0) { 
+                const wsVacios = workbook.addWorksheet('Reporte Vacíos');
+                wsVacios.columns = [ 
+                    { width: settings.columnWidths.vaciosCliente }, 
+                    { width: settings.columnWidths.vaciosTipo }, 
+                    { width: settings.columnWidths.vaciosQty }, 
+                    { width: settings.columnWidths.vaciosQty }, 
+                    { width: settings.columnWidths.vaciosQty } 
+                ];
+
+                const vaciosHeaderStyle = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, null, 'left');
+                const vaciosDataStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, null, 'left');
+                const vaciosDataNumStyle = buildExcelJSStyle(s.vaciosData, s.vaciosData.border ? thinBorderStyle : null, '0', 'center');
+                
+                const headerRowVacios = wsVacios.getRow(1);
+                headerRowVacios.values = ['Cliente', 'Tipo Vacío', 'Entregados', 'Devueltos', 'Neto'];
+                headerRowVacios.getCell(1).style = vaciosHeaderStyle;
+                headerRowVacios.getCell(2).style = vaciosHeaderStyle;
+                headerRowVacios.getCell(3).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                headerRowVacios.getCell(4).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                headerRowVacios.getCell(5).style = buildExcelJSStyle(s.vaciosHeader, s.vaciosHeader.border ? thinBorderStyle : null, '0', 'center');
+                
+                cliVacios.forEach(cli => {
+                    const movs = vaciosMovementsPorTipo[cli]; 
+                    const clienteTuvoVenta = finalData.clientTotals.hasOwnProperty(cli);
+                    const clientNameDisplay = clienteTuvoVenta ? cli : `${cli} (OBSEQUIO)`;
+
+                    TIPOS_VACIO_GLOBAL.forEach(t => {
+                        const mov = movs[t] || {entregados:0, devueltos:0}; 
+                        if (mov.entregados > 0 || mov.devueltos > 0) {
+                            const dataRow = wsVacios.addRow([clientNameDisplay, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            dataRow.getCell(1).style = vaciosDataStyle;
+                            dataRow.getCell(2).style = vaciosDataStyle;
+                            dataRow.getCell(3).style = vaciosDataNumStyle;
+                            dataRow.getCell(4).style = vaciosDataNumStyle;
+                            dataRow.getCell(5).style = vaciosDataNumStyle;
+                        }
+                    });
+                }); 
+            }
+
+            const { clientTotals, grandTotalValue } = finalData;
+            if (settings.showClienteTotalSheet) {
+                const wsClientes = workbook.addWorksheet('Total Por Cliente');
+                wsClientes.columns = [ 
+                    { width: settings.columnWidths.totalCliente }, 
+                    { width: settings.columnWidths.totalClienteValor } 
+                ];
+
+                const totalesHeaderStyle = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'left');
+                const totalesDataStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, null, 'left');
+                const totalesDataPriceStyle = buildExcelJSStyle(s.totalesData, s.totalesData.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+                const totalesTotalRowStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, null, 'left');
+                const totalesTotalRowPriceStyle = buildExcelJSStyle(s.totalesTotalRow, s.totalesTotalRow.border ? thinBorderStyle : null, "$#,##0.00", 'right');
+                
+                const headerRowTotales = wsClientes.getRow(1);
+                headerRowTotales.values = ['Cliente', 'Gasto Total'];
+                headerRowTotales.getCell(1).style = totalesHeaderStyle;
+                headerRowTotales.getCell(2).style = buildExcelJSStyle(s.totalesHeader, s.totalesHeader.border ? thinBorderStyle : null, null, 'right');
+                
+                const sortedClientTotals = Object.entries(clientTotals).sort((a, b) => a[0].localeCompare(b[0]));
+                sortedClientTotals.forEach(([clientName, totalValue]) => {
+                    const row = wsClientes.addRow([clientName, Number(totalValue.toFixed(2))]);
+                    row.getCell(1).style = totalesDataStyle;
+                    row.getCell(2).style = totalesDataPriceStyle;
+                });
+                
+                const totalRow = wsClientes.addRow(['GRAN TOTAL', Number(grandTotalValue.toFixed(2))]);
+                totalRow.getCell(1).style = totalesTotalRowStyle;
+                totalRow.getCell(2).style = totalesTotalRowPriceStyle;
+            }
+
+            const vendedor = closingData.vendedorInfo || {}; 
+            // --- CORRECCIÓN DE LA CORRECCIÓN ANTERIOR ---
+            // 'jsDate' fue definido dentro del bloque try/catch, pero esta línea está fuera.
+            // Movemos la definición de 'jsDate' y 'fechaCierre' al inicio de la función.
+            // Ah, no, la definición de 'jsDate' está bien, pero 'fecha' no está definida aquí.
+            // Necesitamos usar 'jsDate' que definimos arriba.
+            const fechaParaNombre = jsDate ? jsDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+            // --- FIN CORRECCIÓN ---
+            
+            const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
+            const fileName = `Cierre_${vendNombre}_${fechaParaNombre}.xlsx`;
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+
+        } catch (error) { 
+            console.error("Error exportando con ExcelJS:", error); 
+            _showModal('Error', `Error al generar Excel: ${error.message}`); 
+            throw error; 
+        }
+    }
+
+
+    async function handleDownloadSingleClosing(closingId) {
+        const closingData = window.tempClosingsData?.find(c => c.id === closingId);
+        if (!closingData) { _showModal('Error', 'Datos no encontrados.'); return; }
+        
+        const modalContainer = document.getElementById('modalContainer');
+        if (modalContainer && !modalContainer.classList.contains('hidden') && modalContainer.querySelector('h3')?.textContent.startsWith('Progreso')) {
+            modalContainer.classList.add('hidden');
+        }
+
+        _showModal('Progreso', 'Cargando diseño y generando Excel...');
+        try {
+            await exportSingleClosingToExcel(closingData);
+            
+             const modalContainer = document.getElementById('modalContainer');
+             if(modalContainer && !modalContainer.classList.contains('hidden') && modalContainer.querySelector('h3')?.textContent.startsWith('Progreso')) { modalContainer.classList.add('hidden'); }
+        } catch (error) { 
+             const modalContainer = document.getElementById('modalContainer');
+             if(modalContainer && !modalContainer.classList.contains('hidden') && modalContainer.querySelector('h3')?.textContent.startsWith('Progreso')) { modalContainer.classList.add('hidden'); }
+        }
+    }
+
+    function createZoneEditor(idPrefix, label, settings) {
+        const s = settings;
+        return `
+        <div class="p-3 border rounded-lg bg-gray-50">
+            <h4 class="font-semibold text-gray-700">${label}</h4>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-sm items-center">
+                <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_bold" ${s.bold ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Negrita</span></label>
+                <label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" id="${idPrefix}_border" ${s.border ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"><span>Bordes</span></label>
+                <label class="flex items-center space-x-2"><span>Fondo:</span><input type="color" id="${idPrefix}_fillColor" value="${s.fillColor || '#FFFFFF'}" class="h-6 w-10 border cursor-pointer p-0"></label>
+                <label class="flex items-center space-x-2"><span>Texto:</span><input type="color" id="${idPrefix}_fontColor" value="${s.fontColor || '#000000'}" class="h-6 w-10 border cursor-pointer p-0"></label>
+                <label class="flex items-center space-x-2"><span>Tamaño:</span><input type="number" id="${idPrefix}_fontSize" value="${s.fontSize || 10}" min="8" max="16" class="h-7 w-12 border cursor-pointer p-1 text-sm rounded-md"></label>
+            </div>
+        </div>`;
+    }
+
+    function createWidthEditor(id, label, value) {
+        return `
+        <div class="flex items-center justify-between">
+            <label for="${id}" class="text-sm font-medium text-gray-700">${label}:</label>
+            <input type="number" id="${id}" value="${value}" min="5" max="50" step="1" class="w-20 px-2 py-1 border rounded-lg text-sm">
+        </div>`;
+    }
+
+    async function showReportDesignView() {
+        if (_floatingControls) _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <style>
+                input[type="color"] { -webkit-appearance: none; -moz-appearance: none; appearance: none; background: none; border: 1px solid #ccc; padding: 0; }
+                input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+                input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+                input[type="color"]::-moz-color-swatch { border: none; border-radius: 2px; }
+                .design-tab-btn {
+                    padding: 0.5rem 1rem;
+                    cursor: pointer;
+                    border: 1px solid transparent;
+                    border-bottom: none;
+                    margin-bottom: -1px;
+                    background-color: #f9fafb;
+                    color: #6b7280;
+                    border-radius: 0.375rem 0.375rem 0 0;
+                }
+                .design-tab-btn.active {
+                    background-color: #ffffff;
+                    color: #3b82f6;
+                    font-weight: 600;
+                    border-color: #e5e7eb;
+                }
+            </style>
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-3xl">
+                    <div class="bg-white/90 backdrop-blur-sm p-6 md:p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Diseño de Reporte de Cierre</h1>
+                        <p class="text-center text-gray-600 mb-6">Define los estilos visuales y la visibilidad de las secciones del reporte Excel.</p>
+                        
+                        <div id="design-loader" class="text-center text-gray-500 p-4">Cargando configuración...</div>
+                        
+                        <form id="design-form-container" class="hidden text-left">
+                            
+                            <div id="design-tabs" class="flex border-b border-gray-200 mb-4 overflow-x-auto text-sm">
+                                <button type="button" class="design-tab-btn active" data-tab="general">General</button>
+                                <button type="button" class="design-tab-btn" data-tab="rubro">Hoja Rubros</button>
+                                <button type="button" class="design-tab-btn" data-tab="vacios">Hoja Vacíos</button>
+                                <button type="button" class="design-tab-btn" data-tab="totales">Hoja Totales</button>
+                            </div>
+
+                            <div id="design-tab-content" class="space-y-6">
+
+                                <div id="tab-content-general" class="space-y-4">
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Visibilidad de Secciones</h3>
+                                    <div class="space-y-2 mt-4">
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showCargaInicial" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Mostrar fila "CARGA INICIAL" (en Hojas Rubro)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showCargaRestante" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Mostrar fila "CARGA RESTANTE" (en Hojas Rubro)</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showVaciosSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Incluir hoja "Reporte Vacíos"</span>
+                                        </label>
+                                        <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                            <input type="checkbox" id="chk_showClienteTotalSheet" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            <span>Incluir hoja "Total Por Cliente"</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div id="tab-content-rubro" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Rubros)</h3>
+                                    <div id="rubro-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
+                                    </div>
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Rubros)</h3>
+                                    <div id="style-zones-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
+                                    </div>
+                                </div>
+
+                                <div id="tab-content-vacios" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Vacíos)</h3>
+                                    <div id="vacios-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
+                                    </div>
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Vacíos)</h3>
+                                    <div id="vacios-styles-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
+                                    </div>
+                                </div>
+
+                                <div id="tab-content-totales" class="space-y-6 hidden">
+                                    <h3 class="text-lg font-semibold border-b pb-2">Ancho de Columnas (Hoja Totales)</h3>
+                                    <div id="totales-widths-container" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mt-4 text-sm">
+                                        <p>Cargando anchos...</p>
+                                    </div>
+                                    <h3 class="text-lg font-semibold border-b pb-2 mt-4">Estilos de Zonas (Hoja Totales)</h3>
+                                    <div id="totales-styles-container" class="space-y-3 mt-4">
+                                        <p>Cargando estilos...</p>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="flex flex-col sm:flex-row gap-4 pt-6 mt-6 border-t">
+                                <button type="button" id="saveDesignBtn" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Guardar Diseño</button>
+                                <button type="button" id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
+        document.getElementById('saveDesignBtn').addEventListener('click', handleSaveReportDesign);
+
+        const tabsContainer = document.getElementById('design-tabs');
+        const tabContents = document.querySelectorAll('#design-tab-content > div');
+        tabsContainer.addEventListener('click', (e) => {
+            const clickedTab = e.target.closest('.design-tab-btn');
+            if (!clickedTab) return;
+
+            const tabId = clickedTab.dataset.tab;
+            
+            tabsContainer.querySelectorAll('.design-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            clickedTab.classList.add('active');
+            
+            tabContents.forEach(content => {
+                if (content.id === `tab-content-${tabId}`) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
+            });
+        });
+
+        const loader = document.getElementById('design-loader');
+        const formContainer = document.getElementById('design-form-container');
+        
+        try {
+            const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
+            const docRef = _doc(_db, REPORTE_DESIGN_PATH);
+            const docSnap = await _getDoc(docRef);
+            
+            let currentSettings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS));
+            if (docSnap.exists()) {
+                const savedSettings = docSnap.data();
+                currentSettings = { ...currentSettings, ...savedSettings };
+                currentSettings.styles = { ...DEFAULT_REPORTE_SETTINGS.styles, ...(savedSettings.styles || {}) };
+                currentSettings.columnWidths = { ...DEFAULT_REPORTE_SETTINGS.columnWidths, ...(savedSettings.columnWidths || {}) };
+            }
+
+            document.getElementById('chk_showCargaInicial').checked = currentSettings.showCargaInicial;
+            document.getElementById('chk_showCargaRestante').checked = currentSettings.showCargaRestante;
+            document.getElementById('chk_showVaciosSheet').checked = currentSettings.showVaciosSheet;
+            document.getElementById('chk_showClienteTotalSheet').checked = currentSettings.showClienteTotalSheet;
+
+            const s = currentSettings.styles;
+            document.getElementById('style-zones-container').innerHTML = `
+                ${createZoneEditor('headerInfo', 'Info (Fecha/Usuario)', s.headerInfo)}
+                ${createZoneEditor('headerProducts', 'Cabecera Productos', s.headerProducts)}
+                ${createZoneEditor('rowCargaInicial', 'Fila "CARGA INICIAL"', s.rowCargaInicial)}
+                ${createZoneEditor('rowDataClients', 'Filas Clientes (Celdas Vacías)', s.rowDataClients)}
+                ${createZoneEditor('rowDataClientsSale', 'Filas Clientes (Venta > 0)', s.rowDataClientsSale)} 
+                ${createZoneEditor('rowDataClientsObsequio', 'Filas Clientes (Obsequio)', s.rowDataClientsObsequio)}
+                ${createZoneEditor('rowCargaRestante', 'Fila "CARGA RESTANTE"', s.rowCargaRestante)}
+                ${createZoneEditor('rowTotals', 'Fila "TOTALES"', s.rowTotals)}
+            `;
+            const w = currentSettings.columnWidths;
+            document.getElementById('rubro-widths-container').innerHTML = `
+                ${createWidthEditor('width_col_A_LabelsClientes', 'Col A (Etiquetas/Clientes)', w.col_A_LabelsClientes)}
+                ${createWidthEditor('width_products', 'Cols Producto (B, C...)', w.products)}
+                ${createWidthEditor('width_subtotal', 'Col Sub Total', w.subtotal)}
+            `;
+
+            document.getElementById('vacios-widths-container').innerHTML = `
+                ${createWidthEditor('width_vaciosCliente', 'Cliente', w.vaciosCliente)}
+                ${createWidthEditor('width_vaciosTipo', 'Tipo Vacío', w.vaciosTipo)}
+                ${createWidthEditor('width_vaciosQty', 'Cantidades (Ent/Dev/Neto)', w.vaciosQty)}
+                <div></div>
+            `;
+            document.getElementById('vacios-styles-container').innerHTML = `
+                ${createZoneEditor('vaciosHeader', 'Cabecera (Cliente, Tipo, etc.)', s.vaciosHeader)}
+                ${createZoneEditor('vaciosData', 'Filas de Datos', s.vaciosData)}
+            `;
+
+            document.getElementById('totales-widths-container').innerHTML = `
+                ${createWidthEditor('width_totalCliente', 'Cliente', w.totalCliente)}
+                ${createWidthEditor('width_totalClienteValor', 'Gasto Total', w.totalClienteValor)}
+            `;
+            document.getElementById('totales-styles-container').innerHTML = `
+                ${createZoneEditor('totalesHeader', 'Cabecera (Cliente, Gasto)', s.totalesHeader)}
+                ${createZoneEditor('totalesData', 'Filas de Clientes', s.totalesData)}
+                ${createZoneEditor('totalesTotalRow', 'Fila "GRAN TOTAL"', s.totalesTotalRow)}
+            `;
+
+            loader.classList.add('hidden');
+            formContainer.classList.remove('hidden');
+
+        } catch (error) {
+            console.error("Error cargando diseño:", error);
+            loader.textContent = 'Error al cargar la configuración.';
+            _showModal('Error', `No se pudo cargar la configuración: ${error.message}`);
+        }
+    }
+
+    function readZoneEditor(idPrefix) {
+        const boldEl = document.getElementById(`${idPrefix}_bold`);
+        const borderEl = document.getElementById(`${idPrefix}_border`);
+        const fillColorEl = document.getElementById(`${idPrefix}_fillColor`);
+        const fontColorEl = document.getElementById(`${idPrefix}_fontColor`);
+        const fontSizeEl = document.getElementById(`${idPrefix}_fontSize`);
+
+        const defaults = DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || 
+                         (idPrefix === 'rowDataClientsSale' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients : 
+                         (idPrefix === 'rowDataClientsObsequio' ? DEFAULT_REPORTE_SETTINGS.styles.rowDataClients :
+                         (DEFAULT_REPORTE_SETTINGS.styles[idPrefix] || {})));
+
+        return {
+            bold: boldEl ? boldEl.checked : (defaults.bold || false),
+            border: borderEl ? borderEl.checked : (defaults.border || false),
+            fillColor: fillColorEl ? fillColorEl.value : (defaults.fillColor || '#FFFFFF'),
+            fontColor: fontColorEl ? fontColorEl.value : (defaults.fontColor || '#000000'),
+            fontSize: fontSizeEl ? (parseInt(fontSizeEl.value, 10) || 10) : (defaults.fontSize || 10)
+        };
+    }
+
+    function readWidthInputs() {
+        const defaults = DEFAULT_REPORTE_SETTINGS.columnWidths;
+        const readVal = (id, def) => parseInt(document.getElementById(id)?.value, 10) || def;
+        
+        return {
+            col_A_LabelsClientes: readVal('width_col_A_LabelsClientes', defaults.col_A_LabelsClientes),
+            products: readVal('width_products', defaults.products),
+            subtotal: readVal('width_subtotal', defaults.subtotal),
+            vaciosCliente: readVal('width_vaciosCliente', defaults.vaciosCliente),
+            vaciosTipo: readVal('width_vaciosTipo', defaults.vaciosTipo),
+            vaciosQty: readVal('width_vaciosQty', defaults.vaciosQty),
+            totalCliente: readVal('width_totalCliente', defaults.totalCliente),
+            totalClienteValor: readVal('width_totalClienteValor', defaults.totalClienteValor)
+        };
+    }
+
+    async function handleSaveReportDesign() {
+        _showModal('Progreso', 'Guardando diseño...');
+
+        const newSettings = {
+            showCargaInicial: document.getElementById('chk_showCargaInicial').checked,
+            showCargaRestante: document.getElementById('chk_showCargaRestante').checked,
+            showVaciosSheet: document.getElementById('chk_showVaciosSheet').checked,
+            showClienteTotalSheet: document.getElementById('chk_showClienteTotalSheet').checked,
+            styles: {
+                headerInfo: readZoneEditor('headerInfo'),
+                headerProducts: readZoneEditor('headerProducts'),
+                rowCargaInicial: readZoneEditor('rowCargaInicial'),
+                rowDataClients: readZoneEditor('rowDataClients'),
+                rowDataClientsSale: readZoneEditor('rowDataClientsSale'), 
+                rowDataClientsObsequio: readZoneEditor('rowDataClientsObsequio'),
+                rowCargaRestante: readZoneEditor('rowCargaRestante'),
+                rowTotals: readZoneEditor('rowTotals'),
+                vaciosHeader: readZoneEditor('vaciosHeader'),
+                vaciosData: readZoneEditor('vaciosData'),
+                totalesHeader: readZoneEditor('totalesHeader'),
+                totalesData: readZoneEditor('totalesData'),
+                totalesTotalRow: readZoneEditor('totalesTotalRow')
+            },
+            columnWidths: readWidthInputs()
+        };
+
+        try {
+            const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
+            const docRef = _doc(_db, REPORTE_DESIGN_PATH);
+            await _setDoc(docRef, newSettings);
+            _showModal('Éxito', 'Diseño guardado correctamente.', showDataView); 
+        } catch (error) {
+            console.error("Error guardando diseño:", error);
+            _showModal('Error', `No se pudo guardar: ${error.message}`);
+        }
+    }
+    
+    async function showConsolidatedClientsView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Clientes Consolidados</h1>
+                <div id="consolidated-clients-filters"></div>
+                <div id="consolidated-clients-container" class="overflow-x-auto max-h-96"> <p class="text-center text-gray-500">Cargando...</p> </div>
+                <div class="mt-6 flex flex-col sm:flex-row gap-4"> <button id="backToDataMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> <button id="downloadClientsBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 hidden">Descargar Lista</button> </div>
+            </div> </div> </div>
+        `;
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView); 
+        document.getElementById('downloadClientsBtn').addEventListener('click', handleDownloadFilteredClients);
+        await loadAndRenderConsolidatedClients();
+    }
+    async function loadAndRenderConsolidatedClients() {
+        const cont = document.getElementById('consolidated-clients-container'), filtCont = document.getElementById('consolidated-clients-filters'); if(!cont || !filtCont) return;
+        try {
+            const cliRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`); const cliSnaps = await _getDocs(cliRef);
+            _consolidatedClientsCache = cliSnaps.docs.map(d => ({id: d.id, ...d.data()}));
+            filtCont.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 border rounded-lg bg-gray-50"> <input type="text" id="client-search-input" placeholder="Buscar..." class="md:col-span-2 w-full px-4 py-2 border rounded-lg text-sm"> <div> <label for="client-filter-sector" class="block text-xs mb-1">Sector</label> <select id="client-filter-sector" class="w-full px-2 py-1 border rounded-lg text-sm"><option value="">Todos</option></select> </div> <button id="clear-client-filters-btn" class="bg-gray-300 text-xs font-semibold text-gray-700 rounded-lg self-end py-1.5 px-3 hover:bg-gray-400 transition duration-150">Limpiar</button> </div>`;
+            const uSectors = [...new Set(_consolidatedClientsCache.map(c => c.sector).filter(Boolean))].sort(); const sFilt = document.getElementById('client-filter-sector'); uSectors.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sFilt.appendChild(o); });
+            document.getElementById('client-search-input').addEventListener('input', renderConsolidatedClientsList); sFilt.addEventListener('change', renderConsolidatedClientsList); document.getElementById('clear-client-filters-btn').addEventListener('click', () => { document.getElementById('client-search-input').value = ''; sFilt.value = ''; renderConsolidatedClientsList(); });
+            renderConsolidatedClientsList(); document.getElementById('downloadClientsBtn').classList.remove('hidden');
+        } catch (error) { console.error("Error clientes consolidados:", error); cont.innerHTML = `<p class="text-red-500">Error al cargar.</p>`; }
+    }
+    function renderConsolidatedClientsList() {
+        const cont=document.getElementById('consolidated-clients-container'), sInp=document.getElementById('client-search-input'), sFilt=document.getElementById('client-filter-sector'); if(!cont||!sInp||!sFilt) return;
+        const sTerm = sInp.value.toLowerCase(), selSec = sFilt.value;
+        _filteredClientsCache = _consolidatedClientsCache.filter(cli => { const nComL=(cli.nombreComercial||'').toLowerCase(), nPerL=(cli.nombrePersonal||'').toLowerCase(), cepL=(cli.codigoCEP||'').toLowerCase(); const searchM=!sTerm||nComL.includes(sTerm)||nPerL.includes(sTerm)||(cli.codigoCEP&&cepL.includes(sTerm)); const secM=!selSec||cli.sector===selSec; return searchM&&secM; });
+        if (_filteredClientsCache.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500 p-4">No se encontraron clientes.</p>`; return; }
+        let tHTML = `<table class="min-w-full bg-white text-sm"> <thead class="bg-gray-200 sticky top-0 z-10"> <tr> <th class="py-2 px-3 border-b text-left">Sector</th> <th class="py-2 px-3 border-b text-left">N. Comercial</th> <th class="py-2 px-3 border-b text-left">N. Personal</th> <th class="py-2 px-3 border-b text-left">Teléfono</th> <th class="py-2 px-3 border-b text-left">CEP</th> </tr> </thead> <tbody>`;
+        _filteredClientsCache.sort((a,b)=>(a.nombreComercial||'').localeCompare(b.nombreComercial||'')).forEach(c=>{tHTML+=`<tr class="hover:bg-gray-50 border-b"><td class="py-2 px-3">${c.sector||'N/A'}</td><td class="py-2 px-3 font-semibold">${c.nombreComercial||'N/A'}</td><td class="py-2 px-3">${c.nombrePersonal||'N/A'}</td><td class="py-2 px-3">${c.telefono||'N/A'}</td><td class="py-2 px-3">${c.codigoCEP||'N/A'}</td></tr>`;});
+        tHTML += '</tbody></table>'; cont.innerHTML = tHTML;
+    }
+    
+    async function handleDownloadFilteredClients() {
+         if (typeof ExcelJS === 'undefined' || _filteredClientsCache.length === 0) { _showModal('Aviso', typeof ExcelJS === 'undefined'?'Librería ExcelJS no cargada.':'No hay clientes.'); return; }
+        
+        const dExport = _filteredClientsCache.map(c => ({
+            'Sector':c.sector||'',
+            'Nombre Comercial':c.nombreComercial||'',
+            'Nombre Personal':c.nombrePersonal||'',
+            'Telefono':c.telefono||'',
+            'CEP':c.codigoCEP||'',
+            'Coordenadas':c.coordenadas||''
+        }));
+        
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Clientes Consolidados');
+
+        worksheet.columns = [
+            { header: 'Sector', key: 'Sector', width: 20 },
+            { header: 'Nombre Comercial', key: 'Nombre Comercial', width: 30 },
+            { header: 'Nombre Personal', key: 'Nombre Personal', width: 30 },
+            { header: 'Telefono', key: 'Telefono', width: 15 },
+            { header: 'CEP', key: 'CEP', width: 15 },
+            { header: 'Coordenadas', key: 'Coordenadas', width: 20 }
+        ];
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.addRows(dExport);
+
+        const today = new Date().toISOString().slice(0, 10);
+        const fileName = `Clientes_Consolidados_${today}.xlsx`;
+
+        try {
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            console.error("Error al descargar clientes con ExcelJS:", error);
+            _showModal('Error', 'No se pudo generar el archivo de clientes.');
+        }
+    }
+
+    function showClientMapView() {
+        if (mapInstance) { mapInstance.remove(); mapInstance = null; } _floatingControls.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">Mapa Clientes</h1>
+                <div class="relative mb-4"> <input type="text" id="map-search-input" placeholder="Buscar cliente..." class="w-full px-4 py-2 border rounded-lg"> <div id="map-search-results" class="absolute z-[1000] w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto hidden shadow-lg"></div> </div>
+                <div class="mb-4 p-2 bg-gray-100 border rounded-lg text-xs flex flex-wrap justify-center items-center gap-x-4 gap-y-1"> <span class="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="height:20px;margin-right:2px;"> Regular</span> <span class="flex items-center"><img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png" style="height:20px;margin-right:2px;"> Con CEP</span> </div>
+                <div id="client-map" class="w-full rounded-lg shadow-inner" style="height:65vh; border:1px solid #ccc; background-color:#e5e7eb;"> <p class="text-center text-gray-500 pt-10">Cargando mapa...</p> </div>
+                <button id="backToDataMenuBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
+            </div> </div> </div>
+        `;
+        document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView); loadAndDisplayMap();
+    }
+    async function loadAndDisplayMap() {
+        const mapCont = document.getElementById('client-map'); if (!mapCont || typeof L === 'undefined') { mapCont.innerHTML = '<p class="text-red-500">Error: Leaflet no cargado.</p>'; return; }
+        try {
+            if (_consolidatedClientsCache.length === 0) { const cliRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`); const cliSnaps = await _getDocs(cliRef); _consolidatedClientsCache = cliSnaps.docs.map(d => ({id: d.id, ...d.data()})); }
+            const cliCoords = _consolidatedClientsCache.filter(c => { if(!c.coordenadas)return false; const p=c.coordenadas.split(','); if(p.length!==2)return false; const lat=parseFloat(p[0]), lon=parseFloat(p[1]); return !isNaN(lat)&&!isNaN(lon)&&lat>=0&&lat<=13&&lon>=-74&&lon<=-59; });
+            if (cliCoords.length === 0) { mapCont.innerHTML = '<p class="text-gray-500">No hay clientes con coordenadas válidas.</p>'; return; }
+            let mapCenter = [7.77, -72.22]; let zoom = 13; mapInstance = L.map('client-map').setView(mapCenter, zoom); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM', maxZoom: 19 }).addTo(mapInstance);
+            const redI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]}); 
+            const blueI = new L.Icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]});
+            mapMarkers.clear(); const mGroup=[]; cliCoords.forEach(cli=>{try{const coords=cli.coordenadas.split(',').map(p=>parseFloat(p)); const hasCEP=cli.codigoCEP&&cli.codigoCEP.toLowerCase()!=='n/a'; const icon=hasCEP?blueI:redI; const pCont=`<b>${cli.nombreComercial}</b><br><small>${cli.nombrePersonal||''}</small><br><small>Tel: ${cli.telefono||'N/A'}</small><br><small>Sector: ${cli.sector||'N/A'}</small>${hasCEP?`<br><b>CEP: ${cli.codigoCEP}</b>`:''}<br><a href="https://www.google.com/maps?q=${coords[0]},${coords[1]}" target="_blank" class="text-xs text-blue-600">Ver en Maps</a>`; const marker=L.marker(coords,{icon:icon}).bindPopup(pCont,{minWidth:150}); mGroup.push(marker); mapMarkers.set(cli.id, marker);}catch(coordErr){console.warn(`Error coords cli ${cli.nombreComercial}: ${cli.coordenadas}`, coordErr);}});
+            if(mGroup.length > 0) { const group = L.featureGroup(mGroup).addTo(mapInstance); mapInstance.fitBounds(group.getBounds().pad(0.1)); } else { mapCont.innerHTML = '<p class="text-gray-500">No se pudieron mostrar clientes.</p>'; return; }
+            setupMapSearch(cliCoords);
+        } catch (error) { console.error("Error mapa:", error); mapCont.innerHTML = `<p class="text-red-500">Error al cargar datos mapa.</p>`; }
+    }
+    function setupMapSearch(clientsWithCoords) {
+        const sInp = document.getElementById('map-search-input'), resCont = document.getElementById('map-search-results'); if (!sInp || !resCont) return;
+        sInp.addEventListener('input', () => { const sTerm = sInp.value.toLowerCase().trim(); if (sTerm.length<2){resCont.innerHTML=''; resCont.classList.add('hidden'); return;} const filtCli = clientsWithCoords.filter(cli => (cli.nombreComercial||'').toLowerCase().includes(sTerm) || (cli.nombrePersonal||'').toLowerCase().includes(sTerm) || (cli.codigoCEP&&cli.codigoCEP.toLowerCase().includes(sTerm))); if(filtCli.length===0){resCont.innerHTML='<div class="p-2 text-gray-500 text-sm">No encontrado.</div>'; resCont.classList.remove('hidden'); return;} resCont.innerHTML=filtCli.slice(0,10).map(cli=>`<div class="p-2 hover:bg-gray-100 cursor-pointer border-b" data-client-id="${cli.id}"><p class="font-semibold text-sm">${cli.nombreComercial}</p><p class="text-xs text-gray-600">${cli.nombrePersonal||''} ${cli.codigoCEP&&cli.codigoCEP!=='N/A'?`(${cli.codigoCEP})`:''}</p></div>`).join(''); resCont.classList.remove('hidden'); });
+        resCont.addEventListener('click', (e) => { const target = e.target.closest('[data-client-id]'); if (target&&mapInstance){ const cliId=target.dataset.clientId; const marker=mapMarkers.get(cliId); if(marker){mapInstance.flyTo(marker.getLatLng(),17); marker.openPopup();} sInp.value=''; resCont.innerHTML=''; resCont.classList.add('hidden'); } });
+        document.addEventListener('click', (ev)=>{ if(!resCont.contains(ev.target)&&ev.target!==sInp) resCont.classList.add('hidden'); });
+    }
+
+    async function getGlobalProductSortFunction() {
+        if (!_sortPreferenceCache) {
+            try { 
+                const dRef=_doc(_db, `artifacts/${_appId}/users/${_userId}/${SORT_CONFIG_PATH}`); 
+                const dSnap=await _getDoc(dRef); 
+                if(dSnap.exists()&&dSnap.data().order){ 
+                    _sortPreferenceCache=dSnap.data().order; 
+                    const expKeys=new Set(['rubro','segmento','marca','presentacion']); 
+                    if(_sortPreferenceCache.length!==expKeys.size||!_sortPreferenceCache.every(k=>expKeys.has(k))){_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} 
+                } else {_sortPreferenceCache=['segmento','marca','presentacion','rubro'];} 
+            }
+            catch (error) { console.error("Error cargando pref orden:", error); _sortPreferenceCache=['segmento','marca','presentacion','rubro']; }
+        }
+        if (!_rubroOrderMapCache) { _rubroOrderMapCache={}; try { const rRef=_collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); const snap=await _getDocs(rRef); snap.docs.forEach(d=>{const data=d.data(); _rubroOrderMapCache[data.name]=data.orden??9999;}); } catch (e) { console.warn("No se pudo obtener orden rubros.", e); } }
+        if (!_segmentoOrderMapCache) { _segmentoOrderMapCache={}; try { const sRef=_collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`); const snap=await _getDocs(sRef); snap.docs.forEach(d=>{const data=d.data(); _segmentoOrderMapCache[data.name]=data.orden??9999;}); } catch (e) { console.warn("No se pudo obtener orden segmentos.", e); } }
+        return (a, b) => {
+            for (const key of _sortPreferenceCache) { let valA, valB, compRes = 0;
+                switch (key) {
+                    case 'rubro': valA=_rubroOrderMapCache[a.rubro]??9999; valB=_rubroOrderMapCache[b.rubro]??9999; compRes=valA-valB; if(compRes===0)compRes=(a.rubro||'').localeCompare(b.rubro||''); break;
+                    case 'segmento': valA=_segmentoOrderMapCache[a.segmento]??9999; valB=_segmentoOrderMapCache[b.segmento]??9999; compRes=valA-valB; if(compRes===0)compRes=(a.segmento||'').localeCompare(b.segmento||''); break;
+                    case 'marca': valA=a.marca||''; valB=b.marca||''; compRes=valA.localeCompare(valB); break;
+                    case 'presentacion': valA=a.presentacion||''; valB=b.presentacion||''; compRes=valA.localeCompare(valB); break;
+                } if (compRes !== 0) return compRes;
+            } return 0;
+        };
     };
+
+    window.dataModule = { 
+        showClosingDetail, 
+        handleDownloadSingleClosing,
+        exportSingleClosingToExcel,
+        // --- AÑADIDOS PARA EL PASO 1 ---
+        getDisplayQty,
+        _processSalesDataForModal
+        // --- FIN DE AÑADIDOS ---
+    };
+
 })();
