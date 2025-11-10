@@ -617,7 +617,7 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
-    async function processSalesDataForReport(ventas, cargaInicialInventario) {
+    async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
         // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
         const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
@@ -636,17 +636,170 @@
             const inventarioSnapshot = await _getDocs(inventarioRef); 
             inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         }
+        
+        const allData = [
+            ...ventas.map(v => ({ tipo: 'venta', data: v })),
+            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
+        ];
 
-        ventas.forEach(venta => { const cliN=venta.clienteNombre||'N/A'; if(!clientData[cliN])clientData[cliN]={products:{},totalValue:0}; if(!vaciosMovementsPorTipo[cliN]){vaciosMovementsPorTipo[cliN]={};TIPOS_VACIO_GLOBAL.forEach(t=>vaciosMovementsPorTipo[cliN][t]={entregados:0,devueltos:0});} clientData[cliN].totalValue+=(venta.total||0); grandTotalValue+=(venta.total||0); const vacDev=venta.vaciosDevueltosPorTipo||{}; for(const t in vacDev){if(!vaciosMovementsPorTipo[cliN][t])vaciosMovementsPorTipo[cliN][t]={e:0,d:0}; vaciosMovementsPorTipo[cliN][t].devueltos+=(vacDev[t]||0);} (venta.productos||[]).forEach(p=>{const pComp=inventarioMap.get(p.id)||p; if(pComp.manejaVacios&&pComp.tipoVacio){const tV=pComp.tipoVacio; if(!vaciosMovementsPorTipo[cliN][tV])vaciosMovementsPorTipo[cliN][tV]={e:0,d:0}; vaciosMovementsPorTipo[cliN][tV].entregados+=p.cantidadVendida?.cj||0;} const r=pComp.rubro||'N/R', s=pComp.segmento||'N/S', m=pComp.marca||'N/M'; if(!allProductsMap.has(p.id))allProductsMap.set(p.id,{...pComp,id:p.id,rubro:r,segmento:s,marca:m,presentacion:p.presentacion}); if(!clientData[cliN].products[p.id])clientData[cliN].products[p.id]=0; clientData[cliN].products[p.id]+=(p.totalUnidadesVendidas||0);}); });
-        const sortedClients = Object.keys(clientData).sort();
-        const sortFunction = await window.getGlobalProductSortFunction(); // Usa orden global
-        const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
-        return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot };
+        for (const item of allData) {
+            const clientName = item.data.clienteNombre || 'Cliente Desconocido';
+            
+            if (!vaciosMovementsPorTipo[clientName]) { 
+                vaciosMovementsPorTipo[clientName] = {}; 
+                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
+            }
+
+            if (item.tipo === 'venta') {
+                const venta = item.data;
+                const ventaTotalCliente = venta.total || 0;
+                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+                grandTotalValue += ventaTotalCliente;
+
+                const vacDev = venta.vaciosDevueltosPorTipo || {};
+                for (const t in vacDev) { 
+                    if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
+                }
+
+                (venta.productos || []).forEach(p => {
+                    const prodInventario = inventarioMap.get(p.id);
+                    const prodParaReporte = {
+                        ...(prodInventario || {}),
+                        ...p,
+                        id: p.id,
+                        rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
+                        segmento: prodInventario?.segmento || p.segmento || 'S/S',
+                        marca: prodInventario?.marca || p.marca || 'S/M',
+                    };
+                    
+                    const rubro = prodParaReporte.rubro;
+                    allRubros.add(rubro);
+                    if (!dataByRubro[rubro]) {
+                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
+                    }
+                    if (!dataByRubro[rubro].clients[clientName]) {
+                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
+                    }
+                    if (p.id && !dataByRubro[rubro].productsMap.has(p.id)) {
+                        dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); 
+                    }
+
+                    let cantidadUnidades = 0;
+                    if (p.cantidadVendida) { 
+                        const uCj = p.unidadesPorCaja || 1;
+                        const uPaq = p.unidadesPorPaquete || 1;
+                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
+                    } else if (p.totalUnidadesVendidas) { 
+                        cantidadUnidades = p.totalUnidadesVendidas;
+                    }
+                    
+                    const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) + (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) + (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
+                    
+                    if(p.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
+                    dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
+                    dataByRubro[rubro].totalValue += subtotalProducto;
+                    
+                    if (prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) {
+                        const tV = prodParaReporte.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
+                    }
+                });
+
+            } else if (item.tipo === 'obsequio') {
+                const obsequio = item.data;
+                const prodInventario = inventarioMap.get(obsequio.productoId);
+
+                if (prodInventario) {
+                    const pComp = { ...prodInventario };
+                    pComp.precios = { und: 0, paq: 0, cj: 0 };
+                    
+                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+                    const rubro = pComp.rubro || 'SIN RUBRO';
+                    
+                    allRubros.add(rubro);
+                    if (!dataByRubro[rubro]) {
+                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
+                    }
+                    if (!dataByRubro[rubro].clients[clientName]) {
+                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
+                    }
+                    if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
+                        dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
+                    }
+                    dataByRubro[rubro].obsequiosMap.add(pComp.id);
+
+                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
+                    
+                    if (pComp.manejaVacios && pComp.tipoVacio) {
+                        const tV = pComp.tipoVacio; 
+                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
+                    }
+
+                    const vacDev = obsequio.vaciosRecibidos || 0;
+                    const tipoVacDev = obsequio.tipoVacio;
+                    if (vacDev > 0 && tipoVacDev) {
+                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
+                    }
+                } else {
+                     console.warn(`Producto de obsequio ${obsequio.productoId} no encontrado en inventario/snapshot.`);
+                }
+            }
+        }
+
+        const sortFunction = await getGlobalProductSortFunction();
+        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
+
+        for (const rubroName of Array.from(allRubros).sort()) {
+            const rubroData = dataByRubro[rubroName];
+            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
+            const sortedClients = Object.keys(rubroData.clients).sort();
+            const productTotals = {};
+
+            for (const p of sortedProducts) {
+                const productId = p.id;
+                let totalSoldUnits = 0;
+                for (const clientName of sortedClients) {
+                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
+                }
+
+                const pInfo = inventarioMap.get(productId);
+                let initialStockUnits = 0;
+                let currentStockUnits = 0;
+                
+                if (hasSnapshot) {
+                    initialStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    currentStockUnits = initialStockUnits - totalSoldUnits;
+                } else {
+                    currentStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    initialStockUnits = currentStockUnits + totalSoldUnits;
+                }
+
+                productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
+            }
+            
+            finalData.rubros[rubroName] = { 
+                clients: rubroData.clients, 
+                products: sortedProducts, 
+                sortedClients: sortedClients, 
+                totalValue: rubroData.totalValue, 
+                productTotals: productTotals,
+                obsequiosMap: rubroData.obsequiosMap || new Set()
+            };
+        }
+        return { finalData, userInfo };
     }
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
         
+        // --- NUEVO: Cargar obsequios ---
+        const obsequiosSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
+        const obsequios = obsequiosSnapshot.docs.map(doc => doc.data());
+
         // --- NUEVO: Cargar snapshot si existe ---
         // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
         const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
@@ -662,67 +815,77 @@
         }
         // --- FIN NUEVO ---
 
-        if (ventas.length === 0) { _showModal('Aviso', 'No hay ventas.'); return; }
+        if (ventas.length === 0 && obsequios.length === 0) { _showModal('Aviso', 'No hay ventas ni obsequios.'); return; }
         
         try {
-            // --- MODIFICACIÓN: Pasar snapshot a la función ---
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot } = await processSalesDataForReport(ventas, cargaInicialInventario);
+            // --- MODIFICACIÓN: Pasar snapshot y obsequios a la función ---
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot } = await processSalesDataForReport(ventas, obsequios, cargaInicialInventario);
             
             let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
-            let bHTML=''; sortedClients.forEach(cli=>{bHTML+=`<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} bHTML+=`<td class="p-1 border text-center">${dQ}</td>`;}); bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;});
-            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uCj} Paq`;} fHTML+=`<td class="p-1 border text-center">${dT}</td>`;}); fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            let bHTML=''; 
+            
+            sortedClients.forEach(cli=>{
+                const cCli = clientData[cli]; 
+                
+                // Determinar si este cliente en esta fila es solo obsequio
+                const esSoloObsequio = cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
+                const rowClass = esSoloObsequio ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-blue-50';
+                const clientNameDisplay = esSoloObsequio ? `${cli} (OBSEQUIO)` : cli;
+
+                bHTML+=`<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
+                finalProductOrder.forEach(p=>{
+                    const qU=cCli.products[p.id]||0; 
+                    const qtyDisplay = getDisplayQty(qU, p);
+                    let dQ = (qU > 0) ? `${qtyDisplay.value}` : '';
+                    let cellClass = '';
+                    if (qU > 0 && esSoloObsequio) {
+                        cellClass = 'font-bold';
+                        dQ += ` ${qtyDisplay.unit}`; // Añadir unidad solo a obsequios en esta vista
+                    }
+
+                    bHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`;
+                }); 
+                bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;
+            });
+
+            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; 
+            finalProductOrder.forEach(p=>{
+                let tQ=0; 
+                sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); 
+                const qtyDisplay = getDisplayQty(tQ, p);
+                let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
+                fHTML+=`<td class="p-1 border text-center">${dT}</td>`;
+            }); 
+            fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
+            
             let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
             
-            // --- NUEVO: Mensaje de advertencia si no hay snapshot ---
             const snapshotWarning = hasSnapshot ? '' : '<p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg my-4"><strong>Aviso:</strong> No se encontró Carga Inicial. Los totales de inventario se calculan desde el stock actual (método antiguo).</p>';
             
             const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> ${snapshotWarning} <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
             _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
         } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
-    async function exportCierreToExcel(ventas, cargaInicialInventario) {
-        // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
-        if (typeof XLSX === 'undefined') { _showModal('Error', 'Librería Excel no cargada.'); return; }
-        try {
-            // --- MODIFICACIÓN: Pasar snapshot a la función ---
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot } = await processSalesDataForReport(ventas, cargaInicialInventario);
-            
-            if (!hasSnapshot) {
-                 _showModal('Advertencia', 'No se encontró snapshot de Carga Inicial. El Excel se generará con el método de cálculo antiguo (Stock Actual + Ventas).', null, 'Entendido');
-                 await new Promise(r => setTimeout(r, 1000)); // Pequeña pausa
-            }
-
-            const dSheet1 = []; const hRow = ["Cliente"]; finalProductOrder.forEach(p => { hRow.push(p.presentacion || 'N/A'); }); hRow.push("Total Cliente"); dSheet1.push(hRow);
-            sortedClients.forEach(cli => { const row=[cli]; const cCli=clientData[cli]; finalProductOrder.forEach(p=>{const qU=cCli.products[p.id]||0; let dQ=''; if(qU>0){dQ=`${qU} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(qU/uCj))dQ=`${qU/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(qU/uPaq))dQ=`${qU/uPaq} Paq`;} row.push(dQ);}); row.push(Number(cCli.totalValue.toFixed(2))); dSheet1.push(row); });
-            const fRow = ["TOTALES"]; finalProductOrder.forEach(p=>{let tQ=0; sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); let dT=''; if(tQ>0){dT=`${tQ} Unds`; const vP=p.ventaPor||{}, uCj=p.unidadesPorCaja||1, uPaq=p.unidadesPorPaquete||1; if(vP.cj&&!vP.paq&&!vP.und&&uCj>0&&Number.isInteger(tQ/uCj))dT=`${tQ/uCj} Cj`; else if(vP.paq&&!vP.cj&&!vP.und&&uPaq>0&&Number.isInteger(tQ/uPaq))dT=`${tQ/uCj} Paq`;} fRow.push(dT);}); fRow.push(Number(grandTotalValue.toFixed(2))); dSheet1.push(fRow);
-            const ws1 = XLSX.utils.aoa_to_sheet(dSheet1); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, 'Reporte Cierre');
-            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if (cliVacios.length > 0) { const dSheet2=[['Cliente','Tipo Vacío','Entregados','Devueltos','Neto']]; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0)dSheet2.push([cli,t,mov.entregados,mov.devueltos,mov.entregados-mov.devueltos]);});}); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheet2), 'Reporte Vacíos');}
-            const today = new Date().toISOString().slice(0, 10); XLSX.writeFile(wb, `Reporte_Cierre_Ventas_${today}.xlsx`);
-        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error Excel: ${error.message}`); throw error; }
-    }
     
     // --- MODIFICACIÓN: `ejecutarCierre` ---
     async function ejecutarCierre() {
         _showModal('Confirmar Cierre Definitivo', 'Generará Excel, archivará ventas y eliminará activas. IRREVERSIBLE. ¿Continuar?', async () => {
-            _showModal('Progreso', 'Obteniendo ventas...');
+            _showModal('Progreso', 'Obteniendo ventas y obsequios...');
             
             // --- MODIFICADO: Leer Ventas, Obsequios y Snapshot ---
             const ventasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); 
             const ventasSnap = await _getDocs(ventasRef); 
             const ventas = ventasSnap.docs.map(d=>({id: d.id, ...d.data()}));
             
-            // --- NUEVO: Obtener obsequios ---
             const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
             const obsequiosSnap = await _getDocs(obsequiosRef);
             const obsequios = obsequiosSnap.docs.map(d => ({id: d.id, ...d.data()}));
 
-            // --- MODIFICADO: Comprobar ventas Y obsequios ---
             if (ventas.length === 0 && obsequios.length === 0) { 
                 _showModal('Aviso', 'No hay ventas ni obsequios activos.'); 
                 return false; 
             }
             
-            // --- MODIFICADO: Leer snapshot de carga inicial ---
             // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
             const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
             let cargaInicialInventario = [];
@@ -743,47 +906,54 @@
 
             try {
                  _showModal('Progreso', 'Generando Excel...'); 
-                 // --- MODIFICACIÓN: Pasar snapshot al exportador ---
-                 await exportCierreToExcel(ventas, cargaInicialInventario);
                  
-                 _showModal('Progreso', 'Archivando y eliminando...'); 
-                 
-                 // --- MODIFICADO: Añadir obsequios y snapshot al cierreData ---
+                 let vendedorInfo = {};
+                 if (window.userRole === 'user') {
+                     const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
+                     vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
+                 }
+
                  const cierreData = { 
                      fecha: new Date(), 
                      ventas: ventas.map(({id,...rest})=>rest), 
-                     obsequios: obsequios.map(({id,...rest})=>rest), // <-- AÑADIDO
+                     obsequios: obsequios.map(({id,...rest})=>rest),
                      total: ventas.reduce((s,v)=>s+(v.total||0),0),
-                     cargaInicialInventario: cargaInicialInventario // <-- AÑADIDO
+                     cargaInicialInventario: cargaInicialInventario,
+                     vendedorInfo: vendedorInfo
                  }; 
+
+                 // --- MODIFICADO: Llamar a la función de exportación global de data.js ---
+                 if (window.dataModule && typeof window.dataModule.exportSingleClosingToExcel === 'function') {
+                    await window.dataModule.exportSingleClosingToExcel(cierreData);
+                 } else {
+                    console.error("Error: window.dataModule.exportSingleClosingToExcel no está definida.");
+                    _showModal('Advertencia', 'No se pudo generar el archivo Excel (función no encontrada), pero el cierre continuará.');
+                 }
+                 
+                 _showModal('Progreso', 'Archivando y eliminando...'); 
+                 
                  let cDocRef;
                  
-                 // Guardar cierre en colección pública si es usuario normal, privada si es admin
                  if (window.userRole === 'user') {
-                     const uDocRef=_doc(_db,"users",_userId); const uDoc=await _getDoc(uDocRef); const uData=uDoc.exists()?uDoc.data():{};
-                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`)); // Colección pública para cierres de vendedores
-                     cierreData.vendedorInfo={userId:_userId,nombre:uData.nombre||'',apellido:uData.apellido||'',camion:uData.camion||'',email:uData.email||''};
+                     cDocRef=_doc(_collection(_db,`public_data/${_appId}/user_closings`));
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de vendedor guardado en colección pública.");
-                 } else { // Si es admin, guardar en su colección privada
+                 } else { 
                      cDocRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
                      await _setDoc(cDocRef, cierreData);
                      console.log("Cierre de admin guardado en colección privada.");
                  }
                  
-                 // --- MODIFICADO: Eliminar ventas, obsequios y snapshot ---
                  const batch = _writeBatch(_db); 
                  ventas.forEach(v => batch.delete(_doc(ventasRef, v.id)));
-                 obsequios.forEach(o => batch.delete(_doc(obsequiosRef, o.id))); // <-- AÑADIDO
-                 batch.delete(snapshotRef); // <-- AÑADIDO
+                 obsequios.forEach(o => batch.delete(_doc(obsequiosRef, o.id)));
+                 batch.delete(snapshotRef);
                  await batch.commit();
-                 // --- FIN MODIFICACIÓN ---
 
                 _showModal('Éxito', 'Cierre completado. Reporte descargado, ventas y obsequios archivados/eliminados.', showVentasTotalesView); return true;
             } catch(e) { console.error("Error cierre:", e); _showModal('Error', `Error: ${e.message}`); return false; }
         }, 'Sí, Ejecutar Cierre', null, true);
     }
-    // *** MODIFICADO: showPastSaleOptions ahora pasa callback showVentasActualesView ***
     function showPastSaleOptions(ventaId, tipo = 'ticket') {
         console.log("showPastSaleOptions called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
@@ -791,29 +961,25 @@
         const productosFormateados = (venta.productos || []).map(p => ({
             ...p,
             cantidadVendida: p.cantidadVendida || { cj: 0, paq: 0, und: 0 },
-            totalUnidadesVendidas: p.totalUnidadesVendidas || /* calculation */ 0,
+            totalUnidadesVendidas: p.totalUnidadesVendidas || 0,
             precios: p.precios || { und: 0, paq: 0, cj: 0 }
         }));
-        // El callback ahora es showVentasActualesView para volver a la lista después de compartir
         showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
     }
     function editVenta(ventaId) {
-        console.log("editVenta called with ID:", ventaId); // *** Log de depuración ***
+        console.log("editVenta called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
-         _originalVentaForEdit = JSON.parse(JSON.stringify(venta)); // Deep copy para comparar cambios
+         _originalVentaForEdit = JSON.parse(JSON.stringify(venta));
         showEditVentaView(venta);
     }
-    // *** MODIFICADO: deleteVenta ahora incluye ajuste de stock/vacíos en transacción ***
     function deleteVenta(ventaId) {
-        console.log("deleteVenta called with ID:", ventaId); // *** Log de depuración ***
+        console.log("deleteVenta called with ID:", ventaId);
          const venta = _ventasGlobal.find(v => v.id === ventaId);
          if (!venta) {
             _showModal('Error', 'Venta no encontrada en la lista actual.');
             return;
          }
-         // *** ELIMINADA: Verificación de _inventarioCache ***
-         // if (!_inventarioCache || _inventarioCache.length === 0) { ... }
 
         _showModal('Confirmar Eliminación', `¿Eliminar venta de ${venta.clienteNombre}? <strong class="text-red-600">Esta acción revertirá el stock y el saldo de vacíos asociados a esta venta.</strong> ¿Continuar?`, async () => {
             _showModal('Progreso', 'Eliminando venta y ajustando datos...');
@@ -822,7 +988,6 @@
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, venta.clienteId);
 
                 await _runTransaction(_db, async (transaction) => {
-                    // --- PASO 1: LEER TODO PRIMERO ---
                     console.log("Transaction: Reading venta and cliente...");
                     const ventaDoc = await transaction.get(ventaRef);
                     const clienteDoc = await transaction.get(clienteRef);
@@ -833,37 +998,34 @@
                     const clienteData = clienteDoc.exists() ? clienteDoc.data() : null;
                     const productosVendidos = ventaData.productos || [];
 
-                    // Crear refs y leer todos los documentos de inventario necesarios
                     const inventarioRefs = {};
-                    const productoIds = productosVendidos.map(p => p.id).filter(id => id); // Filtrar IDs nulos/vacíos
+                    const productoIds = productosVendidos.map(p => p.id).filter(id => id);
                     console.log(`Transaction: Reading ${productoIds.length} inventory items...`);
-                    const inventarioDocsMap = new Map(); // Para guardar los docs leídos
+                    const inventarioDocsMap = new Map();
                     if (productoIds.length > 0) {
                         const uniqueProductIds = [...new Set(productoIds)];
                         const inventarioGetPromises = uniqueProductIds.map(id => {
                             const ref = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, id);
-                            inventarioRefs[id] = ref; // Guardar la ref para usarla después
+                            inventarioRefs[id] = ref;
                             return transaction.get(ref);
                         });
                         const inventarioDocs = await Promise.all(inventarioGetPromises);
                         inventarioDocs.forEach((docSnap, index) => {
-                            inventarioDocsMap.set(uniqueProductIds[index], docSnap); // Guardar doc por ID
+                            inventarioDocsMap.set(uniqueProductIds[index], docSnap);
                         });
                     }
                     console.log("Transaction: All reads completed.");
 
-                    // --- PASO 2: CALCULAR AJUSTES ---
                     const saldoVaciosClienteActual = clienteData?.saldoVacios || {};
                     const nuevosSaldoVaciosCliente = { ...saldoVaciosClienteActual };
-                    const ajustesInventario = []; // { ref: docRef, cantidad: aRestaurar }
-                    const ajustesVaciosNetos = {}; // { tipoVacio: ajusteSaldo }
+                    const ajustesInventario = [];
+                    const ajustesVaciosNetos = {};
 
-                    // a) Calcular ajuste inventario y vacíos entregados
                     for (const productoVendido of productosVendidos) {
                         const unidadesARestaurar = productoVendido.totalUnidadesVendidas || 0;
                         if (unidadesARestaurar > 0) {
                             const productoInventarioRef = inventarioRefs[productoVendido.id];
-                            if (productoInventarioRef) { // Asegurar que la ref existe
+                            if (productoInventarioRef) {
                                 ajustesInventario.push({ ref: productoInventarioRef, cantidad: unidadesARestaurar, id: productoVendido.id });
                             } else {
                                 console.warn(`No se encontró ref de inventario para producto ${productoVendido.id} en la venta.`);
@@ -874,33 +1036,29 @@
                             const tipo = productoVendido.tipoVacio;
                             const cajasEntregadas = productoVendido.cantidadVendida?.cj || 0;
                             if (cajasEntregadas > 0) {
-                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas; // Restar de la deuda (revertir entrega)
+                                ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) - cajasEntregadas;
                             }
                         }
                     }
 
-                    // b) Calcular ajuste por vacíos devueltos en la venta
                     const vaciosDevueltosEnVenta = ventaData.vaciosDevueltosPorTipo || {};
                     for (const tipo in vaciosDevueltosEnVenta) {
                         const cajasDevueltas = vaciosDevueltosEnVenta[tipo] || 0;
                         if (cajasDevueltas > 0) {
-                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas; // Sumar a la deuda (revertir devolución)
+                            ajustesVaciosNetos[tipo] = (ajustesVaciosNetos[tipo] || 0) + cajasDevueltas;
                         }
                     }
 
-                    // --- PASO 3: ESCRIBIR TODO ---
                     console.log("Transaction: Starting writes...");
 
-                    // a) Escribir ajustes de inventario
                     for (const ajuste of ajustesInventario) {
-                         const invDoc = inventarioDocsMap.get(ajuste.id); // Obtener el doc LEÍDO PREVIAMENTE
+                         const invDoc = inventarioDocsMap.get(ajuste.id);
                          const stockActual = invDoc && invDoc.exists() ? (invDoc.data().cantidadUnidades || 0) : 0;
                          const nuevoStock = stockActual + ajuste.cantidad;
                          console.log(`Transaction: Updating inventory ${ajuste.id}. Old: ${stockActual}, Adjustment: ${ajuste.cantidad}, New: ${nuevoStock}`);
-                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true }); // Usar set + merge por si el producto ya no existe
+                         transaction.set(ajuste.ref, { cantidadUnidades: nuevoStock }, { merge: true });
                     }
 
-                    // b) Escribir ajustes de saldo de vacíos (si hubo cambios y el cliente existe)
                     let saldoVaciosModificado = false;
                     if (clienteDoc.exists()) {
                         for (const tipo in ajustesVaciosNetos) {
@@ -920,23 +1078,19 @@
                          console.warn("Transaction: Client doc does not exist, skipping empty balance update.");
                     }
 
-
-                    // c) Eliminar la venta
                     console.log("Transaction: Deleting sale document.");
                     transaction.delete(ventaRef);
 
                     console.log("Transaction: All writes queued.");
-                }); // Fin _runTransaction
+                });
 
                 _showModal('Éxito', 'Venta eliminada. Inventario y saldos de vacíos ajustados.');
-                // La lista se actualizará automáticamente por el listener onSnapshot al eliminar la venta.
 
             } catch (error) {
                 console.error("Error eliminando/revirtiendo venta:", error);
-                // Si falla la transacción, Firestore revierte todo automáticamente.
                 _showModal('Error', `No se pudo eliminar/revertir la venta: ${error.message}`);
             }
-        }, 'Sí, Eliminar y Revertir', null, true); // True para indicar lógica de confirmación
+        }, 'Sí, Eliminar y Revertir', null, true);
     }
     async function showEditVentaView(venta) {
         if (_floatingControls) _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
