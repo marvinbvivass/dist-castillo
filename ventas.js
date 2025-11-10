@@ -537,7 +537,7 @@
                 // Si _processAndSaveVenta falló, mostrar el error
                 console.error("Error al guardar venta:", saveError);
                  const progressModal = document.getElementById('modalContainer'); // Cerrar modal de progreso si aún está visible
-                 if(progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                 if(progressModal && !modalContainer.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
                       progressModal.classList.add('hidden');
                  }
                 _showModal('Error', `Error al guardar la venta: ${saveError.message}`);
@@ -617,202 +617,11 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
-    async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
-        // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
-        // --- CORRECCIÓN (Error clientTotals is not defined): Declarar variables faltantes ---
-        const clientData = {}; 
-        const clientTotals = {}; // <-- AÑADIDO
-        let grandTotalValue = 0; 
-        const allProductsMap = new Map(); 
-        const vaciosMovementsPorTipo = {};
-        const dataByRubro = {}; // <-- AÑADIDO
-        const allRubros = new Set(); // <-- AÑADIDO
-        // --- FIN CORRECCIÓN ---
-        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        
-        let inventarioMap;
-        let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
-        
-        if(hasSnapshot) {
-            // Usar el snapshot
-            console.log("processSalesDataForReport: Usando snapshot de Carga Inicial.");
-            inventarioMap = new Map(cargaInicialInventario.map(p => [p.id, p]));
-        } else {
-            // Fallback: Cargar inventario actual (método antiguo)
-            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual (método antiguo).");
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-            const inventarioSnapshot = await _getDocs(inventarioRef); 
-            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        }
-        
-        const allData = [
-            ...ventas.map(v => ({ tipo: 'venta', data: v })),
-            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
-        ];
+    
+    // --- PASO 3: ELIMINAR LA FUNCIÓN DUPLICADA ---
+    // La función `processSalesDataForReport` que estaba aquí (aprox. 175 líneas) ha sido eliminada.
+    // --- FIN PASO 3 ---
 
-        for (const item of allData) {
-            const clientName = item.data.clienteNombre || 'Cliente Desconocido';
-            
-            if (!vaciosMovementsPorTipo[clientName]) { 
-                vaciosMovementsPorTipo[clientName] = {}; 
-                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
-            }
-
-            if (item.tipo === 'venta') {
-                const venta = item.data;
-                const ventaTotalCliente = venta.total || 0;
-                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
-                grandTotalValue += ventaTotalCliente;
-
-                const vacDev = venta.vaciosDevueltosPorTipo || {};
-                for (const t in vacDev) { 
-                    if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
-                    vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
-                }
-
-                (venta.productos || []).forEach(p => {
-                    const prodInventario = inventarioMap.get(p.id);
-                    const prodParaReporte = {
-                        ...(prodInventario || {}),
-                        ...p,
-                        id: p.id,
-                        rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
-                        segmento: prodInventario?.segmento || p.segmento || 'S/S',
-                        marca: prodInventario?.marca || p.marca || 'S/M',
-                    };
-                    
-                    const rubro = prodParaReporte.rubro;
-                    allRubros.add(rubro);
-                    if (!dataByRubro[rubro]) {
-                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
-                    }
-                    if (!dataByRubro[rubro].clients[clientName]) {
-                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
-                    }
-                    if (p.id && !dataByRubro[rubro].productsMap.has(p.id)) {
-                        dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); 
-                    }
-
-                    let cantidadUnidades = 0;
-                    if (p.cantidadVendida) { 
-                        const uCj = p.unidadesPorCaja || 1;
-                        const uPaq = p.unidadesPorPaquete || 1;
-                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
-                    } else if (p.totalUnidadesVendidas) { 
-                        cantidadUnidades = p.totalUnidadesVendidas;
-                    }
-                    
-                    const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) + (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) + (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
-                    
-                    if(p.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
-                    dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
-                    dataByRubro[rubro].totalValue += subtotalProducto;
-                    
-                    if (prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) {
-                        const tV = prodParaReporte.tipoVacio; 
-                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                        vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
-                    }
-                });
-
-            } else if (item.tipo === 'obsequio') {
-                const obsequio = item.data;
-                const prodInventario = inventarioMap.get(obsequio.productoId);
-
-                if (prodInventario) {
-                    const pComp = { ...prodInventario };
-                    pComp.precios = { und: 0, paq: 0, cj: 0 };
-                    
-                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
-                    const rubro = pComp.rubro || 'SIN RUBRO';
-                    
-                    allRubros.add(rubro);
-                    if (!dataByRubro[rubro]) {
-                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
-                    }
-                    if (!dataByRubro[rubro].clients[clientName]) {
-                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
-                    }
-                    if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
-                        dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
-                    }
-                    dataByRubro[rubro].obsequiosMap.add(pComp.id);
-
-                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
-                    
-                    if (pComp.manejaVacios && pComp.tipoVacio) {
-                        const tV = pComp.tipoVacio; 
-                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
-                    }
-
-                    const vacDev = obsequio.vaciosRecibidos || 0;
-                    const tipoVacDev = obsequio.tipoVacio;
-                    if (vacDev > 0 && tipoVacDev) {
-                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
-                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
-                    }
-                } else {
-                     console.warn(`Producto de obsequio ${obsequio.productoId} no encontrado en inventario/snapshot.`);
-                }
-            }
-        }
-
-        const sortFunction = await getGlobalProductSortFunction();
-        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
-
-        for (const rubroName of Array.from(allRubros).sort()) {
-            const rubroData = dataByRubro[rubroName];
-            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
-            const sortedClients = Object.keys(rubroData.clients).sort();
-            const productTotals = {};
-
-            for (const p of sortedProducts) {
-                const productId = p.id;
-                let totalSoldUnits = 0;
-                for (const clientName of sortedClients) {
-                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
-                }
-
-                const pInfo = inventarioMap.get(productId);
-                let initialStockUnits = 0;
-                let currentStockUnits = 0;
-                
-                if (hasSnapshot) {
-                    initialStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
-                    currentStockUnits = initialStockUnits - totalSoldUnits;
-                } else {
-                    currentStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
-                    initialStockUnits = currentStockUnits + totalSoldUnits;
-                }
-
-                productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
-            }
-            
-            finalData.rubros[rubroName] = { 
-                clients: rubroData.clients, 
-                products: sortedProducts, 
-                sortedClients: sortedClients, 
-                totalValue: rubroData.totalValue, 
-                productTotals: productTotals,
-                obsequiosMap: rubroData.obsequiosMap || new Set()
-            };
-        }
-        
-        // --- CORRECCIÓN: Devolver inventarioMap y hasSnapshot ---
-        // La función original olvidó devolver estos valores, que son necesarios
-        // para la función showVerCierreView
-        return { 
-            clientData: finalData.rubros.hasOwnProperty('SIN RUBRO') ? finalData.rubros['SIN RUBRO'].clients : (Object.values(finalData.rubros)[0]?.clients || {}), // Estimación simple
-            grandTotalValue: finalData.grandTotalValue, 
-            sortedClients: Object.keys(finalData.clientTotals).sort(), // Todos los clientes
-            finalProductOrder: [...new Set(Object.values(finalData.rubros).flatMap(r => r.products))].sort(sortFunction), // Todos los productos
-            vaciosMovementsPorTipo: finalData.vaciosMovementsPorTipo,
-            inventarioMap: inventarioMap, // <-- AÑADIDO
-            hasSnapshot: hasSnapshot // <-- AÑADIDO
-        };
-        // --- FIN CORRECCIÓN ---
-    }
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
@@ -822,14 +631,15 @@
         const obsequios = obsequiosSnapshot.docs.map(doc => doc.data());
 
         // --- NUEVO: Cargar snapshot si existe ---
-        // --- CORRECCIÓN: Definir SNAPSHOT_DOC_PATH aquí ---
         const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
         let cargaInicialInventario = [];
+        let hasSnapshot = false; // <-- REFACTOR: Determinar hasSnapshot aquí
         try {
             const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
             const snapshotDoc = await _getDoc(snapshotRef);
             if (snapshotDoc.exists() && snapshotDoc.data().inventario) {
                 cargaInicialInventario = snapshotDoc.data().inventario;
+                hasSnapshot = true; // <-- REFACTOR: Setear hasSnapshot aquí
             }
         } catch (snapError) {
             console.warn("Error al leer snapshot para 'Ver Cierre':", snapError);
@@ -839,8 +649,18 @@
         if (ventas.length === 0 && obsequios.length === 0) { _showModal('Aviso', 'No hay ventas ni obsequios.'); return; }
         
         try {
-            // --- MODIFICACIÓN: Pasar snapshot y obsequios a la función ---
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot } = await processSalesDataForReport(ventas, obsequios, cargaInicialInventario);
+            // --- PASO 2.1: LLAMAR A LA FUNCIÓN CENTRALIZADA ---
+            if (!window.dataModule || typeof window.dataModule._processSalesDataForModal !== 'function') {
+                throw new Error("El módulo de datos (dataModule) o su función _processSalesDataForModal no está cargado.");
+            }
+            const { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = 
+                await window.dataModule._processSalesDataForModal(
+                    ventas, 
+                    obsequios, 
+                    cargaInicialInventario,
+                    _userId // Pasar el userId actual
+                );
+            // --- FIN PASO 2.1 ---
             
             let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
             let bHTML=''; 
@@ -849,14 +669,21 @@
                 const cCli = clientData[cli]; 
                 
                 // Determinar si este cliente en esta fila es solo obsequio
-                const esSoloObsequio = cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
+                // --- REFACTOR: Usar clientTotals (que viene de la función central) ---
+                const esSoloObsequio = !clientTotals.hasOwnProperty(cli) && cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
                 const rowClass = esSoloObsequio ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-blue-50';
                 const clientNameDisplay = esSoloObsequio ? `${cli} (OBSEQUIO)` : cli;
 
                 bHTML+=`<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
                 finalProductOrder.forEach(p=>{
                     const qU=cCli.products[p.id]||0; 
-                    const qtyDisplay = getDisplayQty(qU, p);
+                    
+                    // --- PASO 2.2: LLAMAR A LA FUNCIÓN DE AYUDA CENTRALIZADA ---
+                    const qtyDisplay = (window.dataModule && typeof window.dataModule.getDisplayQty === 'function') 
+                                        ? window.dataModule.getDisplayQty(qU, p)
+                                        : { value: qU, unit: 'Unds' }; // Fallback
+                    // --- FIN PASO 2.2 ---
+                                        
                     let dQ = (qU > 0) ? `${qtyDisplay.value}` : '';
                     let cellClass = '';
                     if (qU > 0 && esSoloObsequio) {
@@ -873,7 +700,13 @@
             finalProductOrder.forEach(p=>{
                 let tQ=0; 
                 sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); 
-                const qtyDisplay = getDisplayQty(tQ, p);
+                
+                // --- PASO 2.2 (REPETIDO): LLAMAR A LA FUNCIÓN DE AYUDA CENTRALIZADA ---
+                const qtyDisplay = (window.dataModule && typeof window.dataModule.getDisplayQty === 'function')
+                                    ? window.dataModule.getDisplayQty(tQ, p)
+                                    : { value: tQ, unit: 'Unds' }; // Fallback
+                // --- FIN PASO 2.2 ---
+                                    
                 let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
                 fHTML+=`<td class="p-1 border text-center">${dT}</td>`;
             }); 
@@ -881,6 +714,7 @@
             
             let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
             
+            // --- REFACTOR: Usar la variable local hasSnapshot ---
             const snapshotWarning = hasSnapshot ? '' : '<p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg my-4"><strong>Aviso:</strong> No se encontró Carga Inicial. Los totales de inventario se calculan desde el stock actual (método antiguo).</p>';
             
             const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> ${snapshotWarning} <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
