@@ -17,35 +17,6 @@
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
     // --- CORRECCIÓN: La definición de SNAPSHOT_DOC_PATH se mueve DENTRO de las funciones que la usan ---
 
-    // --- INICIO: Función de ayuda getDisplayQty (copiada de data.js) ---
-    function getDisplayQty(qU, p) {
-        if (!qU || qU === 0) return { value: 0, unit: 'Unds' };
-        if (!p) return { value: qU, unit: 'Unds' };
-
-        const vP = p.ventaPor || {und: true};
-        const uCj = p.unidadesPorCaja || 1;
-        const uPaq = p.unidadesPorPaquete || 1;
-        
-        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
-            return { value: (qU / uCj), unit: 'Cj' };
-        }
-        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
-            return { value: (qU / uPaq), unit: 'Paq' };
-        }
-        if (qU > 0 && (vP.cj || vP.paq) && vP.und) {
-             return { value: qU, unit: 'Unds' };
-        }
-        if (vP.cj && uCj > 0) {
-            return { value: parseFloat((qU / uCj).toFixed(2)), unit: 'Cj' };
-        }
-        if (vP.paq && uPaq > 0) {
-            return { value: parseFloat((qU / uPaq).toFixed(2)), unit: 'Paq' };
-        }
-        return { value: qU, unit: 'Unds' };
-    }
-    // --- FIN: Función de ayuda ---
-
-
     window.initVentas = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
@@ -133,7 +104,6 @@
         const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
         // --- FIX: Manejador de error de listener ---
         const unsubInventario = _onSnapshot(inventarioRef, snap => { 
-            // --- CORRECCIÓN: 'doc' -> 'd' ---
             _inventarioCache = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             populateRubroFilter(); 
             if (_ventaActual.cliente) renderVentasInventario(); 
@@ -174,7 +144,7 @@
 
     async function renderVentasInventario() {
         const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : filtInv;
+        const selRubro = rF.value; const invFilt = _inventarioCache.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
         // Usa la función global para ordenar el inventario en la vista de venta
         const sortFunc = await window.getGlobalProductSortFunction();
         filtInv.sort(sortFunc);
@@ -647,38 +617,30 @@
         document.getElementById('ejecutarCierreBtn').addEventListener('click', ejecutarCierre);
         document.getElementById('backToVentasTotalesBtn').addEventListener('click', showVentasTotalesView);
     }
-    
-    // --- INICIO: COPIA DE data.js -> processSalesDataForReport (con correcciones) ---
-    // Esta función es necesaria para "Ver Cierre" del usuario normal.
     async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
-        const clientData = {}; 
-        const clientTotals = {}; // <-- CORREGIDO
-        const dataByRubro = {}; // <-- CORREGIDO
-        let grandTotalValue = 0; 
-        const allProductsMap = new Map(); 
-        const vaciosMovementsPorTipo = {};
+        // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
+        const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
         
         let inventarioMap;
         let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
         
         if(hasSnapshot) {
-            console.log("processSalesDataForReport (ventas.js): Usando snapshot de Carga Inicial.");
+            // Usar el snapshot
+            console.log("processSalesDataForReport: Usando snapshot de Carga Inicial.");
             inventarioMap = new Map(cargaInicialInventario.map(p => [p.id, p]));
         } else {
-            console.warn("processSalesDataForReport (ventas.js): No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
-            // Usar _inventarioCache (que ya debería estar cargado por 'loadDataForNewSale')
-            inventarioMap = new Map(_inventarioCache.map(p => [p.id, p]));
+            // Fallback: Cargar inventario actual (método antiguo)
+            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual (método antiguo).");
+            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const inventarioSnapshot = await _getDocs(inventarioRef); 
+            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
         }
-
+        
         const allData = [
             ...ventas.map(v => ({ tipo: 'venta', data: v })),
             ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
         ];
-
-        const clienteTieneObsequio = new Set();
-        const allRubros = new Set();
-        let userInfo = {}; // <-- CORREGIDO
 
         for (const item of allData) {
             const clientName = item.data.clienteNombre || 'Cliente Desconocido';
@@ -693,13 +655,13 @@
                 const ventaTotalCliente = venta.total || 0;
                 clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
                 grandTotalValue += ventaTotalCliente;
-                
+
                 const vacDev = venta.vaciosDevueltosPorTipo || {};
                 for (const t in vacDev) { 
                     if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
                     vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
                 }
-                
+
                 (venta.productos || []).forEach(p => {
                     const prodInventario = inventarioMap.get(p.id);
                     const prodParaReporte = {
@@ -748,7 +710,6 @@
             } else if (item.tipo === 'obsequio') {
                 const obsequio = item.data;
                 const prodInventario = inventarioMap.get(obsequio.productoId);
-                clienteTieneObsequio.add(clientName); // Marcar que este cliente recibió obsequio
 
                 if (prodInventario) {
                     const pComp = { ...prodInventario };
@@ -788,9 +749,9 @@
                 }
             }
         }
-        
-        const sortFunction = await window.getGlobalProductSortFunction();
-        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue, clienteTieneObsequio };
+
+        const sortFunction = await getGlobalProductSortFunction();
+        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
 
         for (const rubroName of Array.from(allRubros).sort()) {
             const rubroData = dataByRubro[rubroName];
@@ -829,13 +790,8 @@
                 obsequiosMap: rubroData.obsequiosMap || new Set()
             };
         }
-        // --- INICIO DE LA CORRECCIÓN ---
-        // La función debe retornar 'grandTotalValue' para que 'showVerCierreView' pueda usarlo.
-        return { finalData, userInfo, grandTotalValue };
-        // --- FIN DE LA CORRECCIÓN ---
+        return { finalData, userInfo };
     }
-    // --- FIN: COPIA DE data.js ---
-
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
         const ventasSnapshot = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`)); const ventas = ventasSnapshot.docs.map(doc => doc.data()); 
@@ -863,96 +819,50 @@
         
         try {
             // --- MODIFICACIÓN: Pasar snapshot y obsequios a la función ---
-            const { finalData, grandTotalValue } = await processSalesDataForReport(ventas, obsequios, cargaInicialInventario);
-            const { rubros, vaciosMovementsPorTipo, clientTotals, clienteTieneObsequio } = finalData;
-
-            let fullReportHTML = '';
-            const snapshotWarning = (cargaInicialInventario.length > 0) ? '' : '<p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg my-4"><strong>Aviso:</strong> No se encontró Carga Inicial. Los totales de inventario se calculan desde el stock actual (método antiguo).</p>';
-            fullReportHTML += snapshotWarning;
-
-            for (const rubroName in rubros) {
-                const { products: finalProductOrder, sortedClients, clients: clientData, totalValue: rubroTotalValue, obsequiosMap } = rubros[rubroName];
-
-                let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
-                let bHTML=''; 
+            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo, inventarioMap, hasSnapshot } = await processSalesDataForReport(ventas, obsequios, cargaInicialInventario);
+            
+            let hHTML = `<tr class="sticky top-0 z-20 bg-gray-200"><th class="p-1 border sticky left-0 z-30 bg-gray-200">Cliente</th>`; finalProductOrder.forEach(p => { hHTML += `<th class="p-1 border whitespace-nowrap text-xs" title="${p.marca||''} - ${p.segmento||''}">${p.presentacion}</th>`; }); hHTML += `<th class="p-1 border sticky right-0 z-30 bg-gray-200">Total Cliente</th></tr>`;
+            let bHTML=''; 
+            
+            sortedClients.forEach(cli=>{
+                const cCli = clientData[cli]; 
                 
-                sortedClients.forEach(cli=>{
-                    const cCli = clientData[cli]; 
-                    const esVenta = clientTotals.hasOwnProperty(cli);
-                    const esObsequio = clienteTieneObsequio.has(cli);
+                // Determinar si este cliente en esta fila es solo obsequio
+                const esSoloObsequio = cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
+                const rowClass = esSoloObsequio ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-blue-50';
+                const clientNameDisplay = esSoloObsequio ? `${cli} (OBSEQUIO)` : cli;
 
-                    let clientNameDisplay = cli;
-                    let rowClass = 'hover:bg-blue-50';
-                    
-                    if (esObsequio && !esVenta) {
-                        clientNameDisplay = `${cli} (OBSEQUIO)`;
-                        rowClass = 'bg-blue-100 hover:bg-blue-200';
-                    } else if (esObsequio && esVenta) {
-                        clientNameDisplay = `${cli} (V+O)`;
+                bHTML+=`<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
+                finalProductOrder.forEach(p=>{
+                    const qU=cCli.products[p.id]||0; 
+                    const qtyDisplay = getDisplayQty(qU, p);
+                    let dQ = (qU > 0) ? `${qtyDisplay.value}` : '';
+                    let cellClass = '';
+                    if (qU > 0 && esSoloObsequio) {
+                        cellClass = 'font-bold';
+                        dQ += ` ${qtyDisplay.unit}`; // Añadir unidad solo a obsequios en esta vista
                     }
 
-                    bHTML+=`<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
-                    finalProductOrder.forEach(p=>{
-                        const qU=cCli.products[p.id]||0; 
-                        const qtyDisplay = getDisplayQty(qU, p);
-                        let dQ = (qU > 0) ? `${qtyDisplay.value}` : '';
-                        let cellClass = '';
-                        
-                        if (qU > 0 && obsequiosMap.has(p.id)) {
-                             cellClass = 'font-bold text-blue-600';
-                             dQ += ` ${qtyDisplay.unit}`;
-                        } else if (qU > 0) {
-                             cellClass = 'text-gray-800';
-                        }
-
-                        bHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`; 
-                    }); 
-                    bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;
-                });
-
-                let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; 
-                finalProductOrder.forEach(p=>{
-                    let tQ=0; 
-                    sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); 
-                    const qtyDisplay = getDisplayQty(tQ, p);
-                    let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
-                    fHTML+=`<td class="p-1 border text-center">${dT}</td>`; 
+                    bHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`;
                 }); 
-                fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${rubroTotalValue.toFixed(2)}</td></tr>`;
-            
-                fullReportHTML += `
-                    <h3 class="text-xl font-bold mt-6 mb-2">${rubroName}</h3>
-                    <div class="overflow-auto border" style="max-height: 40vh;"> 
-                        <table class="min-w-full bg-white text-xs"> 
-                            <thead class="bg-gray-200">${hHTML}</thead> 
-                            <tbody>${bHTML}</tbody> 
-                            <tfoot>${fHTML}</tfoot> 
-                        </table> 
-                    </div>
-                `;
-            }
+                bHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`;
+            });
 
-            let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); 
-            if(cliVacios.length>0){ 
-                vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; 
-                cliVacios.forEach(cli=>{
-                    const movs=vaciosMovementsPorTipo[cli]; 
-                    const clienteTuvoVenta = clientTotals.hasOwnProperty(cli);
-                    const clientNameDisplay = clienteTuvoVenta ? cli : `${cli} (OBSEQUIO)`;
-                    
-                    TIPOS_VACIO_GLOBAL.forEach(t=>{
-                        const mov=movs[t]||{e:0,d:0}; 
-                        if(mov.entregados>0||mov.devueltos>0){
-                            const neto=mov.entregados-mov.devueltos; 
-                            const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); 
-                            vHTML+=`<tr><td>${clientNameDisplay}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;
-                        }
-                    });
-                }); 
-                vHTML+='</tbody></table></div>';
-            }
+            let fHTML='<tr class="bg-gray-200 font-bold"><td class="p-1 border sticky left-0 z-10">TOTALES</td>'; 
+            finalProductOrder.forEach(p=>{
+                let tQ=0; 
+                sortedClients.forEach(cli=>tQ+=clientData[cli].products[p.id]||0); 
+                const qtyDisplay = getDisplayQty(tQ, p);
+                let dT = (tQ > 0) ? `${qtyDisplay.value} ${qtyDisplay.unit}` : '';
+                fHTML+=`<td class="p-1 border text-center">${dT}</td>`;
+            }); 
+            fHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
             
-            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h2 class="text-2xl font-bold mb-4">Reporte de Cierre</h2> ${fullReportHTML} ${vHTML} <p class="text-right text-xl font-bold mt-6 border-t pt-4">TOTAL GENERAL: $${grandTotalValue.toFixed(2)}</p> </div>`;
+            let vHTML=''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
+            
+            const snapshotWarning = hasSnapshot ? '' : '<p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg my-4"><strong>Aviso:</strong> No se encontró Carga Inicial. Los totales de inventario se calculan desde el stock actual (método antiguo).</p>';
+            
+            const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <h3 class="text-xl font-bold mb-4">Reporte Cierre</h3> ${snapshotWarning} <div class="overflow-auto border"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${hHTML}</thead> <tbody>${bHTML}</tbody> <tfoot>${fHTML}</tfoot> </table> </div> ${vHTML} </div>`;
             _showModal('Reporte de Cierre', reportHTML, null, 'Cerrar');
         } catch (error) { console.error("Error reporte:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
