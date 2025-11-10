@@ -643,14 +643,7 @@
             );
             
             const workbook = new ExcelJS.Workbook();
-            
-            // --- INICIO DE CORRECCIÓN ---
-            // 'closingData.fecha' puede ser un Timestamp (desde admin) o una Date (desde cierre de user)
-            // Verificamos si .toDate() existe. Si existe, lo usamos. Si no, usamos el objeto Date directamente.
-            const fechaObj = closingData.fecha.toDate ? closingData.fecha.toDate() : closingData.fecha;
-            const fechaCierre = fechaObj.toLocaleDateString('es-ES');
-            // --- FIN DE CORRECCIÓN ---
-
+            const fechaCierre = closingData.fecha.toDate().toLocaleDateString('es-ES');
             const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
             const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
 
