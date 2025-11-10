@@ -73,6 +73,34 @@
         return { value: qU, unit: 'Unds' };
     }
 
+    function buildExcelJSStyle(config, borderStyle, numFmt = null, horizontalAlign = 'left') {
+        const style = {};
+        
+        style.font = {
+            bold: config.bold || false,
+            color: { argb: 'FF' + (config.fontColor || "#000000").substring(1) },
+            size: config.fontSize || 10
+        };
+
+        style.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF' + (config.fillColor || "#FFFFFF").substring(1) }
+        };
+
+        if (config.border && borderStyle) {
+            style.border = borderStyle;
+        }
+
+        if (numFmt) {
+            style.numFmt = numFmt;
+        }
+        
+        style.alignment = { vertical: 'middle', horizontal: horizontalAlign };
+
+        return style;
+    }
+
     window.initData = function(dependencies) {
         _db = dependencies.db;
         _appId = dependencies.appId;
