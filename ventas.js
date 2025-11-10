@@ -738,7 +738,7 @@
                     }
                     dataByRubro[rubro].obsequiosMap.add(pComp.id);
 
-                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
+                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
                     
                     if (pComp.manejaVacios && pComp.tipoVacio) {
                         const tV = pComp.tipoVacio; 
