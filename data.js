@@ -1371,7 +1371,8 @@
 
     window.dataModule = { 
         showClosingDetail, 
-        handleDownloadSingleClosing 
+        handleDownloadSingleClosing,
+        exportSingleClosingToExcel // <-- AÑADE ESTA LÍNEA
     };
 
 })();
