@@ -1093,8 +1093,7 @@
 
     // --- Lógica de Saldos de Vacíos ---
 
-    // --- MODIFICACIÓN: Añadir async ---
-    async function showSaldosVaciosView() {
+    function showSaldosVaciosView() {
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1115,35 +1114,8 @@
         if (searchInput) {
              searchInput.addEventListener('input', renderSaldosList);
         }
-        
-        const container = document.getElementById('saldosListContainer');
+
         const clientesRef = _collection(_db, CLIENTES_COLLECTION_PATH);
-
-        // --- INICIO DE MODIFICACIÓN: Carga activa ---
-        try {
-            // 1. Mostrar "Cargando..."
-            if (container) {
-                container.innerHTML = '<p class="text-gray-500 text-center">Cargando saldos de clientes...</p>';
-            }
-            
-            // 2. Forzar la carga de datos frescos (getDocs)
-            const snapshot = await _getDocs(clientesRef);
-            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            // 3. Renderizar la lista con datos frescos
-            renderSaldosList(); 
-            
-        } catch (error) {
-            console.error("Error al cargar saldos frescos:", error);
-            if (container) {
-                container.innerHTML = '<p class="text-red-500 text-center">Error al cargar los saldos.</p>';
-            }
-            // No continuar si la carga inicial falla
-            return; 
-        }
-        // --- FIN DE MODIFICACIÓN ---
-
-        // 4. Adjuntar el listener para actualizaciones EN VIVO (mientras la vista está abierta)
         const unsubscribe = _onSnapshot(clientesRef, (snapshot) => {
             _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderSaldosList(); // Re-render list on data change
