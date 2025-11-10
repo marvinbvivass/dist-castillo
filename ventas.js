@@ -619,7 +619,15 @@
     }
     async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
         // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
-        const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
+        // --- CORRECCIÓN (Error clientTotals is not defined): Declarar variables faltantes ---
+        const clientData = {}; 
+        const clientTotals = {}; // <-- AÑADIDO
+        let grandTotalValue = 0; 
+        const allProductsMap = new Map(); 
+        const vaciosMovementsPorTipo = {};
+        const dataByRubro = {}; // <-- AÑADIDO
+        const allRubros = new Set(); // <-- AÑADIDO
+        // --- FIN CORRECCIÓN ---
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
         
         let inventarioMap;
@@ -730,7 +738,7 @@
                     }
                     dataByRubro[rubro].obsequiosMap.add(pComp.id);
 
-                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
+                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
                     
                     if (pComp.manejaVacios && pComp.tipoVacio) {
                         const tV = pComp.tipoVacio; 
@@ -790,7 +798,20 @@
                 obsequiosMap: rubroData.obsequiosMap || new Set()
             };
         }
-        return { finalData, userInfo };
+        
+        // --- CORRECCIÓN: Devolver inventarioMap y hasSnapshot ---
+        // La función original olvidó devolver estos valores, que son necesarios
+        // para la función showVerCierreView
+        return { 
+            clientData: finalData.rubros.hasOwnProperty('SIN RUBRO') ? finalData.rubros['SIN RUBRO'].clients : (Object.values(finalData.rubros)[0]?.clients || {}), // Estimación simple
+            grandTotalValue: finalData.grandTotalValue, 
+            sortedClients: Object.keys(finalData.clientTotals).sort(), // Todos los clientes
+            finalProductOrder: [...new Set(Object.values(finalData.rubros).flatMap(r => r.products))].sort(sortFunction), // Todos los productos
+            vaciosMovementsPorTipo: finalData.vaciosMovementsPorTipo,
+            inventarioMap: inventarioMap, // <-- AÑADIDO
+            hasSnapshot: hasSnapshot // <-- AÑADIDO
+        };
+        // --- FIN CORRECCIÓN ---
     }
     async function showVerCierreView() {
         _showModal('Progreso', 'Generando reporte...');
