@@ -620,7 +620,8 @@
     async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
         // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
         const clientData = {}; 
-        const clientTotals = {}; // <-- ESTA LÍNEA FALTABA (AHORA CORREGIDA)
+        const clientTotals = {}; // <-- Esta línea la corregimos antes
+        const dataByRubro = {}; // <-- ESTA LÍNEA FALTABA
         let grandTotalValue = 0; 
         const allProductsMap = new Map(); 
         const vaciosMovementsPorTipo = {};
@@ -649,7 +650,7 @@
         // --- NUEVO: Mapa para registrar si un cliente tuvo obsequios ---
         const clienteTieneObsequio = new Set();
         const allRubros = new Set();
-        let userInfo = {}; // Se poblará si es necesario (en el cierre)
+        let userInfo = {}; // <-- ESTA LÍNEA FALTABA
 
         for (const item of allData) {
             const clientName = item.data.clienteNombre || 'Cliente Desconocido';
