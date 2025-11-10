@@ -405,6 +405,7 @@
         document.getElementById('backToImportExportBtn').addEventListener('click', showImportExportInventarioView);
     }
 
+    // --- INICIO DE LA CORRECCIÓN (Error XLSX is not defined) ---
     function handleFileUploadInventario(event) {
         // --- CORRECCIÓN: Comprobación más robusta ---
         if (!event.target || !event.target.files || event.target.files.length === 0) {
@@ -416,9 +417,50 @@
         // --- FIN CORRECCIÓN ---
 
         _inventarioParaImportar = [];
-        const reader = new FileReader(); reader.onload = function(e) { const data = e.target.result; let jsonData = []; try { const wb = XLSX.read(data, {type:'binary'}); const ws = wb.Sheets[wb.SheetNames[0]]; jsonData = XLSX.utils.sheet_to_json(ws, {header:1}); } catch (readError) { _showModal('Error Lectura', `Error: ${readError.message}`); return; }
+        const reader = new FileReader(); 
+        
+        // 1. Convertir la función a 'async' para poder usar 'await'
+        reader.onload = async function(e) { 
+            // 2. 'data' ahora es un ArrayBuffer (ver reader.readAsArrayBuffer abajo)
+            const data = e.target.result; 
+            let jsonData = []; 
+            try { 
+                // 3. Usar ExcelJS para leer el ArrayBuffer en lugar de XLSX.read
+                if (typeof ExcelJS === 'undefined') {
+                     throw new Error("La librería ExcelJS no está cargada.");
+                }
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(data);
+                const worksheet = workbook.getWorksheet(1); // Obtener la primera hoja
+
+                // 4. Convertir las filas de ExcelJS al formato esperado (array de arrays)
+                jsonData = [];
+                worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                    // row.values es [null, 'valor1', 'valor2', ...]
+                    // Usamos .slice(1) para omitir el primer 'null' y que coincida con el formato de sheet_to_json
+                    // Si la fila 1 (cabecera) tiene valores vacíos (ej: undefined o null), reemplazarlos con string vacío
+                    // para evitar que el .toString() falle más adelante
+                    if (rowNumber === 1) {
+                         const headerValues = row.values.slice(1).map(val => val === null || val === undefined ? '' : val);
+                         jsonData.push(headerValues);
+                    } else {
+                         jsonData.push(row.values.slice(1));
+                    }
+                });
+            
+            } catch (readError) { 
+                console.error("Error al leer el archivo Excel con ExcelJS:", readError);
+                // CORRECCIÓN: Usar el mensaje de error real
+                _showModal('Error Lectura', `Error: ${readError.message}`); 
+                renderPreviewTableInventario([]); // Limpiar vista previa en error
+                return; 
+            }
+
             if (jsonData.length < 2) { _showModal('Error', 'Archivo vacío.'); renderPreviewTableInventario([]); return; }
+            
+            // Asegurarse de que las cabeceras sean strings antes de llamar a .toLowerCase()
             const headers = jsonData[0].map(h=>(h?h.toString().toLowerCase().trim().replace(/\s+/g,''):''));
+            
             const reqHeaders=['rubro','segmento','marca','presentacion'];
             const optHeaders=['ventaporund','ventaporpaq','ventaporcj','unidadesporpaquete','unidadesporcaja','preciound','preciopaq','preciocj','manejavacios','tipovacio','iva'];
             const hMap={}; let missing=false;
@@ -461,8 +503,14 @@
             }).filter(item => item !== null);
 
             renderPreviewTableInventario(_inventarioParaImportar);
-        }; reader.onerror = function(e){_showModal('Error Archivo','No se pudo leer.');renderPreviewTableInventario([]);}; reader.readAsBinaryString(file);
+        }; 
+        reader.onerror = function(e){_showModal('Error Archivo','No se pudo leer.');renderPreviewTableInventario([]);}; 
+        
+        // --- CORRECCIÓN: Leer como ArrayBuffer para ExcelJS, no como BinaryString ---
+        reader.readAsArrayBuffer(file);
     }
+    // --- FIN DE LA CORRECCIÓN ---
+
 
     function renderPreviewTableInventario(items) {
         const cont=document.getElementById('inventario-preview-container'), acts=document.getElementById('inventario-import-actions'), back=document.getElementById('backToImportExportBtn'), upInp=document.getElementById('inventario-excel-uploader'); if(!cont||!acts||!back||!upInp) return;
