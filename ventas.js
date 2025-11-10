@@ -619,11 +619,11 @@
     }
     async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario) {
         // --- MODIFICACIÓN: Aceptar inventario como parámetro ---
-        const clientData = {}; let grandTotalValue = 0; const allProductsMap = new Map(); const vaciosMovementsPorTipo = {};
-        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        
-        let inventarioMap;
-        let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
+        const clientData = {}; 
+        const clientTotals = {}; // <-- ESTA LÍNEA FALTABA
+        let grandTotalValue = 0; 
+        const allProductsMap = new Map(); 
+        const vaciosMovementsPorTipo = {};
         
         if(hasSnapshot) {
             // Usar el snapshot
