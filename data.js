@@ -242,6 +242,7 @@
 
     async function _processSalesDataForModal(ventas, obsequios, cargaInicialInventario, userIdForInventario) {
         const clientData = {};
+        const clientTotals = {}; 
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         const vaciosMovementsPorTipo = {};
@@ -270,8 +271,10 @@
             
             if (item.tipo === 'venta') {
                 const venta = item.data;
-                clientData[clientName].totalValue += (venta.total || 0);
-                grandTotalValue += (venta.total || 0);
+                const ventaTotalCliente = venta.total || 0;
+                clientData[clientName].totalValue += ventaTotalCliente;
+                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
+                grandTotalValue += ventaTotalCliente;
                 
                 const vaciosDev = venta.vaciosDevueltosPorTipo || {};
                 for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
@@ -326,7 +329,7 @@
         const sortedClients = Object.keys(clientData).sort();
         const sortFunction = await getGlobalProductSortFunction();
         const finalProductOrder = Array.from(allProductsMap.values()).sort(sortFunction);
-        return { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
+        return { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo };
     }
 
     async function showClosingDetail(closingId) {
@@ -334,7 +337,7 @@
         if (!closingData) { _showModal('Error', 'No se cargaron detalles.'); return; }
         _showModal('Progreso', 'Generando reporte detallado...');
         try {
-            const { clientData, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = 
+            const { clientData, clientTotals, grandTotalValue, sortedClients, finalProductOrder, vaciosMovementsPorTipo } = 
                 await _processSalesDataForModal(
                     closingData.ventas || [], 
                     closingData.obsequios || [], 
@@ -373,15 +376,19 @@
 
             let bodyHTML = ''; 
             sortedClients.forEach(cli => { 
-                bodyHTML += `<tr class="hover:bg-blue-50"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${cli}</td>`; 
-                const cCli = clientData[cli]; 
+                const cCli = clientData[cli];
+                const esSoloObsequio = !clientTotals.hasOwnProperty(cli) && cCli.totalValue === 0 && Object.values(cCli.products).some(q => q > 0);
+                const rowClass = esSoloObsequio ? 'bg-blue-100 hover:bg-blue-200' : 'hover:bg-blue-50';
+                const clientNameDisplay = esSoloObsequio ? `${cli} (OBSEQUIO)` : cli;
+
+                bodyHTML += `<tr class="${rowClass}"><td class="p-1 border font-medium bg-white sticky left-0 z-10">${clientNameDisplay}</td>`; 
                 finalProductOrder.forEach(p => { 
                     const qU=cCli.products[p.id]||0; 
                     const qtyDisplay = getDisplayQty(qU, p);
                     let dQ = (qU > 0) ? `${qtyDisplay.value}` : '0';
-                    const precios = p.precios || { und: p.precioPorUnidad || 0 };
-                    const esObsequio = (precios.cj || 0) === 0 && (precios.paq || 0) === 0 && (precios.und || 0) === 0;
-                    const cellClass = (qU > 0 && esObsequio) ? 'bg-blue-100' : '';
+                    const cellClass = (qU > 0 && esSoloObsequio) ? 'font-bold' : '';
+                    if (qU > 0 && esSoloObsequio) dQ += ` ${qtyDisplay.unit}`;
+
                     bodyHTML+=`<td class="p-1 border text-center ${cellClass}">${dQ}</td>`; 
                 }); 
                 bodyHTML+=`<td class="p-1 border text-right font-semibold bg-white sticky right-0 z-10">$${cCli.totalValue.toFixed(2)}</td></tr>`; 
@@ -396,7 +403,29 @@
             }); 
             footerHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
             
-            let vHTML = ''; const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; const cliVacios=Object.keys(vaciosMovementsPorTipo).filter(cli=>TIPOS_VACIO_GLOBAL.some(t=>(vaciosMovementsPorTipo[cli][t]?.entregados||0)>0||(vaciosMovementsPorTipo[cli][t]?.devueltos||0)>0)).sort(); if(cliVacios.length>0){ vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; cliVacios.forEach(cli=>{const movs=vaciosMovementsPorTipo[cli]; TIPOS_VACIO_GLOBAL.forEach(t=>{const mov=movs[t]||{e:0,d:0}; if(mov.entregados>0||mov.devueltos>0){const neto=mov.entregados-mov.devueltos; const nClass=neto>0?'text-red-600':(neto<0?'text-green-600':''); vHTML+=`<tr><td>${cli}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto>0?`+${neto}`:neto}</td></tr>`;}});}); vHTML+='</tbody></table></div>';}
+            let vHTML = ''; 
+            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
+            
+            if(cliVacios.length > 0){ 
+                vHTML=`<h3 class="text-xl my-6">Reporte Vacíos</h3><div class="overflow-auto border"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Entregados</th><th>Devueltos</th><th>Neto</th></tr></thead><tbody>`; 
+                cliVacios.forEach(cli => {
+                    const movs = vaciosMovementsPorTipo[cli]; 
+                    const clienteTuvoVenta = clientTotals.hasOwnProperty(cli);
+                    const clientNameDisplay = clienteTuvoVenta ? cli : `${cli} (OBSEQUIO)`;
+                    
+                    TIPOS_VACIO_GLOBAL.forEach(t => {
+                        const mov = movs[t] || {entregados:0, devueltos:0}; 
+                        if(mov.entregados > 0 || mov.devueltos > 0){
+                            const neto = mov.entregados - mov.devueltos; 
+                            const nClass = neto > 0 ? 'text-red-600' : (neto < 0 ? 'text-green-600' : ''); 
+                            vHTML+=`<tr><td>${clientNameDisplay}</td><td>${t}</td><td>${mov.entregados}</td><td>${mov.devueltos}</td><td class="${nClass}">${neto > 0 ? `+${neto}` : neto}</td></tr>`;
+                        }
+                    });
+                }); 
+                vHTML+='</tbody></table></div>';
+            }
+            
             const vendedor = closingData.vendedorInfo || {};
             const reportHTML = `<div class="text-left max-h-[80vh] overflow-auto"> <div class="mb-4"> <p><strong>Vendedor:</strong> ${vendedor.nombre||''} ${vendedor.apellido||''}</p> <p><strong>Camión:</strong> ${vendedor.camion||'N/A'}</p> <p><strong>Fecha:</strong> ${closingData.fecha.toDate().toLocaleString('es-ES')}</p> </div> <h3 class="text-xl mb-4">Reporte Cierre</h3> <div class="overflow-auto border" style="max-height: 40vh;"> <table class="min-w-full bg-white text-xs"> <thead class="bg-gray-200">${headerHTML}</thead> <tbody>${bodyHTML}</tbody> <tfoot>${footerHTML}</tfoot> </table> </div> ${vHTML} </div>`;
             _showModal(`Detalle Cierre`, reportHTML, null, 'Cerrar');
@@ -754,10 +783,14 @@
 
                 sortedClients.forEach(clientName => {
                     const clientRow = worksheet.getRow(currentRowNum++);
-                    clientRow.getCell(1).value = clientName;
-                    clientRow.getCell(1).style = clientDataStyle;
                     
                     const clientSales = clientData[clientName];
+                    const esSoloObsequio = !finalData.clientTotals.hasOwnProperty(clientName) && clientSales.totalValue === 0 && Object.values(clientSales.products).some(q => q > 0);
+                    const clientNameDisplay = esSoloObsequio ? `${clientName} (OBSEQUIO)` : clientName;
+
+                    clientRow.getCell(1).value = clientNameDisplay;
+                    clientRow.getCell(1).style = clientDataStyle;
+                    
                     sortedProducts.forEach((p, index) => {
                         const qU = clientSales.products[p.id] || 0;
                         const cell = clientRow.getCell(START_COL + index);
@@ -765,10 +798,10 @@
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
                         
-                        const esObsequio = obsequiosMap.has(p.id);
+                        const esObsequioEsteProducto = obsequiosMap.has(p.id);
                         let baseStyle = clientQtyStyle;
                         if (qU > 0) {
-                            baseStyle = esObsequio ? clientObsequioStyle : clientSaleStyle;
+                            baseStyle = esObsequioEsteProducto ? clientObsequioStyle : clientSaleStyle;
                         }
                         
                         cell.style = { ...baseStyle, numFmt: "0" }; 
@@ -837,10 +870,13 @@
                 
                 cliVacios.forEach(cli => {
                     const movs = vaciosMovementsPorTipo[cli]; 
+                    const clienteTuvoVenta = finalData.clientTotals.hasOwnProperty(cli);
+                    const clientNameDisplay = clienteTuvoVenta ? cli : `${cli} (OBSEQUIO)`;
+
                     TIPOS_VACIO_GLOBAL.forEach(t => {
                         const mov = movs[t] || {entregados:0, devueltos:0}; 
                         if (mov.entregados > 0 || mov.devueltos > 0) {
-                            const dataRow = wsVacios.addRow([cli, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
+                            const dataRow = wsVacios.addRow([clientNameDisplay, t, mov.entregados, mov.devueltos, mov.entregados - mov.devueltos]);
                             dataRow.getCell(1).style = vaciosDataStyle;
                             dataRow.getCell(2).style = vaciosDataStyle;
                             dataRow.getCell(3).style = vaciosDataNumStyle;
@@ -1372,7 +1408,7 @@
     window.dataModule = { 
         showClosingDetail, 
         handleDownloadSingleClosing,
-        exportSingleClosingToExcel // <-- AÑADE ESTA LÍNEA
+        exportSingleClosingToExcel
     };
 
 })();
