@@ -13,7 +13,7 @@
     let _segmentoOrderMapCache = null;
     const SORT_CONFIG_PATH = 'config/productSortOrder'; 
 
-    const REPORTE_DESIGN_CONFIG_PATH = 'config/reporteCierreVentas';
+    const REPORTE_DESIGN_CONFIG_PATH = 'artifacts/ventas-9a210/public/data/config/reporteCierreVentas';
     
     const DEFAULT_REPORTE_SETTINGS = {
         showCargaInicial: true,
@@ -589,7 +589,7 @@
             return;
         }
 
-        const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
+        const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
         let settings = JSON.parse(JSON.stringify(DEFAULT_REPORTE_SETTINGS)); 
         try {
             const designDocRef = _doc(_db, REPORTE_DESIGN_PATH);
@@ -1089,7 +1089,7 @@
         const formContainer = document.getElementById('design-form-container');
         
         try {
-            const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
+            const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
             const docSnap = await _getDoc(docRef);
             
@@ -1219,7 +1219,7 @@
         };
 
         try {
-            const REPORTE_DESIGN_PATH = `artifacts/${_appId}/users/${_userId}/${REPORTE_DESIGN_CONFIG_PATH}`;
+            const REPORTE_DESIGN_PATH = REPORTE_DESIGN_CONFIG_PATH;
             const docRef = _doc(_db, REPORTE_DESIGN_PATH);
             await _setDoc(docRef, newSettings);
             _showModal('Éxito', 'Diseño guardado correctamente.', showDataView); 
