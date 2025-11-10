@@ -17,6 +17,35 @@
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
     // --- CORRECCIÓN: La definición de SNAPSHOT_DOC_PATH se mueve DENTRO de las funciones que la usan ---
 
+    // --- INICIO: Función de ayuda getDisplayQty (copiada de data.js) ---
+    function getDisplayQty(qU, p) {
+        if (!qU || qU === 0) return { value: 0, unit: 'Unds' };
+        if (!p) return { value: qU, unit: 'Unds' };
+
+        const vP = p.ventaPor || {und: true};
+        const uCj = p.unidadesPorCaja || 1;
+        const uPaq = p.unidadesPorPaquete || 1;
+        
+        if (vP.cj && uCj > 0 && Number.isInteger(qU / uCj)) {
+            return { value: (qU / uCj), unit: 'Cj' };
+        }
+        if (vP.paq && uPaq > 0 && Number.isInteger(qU / uPaq)) {
+            return { value: (qU / uPaq), unit: 'Paq' };
+        }
+        if (qU > 0 && (vP.cj || vP.paq) && vP.und) {
+             return { value: qU, unit: 'Unds' };
+        }
+        if (vP.cj && uCj > 0) {
+            return { value: parseFloat((qU / uCj).toFixed(2)), unit: 'Cj' };
+        }
+        if (vP.paq && uPaq > 0) {
+            return { value: parseFloat((qU / uPaq).toFixed(2)), unit: 'Paq' };
+        }
+        return { value: qU, unit: 'Unds' };
+    }
+    // --- FIN: Función de ayuda ---
+
+
     window.initVentas = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
