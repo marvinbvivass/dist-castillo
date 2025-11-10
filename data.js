@@ -801,8 +801,21 @@
                     const esSoloObsequio = !finalData.clientTotals.hasOwnProperty(clientName) && clientSales.totalValue === 0 && Object.values(clientSales.products).some(q => q > 0);
                     const clientNameDisplay = esSoloObsequio ? `${clientName} (OBSEQUIO)` : clientName;
 
+                    // --- INICIO DE LA CORRECCIÓN ---
+
+                    // 1. Determinar el objeto de estilo base para TODA la fila
+                    // Si esSoloObsequio, usamos el estilo de obsequio; si no, usamos el estilo de cliente por defecto.
+                    const rowBaseStyleSettings = esSoloObsequio ? s.rowDataClientsObsequio : s.rowDataClients;
+
+                    // 2. Construir y aplicar el estilo a la PRIMERA celda (Nombre del Cliente)
+                    const clientNameStyle = buildExcelJSStyle(
+                        rowBaseStyleSettings,
+                        rowBaseStyleSettings.border ? thinBorderStyle : null,
+                        null, // Sin formato numérico
+                        'left' // Alineación
+                    );
                     clientRow.getCell(1).value = clientNameDisplay;
-                    clientRow.getCell(1).style = clientDataStyle;
+                    clientRow.getCell(1).style = clientNameStyle;
                     
                     sortedProducts.forEach((p, index) => {
                         const qU = clientSales.products[p.id] || 0;
@@ -811,17 +824,44 @@
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
                         
-                        const esObsequioEsteProducto = obsequiosMap.has(p.id);
-                        let baseStyle = clientQtyStyle;
-                        if (qU > 0) {
-                            baseStyle = esObsequioEsteProducto ? clientObsequioStyle : clientSaleStyle;
+                        // 3. Determinar el estilo para CADA celda de producto
+                        let cellStyleSettings;
+                        
+                        if (esSoloObsequio) {
+                            // Si la fila entera es de obsequio, usar ese estilo
+                            cellStyleSettings = s.rowDataClientsObsequio;
+                        } else if (qU > 0) {
+                            // Si es una fila normal Y la celda tiene venta, usar el estilo de venta
+                            cellStyleSettings = s.rowDataClientsSale;
+                        } else {
+                            // Si es una fila normal y la celda está vacía, usar el estilo por defecto
+                            cellStyleSettings = s.rowDataClients;
                         }
                         
-                        cell.style = { ...baseStyle, numFmt: "0" }; 
+                        // 4. Construir y aplicar el estilo a la celda del producto
+                        const finalCellStyle = buildExcelJSStyle(
+                            cellStyleSettings,
+                            cellStyleSettings.border ? thinBorderStyle : null,
+                            "0", // Formato numérico
+                            'center' // Alineación
+                        );
+                        
+                        cell.style = finalCellStyle;
                     });
+                    
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
-                    subtotalCell.style = clientPriceStyle;
+
+                    // 5. Construir y aplicar el estilo a la ÚLTIMA celda (Subtotal)
+                    const subtotalStyle = buildExcelJSStyle(
+                        rowBaseStyleSettings, // Usar el mismo estilo base de la fila
+                        rowBaseStyleSettings.border ? thinBorderStyle : null,
+                        "$#,##0.00", // Formato numérico
+                        'right' // Alineación
+                    );
+                    subtotalCell.style = subtotalStyle;
+                    
+                    // --- FIN DE LA CORRECCIÓN ---
                 });
 
                 currentRowNum++;
