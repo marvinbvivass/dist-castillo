@@ -1408,7 +1408,11 @@
     window.dataModule = { 
         showClosingDetail, 
         handleDownloadSingleClosing,
-        exportSingleClosingToExcel
+        exportSingleClosingToExcel,
+        // --- AÑADIDOS PARA EL PASO 1 ---
+        getDisplayQty,
+        _processSalesDataForModal
+        // --- FIN DE AÑADIDOS ---
     };
 
 })();
