@@ -248,16 +248,16 @@
         const vaciosMovementsPorTipo = {};
         const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
         
-        let inventarioMap;
-        if (cargaInicialInventario && cargaInicialInventario.length > 0) {
-             inventarioMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
-             console.log("_processSalesDataForModal: Usando Carga Inicial de SNAPSHOT.");
-        } else {
-            console.warn("_processSalesDataForModal: No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-            const inventarioSnapshot = await _getDocs(inventarioRef);
-            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        }
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 1. Construir el inventarioMap SIEMPRE desde el inventario ACTUAL del usuario.
+        //    (La vista de modal no usa el stock, solo las definiciones del producto)
+        console.log("_processSalesDataForModal: Fetching CURRENT inventory map...");
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
+        const inventarioSnapshot = await _getDocs(inventarioRef);
+        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        console.log(`_processSalesDataForModal: inventarioMap created with ${inventarioMap.size} current products.`);
+        // --- FIN DE LA CORRECCIÓN ---
+
 
         const allData = [
             ...ventas.map(v => ({ tipo: 'venta', data: v })),
@@ -280,7 +280,11 @@
                 for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
                 
                 (venta.productos || []).forEach(p => {
+                    // 2. CORRECCIÓN: Usar '|| p' como fallback
+                    //    Si el producto existió en una venta pero fue borrado, 
+                    //    usar los datos guardados en la venta (p).
                     const prodComp = inventarioMap.get(p.id) || p;
+                    // --- FIN CORRECCIÓN ---
                     if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
                     const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
                     if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
@@ -298,31 +302,53 @@
                 });
 
             } else if (item.tipo === 'obsequio') {
+                // --- INICIO DE LA CORRECCIÓN (Modal) ---
                 const obsequio = item.data;
                 const prodInventario = inventarioMap.get(obsequio.productoId);
 
+                let pComp; // Producto para el reporte
+
                 if (prodInventario) {
-                    const pComp = prodInventario;
-                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
-
-                    if (pComp.manejaVacios && pComp.tipoVacio) {
-                        const tV = pComp.tipoVacio; 
-                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
-                    }
-                    
-                    const vacDev = obsequio.vaciosRecibidos || 0;
-                    const tipoVacDev = obsequio.tipoVacio;
-                    if (vacDev > 0 && tipoVacDev) {
-                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
-                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
-                    }
-
-                    const r = pComp.rubro || 'N/R', s = pComp.segmento || 'N/S', m = pComp.marca || 'N/M';
-                    if (pComp.id && !allProductsMap.has(pComp.id)) allProductsMap.set(pComp.id, { ...pComp, id: pComp.id, rubro: r, segmento: s, marca: m, presentacion: pComp.presentacion });
-                    if (pComp.id && !clientData[clientName].products[pComp.id]) clientData[clientName].products[pComp.id] = 0;
-                    clientData[clientName].products[pComp.id] += cantidadUnidades;
+                    // Caso 1: El producto AÚN EXISTE en el inventario actual.
+                    pComp = { ...prodInventario, id: obsequio.productoId }; // <-- CORRECCIÓN: Añadir ID
+                } else {
+                    // Caso 2: El producto fue ELIMINADO. Usar datos de respaldo del obsequio.
+                    console.warn(`(Modal) Producto de obsequio ${obsequio.productoId} no encontrado. Usando fallback.`);
+                    pComp = {
+                        id: obsequio.productoId,
+                        presentacion: obsequio.productoNombre || 'Producto Eliminado',
+                        rubro: 'OBSEQUIOS (ELIMINADO)',
+                        segmento: 'N/A',
+                        marca: 'N/A',
+                        unidadesPorCaja: 1, // No podemos saber el real, asumimos 1
+                        manejaVacios: !!obsequio.tipoVacio,
+                        tipoVacio: obsequio.tipoVacio || null
+                    };
                 }
+                
+                const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+
+                // Lógica de vacíos (Entregados)
+                if (pComp.manejaVacios && pComp.tipoVacio) {
+                    const tV = pComp.tipoVacio; 
+                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
+                }
+                
+                // Lógica de vacíos (Devueltos en el mismo obsequio)
+                const vacDev = obsequio.vaciosRecibidos || 0;
+                const tipoVacDev = obsequio.tipoVacio;
+                if (vacDev > 0 && tipoVacDev) {
+                     if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                     vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
+                }
+
+                // Añadir a la lista de productos
+                const rubro = pComp.rubro || 'Sin Rubro', seg = pComp.segmento || 'Sin Segmento', marca = pComp.marca || 'Sin Marca';
+                if (pComp.id && !allProductsMap.has(pComp.id)) allProductsMap.set(pComp.id, { ...pComp, id: pComp.id, rubro: rubro, segmento: seg, marca: marca, presentacion: pComp.presentacion });
+                if (pComp.id && !clientData[clientName].products[pComp.id]) clientData[clientName].products[pComp.id] = 0;
+                clientData[clientName].products[pComp.id] += cantidadUnidades;
+                // --- FIN DE LA CORRECCIÓN (Modal) ---
             }
         }
         
@@ -443,15 +469,25 @@
         let inventarioMap;
         let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
         
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 1. Construir el inventarioMap SIEMPRE desde el inventario ACTUAL del usuario.
+        //    Esto garantiza que tengamos la definición de TODOS los productos,
+        //    incluyendo obsequios añadidos a mitad del día.
+        console.log("processSalesDataForReport: Fetching CURRENT inventory map...");
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+        const inventarioSnapshot = await _getDocs(inventarioRef); 
+        inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        console.log(`processSalesDataForReport: inventarioMap created with ${inventarioMap.size} current products.`);
+
+        // 2. Crear un mapa SEPARADO para el snapshot (Carga Inicial).
+        let snapshotMap = new Map();
         if(hasSnapshot) {
-             inventarioMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
-             console.log("processSalesDataForReport: Usando Carga Inicial de SNAPSHOT guardado.");
+             console.log("processSalesDataForReport: Snapshot (Carga Inicial) found. Creating snapshotMap.");
+             snapshotMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
         } else {
-            console.warn("processSalesDataForReport: No se encontró snapshot. Calculando Carga Inicial desde inventario actual.");
-            const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
-            const inventarioSnapshot = await _getDocs(inventarioRef); 
-            inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+            console.warn("processSalesDataForReport: No se encontró snapshot (Carga Inicial).");
         }
+        // --- FIN DE LA CORRECCIÓN ---
 
         const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
         const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
@@ -482,15 +518,18 @@
                 }
 
                 (venta.productos || []).forEach(p => {
+                    // 3. CORRECCIÓN: Usar '|| p' como fallback
                     const prodInventario = inventarioMap.get(p.id);
                     const prodParaReporte = {
-                        ...(prodInventario || {}),
-                        ...p,
+                        ...(prodInventario || {}), // Usar datos del inventario actual (si existe)
+                        ...p, // Sobrescribir con datos de la venta (precios, etc.)
                         id: p.id,
+                        // Asegurar que las categorías existan, usando fallback del inventario o de la venta
                         rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
                         segmento: prodInventario?.segmento || p.segmento || 'S/S',
                         marca: prodInventario?.marca || p.marca || 'S/M',
                     };
+                    // --- FIN CORRECCIÓN ---
                     
                     const rubro = prodParaReporte.rubro;
                     allRubros.add(rubro);
@@ -527,45 +566,66 @@
                 });
 
             } else if (item.tipo === 'obsequio') {
+                // --- INICIO DE LA CORRECCIÓN (Reporte) ---
                 const obsequio = item.data;
-                const prodInventario = inventarioMap.get(obsequio.productoId);
+                const prodInventario = inventarioMap.get(obsequio.productoId); // Obtener del inventario ACTUAL
+
+                let pComp; // Producto para el reporte
 
                 if (prodInventario) {
-                    const pComp = { ...prodInventario };
-                    pComp.precios = { und: 0, paq: 0, cj: 0 };
-                    
-                    const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
-                    const rubro = pComp.rubro || 'SIN RUBRO';
-                    
-                    allRubros.add(rubro);
-                    if (!dataByRubro[rubro]) {
-                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
-                    }
-                    if (!dataByRubro[rubro].clients[clientName]) {
-                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
-                    }
-                    if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
-                        dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
-                    }
-                    dataByRubro[rubro].obsequiosMap.add(pComp.id);
-
-                    if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
-                    
-                    if (pComp.manejaVacios && pComp.tipoVacio) {
-                        const tV = pComp.tipoVacio; 
-                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                        vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
-                    }
-
-                    const vacDev = obsequio.vaciosRecibidos || 0;
-                    const tipoVacDev = obsequio.tipoVacio;
-                    if (vacDev > 0 && tipoVacDev) {
-                         if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
-                         vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
-                    }
+                    // Caso 1: El producto AÚN EXISTE en el inventario actual.
+                    pComp = { ...prodInventario, id: obsequio.productoId }; // <-- CORRECCIÓN: Añadir ID
+                    pComp.precios = { und: 0, paq: 0, cj: 0 }; // Obsequios no tienen precio
                 } else {
-                     console.warn(`Producto de obsequio ${obsequio.productoId} no encontrado en inventario/snapshot.`);
+                    // Caso 2: El producto fue ELIMINADO. Usar datos de respaldo del obsequio.
+                    console.warn(`(Reporte) Producto de obsequio ${obsequio.productoId} (${obsequio.productoNombre}) no encontrado. Usando fallback.`);
+                    pComp = {
+                        id: obsequio.productoId,
+                        productoNombre: obsequio.productoNombre,
+                        presentacion: obsequio.productoNombre || 'Producto Eliminado',
+                        rubro: 'OBSEQUIOS (ELIMINADO)', // Asignar rubro de respaldo
+                        segmento: 'OBSEQUIOS (ELIMINADO)', // Asignar segmento de respaldo
+                        marca: 'N/A',
+                        precios: { und: 0, paq: 0, cj: 0 },
+                        unidadesPorCaja: 1, // No podemos saber el real, asumimos 1 para el cálculo
+                        manejaVacios: !!obsequio.tipoVacio,
+                        tipoVacio: obsequio.tipoVacio || null
+                    };
                 }
+                
+                // Procesar el pComp (ya sea el real o el de respaldo)
+                const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
+                const rubro = pComp.rubro || 'SIN RUBRO';
+                
+                allRubros.add(rubro);
+                if (!dataByRubro[rubro]) {
+                    dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
+                }
+                if (!dataByRubro[rubro].clients[clientName]) {
+                    dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
+                }
+                if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
+                    dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
+                }
+                dataByRubro[rubro].obsequiosMap.add(pComp.id);
+
+                if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
+                
+                // Lógica de vacíos (Entregados)
+                if (pComp.manejaVacios && pComp.tipoVacio) {
+                    const tV = pComp.tipoVacio; 
+                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
+                    vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
+                }
+
+                // Lógica de vacíos (Devueltos en el mismo obsequio)
+                const vacDev = obsequio.vaciosRecibidos || 0;
+                const tipoVacDev = obsequio.tipoVacio; // El obsequio guarda su propio tipo de vacío
+                if (vacDev > 0 && tipoVacDev) {
+                     if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
+                     vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
+                }
+                // --- FIN DE LA CORRECCIÓN (Reporte) ---
             }
         }
         
@@ -585,17 +645,27 @@
                     totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
                 }
 
-                const pInfo = inventarioMap.get(productId);
+                // --- INICIO DE LA CORRECCIÓN (Stock Calculation) ---
+                // 3. Modificar cómo se calcula el stock inicial y actual.
+                const pInfoCurrent = inventarioMap.get(productId); // Info del inventario actual
+                const pInfoSnapshot = snapshotMap.get(productId); // Info del snapshot (Carga Inicial)
+
                 let initialStockUnits = 0;
                 let currentStockUnits = 0;
                 
                 if (hasSnapshot) {
-                    initialStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    // Si hay snapshot, la Carga Inicial ES el snapshot.
+                    // Si el producto no estaba en el snapshot (ej. obsequio añadido hoy), su Carga Inicial es 0.
+                    initialStockUnits = pInfoSnapshot ? (pInfoSnapshot.cantidadUnidades || 0) : 0;
+                    // La Carga Restante se calcula: Carga Inicial - Total Vendido
                     currentStockUnits = initialStockUnits - totalSoldUnits;
                 } else {
-                    currentStockUnits = pInfo ? (pInfo.cantidadUnidades || 0) : 0;
+                    // Si NO hay snapshot (método antiguo), la Carga Restante ES el inventario actual.
+                    currentStockUnits = pInfoCurrent ? (pInfoCurrent.cantidadUnidades || 0) : 0;
+                    // La Carga Inicial se calcula: Carga Restante + Total Vendido
                     initialStockUnits = currentStockUnits + totalSoldUnits;
                 }
+                // --- FIN DE LA CORRECCIÓN ---
 
                 productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
             }
@@ -972,16 +1042,9 @@
             }
 
             const vendedor = closingData.vendedorInfo || {}; 
-            // --- CORRECCIÓN DE LA CORRECCIÓN ANTERIOR ---
-            // 'jsDate' fue definido dentro del bloque try/catch, pero esta línea está fuera.
-            // Movemos la definición de 'jsDate' y 'fechaCierre' al inicio de la función.
-            // Ah, no, la definición de 'jsDate' está bien, pero 'fecha' no está definida aquí.
-            // Necesitamos usar 'jsDate' que definimos arriba.
-            const fechaParaNombre = jsDate ? jsDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-            // --- FIN CORRECCIÓN ---
-            
+            const fecha = jsDate ? jsDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
             const vendNombre = (vendedor.nombre || 'Vendedor').replace(/\s/g, '_');
-            const fileName = `Cierre_${vendNombre}_${fechaParaNombre}.xlsx`;
+            const fileName = `Cierre_${vendNombre}_${fecha}.xlsx`;
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1469,10 +1532,11 @@
         showClosingDetail, 
         handleDownloadSingleClosing,
         exportSingleClosingToExcel,
-        // --- AÑADIDOS PARA EL PASO 1 ---
-        getDisplayQty,
-        _processSalesDataForModal
-        // --- FIN DE AÑADIDOS ---
+        // --- INICIO DE CORRECCIÓN DE EXPOSICIÓN ---
+        // Exponer las funciones necesarias para ventas.js
+        _processSalesDataForModal: _processSalesDataForModal,
+        getDisplayQty: getDisplayQty
+        // --- FIN DE CORRECCIÓN DE EXPOSICIÓN ---
     };
 
 })();
