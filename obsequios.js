@@ -833,11 +833,16 @@
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.cantidadCajas || 0}</td>
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.vaciosRecibidos || 0}</td>
                     <td class="py-2 px-3 border-b text-xs">${reg.observacion || ''}</td>
-                    <!-- MODIFICACIÓN: Añadir botones de Acción -->
+                    <!-- INICIO: Modificación de Botones -->
                     <td class="py-2 px-3 border-b text-center space-x-1">
+                        <button onclick="window.obsequiosModule.shareObsequio('${reg.id}')" class="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">Compartir</button>
+                        
+                        <!-- SE ELIMINÓ LA CONDICIÓN DE ADMIN -->
                         <button onclick="window.obsequiosModule.editObsequio('${reg.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Edt</button>
                         <button onclick="window.obsequiosModule.deleteObsequio('${reg.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Del</button>
+                        
                     </td>
+                    <!-- FIN: Modificación de Botones -->
                 </tr> `;
         });
         tableHTML += '</tbody></table>';
@@ -852,8 +857,9 @@
             _showModal('Aviso', 'No hay datos para descargar.');
             return;
         }
-        if (typeof XLSX === 'undefined') {
-            _showModal('Error', 'La librería de Excel (XLSX) no está cargada.');
+        // --- CORRECCIÓN: Usar ExcelJS, no XLSX ---
+        if (typeof ExcelJS === 'undefined') {
+            _showModal('Error', 'La librería de Excel (ExcelJS) no está cargada.');
             return;
         }
 
@@ -868,17 +874,44 @@
                 'Tipo Vacío': reg.tipoVacio || 'N/A',
                 Observacion: reg.observacion || ''
             }));
-
-            const ws = XLSX.utils.json_to_sheet(dataToExport);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Registro Obsequios');
+            
+            // --- INICIO CORRECCIÓN: Usar ExcelJS ---
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Registro Obsequios');
+            
+            // Definir columnas basadas en las claves de dataToExport
+            worksheet.columns = [
+                { header: 'Fecha', key: 'Fecha', width: 12 },
+                { header: 'Cliente', key: 'Cliente', width: 30 },
+                { header: 'Producto', key: 'Producto', width: 30 },
+                { header: 'Cajas Entregadas', key: 'Cajas Entregadas', width: 18, style: { numFmt: '0', alignment: { horizontal: 'center' } } },
+                { header: 'Vacíos Recibidos', key: 'Vacíos Recibidos', width: 18, style: { numFmt: '0', alignment: { horizontal: 'center' } } },
+                { header: 'Tipo Vacío', key: 'Tipo Vacío', width: 15 },
+                { header: 'Observacion', key: 'Observacion', width: 40 }
+            ];
+            
+            worksheet.getRow(1).font = { bold: true };
+            worksheet.addRows(dataToExport);
             
             const monthInput = document.getElementById('obsequioMonth').value || 'mes_actual';
-            XLSX.writeFile(wb, `Registro_Obsequios_${monthInput}.xlsx`);
+            const fileName = `Registro_Obsequios_${monthInput}.xlsx`;
 
-            // Ocultar modal de progreso
-            const modal = document.getElementById('modalContainer');
-            if(modal) modal.classList.add('hidden');
+            // Descargar
+            workbook.xlsx.writeBuffer().then(buffer => {
+                const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+                
+                // Ocultar modal de progreso
+                const modal = document.getElementById('modalContainer');
+                if(modal) modal.classList.add('hidden');
+            });
+            // --- FIN CORRECCIÓN ---
 
         } catch (error) {
             console.error("Error generando Excel:", error);
@@ -1108,11 +1141,47 @@
 
     // --- FIN: NUEVAS FUNCIONES ---
 
+    // --- INICIO: NUEVA FUNCIÓN PARA COMPARTIR ---
+    /**
+     * Muestra las opciones para compartir/imprimir un obsequio ya registrado.
+     */
+    async function shareObsequio(obsequioId) {
+        const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
+        if (!obsequio) {
+            _showModal('Error', 'No se encontró el registro de obsequio.');
+            return;
+        }
+
+        // Cargar inventario si no está en caché (necesario para datos del producto)
+        if (_inventarioCache.length === 0) {
+            _showModal('Progreso', 'Cargando datos del producto...');
+            await _loadInventarioUsuario();
+            const progressModal = document.getElementById('modalContainer');
+            if (progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
+                progressModal.classList.add('hidden');
+            }
+        }
+
+        const producto = _inventarioCache.find(p => p.id === obsequio.productoId);
+        if (!producto) {
+            // Si no está en inventario (raro), crear un objeto temporal para el ticket
+             _showModal('Error', 'No se encontraron los datos del producto asociado a este obsequio.');
+             return;
+        }
+
+        // Llamar a la función de sharing existente con un callback vacío
+        _showSharingOptionsObsequio(obsequio, producto, () => {
+            // No se necesita hacer nada después de compartir un ticket antiguo
+        });
+    }
+    // --- FIN: NUEVA FUNCIÓN PARA COMPARTIR ---
+
 
     // --- MODIFICACIÓN: Exponer el módulo ---
     window.obsequiosModule = {
         editObsequio,
-        deleteObsequio
+        deleteObsequio,
+        shareObsequio // --- AÑADIDO ---
     };
 
 })(); // Fin del IIFE
