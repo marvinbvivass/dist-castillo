@@ -2,7 +2,7 @@
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
     
-    // --- CORRECIÓN: Añadir _onSnapshot y listeners de eventos ---
+    // --- CORRECCIÓN: Añadir _onSnapshot y listeners de eventos ---
     let _collection, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _increment, _onSnapshot;
     let _addGlobalEventListener, _removeGlobalEventListener;
     let _localActiveListeners = []; // Listeners locales de este módulo
@@ -18,7 +18,7 @@
 
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
-    // --- CORRECIÓN: Función de limpieza de listeners locales ---
+    // --- CORRECCIÓN: Función de limpieza de listeners locales ---
     function _cleanupLocalListeners() {
         _localActiveListeners.forEach(listenerOrUnsubscribe => {
             if (typeof listenerOrUnsubscribe === 'function') {
@@ -415,6 +415,7 @@
         document.getElementById('shareImageBtn').addEventListener('click', () => { const html = createTicketHTML(venta, productos, vaciosDevueltosPorTipo, tipo); handleShareTicket(html, callbackFinal); });
     }
 
+    // --- CORRECCIÓN: _processAndSaveVenta ahora usa _runTransaction y maneja el snapshot ---
     async function _processAndSaveVenta() {
         console.log("Starting _processAndSaveVenta (ATOMIC)...");
         
@@ -434,18 +435,18 @@
                     const snapshotDoc = await transaction.get(snapshotRef); 
                     if (!snapshotDoc.exists()) {
                         console.log("Primera venta del día detectada. Guardando snapshot de inventario...");
-                        const inventarioActual = _globalCaches.getInventario();
+                        // Usar la caché global (que se cargó en index.html)
+                        const inventarioActual = _globalCaches.getInventario(); 
                         if (inventarioActual && inventarioActual.length > 0) {
                             // Escribir DENTRO de la transacción
                             transaction.set(snapshotRef, { inventario: inventarioActual, fecha: new Date() }); 
                             console.log("Snapshot de carga inicial guardado en transacción.");
                         } else {
-                            console.warn("No hay inventario en caché para guardar en snapshot.");
+                            console.warn("No hay inventario en caché global para guardar en snapshot.");
                         }
                     }
                 } catch (snapError) {
                     // No relanzar el error, un fallo del snapshot no debe detener la venta.
-                    // El error se registrará, pero la transacción continuará.
                     console.error("Error al verificar/guardar snapshot (dentro de TX), la venta continuará:", snapError);
                 }
                 // --- FIN CORRECCIÓN ---
@@ -485,6 +486,7 @@
                     
                     if(restarU > 0) {
                         const pRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, p.id);
+                        // --- CORRECCIÓN: Usar _increment (pasado desde index.html) ---
                         transaction.update(pRef, { cantidadUnidades: _increment(-restarU) }); 
                     }
                     
@@ -529,7 +531,7 @@
                     clienteId:_ventaActual.cliente.id,
                     clienteNombre:_ventaActual.cliente.nombreComercial||_ventaActual.cliente.nombrePersonal,
                     clienteNombrePersonal:_ventaActual.cliente.nombrePersonal,
-                    fecha:new Date(),
+                    fecha:new Date(), // Se guarda como JS Date, se convierte a Timestamp en el servidor
                     total:totalVenta,
                     productos:itemsVenta,
                     vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo
@@ -596,7 +598,7 @@
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Ventas Totales</h2>
                 <div class="space-y-4">
                     <button id="ventasActualesBtn" class="w-full px-6 py-3 bg-teal-500 text-white rounded-lg shadow-md hover:bg-teal-600">Ventas Actuales</button>
-                    <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600">Cierre de Ventas</button>
+                    <button id="cierreVentasBtn" class="w-full px-6 py-3 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-700">Cierre de Ventas</button>
                 </div>
                 <button id="backToVentasBtn" class="mt-6 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
             </div> </div> </div>
@@ -619,40 +621,55 @@
         renderVentasList();
     }
 
+    // --- CORRECCIÓN: Lógica de ordenamiento y fecha robusta para offline ---
+    
+    /**
+     * Helper para convertir cualquier formato de fecha de Firestore (online/offline) a un número comparable.
+     */
+    function _getTimestamp(fecha) {
+        if (!fecha) return 0;
+        // 1. Online: Objeto Timestamp de Firebase
+        if (typeof fecha.toDate === 'function') {
+            return fecha.toDate().getTime();
+        }
+        // 2. Offline (de caché): Objeto simple { seconds: ..., nanoseconds: ... }
+        if (fecha.seconds !== undefined) {
+            return fecha.seconds * 1000;
+        }
+        // 3. Offline (recién guardado): Objeto Date de JavaScript
+        if (fecha instanceof Date) {
+            return fecha.getTime();
+        }
+        // 4. Fallback
+        return 0;
+    }
+
     function renderVentasList() {
         const cont = document.getElementById('ventasListContainer'); if (!cont) return;
         const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
         
-        // --- CORRECCIÓN: _onSnapshot ahora está disponible ---
         const unsub = _onSnapshot(q, (snap) => {
             _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             
-            // --- CORRECCIÓN: Lógica de ordenamiento robusta (Offline/Online) ---
-            const toTimestamp = (fecha) => {
-                if (!fecha) return 0;
-                if (typeof fecha.toDate === 'function') { // Es un Timestamp de Firebase
-                    return fecha.toDate().getTime();
-                }
-                if (fecha instanceof Date) { // Es una Fecha de JS (offline)
-                    return fecha.getTime();
-                }
-                return 0; // Fallback
-            };
-            _ventasGlobal.sort((a, b) => toTimestamp(b.fecha) - toTimestamp(a.fecha));
+            // --- CORRECCIÓN: Usar _getTimestamp para ordenar ---
+            _ventasGlobal.sort((a,b)=>{
+                const timeB = _getTimestamp(b.fecha);
+                const timeA = _getTimestamp(a.fecha);
+                return timeB - timeA;
+            });
             // --- FIN CORRECCIÓN ---
 
             if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
-            
             let tHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0 z-10"><tr> <th class="py-2 px-3 border-b text-left">Cliente</th> <th class="py-2 px-3 border-b text-left">Fecha</th> <th class="py-2 px-3 border-b text-right">Total</th> <th class="py-2 px-3 border-b text-center">Acciones</th> </tr></thead><tbody>`;
-            
             _ventasGlobal.forEach(v => { 
-                // --- CORRECCIÓN: Lógica de fecha robusta ---
-                const fV = v.fecha ? (v.fecha.toDate ? v.fecha.toDate() : (v.fecha instanceof Date ? v.fecha : new Date(0))) : new Date(0);
+                // --- CORRECCIÓN: Usar _getTimestamp para mostrar fecha ---
+                const ts = _getTimestamp(v.fecha);
+                const fV = new Date(ts);
+                const fF = ts > 0 ? fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}) : 'N/A';
                 // --- FIN CORRECCIÓN ---
-                const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); 
+                
                 tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; 
             });
-            
             tHTML += `</tbody></table>`; cont.innerHTML = tHTML;
         }, (err) => { 
             if (window.isLoggingOut) return; 
@@ -665,6 +682,7 @@
         });
         _localActiveListeners.push(unsub);
     }
+    // --- FIN CORRECCIÓN DE RENDER/SORT ---
 
     function showCierreSubMenuView() {
          _cleanupLocalListeners(); 
@@ -1186,6 +1204,6 @@
         showPastSaleOptions,
         editVenta,
         deleteVenta,
-        invalidateCache: () => { _localActiveListeners = []; } // Sencilla invalidación
+        invalidateCache: () => { /* No action needed */ }
     };
 })();
