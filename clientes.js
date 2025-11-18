@@ -1,8 +1,15 @@
+// --- Lógica del módulo de Clientes ---
+
 (function() {
+    // Variables locales del módulo que se inicializarán desde index.html
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal, _showAddItemModal;
     
     let _globalCaches; 
+    
+    // --- SOLUCIÓN: Dependencias de eventos y tracker ---
+    let _addGlobalEventListener, _removeGlobalEventListener;
+    let _localActiveListeners = []; // Para rastrear listeners de esta vista
     
     let _collection, _doc, _addDoc, _setDoc, _deleteDoc, _getDoc, _getDocs, _query, _where, _writeBatch, _runTransaction, _limit;
 
@@ -12,6 +19,14 @@
     const SECTORES_COLLECTION_PATH = `artifacts/${'ventas-9a210'}/public/data/sectores`;
 
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+
+    // --- SOLUCIÓN: Función de limpieza de listeners locales ---
+    function _cleanupLocalListeners() {
+        _localActiveListeners.forEach(listener => {
+            _removeGlobalEventListener(listener.event, listener.handler);
+        });
+        _localActiveListeners = [];
+    }
 
     /**
      * Inicializa el módulo con las dependencias necesarias desde la app principal.
@@ -29,6 +44,10 @@
         _showAddItemModal = dependencies.showAddItemModal;
         
         _globalCaches = dependencies.globalCaches;
+        
+        // --- SOLUCIÓN: Recibir funciones de eventos ---
+        _addGlobalEventListener = dependencies.addGlobalEventListener;
+        _removeGlobalEventListener = dependencies.removeGlobalEventListener;
         
         _collection = dependencies.collection;
         _doc = dependencies.doc;
@@ -48,6 +67,7 @@
      * Renderiza el menú de subopciones de clientes.
      */
     window.showClientesSubMenu = function() {
+         _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
          _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -80,6 +100,7 @@
      * Muestra la vista de funciones avanzadas.
      */
     function showFuncionesAvanzadasView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto">
@@ -105,6 +126,7 @@
      * Muestra la vista para importar clientes desde un archivo Excel.
      */
     function showImportarClientesView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-4xl">
@@ -467,6 +489,7 @@
      * Muestra la vista de agregar cliente.
      */
     function showAgregarClienteView() {
+         _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
          _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -515,7 +538,12 @@
                 </div>
             </div>
         `;
-        _populateSectoresDropdown('sector', null);
+        
+        // --- SOLUCIÓN: Suscribirse al evento para poblar el dropdown ---
+        const handler = () => _populateSectoresDropdown('sector', null);
+        _addGlobalEventListener('sectores-updated', handler);
+        _localActiveListeners.push({ event: 'sectores-updated', handler: handler });
+        handler(); // Llamar una vez para poblar con lo que haya en caché
 
         const cepInput = document.getElementById('codigoCEP');
         const cepNACheckbox = document.getElementById('cepNA');
@@ -612,6 +640,7 @@
 
 
     function showVerClientesView() {
+         _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
          _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -631,9 +660,17 @@
             </div>
         `;
         document.getElementById('backToClientesBtn').addEventListener('click', showClientesSubMenu);
-        setupFiltros('clientesListContainer');
+        
+        // --- SOLUCIÓN: Suscribirse a eventos para poblar filtros y lista ---
+        const filtersHandler = () => setupFiltros('clientesListContainer');
+        _addGlobalEventListener('sectores-updated', filtersHandler);
+        _localActiveListeners.push({ event: 'sectores-updated', handler: filtersHandler });
+        filtersHandler(); // Poblar filtros con lo que haya en caché
 
-        renderClientesList('clientesListContainer', false);
+        const listHandler = () => renderClientesList('clientesListContainer', false);
+        _addGlobalEventListener('clientes-updated', listHandler);
+        _localActiveListeners.push({ event: 'clientes-updated', handler: listHandler });
+        listHandler(); // Renderizar lista con lo que haya en caché
     }
 
 
@@ -661,8 +698,9 @@
         const selectElement = document.getElementById('filter-sector');
         if (selectElement) {
             try {
+                // Rellenar desde la caché (síncrono)
                 const items = _globalCaches.getSectores().map(s => s.name).sort();
-                const currentValue = selectElement.value;
+                const currentValue = selectElement.value; // Guardar valor por si el evento de 'clientes' llegó primero
                 selectElement.innerHTML = `<option value="">Todos</option>`;
                 items.forEach(item => {
                     selectElement.innerHTML += `<option value="${item}">${item}</option>`;
@@ -684,7 +722,14 @@
         const clearBtn = document.getElementById('clear-filters-btn');
         const incompletosFilter = document.getElementById('filter-incompletos');
 
+        // Quitar listeners anteriores para evitar duplicados (aunque _cleanupLocalListeners ya ayuda)
         const applyFilters = () => renderClientesList(containerId, false);
+        
+        // Remover y re-agregar para asegurar que solo haya uno
+        searchInput?.removeEventListener('input', applyFilters);
+        sectorFilter?.removeEventListener('change', applyFilters);
+        incompletosFilter?.removeEventListener('change', applyFilters);
+        clearBtn?.removeEventListener('click', applyFilters);
 
         searchInput?.addEventListener('input', applyFilters);
         sectorFilter?.addEventListener('change', applyFilters);
@@ -783,6 +828,7 @@
 
 
     function editCliente(clienteId) {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _floatingControls.classList.add('hidden');
         const cliente = _globalCaches.getClientes().find(c => c.id === clienteId);
         if (!cliente) return;
@@ -832,7 +878,12 @@
                 </div>
             </div>
         `;
-        _populateSectoresDropdown('editSector', cliente.sector);
+        
+        // --- SOLUCIÓN: Suscribirse al evento para poblar el dropdown ---
+        const handler = () => _populateSectoresDropdown('editSector', cliente.sector);
+        _addGlobalEventListener('sectores-updated', handler);
+        _localActiveListeners.push({ event: 'sectores-updated', handler: handler });
+        handler(); // Llamar una vez
 
         const editCepInput = document.getElementById('editCodigoCEP');
         const editCepNACheckbox = document.getElementById('editCepNA');
@@ -905,6 +956,7 @@
             try {
                 await _deleteDoc(_doc(_db, CLIENTES_COLLECTION_PATH, clienteId));
                 _showModal('Éxito', 'Cliente eliminado correctamente.');
+                // La caché global se actualizará sola, pero forzamos el re-render de la lista
                 renderClientesList('clientesListContainer', false);
             } catch (error) {
                 console.error("Error al eliminar el cliente:", error);
@@ -914,6 +966,7 @@
     };
 
     function showDatosMaestrosSectoresView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-2xl">
@@ -930,7 +983,12 @@
         `;
         document.getElementById('addSectorMaestroBtn').addEventListener('click', () => _showAddItemModal(SECTORES_COLLECTION_PATH, 'Sector'));
         document.getElementById('backToClientesBtn').addEventListener('click', showFuncionesAvanzadasView);
-        renderSectoresParaGestion();
+        
+        // --- SOLUCIÓN: Suscribirse al evento ---
+        const handler = () => renderSectoresParaGestion();
+        _addGlobalEventListener('sectores-updated', handler);
+        _localActiveListeners.push({ event: 'sectores-updated', handler: handler });
+        handler(); // Llamar una vez
     }
 
     function renderSectoresParaGestion() {
@@ -987,7 +1045,7 @@
                 }
 
                 _showModal('Éxito', `Sector renombrado a "${nuevoNombreMayus}" y actualizado en ${updatedClientsCount} cliente(s).`);
-                renderSectoresParaGestion();
+                // renderSectoresParaGestion(); // No es necesario, el listener global lo hará
             } catch (error) {
                  console.error("Error al renombrar sector:", error);
                 _showModal('Error', `Ocurrió un error al renombrar el sector: ${error.message}`);
@@ -1013,7 +1071,7 @@
                  try {
                      await _deleteDoc(_doc(_db, SECTORES_COLLECTION_PATH, sectorId));
                      _showModal('Éxito', `El sector "${sectorName}" ha sido eliminado.`);
-                     renderSectoresParaGestion();
+                     // renderSectoresParaGestion(); // No es necesario, el listener global lo hará
                  } catch (deleteError) {
                       console.error("Error al eliminar sector:", deleteError);
                       _showModal('Error', `Ocurrió un error al eliminar el sector: ${deleteError.message}`);
@@ -1061,8 +1119,7 @@
                 }
 
                 _showModal('Éxito', `Todos los ${totalDeleted} clientes han sido eliminados.`);
-                 renderClientesList('clientesListContainer', false);
-
+                 // renderClientesList('clientesListContainer', false); // No es necesario, el listener global lo hará
             } catch (error) {
                 console.error("Error al eliminar todos los clientes:", error);
                 _showModal('Error', `Hubo un error al eliminar los clientes: ${error.message}`);
@@ -1072,6 +1129,7 @@
 
 
     function showSaldosVaciosView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -1093,7 +1151,11 @@
              searchInput.addEventListener('input', renderSaldosList);
         }
 
-        renderSaldosList();
+        // --- SOLUCIÓN: Suscribirse al evento ---
+        const handler = () => renderSaldosList();
+        _addGlobalEventListener('clientes-updated', handler);
+        _localActiveListeners.push({ event: 'clientes-updated', handler: handler });
+        handler(); // Llamar una vez
     }
 
 
