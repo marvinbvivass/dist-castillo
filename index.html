@@ -223,12 +223,8 @@
             measurementId: "G-N0QXG70WM1"
         };
         
-        // --- INICIO DE LA CORRECCIÓN ---
-        // 'appId' debe ser el App ID real (para datos privados viejos)
-        // 'projectId' debe ser el Project ID (para datos públicos)
         const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
-        const projectId = firebaseConfig.projectId; // "ventas-9a210"
-        // --- FIN DE LA CORRECCIÓN ---
+        const projectId = firebaseConfig.projectId;
 
 
         let db;
@@ -392,8 +388,7 @@
                 submitButton.textContent = 'Verificando...';
 
                 try {
-                    // --- CORRECCIÓN DE RUTA: Usar 'appId' (el App ID real) para datos privados ---
-                    const isPublic = collectionName === 'sectores'; // Asumiendo que solo sectores es público aquí
+                    const isPublic = collectionName === 'sectores';
                     const collectionRef = isPublic
                         ? collection(db, `artifacts/${projectId}/public/data/${collectionName}`)
                         : collection(db, `artifacts/${appId}/users/${userId}/${collectionName}`);
@@ -542,12 +537,26 @@
         async function handleLogout() {
              console.log("Attempting logout...");
              window.isLoggingOut = true; 
+             
+             // --- INICIO DE LA CORRECCIÓN ---
+             // Limpiar listeners ANTES de cerrar sesión
+             cleanupListeners(); 
+             // --- FIN DE LA CORRECCIÓN ---
+             
              try {
                  await signOut(auth);
                  console.log("User signed out successfully.");
              } catch (error) {
                  console.error("Logout error:", error);
                  window.isLoggingOut = false; 
+                 // Si el cierre de sesión falla, volvemos a adjuntar los listeners
+                 // porque el usuario sigue conectado.
+                 onAuthStateChanged(auth, (user) => {
+                     if (user) {
+                         console.log("Logout failed, re-attaching listeners...");
+                         startGlobalListeners(); 
+                     }
+                 });
                  window.showModal("Error", "No se pudo cerrar la sesión. Intenta de nuevo.");
              }
         }
@@ -560,7 +569,6 @@
                 } else { console.warn("Attempted to unsubscribe non-function:", unsubscribe); }
             });
             activeListeners = []; 
-            // --- SOLUCIÓN: Limpiar también los listeners de eventos globales ---
             _globalEventListeners = {};
             console.log("Listeners cleaned up.");
         }
@@ -592,28 +600,26 @@
                     console.log(`Global cache updated: ${name} (${data.length} items)`);
                     dispatchGlobalEvent(eventName, data); 
                 }, (error) => {
+                    if (window.isLoggingOut) {
+                         console.log(`Global listener (${name}) stopped (logging out).`);
+                         return; // No mostrar errores si estamos cerrando sesión
+                    }
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                         console.log(`Global listener (${name}) stopped (permission).`);
                     } else {
                         console.error(`Error grave en global listener (${name}):`, error);
-                        if (!window.isLoggingOut) {
-                             window.showModal("Error de Sincronización", `No se pudieron cargar ${name}.`);
-                        }
+                        window.showModal("Error de Sincronización", `No se pudieron cargar ${name}.`);
                     }
                 });
                 activeListeners.push(unsubscribe);
             };
 
-            // --- INICIO DE LA CORRECCIÓN DE RUTAS ---
-            // Datos Públicos usan 'projectId'
             const CLIENTES_PATH = `artifacts/${projectId}/public/data/clientes`;
             const SECTORES_PATH = `artifacts/${projectId}/public/data/sectores`;
-            // Datos Privados usan 'appId' (el App ID real, para encontrar los datos viejos)
             const INVENTARIO_PATH = `artifacts/${appId}/users/${userId}/inventario`;
             const RUBROS_PATH = `artifacts/${appId}/users/${userId}/rubros`;
             const SEGMENTOS_PATH = `artifacts/${appId}/users/${userId}/segmentos`;
             const MARCAS_PATH = `artifacts/${appId}/users/${userId}/marcas`;
-            // --- FIN DE LA CORRECCIÓN DE RUTAS ---
 
             try {
                 createListener(INVENTARIO_PATH, (data) => _globalInventarioCache = data, 'Inventario', 'inventario-updated');
@@ -650,7 +656,6 @@
             console.log("Global listeners attached. Initializing modules...");
 
             const dependencies = {
-                // --- CORRECCIÓN: Pasar 'appId' (App ID) y 'projectId' (Project ID) ---
                 db, userId, appId, projectId, 
                 mainContent, floatingControls, activeListeners,
                 userRole: window.userRole,
@@ -743,9 +748,13 @@
         }
 
         window.showMainMenu = function() {
-            console.log("Showing Main Menu"); cleanupListeners(); 
+            // --- INICIO DE LA CORRECCIÓN ---
+            // NO LLAMAR a cleanupListeners() aquí.
+            // Los listeners globales (activeListeners) deben seguir vivos.
+            console.log("Showing Main Menu"); 
+            // cleanupListeners(); // <-- ESTA LÍNEA CAUSABA EL ERROR
+            // --- FIN DE LA CORRECCIÓN ---
 
-            // --- CORRECCIÓN DE RUTA: Usar 'appId' (el App ID real) para datos privados ---
             const connectionCheckRef = collection(db, `artifacts/${appId}/users/${userId}/inventario`);
             const unsubscribeStatus = onSnapshot(connectionCheckRef, { includeMetadataChanges: true }, (snapshot) => {
                 if (!connectionStatusEl) return;
@@ -759,9 +768,10 @@
                     connectionStatusEl.className = `block text-xs font-bold px-3 py-2 rounded-full shadow-lg transition-colors duration-300 ${isOffline ? 'bg-yellow-400 text-yellow-900 animate-pulse' : 'bg-green-400 text-green-900'}`;
                 }
             }, (error) => {
+                if (window.isLoggingOut) return; // No mostrar error si estamos cerrando sesión
                 console.warn("Connection status listener error:", error.code);
                 const isManualOffline = localStorage.getItem('manualOfflineMode') === 'true';
-                if (!isManualOffline && connectionStatusEl && (!window.isLoggingOut || error.code !== 'permission-denied')) {
+                if (!isManualOffline && connectionStatusEl) {
                      connectionStatusEl.textContent = "Error Conexión";
                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-red-400 text-red-900';
                 } else if (!isManualOffline) {
@@ -769,7 +779,7 @@
                      connectionStatusEl.className = 'block text-xs font-bold px-3 py-2 rounded-full shadow-lg bg-gray-400 text-gray-900';
                 }
             });
-            activeListeners.push(unsubscribeStatus);
+            activeListeners.push(unsubscribeStatus); // <- Este listener SÍ debe estar aquí
 
             if (floatingControls) floatingControls.classList.remove('hidden'); else console.error("floatingControls not found in showMainMenu.");
             mainContent.classList.remove('hidden');
@@ -851,9 +861,23 @@
              console.log("Attaching Auth state listener...");
             onAuthStateChanged(auth, (user) => {
                 console.log("Auth state changed. User:", user ? user.uid : 'null');
-                cleanupListeners(); 
-                if (user) { showMainView(user).catch(err => { console.error("CRITICAL: Error showMainView:", err); window.showModal("Error Crítico", "Error al cargar app. Recarga."); }); }
-                else { showLoginView(); }
+                // --- INICIO DE LA CORRECCIÓN ---
+                // NO limpiar listeners aquí. La limpieza se hace en handleLogout.
+                // cleanupListeners(); 
+                // --- FIN DE LA CORRECCIÓN ---
+                if (user) { 
+                    showMainView(user).catch(err => { 
+                        console.error("CRITICAL: Error showMainView:", err); 
+                        window.showModal("Error Crítico", "Error al cargar app. Recarga."); 
+                    }); 
+                }
+                else { 
+                    // --- INICIO DE LA CORRECCIÓN ---
+                    // Si el usuario es nulo (cerró sesión), AHORA limpiamos listeners.
+                    cleanupListeners();
+                    // --- FIN DE LA CORRECCIÓN ---
+                    showLoginView(); 
+                }
             });
             console.log("Auth listener attached.");
         }
