@@ -210,13 +210,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     -->
     
-    <!-- PASO 1: Reemplazar la librería de Excel por una que SÍ soporta estilos -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     
     <script type="module" defer> 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // --- MODIFICADO: Importar 'increment' ---
         import { getFirestore, doc, getDoc, addDoc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, writeBatch, runTransaction, getDocs, enableIndexedDbPersistence, query, where, orderBy, limit, startAfter, enableNetwork, disableNetwork, increment } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -238,14 +236,60 @@
         window.isLoggingOut = false; 
         window.TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
-        // --- INICIO PASO 2: Definir Cachés Globales ---
         let _globalInventarioCache = [];
         let _globalClientesCache = [];
         let _globalSectoresCache = [];
         let _globalRubrosCache = [];
         let _globalSegmentosCache = [];
         let _globalMarcasCache = [];
-        // --- FIN PASO 2 ---
+
+        // --- INICIO SOLUCIÓN: Sistema de Eventos Globales ---
+        let _globalEventListeners = {};
+
+        /**
+         * Registra un callback para un evento global.
+         * @param {string} eventName - Nombre del evento (ej. 'clientes-updated')
+         * @param {Function} callback - La función a llamar cuando el evento ocurra
+         */
+        function addGlobalEventListener(eventName, callback) {
+            if (!_globalEventListeners[eventName]) {
+                _globalEventListeners[eventName] = [];
+            }
+            // Evitar duplicados
+            if (!_globalEventListeners[eventName].includes(callback)) {
+                _globalEventListeners[eventName].push(callback);
+            }
+        }
+
+        /**
+         * Elimina un callback de un evento global.
+         * @param {string} eventName - Nombre del evento
+         * @param {Function} callback - La función específica a eliminar
+         */
+        function removeGlobalEventListener(eventName, callback) {
+            if (_globalEventListeners[eventName]) {
+                _globalEventListeners[eventName] = _globalEventListeners[eventName].filter(cb => cb !== callback);
+            }
+        }
+
+        /**
+         * Dispara un evento global a todos los oyentes registrados.
+         * @param {string} eventName - Nombre del evento a disparar
+         * @param {any} [data] - Datos opcionales para pasar a los callbacks
+         */
+        function dispatchGlobalEvent(eventName, data) {
+            if (_globalEventListeners[eventName]) {
+                _globalEventListeners[eventName].forEach(callback => {
+                    try {
+                        callback(data);
+                    } catch (e) {
+                        console.error(`Error in global event listener for ${eventName}:`, e);
+                    }
+                });
+            }
+        }
+        // --- FIN SOLUCIÓN: Sistema de Eventos Globales ---
+
 
         const mainContent = document.getElementById('mainContent');
         const modalContainer = document.getElementById('modalContainer');
@@ -545,34 +589,31 @@
             const registerButton = registerForm?.querySelector('button[type="submit"]'); if(registerButton){ registerButton.disabled = false; registerButton.textContent = 'Registrar'; }
         }
 
-        // --- INICIO PASO 2: Nueva función de Listeners Globales ---
         async function startGlobalListeners() {
-            // Esta función reemplaza a preloadAllData y usa onSnapshot para mantener las cachés actualizadas.
             console.log("Starting global data listeners (onSnapshot)...");
 
-            // Helper para crear un listener con manejo de errores y actualización de caché
-            const createListener = (path, cacheUpdater, name) => {
+            // --- MODIFICADO: Helper ahora dispara eventos ---
+            const createListener = (path, cacheUpdater, name, eventName) => {
                 const collectionRef = collection(db, path);
                 const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
                     const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    cacheUpdater(data); // Actualiza la variable de caché global
+                    cacheUpdater(data);
                     console.log(`Global cache updated: ${name} (${data.length} items)`);
+                    // --- SOLUCIÓN: Disparar evento de actualización ---
+                    dispatchGlobalEvent(eventName, data); 
                 }, (error) => {
-                    // Ignorar errores de permisos que ocurren al cerrar sesión
                     if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
                         console.log(`Global listener (${name}) stopped (permission).`);
                     } else {
                         console.error(`Error grave en global listener (${name}):`, error);
-                        // Opcional: notificar al usuario si no es un error de cierre de sesión
                         if (!window.isLoggingOut) {
                              window.showModal("Error de Sincronización", `No se pudieron cargar ${name}.`);
                         }
                     }
                 });
-                activeListeners.push(unsubscribe); // Añadir a la lista para limpieza
+                activeListeners.push(unsubscribe);
             };
 
-            // Definir rutas
             const CLIENTES_PATH = `artifacts/ventas-9a210/public/data/clientes`;
             const SECTORES_PATH = `artifacts/ventas-9a210/public/data/sectores`;
             const INVENTARIO_PATH = `artifacts/${appId}/users/${userId}/inventario`;
@@ -580,18 +621,15 @@
             const SEGMENTOS_PATH = `artifacts/${appId}/users/${userId}/segmentos`;
             const MARCAS_PATH = `artifacts/${appId}/users/${userId}/marcas`;
 
-            // Iniciar todos los listeners
-            // Los datos se cargarán asíncronamente. Los módulos deben manejar el estado de carga inicial.
             try {
-                createListener(INVENTARIO_PATH, (data) => _globalInventarioCache = data, 'Inventario');
-                createListener(CLIENTES_PATH, (data) => _globalClientesCache = data, 'Clientes');
-                createListener(SECTORES_PATH, (data) => _globalSectoresCache = data, 'Sectores');
-                createListener(RUBROS_PATH, (data) => _globalRubrosCache = data, 'Rubros');
-                createListener(SEGMENTOS_PATH, (data) => _globalSegmentosCache = data, 'Segmentos');
-                createListener(MARCAS_PATH, (data) => _globalMarcasCache = data, 'Marcas');
+                // --- MODIFICADO: Añadir nombres de eventos ---
+                createListener(INVENTARIO_PATH, (data) => _globalInventarioCache = data, 'Inventario', 'inventario-updated');
+                createListener(CLIENTES_PATH, (data) => _globalClientesCache = data, 'Clientes', 'clientes-updated');
+                createListener(SECTORES_PATH, (data) => _globalSectoresCache = data, 'Sectores', 'sectores-updated');
+                createListener(RUBROS_PATH, (data) => _globalRubrosCache = data, 'Rubros', 'rubros-updated');
+                createListener(SEGMENTOS_PATH, (data) => _globalSegmentosCache = data, 'Segmentos', 'segmentos-updated');
+                createListener(MARCAS_PATH, (data) => _globalMarcasCache = data, 'Marcas', 'marcas-updated');
                 
-                // Opcional: Podríamos esperar a que la primera carga (getDocs) termine
-                // pero por ahora, seguimos la estrategia de 'solo listeners'
                 console.log("Global listeners attached.");
 
             } catch (error) {
@@ -599,7 +637,6 @@
                 window.showModal("Error Crítico", "No se pudieron iniciar los listeners de datos.");
             }
         }
-        // --- FIN PASO 2 ---
 
         async function showMainView(currentUser) {
             userId = currentUser.uid; console.log("Showing Main View for user:", userId);
@@ -621,15 +658,14 @@
             // Los módulos se inicializarán inmediatamente.
             startGlobalListeners();
             console.log("Global listeners attached. Initializing modules...");
-            // --- FIN PASO 2 ---
 
-            // --- INICIO PASO 2: Inyectar cachés globales en las dependencias ---
+            // --- MODIFICADO: Inyectar funciones de eventos ---
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 userRole: window.userRole,
                 showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter,
-                increment, // <-- Esto ya estaba de la refactorización anterior
+                increment,
                 firebaseConfig,
 
                 // Inyectar getters para las cachés globales
@@ -640,9 +676,12 @@
                     getRubros: () => _globalRubrosCache,
                     getSegmentos: () => _globalSegmentosCache,
                     getMarcas: () => _globalMarcasCache
-                }
+                },
+
+                // --- SOLUCIÓN: Inyectar manejadores de eventos ---
+                addGlobalEventListener,
+                removeGlobalEventListener
             };
-            // --- FIN PASO 2 ---
 
             let initSuccess = true;
              const modules = [
