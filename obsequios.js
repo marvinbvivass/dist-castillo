@@ -4,20 +4,21 @@
     // Variables locales del módulo
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
     let _showMainMenu, _showModal;
-    // --- MODIFICACIÓN: Añadida dependencia _deleteDoc ---
-    let _collection, _onSnapshot, _doc, _getDoc, _addDoc, _setDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _deleteDoc;
+    // --- PASO 2: _globalCaches añadido ---
+    let _globalCaches;
+    // --- PASO 2: _onSnapshot eliminado de las dependencias ---
+    let _collection, _doc, _getDoc, _addDoc, _setDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _deleteDoc;
 
-    // Estado específico del módulo
-    let _clientesCache = [];
-    let _inventarioCache = []; // Caché del inventario del usuario actual
-    let _obsequioConfig = { productoId: null, productoData: null }; // Configuración del producto de obsequio
+    // --- PASO 2: Cachés locales eliminadas ---
+    // let _clientesCache = [];
+    // let _inventarioCache = [];
+    
+    let _obsequioConfig = { productoId: null, productoData: null };
     let _obsequioActual = { cliente: null, cantidadEntregada: 0, vaciosRecibidos: 0, observacion: '' };
-    let _lastObsequiosSearch = []; // Caché para los resultados de búsqueda del registro
+    let _lastObsequiosSearch = [];
 
-    // Constante para tipos de vacío (debe coincidir con inventario.js)
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-    // Definir ruta pública para la configuración
-    const OBSEQUIO_CONFIG_PATH = `artifacts/${'ventas-9a210'}/public/data/config/obsequio`; // Usar ID de proyecto hardcoded
+    const OBSEQUIO_CONFIG_PATH = `artifacts/${'ventas-9a210'}/public/data/config/obsequio`;
 
     /**
      * Inicializa el módulo de obsequios.
@@ -25,15 +26,19 @@
     window.initObsequios = function(dependencies) {
         _db = dependencies.db;
         _userId = dependencies.userId;
-        _userRole = dependencies.userRole; // Aunque la vista es para 'user', guardamos por si acaso
-        _appId = dependencies.appId; // Se obtiene appId aquí
+        _userRole = dependencies.userRole;
+        _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _activeListeners = dependencies.activeListeners;
+        
+        // --- PASO 2: Inyectar cachés globales ---
+        _globalCaches = dependencies.globalCaches;
+
+        // --- PASO 2: _onSnapshot eliminado ---
         _collection = dependencies.collection;
-        _onSnapshot = dependencies.onSnapshot;
         _doc = dependencies.doc;
         _getDoc = dependencies.getDoc;
         _addDoc = dependencies.addDoc;
@@ -43,13 +48,11 @@
         _runTransaction = dependencies.runTransaction;
         _query = dependencies.query;
         _where = dependencies.where;
-        // --- MODIFICACIÓN: Añadir _deleteDoc ---
         _deleteDoc = dependencies.deleteDoc;
     };
 
     /**
      * Muestra el NUEVO sub-menú de obsequios.
-     * Esta es ahora la función principal llamada desde el menú de index.html.
      */
     window.showGestionObsequiosView = function() {
         if (_userRole !== 'user') {
@@ -81,7 +84,6 @@
 
     /**
      * Muestra la vista para generar una nueva entrega de obsequio.
-     * (Esta era la antigua función 'window.showGestionObsequiosView')
      */
     async function showGenerarObsequioView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
@@ -92,7 +94,6 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <div class="flex justify-between items-center mb-6">
                             <h1 class="text-2xl font-bold text-gray-800">Generar Obsequio</h1>
-                            <!-- CORRECCIÓN: El botón "Volver" ahora regresa al sub-menú de obsequios -->
                             <button id="backToObsequiosMenuBtn" class="px-4 py-2 bg-gray-400 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-gray-500">Volver</button>
                         </div>
 
@@ -136,15 +137,10 @@
                 </div>
             </div>
         `;
-        // CORRECCIÓN: Listener del botón "Volver"
         document.getElementById('backToObsequiosMenuBtn').addEventListener('click', window.showGestionObsequiosView);
 
-        // Cargar datos necesarios en paralelo
-        await Promise.all([
-            _loadClientes(),
-            _loadInventarioUsuario(),
-            _loadObsequioProduct() // Carga la configuración Y el producto del inventario
-        ]);
+        // --- PASO 2: Cargar datos necesarios (solo config, el resto es de caché) ---
+        await _loadObsequioProduct(); // Carga la configuración Y el producto del inventario (desde caché)
 
         const loader = document.getElementById('obsequio-loader');
         const content = document.getElementById('obsequio-content');
@@ -161,26 +157,22 @@
 
     /**
      * Carga la configuración del producto de obsequio desde la ruta pública.
-     * También carga los datos del producto desde el inventario del usuario actual.
+     * También carga los datos del producto desde el inventario del usuario actual (caché).
      */
     async function _loadObsequioProduct() {
         try {
-            // 1. Leer la configuración pública directamente
-            const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH); // Usa la ruta pública definida
-            const configSnap = await _getDoc(configRef); // <-- ESTA LÍNEA FALTABA
+            // 1. Leer la configuración pública directamente (esto se mantiene)
+            const configRef = _doc(_db, OBSEQUIO_CONFIG_PATH);
+            const configSnap = await _getDoc(configRef);
 
             if (configSnap.exists()) {
                 _obsequioConfig.productoId = configSnap.data().productoId;
 
-                // 2. Buscar el producto en el inventario del usuario actual (esto permanece igual)
-                if (_inventarioCache.length === 0) {
-                     await _loadInventarioUsuario(); // Cargar si está vacío
-                }
-                const productoDataEnInventario = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
+                // --- PASO 2: Buscar el producto en el inventario global del usuario ---
+                const productoDataEnInventario = _globalCaches.getInventario().find(p => p.id === _obsequioConfig.productoId);
 
                 if (productoDataEnInventario) {
                      _obsequioConfig.productoData = productoDataEnInventario;
-                     // Validar que maneje vacíos y sea por caja (esto permanece igual)
                      if (!productoDataEnInventario.manejaVacios || !productoDataEnInventario.ventaPor?.cj) {
                          throw new Error(`El producto "${productoDataEnInventario.presentacion}" configurado como obsequio no maneja vacíos o no se vende por caja.`);
                      }
@@ -196,37 +188,15 @@
 
         } catch (error) {
             console.error("Error al cargar configuración de obsequio:", error);
-            _obsequioConfig = { productoId: null, productoData: null }; // Resetear si hay error
-             // El mensaje de error se mostrará en showGestionObsequiosView
+            _obsequioConfig = { productoId: null, productoData: null };
         }
     }
 
-    /** Carga el inventario del usuario actual */
-    async function _loadInventarioUsuario() {
-         try {
-             const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-             const snapshot = await _getDocs(inventarioRef);
-             _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-         } catch (error) {
-             console.error("Error cargando inventario del usuario:", error);
-             _inventarioCache = []; // Dejar vacío si hay error
-             _showModal('Error', 'No se pudo cargar tu inventario.');
-         }
-    }
+    // --- PASO 2: Función eliminada ---
+    // async function _loadInventarioUsuario() { ... }
 
-    /** Carga los clientes desde la colección pública */
-    async function _loadClientes() {
-        try {
-            // Usa el ID de proyecto hardcoded para la colección pública
-            const clientesRef = _collection(_db, `artifacts/ventas-9a210/public/data/clientes`);
-            const snapshot = await _getDocs(clientesRef);
-            _clientesCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } catch (error) {
-            console.error("Error cargando clientes:", error);
-            _clientesCache = [];
-             _showModal('Error', 'No se pudo cargar la lista de clientes.');
-        }
-    }
+    // --- PASO 2: Función eliminada ---
+    // async function _loadClientes() { ... }
 
     /** Configura los listeners y elementos de la UI de obsequios */
     function setupObsequioUI() {
@@ -236,7 +206,6 @@
         const observacionInput = document.getElementById('observacion');
         const form = document.getElementById('obsequioForm');
 
-        // Poblar nombre y stock del producto
         const productNameSpan = document.getElementById('obsequioProductName');
         const stockSpan = document.getElementById('obsequioStock');
         const vaciosTipoInfo = document.getElementById('vaciosTipoInfo');
@@ -246,32 +215,29 @@
             productNameSpan.textContent = `${prod.marca} - ${prod.segmento} - ${prod.presentacion}`;
             const stockEnCajas = Math.floor((prod.cantidadUnidades || 0) / (prod.unidadesPorCaja || 1));
             stockSpan.textContent = stockEnCajas;
-            cantidadInput.max = stockEnCajas; // Establecer máximo
-            vaciosTipoInfo.textContent = `Tipo: ${prod.tipoVacio}`; // Mostrar tipo
+            cantidadInput.max = stockEnCajas;
+            vaciosTipoInfo.textContent = `Tipo: ${prod.tipoVacio}`;
         } else {
-             // Si por alguna razón productoData es nulo aquí, mostrar error
              productNameSpan.textContent = "Error";
              stockSpan.textContent = "Error";
              vaciosTipoInfo.textContent = "Tipo: Error";
-             if (form) form.style.display = 'none'; // Ocultar form si no hay producto
+             if (form) form.style.display = 'none';
         }
 
 
-        // Setup búsqueda de cliente
+        // --- PASO 2: Usar caché global de clientes ---
         clienteSearchInput.addEventListener('input', () => {
             const searchTerm = clienteSearchInput.value.toLowerCase();
-            const filteredClients = _clientesCache.filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
+            const filteredClients = _globalCaches.getClientes().filter(c => c.nombreComercial.toLowerCase().includes(searchTerm) || c.nombrePersonal.toLowerCase().includes(searchTerm));
             _renderClienteDropdown(filteredClients);
             document.getElementById('clienteDropdownObsequio').classList.remove('hidden');
         });
 
-        // Setup formulario
         cantidadInput.addEventListener('input', (e) => _obsequioActual.cantidadEntregada = parseInt(e.target.value, 10) || 0);
         vaciosInput.addEventListener('input', (e) => _obsequioActual.vaciosRecibidos = parseInt(e.target.value, 10) || 0);
         observacionInput.addEventListener('input', (e) => _obsequioActual.observacion = e.target.value.trim());
         form.addEventListener('submit', handleRegistrarObsequio);
 
-        // Ocultar dropdown si se hace clic fuera
         document.addEventListener('click', function(event) {
              const dropdown = document.getElementById('clienteDropdownObsequio');
              const searchInput = document.getElementById('clienteSearchObsequio');
@@ -307,7 +273,6 @@
 
     /**
      * Valida, registra la entrega de obsequio, actualiza stock/saldos y genera ticket.
-     * --- CORREGIDO PARA AJUSTAR SALDO VACIOS CORRECTAMENTE ---
      */
     async function handleRegistrarObsequio(e) {
         e.preventDefault();
@@ -324,10 +289,10 @@
         const vaciosRecibidos = _obsequioActual.vaciosRecibidos;
         const productoObsequio = _obsequioConfig.productoData;
         const unidadesPorCaja = productoObsequio.unidadesPorCaja || 1;
-        const tipoVacioProducto = productoObsequio.tipoVacio; // Ya validado en _loadObsequioProduct
+        const tipoVacioProducto = productoObsequio.tipoVacio;
 
-        // Leer stock actual desde la caché (para validación inicial)
-        const prodEnCache = _inventarioCache.find(p => p.id === _obsequioConfig.productoId);
+        // --- PASO 2: Leer stock actual desde el caché global ---
+        const prodEnCache = _globalCaches.getInventario().find(p => p.id === _obsequioConfig.productoId);
         const stockActualUnidades = prodEnCache?.cantidadUnidades || 0;
         const stockActualCajas = Math.floor(stockActualUnidades / unidadesPorCaja);
 
@@ -339,7 +304,6 @@
             _showModal('Error', `Stock insuficiente. Solo hay ${stockActualCajas} cajas disponibles.`);
             return;
         }
-        // Validación de tipoVacio ya hecha al cargar
 
         const confirmMsg = `
             Confirmar entrega:<br>
@@ -354,12 +318,11 @@
             _showModal('Progreso', 'Registrando entrega...');
 
             try {
-                // --- INICIO: Lógica dentro de Transacción ---
                 const inventarioRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, _obsequioConfig.productoId);
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, _obsequioActual.cliente.id);
-                const registroRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`)); // Generar ID para registro
+                const registroRef = _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
 
-                const registroData = { // Preparar datos del registro
+                const registroData = {
                     fecha: new Date(),
                     clienteId: _obsequioActual.cliente.id,
                     clienteNombre: _obsequioActual.cliente.nombreComercial,
@@ -372,15 +335,14 @@
                     userId: _userId
                 };
 
+                // La transacción es CRÍTICA y debe leer de la DB, no del caché.
                 await _runTransaction(_db, async (transaction) => {
-                    // 1. Leer inventario y cliente DENTRO de la transacción
                     const inventarioDoc = await transaction.get(inventarioRef);
                     const clienteDoc = await transaction.get(clienteRef);
 
                     if (!inventarioDoc.exists()) throw "El producto de obsequio no existe en el inventario.";
                     if (!clienteDoc.exists()) throw "El cliente no existe.";
 
-                    // 2. Validar stock DENTRO de la transacción
                     const stockActualTrans = inventarioDoc.data().cantidadUnidades || 0;
                     const unidadesARestar = cantidadEntregada * unidadesPorCaja;
                     if (unidadesARestar > stockActualTrans) {
@@ -388,341 +350,248 @@
                     }
                     const nuevoStockUnidades = stockActualTrans - unidadesARestar;
 
-                    // 3. Calcular nuevo saldo de vacíos
                     const clienteData = clienteDoc.data();
                     const saldoVaciosActual = clienteData.saldoVacios || {};
                     const saldoActualTipo = saldoVaciosActual[tipoVacioProducto] || 0;
-                    // Ajuste: +CajasEntregadas (aumenta deuda) - VaciosRecibidos (disminuye deuda)
                     const nuevoSaldoTipo = saldoActualTipo + cantidadEntregada - vaciosRecibidos;
                     const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacioProducto]: nuevoSaldoTipo };
 
-                    // 4. Escribir todas las actualizaciones
                     transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
                     transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
-                    transaction.set(registroRef, registroData); // Guardar el registro
+                    transaction.set(registroRef, registroData);
                 });
-                // --- FIN: Lógica dentro de Transacción ---
 
-                // Si la transacción fue exitosa, generar ticket
-                 // CORRECCIÓN: Llamar a window.showGestionObsequiosView (el sub-menú)
                  _showSharingOptionsObsequio(registroData, productoObsequio, window.showGestionObsequiosView);
 
             } catch (error) {
-
                 console.error("Error al registrar obsequio:", error);
-                // Si la transacción falla, Firestore revierte todo
                 _showModal('Error', `No se pudo registrar la entrega: ${error.message || error}`);
-
             }
 
-        }, 'Sí, Confirmar', null, true); // triggerConfirmLogic = true
+        }, 'Sí, Confirmar', null, true);
     }
 
 
-    // --- Funciones adaptadas para Tickets de Obsequio (sin cambios) ---
-
+    // --- PASO 2: Modificado para usar caché global ---
     function _createTicketHTMLObsequio(registro, producto) {
-        const fecha = registro.fecha.toLocaleDateString('es-ES');
+        const fecha = registro.fecha.toDate().toLocaleDateString('es-ES');
         const clienteNombre = registro.clienteNombre;
 
-        // Obtener nombre personal del cliente (requiere buscar en _clientesCache o pasar el objeto cliente)
-        const clienteObj = _clientesCache.find(c => c.id === registro.clienteId);
+        // Leer de caché global
+        const clienteObj = _globalCaches.getClientes().find(c => c.id === registro.clienteId);
         const clienteNombrePersonal = clienteObj?.nombrePersonal || '';
-
 
         const titulo = 'ENTREGA DE OBSEQUIO';
 
         return `
             <div id="temp-ticket-for-image" class="bg-white text-black p-4 font-bold" style="width: 768px; font-family: 'Courier New', Courier, monospace;">
-
                 <div class="text-center">
                     <h2 class="text-4xl uppercase">${titulo}</h2>
                     <p class="text-3xl">DISTRIBUIDORA CASTILLO YAÑEZ</p>
-
                 </div>
                 <div class="text-3xl mt-8">
                     <p>FECHA: ${fecha}</p>
-
                     <p>CLIENTE: ${clienteNombre}</p>
                 </div>
                 <table class="w-full text-3xl mt-6">
-
                     <thead>
                         <tr>
                             <th class="pb-2 text-left">PRODUCTO ENTREGADO</th>
-
                             <th class="pb-2 text-center">CANT.</th>
                         </tr>
                     </thead>
                     <tbody>
-
                          <tr class="align-top">
                             <td class="py-2 pr-2 text-left" style="width: 80%;">
                                 <div style="line-height: 1.2;">${producto.segmento || ''} ${producto.marca || ''} ${registro.productoNombre}</div>
-
                             </td>
                             <td class="py-2 text-center" style="width: 20%;">${registro.cantidadCajas} CJ</td>
                         </tr>
-
                     </tbody>
                 </table>
                  ${registro.vaciosRecibidos > 0 ? `
                  <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
-
                      <p>ENVASES RECIBIDOS:</p>
                      <table class="w-full text-3xl mt-2">
                          <tbody>
-
                             <tr>
                                 <td class="py-1 pr-2 text-left" style="width: 70%;">${registro.tipoVacio}</td>
                                 <td class="py-1 pl-2 text-right" style="width: 30%;">${registro.vaciosRecibidos} CJ</td>
-
                             </tr>
                          </tbody>
                      </table>
-
                  </div>
                  ` : ''}
                  ${registro.observacion ? `
                  <div class="text-3xl mt-6 border-t border-black border-dashed pt-4">
-
                      <p>OBSERVACIÓN:</p>
                      <p class="font-normal">${registro.observacion}</p>
                  </div>
-
                  ` : ''}
                 <div class="text-center mt-16">
                     <p class="border-t border-black w-96 mx-auto"></p>
-
                     <p class="mt-4 text-3xl">${clienteNombrePersonal}</p>
                 </div>
                 <hr class="border-dashed border-black mt-6">
-
             </div>
         `;
     }
+    
+    // --- PASO 2: Modificado para usar caché global ---
     function _createRawTextTicketObsequio(registro, producto) {
-
-        const fecha = registro.fecha.toLocaleDateString('es-ES');
-
+        const fecha = registro.fecha.toDate().toLocaleDateString('es-ES');
         const toTitleCase = (str) => {
-
             if (!str) return '';
             return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
         };
-
         const clienteNombre = toTitleCase(registro.clienteNombre);
-
-        const clienteObj = _clientesCache.find(c => c.id === registro.clienteId);
+        // Leer de caché global
+        const clienteObj = _globalCaches.getClientes().find(c => c.id === registro.clienteId);
         const clienteNombrePersonal = toTitleCase(clienteObj?.nombrePersonal || '');
 
         const LINE_WIDTH = 48;
-
         let ticket = '';
-
         const center = (text) => text.padStart(Math.floor((LINE_WIDTH - text.length) / 2) + text.length, ' ').padEnd(LINE_WIDTH, ' ');
          const wordWrap = (text, maxWidth) => {
-
             const lines = [];
             if (!text) return lines;
             let currentLine = '';
-
             const words = text.split(' ');
             for (const word of words) {
                 if ((currentLine + ' ' + word).trim().length > maxWidth) {
-
                     if(currentLine.length > 0) lines.push(currentLine.trim());
                     currentLine = word;
                 } else {
-
                     currentLine = (currentLine + ' ' + word).trim();
                 }
             }
-
             if (currentLine) lines.push(currentLine.trim());
             return lines;
         };
 
         ticket += center('Distribuidora Castillo Yañez') + '\n';
-
         ticket += center('Entrega de Obsequio') + '\n\n';
-
         const wrappedClientName = wordWrap(`Cliente: ${clienteNombre}`, LINE_WIDTH);
         wrappedClientName.forEach(line => {
-
             ticket += line + '\n';
         });
         ticket += `Fecha: ${fecha}\n`;
-
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
-
         ticket += 'PRODUCTO ENTREGADO'.padEnd(LINE_WIDTH - 9) + 'CANT.'.padStart(9) + '\n';
         const productName = toTitleCase(`${producto.segmento || ''} ${producto.marca || ''} ${registro.productoNombre}`);
-
-        const wrappedProductName = wordWrap(productName, LINE_WIDTH - 10); // Dejar espacio para cantidad
+        const wrappedProductName = wordWrap(productName, LINE_WIDTH - 10);
         wrappedProductName.forEach((line, index) => {
              const qtyStr = index === wrappedProductName.length - 1 ? `${registro.cantidadCajas} CJ` : '';
-
              ticket += line.padEnd(LINE_WIDTH - 9) + qtyStr.padStart(9) + '\n';
         });
-
         if (registro.vaciosRecibidos > 0) {
-
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             ticket += center('ENVASES RECIBIDOS') + '\n';
             const vacioText = `${registro.tipoVacio}`;
-
             const vacioQtyText = `${registro.vaciosRecibidos} CJ`;
              ticket += vacioText.padEnd(LINE_WIDTH - vacioQtyText.length) + vacioQtyText + '\n';
         }
-
          if (registro.observacion) {
-
             ticket += '-'.repeat(LINE_WIDTH) + '\n';
             ticket += 'OBSERVACION:\n';
              const wrappedObs = wordWrap(registro.observacion, LINE_WIDTH);
-
              wrappedObs.forEach(line => { ticket += line + '\n'; });
         }
-
-
         ticket += '-'.repeat(LINE_WIDTH) + '\n\n';
-
         ticket += '\n\n\n\n';
         ticket += center('________________________') + '\n';
         ticket += center(clienteNombrePersonal) + '\n\n';
-
         ticket += '-'.repeat(LINE_WIDTH) + '\n';
-
         return ticket;
     }
 
     async function _handleShareTicketObsequio(htmlContent, successCallback) {
          _showModal('Progreso', 'Generando imagen...');
         const tempDiv = document.createElement('div');
-
         tempDiv.style.position = 'absolute';
         tempDiv.style.left = '-9999px';
         tempDiv.style.top = '0';
-
         tempDiv.innerHTML = htmlContent;
         document.body.appendChild(tempDiv);
-
         const ticketElement = document.getElementById('temp-ticket-for-image');
-
         if (!ticketElement) {
              _showModal('Error', 'No se pudo encontrar el elemento del ticket.');
              document.body.removeChild(tempDiv);
-
-             successCallback(false); // Indicar fallo
+             successCallback(false);
              return;
         }
-
         try {
-
-            await new Promise(resolve => setTimeout(resolve, 100)); // Pequeña pausa para renderizar
+            await new Promise(resolve => setTimeout(resolve, 100));
             const canvas = await html2canvas(ticketElement, { scale: 3 });
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-
             if (navigator.share && blob) {
-
                 await navigator.share({ files: [new File([blob], "obsequio.png", { type: "image/png" })], title: "Ticket de Obsequio" });
-                 _showModal('Éxito', 'Entrega registrada. Imagen compartida.', () => successCallback(true)); // Indicar éxito
+                 _showModal('Éxito', 'Entrega registrada. Imagen compartida.', () => successCallback(true));
             } else {
-
-                 _showModal('Error', 'Función de compartir no disponible.', () => successCallback(false)); // Indicar fallo
+                 _showModal('Error', 'Función de compartir no disponible.', () => successCallback(false));
             }
         } catch(e) {
-
-             _showModal('Error', `No se pudo generar/compartir imagen: ${e.message}`, () => successCallback(false)); // Indicar fallo
+             _showModal('Error', `No se pudo generar/compartir imagen: ${e.message}`, () => successCallback(false));
         } finally {
             if (document.body.contains(tempDiv)) {
-
                  document.body.removeChild(tempDiv);
             }
         }
     }
     async function _handleShareRawTextObsequio(textContent, successCallback) {
-
         let success = false;
          if (navigator.share) {
             try {
-
                 await navigator.share({ title: 'Ticket de Obsequio', text: textContent });
                 _showModal('Éxito', 'Entrega registrada. Ticket listo para imprimir.', () => successCallback(true));
                 success = true;
-
             } catch (err) {
                  _showModal('Aviso', 'No se compartió el ticket. Entrega registrada.', () => successCallback(false));
             }
         } else {
-
             try {
                 const textArea = document.createElement("textarea");
                 textArea.value = textContent;
-
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
-
                 document.body.removeChild(textArea);
                  _showModal('Copiado', 'Texto del ticket copiado. Pégalo en tu app de impresión.', () => successCallback(true));
                  success = true;
-
             } catch (copyErr) {
                  _showModal('Error', 'No se pudo compartir ni copiar. Entrega registrada.', () => successCallback(false));
             }
         }
-
-        // Llamar callback si no se usó en los modales anteriores (caso share cancelado o error sin modal)
-        // if (!success) {
-        //     successCallback(false);
-        // }
     }
     function _showSharingOptionsObsequio(registro, producto, callbackFinal) {
-
         const modalContent = `
             <div class="text-center">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Generar Ticket de Obsequio</h3>
-
                 <p class="text-gray-600 mb-6">Elige el formato para el comprobante.</p>
                 <div class="space-y-4">
                     <button id="printTextBtnObs" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600">Imprimir (Texto)</button>
-
                     <button id="shareImageBtnObs" class="w-full px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Compartir (Imagen)</button>
                 </div>
             </div>`;
-
-         _showModal('Elige una opción', modalContent, null, ''); // No mostrar botón de confirmación por defecto
-
+         _showModal('Elige una opción', modalContent, null, '');
         document.getElementById('printTextBtnObs').addEventListener('click', () => {
-
             const rawTextTicket = _createRawTextTicketObsequio(registro, producto);
-             // El callbackFinal (showGestionObsequiosView) se pasa a la función de compartir/copiar
              _handleShareRawTextObsequio(rawTextTicket, callbackFinal);
-
         });
-
         document.getElementById('shareImageBtnObs').addEventListener('click', () => {
             const ticketHTML = _createTicketHTMLObsequio(registro, producto);
-
-             // El callbackFinal se pasa a la función de compartir/copiar
              _handleShareTicketObsequio(ticketHTML, callbackFinal);
         });
     }
 
     // --- NUEVAS FUNCIONES PARA EL REGISTRO DE OBSEQUIOS ---
 
-    /**
-     * Muestra la vista del registro de obsequios con filtro de mes.
-     */
     function showRegistroObsequiosView() {
         if (_floatingControls) _floatingControls.classList.add('hidden');
-        _lastObsequiosSearch = []; // Limpiar caché
+        _lastObsequiosSearch = [];
 
-        // Obtener mes y año actual en formato YYYY-MM
         const today = new Date();
-        const currentMonth = today.toISOString().slice(0, 7); // "2025-11" (o el mes actual)
+        const currentMonth = today.toISOString().slice(0, 7);
 
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -746,13 +615,14 @@
             </div>
         `;
 
-        document.getElementById('backToObsequiosMenuBtn').addEventListener('click', window.showGestionObsequiosView); // Vuelve al sub-menú
+        document.getElementById('backToObsequiosMenuBtn').addEventListener('click', window.showGestionObsequiosView);
         document.getElementById('searchObsequiosBtn').addEventListener('click', handleSearchObsequios);
         document.getElementById('downloadObsequiosBtn').addEventListener('click', handleDownloadObsequios);
     }
 
     /**
      * Maneja la búsqueda de registros de obsequios por mes.
+     * Esta función SÍ necesita _getDocs porque lee datos no cacheados.
      */
     async function handleSearchObsequios() {
         const container = document.getElementById('obsequios-list-container');
@@ -771,14 +641,11 @@
         }
 
         try {
-            // Calcular fechas
             const [year, month] = monthInput.split('-').map(Number);
-            const fechaDesde = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)); // Inicio del mes en UTC
-            const fechaHasta = new Date(Date.UTC(year, month, 1, 0, 0, 0)); // Inicio del *siguiente* mes en UTC
+            const fechaDesde = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+            const fechaHasta = new Date(Date.UTC(year, month, 1, 0, 0, 0));
 
-            // Consultar Firestore
             const obsequiosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/obsequios_entregados`);
-            // CORRECCIÓN: Usar '<' para fechaHasta para no incluir el primer milisegundo del siguiente mes
             const q = _query(obsequiosRef, _where("fecha", ">=", fechaDesde), _where("fecha", "<", fechaHasta));
             
             const snapshot = await _getDocs(q);
@@ -804,7 +671,6 @@
             return;
         }
 
-        // Ordenar por fecha descendente
         obsequios.sort((a, b) => (b.fecha?.toDate() || 0) - (a.fecha?.toDate() || 0));
 
         let tableHTML = `
@@ -817,7 +683,6 @@
                         <th class="py-2 px-3 border-b text-center">Cjs Entreg.</th>
                         <th class="py-2 px-3 border-b text-center">Vacíos Recib.</th>
                         <th class="py-2 px-3 border-b text-left">Observación</th>
-                        <!-- MODIFICACIÓN: Añadir columna de Acciones -->
                         <th class="py-2 px-3 border-b text-center">Acciones</th>
                     </tr>
                 </thead>
@@ -833,16 +698,11 @@
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.cantidadCajas || 0}</td>
                     <td class="py-2 px-3 border-b text-center font-semibold">${reg.vaciosRecibidos || 0}</td>
                     <td class="py-2 px-3 border-b text-xs">${reg.observacion || ''}</td>
-                    <!-- INICIO: Modificación de Botones -->
                     <td class="py-2 px-3 border-b text-center space-x-1">
                         <button onclick="window.obsequiosModule.shareObsequio('${reg.id}')" class="px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">Compartir</button>
-                        
-                        <!-- SE ELIMINÓ LA CONDICIÓN DE ADMIN -->
                         <button onclick="window.obsequiosModule.editObsequio('${reg.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600">Edt</button>
                         <button onclick="window.obsequiosModule.deleteObsequio('${reg.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600">Del</button>
-                        
                     </td>
-                    <!-- FIN: Modificación de Botones -->
                 </tr> `;
         });
         tableHTML += '</tbody></table>';
@@ -857,7 +717,6 @@
             _showModal('Aviso', 'No hay datos para descargar.');
             return;
         }
-        // --- CORRECCIÓN: Usar ExcelJS, no XLSX ---
         if (typeof ExcelJS === 'undefined') {
             _showModal('Error', 'La librería de Excel (ExcelJS) no está cargada.');
             return;
@@ -875,11 +734,9 @@
                 Observacion: reg.observacion || ''
             }));
             
-            // --- INICIO CORRECCIÓN: Usar ExcelJS ---
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Registro Obsequios');
             
-            // Definir columnas basadas en las claves de dataToExport
             worksheet.columns = [
                 { header: 'Fecha', key: 'Fecha', width: 12 },
                 { header: 'Cliente', key: 'Cliente', width: 30 },
@@ -896,7 +753,6 @@
             const monthInput = document.getElementById('obsequioMonth').value || 'mes_actual';
             const fileName = `Registro_Obsequios_${monthInput}.xlsx`;
 
-            // Descargar
             workbook.xlsx.writeBuffer().then(buffer => {
                 const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const link = document.createElement('a');
@@ -907,11 +763,9 @@
                 document.body.removeChild(link);
                 URL.revokeObjectURL(link.href);
                 
-                // Ocultar modal de progreso
                 const modal = document.getElementById('modalContainer');
                 if(modal) modal.classList.add('hidden');
             });
-            // --- FIN CORRECCIÓN ---
 
         } catch (error) {
             console.error("Error generando Excel:", error);
@@ -920,11 +774,10 @@
     }
 
 
-    // --- INICIO: NUEVAS FUNCIONES PARA EDITAR Y ELIMINAR ---
-
     /**
      * Muestra el modal para editar un registro de obsequio existente.
      */
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function editObsequio(obsequioId) {
         const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
         if (!obsequio) {
@@ -932,9 +785,8 @@
             return;
         }
 
-        // Cargar el producto de inventario para obtener el stock actual y unidades/caja
-        if (_inventarioCache.length === 0) await _loadInventarioUsuario();
-        const producto = _inventarioCache.find(p => p.id === obsequio.productoId);
+        // Cargar el producto de inventario desde el caché global
+        const producto = _globalCaches.getInventario().find(p => p.id === obsequio.productoId);
         if (!producto) {
             _showModal('Error', 'El producto asociado a este obsequio ya no existe en tu inventario. No se puede editar.');
             return;
@@ -944,7 +796,6 @@
         const stockActualUnidades = producto.cantidadUnidades || 0;
         const stockActualCajas = Math.floor(stockActualUnidades / unidadesPorCaja);
         
-        // El stock máximo es el stock actual MÁS lo que se entregó originalmente
         const stockMaximoCajas = stockActualCajas + obsequio.cantidadCajas;
 
         const modalContentHTML = `
@@ -975,17 +826,17 @@
             'Editar Obsequio', 
             modalContentHTML,
             () => {
-                // Pasar el 'obsequio' original y el 'producto' (para unidades/caja) a la función de guardado
                 handleGuardarEdicionObsequio(obsequio, producto);
             },
             'Guardar Cambios',
             null,
-            true // triggerConfirmLogic
+            true
         );
     }
 
     /**
      * Guarda los cambios de un obsequio editado mediante una transacción.
+     * Esta función SÍ necesita _runTransaction y lee de la DB (correcto).
      */
     async function handleGuardarEdicionObsequio(obsequioOriginal, producto) {
         const form = document.getElementById('editObsequioForm');
@@ -997,7 +848,7 @@
 
         if (isNaN(nuevaCantidadCajas) || isNaN(nuevosVaciosRecibidos) || nuevaCantidadCajas < 0 || nuevosVaciosRecibidos < 0) {
             _showModal('Error', 'Las cantidades deben ser números positivos.');
-            return false; // Evita que el modal se cierre
+            return false;
         }
         
         const unidadesPorCaja = producto.unidadesPorCaja || 1;
@@ -1007,18 +858,16 @@
 
         if (nuevasUnidadesRequeridas > stockMaximoUnidades) {
              _showModal('Error', `Stock insuficiente. El stock máximo (incluyendo este obsequio) es ${Math.floor(stockMaximoUnidades / unidadesPorCaja)} cajas.`);
-             return false; // Evita que el modal se cierre
+             return false;
         }
 
-        // Calcular Deltas (Diferencias)
         const deltaCajas = nuevaCantidadCajas - obsequioOriginal.cantidadCajas;
         const deltaVacios = nuevosVaciosRecibidos - obsequioOriginal.vaciosRecibidos;
         const deltaUnidadesStock = deltaCajas * unidadesPorCaja;
 
-        // Si no hay cambios, no hacer nada
         if (deltaCajas === 0 && deltaVacios === 0 && nuevaObservacion === obsequioOriginal.observacion) {
             _showModal('Aviso', 'No se detectaron cambios.');
-            return true; // Cierra el modal
+            return true;
         }
 
         _showModal('Progreso', 'Guardando cambios...');
@@ -1029,35 +878,27 @@
             const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, obsequioOriginal.clienteId);
 
             await _runTransaction(_db, async (transaction) => {
-                // 1. Leer inventario y cliente DENTRO de la transacción
                 const inventarioDoc = await transaction.get(inventarioRef);
                 const clienteDoc = await transaction.get(clienteRef);
 
                 if (!inventarioDoc.exists()) throw "El producto de obsequio no existe en el inventario.";
                 if (!clienteDoc.exists()) throw "El cliente no existe.";
                 
-                // 2. Validar stock DENTRO de la transacción
                 const stockActualTrans = inventarioDoc.data().cantidadUnidades || 0;
-                // El nuevo stock será el stock actual MENOS el delta de unidades
                 const nuevoStockUnidades = stockActualTrans - deltaUnidadesStock; 
                 
                 if (nuevoStockUnidades < 0) {
-                    // Esta validación es una doble comprobación contra la validación de stockMaximoCajas
                     throw `Stock insuficiente DENTRO de la transacción. Disponible: ${Math.floor(stockActualTrans / unidadesPorCaja)} cajas.`;
                 }
 
-                // 3. Calcular nuevo saldo de vacíos
                 const clienteData = clienteDoc.data();
                 const saldoVaciosActual = clienteData.saldoVacios || {};
                 const tipoVacio = obsequioOriginal.tipoVacio;
                 const saldoActualTipo = saldoVaciosActual[tipoVacio] || 0;
                 
-                // Ajustar el saldo actual con los DELTAS
-                // deltaCajas > 0: más deuda. deltaVacios > 0: menos deuda.
                 const nuevoSaldoTipo = saldoActualTipo + deltaCajas - deltaVacios;
                 const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacio]: nuevoSaldoTipo };
 
-                // 4. Escribir todas las actualizaciones
                 transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
                 transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
                 transaction.update(obsequioRef, {
@@ -1069,7 +910,7 @@
             });
 
             _showModal('Éxito', 'Obsequio actualizado correctamente.');
-            await handleSearchObsequios(); // Refrescar la lista
+            await handleSearchObsequios();
 
         } catch (error) {
             console.error("Error al editar obsequio:", error);
@@ -1080,6 +921,7 @@
 
     /**
      * Elimina un registro de obsequio y revierte los cambios en inventario y saldos.
+     * Esta función SÍ necesita _runTransaction y lee de la DB (correcto).
      */
     async function deleteObsequio(obsequioId) {
         const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
@@ -1097,54 +939,46 @@
                 const clienteRef = _doc(_db, `artifacts/ventas-9a210/public/data/clientes`, obsequio.clienteId);
 
                 await _runTransaction(_db, async (transaction) => {
-                    // 1. Leer todos los documentos
                     const inventarioDoc = await transaction.get(inventarioRef);
                     const clienteDoc = await transaction.get(clienteRef);
-                    // No es necesario leer obsequioRef si ya tenemos los datos, solo lo borramos.
 
                     if (!inventarioDoc.exists()) throw "El producto de obsequio ya no existe en el inventario.";
                     if (!clienteDoc.exists()) throw "El cliente no existe.";
                     
-                    // 2. Calcular reversión de inventario
                     const inventarioData = inventarioDoc.data();
                     const unidadesPorCaja = inventarioData.unidadesPorCaja || 1;
                     const unidadesARestaurar = obsequio.cantidadCajas * unidadesPorCaja;
                     const stockActual = inventarioData.cantidadUnidades || 0;
-                    const nuevoStockUnidades = stockActual + unidadesARestaurar; // Añadir de vuelta
+                    const nuevoStockUnidades = stockActual + unidadesARestaurar;
 
-                    // 3. Calcular reversión de saldo de vacíos
                     const clienteData = clienteDoc.data();
                     const saldoVaciosActual = clienteData.saldoVacios || {};
                     const tipoVacio = obsequio.tipoVacio;
                     const saldoActualTipo = saldoVaciosActual[tipoVacio] || 0;
                     
-                    // Revertir la fórmula original: (saldoActualTipo - cantidadEntregada + vaciosRecibidos)
                     const nuevoSaldoTipo = saldoActualTipo - obsequio.cantidadCajas + obsequio.vaciosRecibidos;
                     const nuevoSaldoVacios = { ...saldoVaciosActual, [tipoVacio]: nuevoSaldoTipo };
 
-                    // 4. Escribir actualizaciones y borrado
                     transaction.update(inventarioRef, { cantidadUnidades: nuevoStockUnidades });
                     transaction.update(clienteRef, { saldoVacios: nuevoSaldoVacios });
-                    transaction.delete(obsequioRef); // Eliminar el registro del obsequio
+                    transaction.delete(obsequioRef);
                 });
 
                 _showModal('Éxito', 'Obsequio eliminado y revertido correctamente.');
-                await handleSearchObsequios(); // Refrescar la lista
+                await handleSearchObsequios();
 
             } catch (error) {
                 console.error("Error al eliminar obsequio:", error);
                 _showModal('Error', `No se pudo eliminar la entrega: ${error.message || error}`);
             }
-        }, 'Sí, Eliminar y Revertir', null, true); // triggerConfirmLogic
+        }, 'Sí, Eliminar y Revertir', null, true);
     }
 
 
-    // --- FIN: NUEVAS FUNCIONES ---
-
-    // --- INICIO: NUEVA FUNCIÓN PARA COMPARTIR ---
     /**
      * Muestra las opciones para compartir/imprimir un obsequio ya registrado.
      */
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function shareObsequio(obsequioId) {
         const obsequio = _lastObsequiosSearch.find(o => o.id === obsequioId);
         if (!obsequio) {
@@ -1152,36 +986,22 @@
             return;
         }
 
-        // Cargar inventario si no está en caché (necesario para datos del producto)
-        if (_inventarioCache.length === 0) {
-            _showModal('Progreso', 'Cargando datos del producto...');
-            await _loadInventarioUsuario();
-            const progressModal = document.getElementById('modalContainer');
-            if (progressModal && !progressModal.classList.contains('hidden') && progressModal.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                progressModal.classList.add('hidden');
-            }
-        }
-
-        const producto = _inventarioCache.find(p => p.id === obsequio.productoId);
+        // Cargar inventario desde caché global
+        const producto = _globalCaches.getInventario().find(p => p.id === obsequio.productoId);
         if (!producto) {
-            // Si no está en inventario (raro), crear un objeto temporal para el ticket
              _showModal('Error', 'No se encontraron los datos del producto asociado a este obsequio.');
              return;
         }
 
-        // Llamar a la función de sharing existente con un callback vacío
         _showSharingOptionsObsequio(obsequio, producto, () => {
             // No se necesita hacer nada después de compartir un ticket antiguo
         });
     }
-    // --- FIN: NUEVA FUNCIÓN PARA COMPARTIR ---
 
-
-    // --- MODIFICACIÓN: Exponer el módulo ---
     window.obsequiosModule = {
         editObsequio,
         deleteObsequio,
-        shareObsequio // --- AÑADIDO ---
+        shareObsequio
     };
 
-})(); // Fin del IIFE
+})();
