@@ -648,7 +648,10 @@
         const cont = document.getElementById('ventasListContainer'); if (!cont) return;
         const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
         
-        const unsub = _onSnapshot(q, (snap) => {
+        // --- CORRECCIÓN: Añadir { includeMetadataChanges: true } ---
+        // Esto fuerza al listener a activarse también para los cambios locales
+        // que aún no se han sincronizado con el servidor (ventas offline).
+        const unsub = _onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
             _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             
             // --- CORRECCIÓN: Usar _getTimestamp para ordenar ---
