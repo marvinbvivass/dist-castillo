@@ -198,13 +198,20 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <script src="data.js" defer></script>
-    <script src="admin.js" defer></script>
-    <script src="inventario.js" defer></script>
-    <script src="catalogo.js" defer></script>
-    <script src="clientes.js" defer></script>
-    <script src="ventas.js" defer></script>
-    <script src="obsequios.js" defer></script>
+    <!-- 
+      NOTA: Se eliminó 'defer' de estos scripts.
+      Estos scripts definen funciones globales (ej. window.initData) que son necesarias
+      para el script principal <script type="module">. 
+      Al quitar 'defer', nos aseguramos de que se carguen y ejecuten 
+      *antes* de que el script principal intente usarlos, evitando errores de "función no encontrada".
+    -->
+    <script src="data.js"></script>
+    <script src="admin.js"></script>
+    <script src="inventario.js"></script>
+    <script src="catalogo.js"></script>
+    <script src="clientes.js"></script>
+    <script src="ventas.js"></script>
+    <script src="obsequios.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     
