@@ -2,7 +2,7 @@
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
     
-    // --- CORRECCIÓN: Añadir _onSnapshot y listeners de eventos ---
+    // --- CORRECIÓN: Añadir _onSnapshot y listeners de eventos ---
     let _collection, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _increment, _onSnapshot;
     let _addGlobalEventListener, _removeGlobalEventListener;
     let _localActiveListeners = []; // Listeners locales de este módulo
@@ -18,7 +18,7 @@
 
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
-    // --- CORRECCIÓN: Función de limpieza de listeners locales ---
+    // --- CORRECIÓN: Función de limpieza de listeners locales ---
     function _cleanupLocalListeners() {
         _localActiveListeners.forEach(listenerOrUnsubscribe => {
             if (typeof listenerOrUnsubscribe === 'function') {
@@ -625,10 +625,34 @@
         
         // --- CORRECCIÓN: _onSnapshot ahora está disponible ---
         const unsub = _onSnapshot(q, (snap) => {
-            _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); _ventasGlobal.sort((a,b)=>(b.fecha?.toDate()??0)-(a.fecha?.toDate()??0));
+            _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
+            
+            // --- CORRECCIÓN: Lógica de ordenamiento robusta (Offline/Online) ---
+            const toTimestamp = (fecha) => {
+                if (!fecha) return 0;
+                if (typeof fecha.toDate === 'function') { // Es un Timestamp de Firebase
+                    return fecha.toDate().getTime();
+                }
+                if (fecha instanceof Date) { // Es una Fecha de JS (offline)
+                    return fecha.getTime();
+                }
+                return 0; // Fallback
+            };
+            _ventasGlobal.sort((a, b) => toTimestamp(b.fecha) - toTimestamp(a.fecha));
+            // --- FIN CORRECCIÓN ---
+
             if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
+            
             let tHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-200 sticky top-0 z-10"><tr> <th class="py-2 px-3 border-b text-left">Cliente</th> <th class="py-2 px-3 border-b text-left">Fecha</th> <th class="py-2 px-3 border-b text-right">Total</th> <th class="py-2 px-3 border-b text-center">Acciones</th> </tr></thead><tbody>`;
-            _ventasGlobal.forEach(v => { const fV=v.fecha?.toDate?v.fecha.toDate():new Date(0); const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; });
+            
+            _ventasGlobal.forEach(v => { 
+                // --- CORRECCIÓN: Lógica de fecha robusta ---
+                const fV = v.fecha ? (v.fecha.toDate ? v.fecha.toDate() : (v.fecha instanceof Date ? v.fecha : new Date(0))) : new Date(0);
+                // --- FIN CORRECCIÓN ---
+                const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); 
+                tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; 
+            });
+            
             tHTML += `</tbody></table>`; cont.innerHTML = tHTML;
         }, (err) => { 
             if (window.isLoggingOut) return; 
@@ -1162,6 +1186,6 @@
         showPastSaleOptions,
         editVenta,
         deleteVenta,
-        invalidateCache: () => { /* No action needed */ }
+        invalidateCache: () => { _localActiveListeners = []; } // Sencilla invalidación
     };
 })();
