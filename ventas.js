@@ -1,16 +1,15 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
-    let _collection, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _increment;
-
-    // --- PASO 2: Inyectar cachés globales ---
-    let _globalCaches; 
-
-    // --- PASO 2: Cachés locales de inventario/cliente eliminadas ---
-    // let _clientesCache = []; // ELIMINADO
-    // let _inventarioCache = []; // ELIMINADO
     
-    let _ventasGlobal = []; // Se mantiene para la lista de ventas
+    // --- SOLUCIÓN: Añadir _onSnapshot, _addGlobalEventListener, _removeGlobalEventListener ---
+    let _collection, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _increment, _onSnapshot;
+    let _addGlobalEventListener, _removeGlobalEventListener;
+    let _localActiveListeners = []; // Listeners locales de este módulo
+
+    let _globalCaches; 
+    
+    let _ventasGlobal = []; 
     let _ventaActual = { cliente: null, productos: {}, vaciosDevueltosPorTipo: {} };
     let _originalVentaForEdit = null;
     let _tasaCOP = 0;
@@ -18,6 +17,20 @@
     let _monedaActual = 'USD';
 
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+
+    // --- SOLUCIÓN: Función de limpieza de listeners locales ---
+    function _cleanupLocalListeners() {
+        _localActiveListeners.forEach(listenerOrUnsubscribe => {
+            if (typeof listenerOrUnsubscribe === 'function') {
+                // Es un 'unsubscribe' de onSnapshot
+                listenerOrUnsubscribe();
+            } else if (listenerOrUnsubscribe.event && listenerOrUnsubscribe.handler) {
+                // Es un listener de evento global
+                _removeGlobalEventListener(listenerOrUnsubscribe.event, listenerOrUnsubscribe.handler);
+            }
+        });
+        _localActiveListeners = [];
+    }
 
     window.initVentas = function(dependencies) {
         _db = dependencies.db;
@@ -28,12 +41,16 @@
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
-        _activeListeners = dependencies.activeListeners;
+        _activeListeners = dependencies.activeListeners; // <- Este es el array global de index.html
         
-        // --- PASO 2: Inyectar cachés globales ---
         _globalCaches = dependencies.globalCaches;
 
-        // --- PASO 2: onSnapshot ya no es necesario aquí ---
+        // --- SOLUCIÓN: Añadir dependencias faltantes ---
+        _addGlobalEventListener = dependencies.addGlobalEventListener;
+        _removeGlobalEventListener = dependencies.removeGlobalEventListener;
+        _onSnapshot = dependencies.onSnapshot; // <-- Esta era la dependencia faltante
+        // --- FIN SOLUCIÓN ---
+        
         _collection = dependencies.collection;
         _doc = dependencies.doc;
         _getDoc = dependencies.getDoc;
@@ -49,6 +66,7 @@
     };
 
     window.showVentasView = function() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
@@ -66,6 +84,7 @@
     }
 
     function showNuevaVentaView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         _originalVentaForEdit = null;
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _monedaActual = 'USD';
@@ -88,7 +107,6 @@
         `;
         const clienteSearchInput = document.getElementById('clienteSearch');
         
-        // --- PASO 2: Leer de caché global ---
         clienteSearchInput.addEventListener('input', () => { 
             const term = clienteSearchInput.value.toLowerCase(); 
             const filtered = _globalCaches.getClientes().filter(c=>(c.nombreComercial||'').toLowerCase().includes(term)||(c.nombrePersonal||'').toLowerCase().includes(term)); 
@@ -104,16 +122,22 @@
         document.getElementById('generarTicketBtn').addEventListener('click', generarTicket);
         document.getElementById('backToVentasBtn').addEventListener('click', showVentasView);
         
-        // --- PASO 2: Llamar a populateRubroFilter directamente ---
-        populateRubroFilter();
-        // loadDataForNewSale(); // ELIMINADO
-    }
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const rubroHandler = () => populateRubroFilter();
+        _addGlobalEventListener('inventario-updated', rubroHandler);
+        _localActiveListeners.push({ event: 'inventario-updated', handler: rubroHandler });
+        rubroHandler(); // Llamar una vez
 
-    // --- PASO 2: Función 'loadDataForNewSale' eliminada ---
+        const inventarioHandler = () => {
+            if (_ventaActual.cliente) renderVentasInventario();
+        };
+        _addGlobalEventListener('inventario-updated', inventarioHandler);
+        _localActiveListeners.push({ event: 'inventario-updated', handler: inventarioHandler });
+        inventarioHandler(); // Llamar una vez
+    }
 
     function populateRubroFilter() {
         const rF = document.getElementById('rubroFilter'); if(!rF) return;
-        // --- PASO 2: Leer de caché global ---
         const rubros = [...new Set(_globalCaches.getInventario().map(p => p.rubro))].sort(); 
         const cV = rF.value;
         rF.innerHTML = '<option value="">Todos</option>'; rubros.forEach(r => { if(r) rF.innerHTML += `<option value="${r}">${r}</option>`; }); rF.value = rubros.includes(cV) ? cV : '';
@@ -138,10 +162,16 @@
     }
 
     async function renderVentasInventario() {
-        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
+        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; 
+        
+        const inventarioGlobal = _globalCaches.getInventario();
+        if (inventarioGlobal.length === 0) {
+            body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando inventario...</td></tr>`;
+            return;
+        }
+        
         const selRubro = rF.value; 
-        // --- PASO 2: Leer de caché global ---
-        const invFilt = _globalCaches.getInventario().filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); 
+        const invFilt = inventarioGlobal.filter(p => (p.cantidadUnidades || 0) > 0 || _ventaActual.productos[p.id]); 
         let filtInv = selRubro ? invFilt.filter(p => p.rubro === selRubro) : invFilt;
         
         const sortFunc = await window.getGlobalProductSortFunction();
@@ -164,7 +194,6 @@
 
     function handleQuantityChange(event) {
         const inp=event.target, pId=inp.dataset.productId, tV=inp.dataset.tipoVenta;
-        // --- PASO 2: Leer de caché global ---
         const prod=_globalCaches.getInventario().find(p=>p.id===pId); 
         if(!prod) return; 
         if(!_ventaActual.productos[pId]) _ventaActual.productos[pId]={...prod, cantCj:0,cantPaq:0,cantUnd:0,totalUnidadesVendidas:0};
@@ -396,7 +425,6 @@
             const snapshotDoc = await _getDoc(snapshotRef);
             if (!snapshotDoc.exists()) {
                 console.log("Primera venta del día detectada. Guardando snapshot de inventario...");
-                // --- PASO 2: Leer de caché global ---
                 const inventarioActual = _globalCaches.getInventario();
                 if (inventarioActual && inventarioActual.length > 0) {
                     await _setDoc(snapshotRef, { inventario: inventarioActual, fecha: new Date() });
@@ -557,6 +585,7 @@
     }
 
     function showVentasTotalesView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
@@ -574,6 +603,7 @@
     }
 
     function showVentasActualesView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-xl">
@@ -589,6 +619,7 @@
         const cont = document.getElementById('ventasListContainer'); if (!cont) return;
         const vRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/ventas`); const q = _query(vRef);
         
+        // --- SOLUCIÓN: Usar _onSnapshot (que ahora está definido) ---
         const unsub = _onSnapshot(q, (snap) => {
             _ventasGlobal = snap.docs.map(d => ({ id: d.id, ...d.data() })); _ventasGlobal.sort((a,b)=>(b.fecha?.toDate()??0)-(a.fecha?.toDate()??0));
             if (_ventasGlobal.length === 0) { cont.innerHTML = `<p class="text-center text-gray-500">No hay ventas.</p>`; return; }
@@ -596,6 +627,8 @@
             _ventasGlobal.forEach(v => { const fV=v.fecha?.toDate?v.fecha.toDate():new Date(0); const fF=fV.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}); tHTML+=`<tr class="hover:bg-gray-50"><td class="py-2 px-3 border-b align-middle">${v.clienteNombre||'N/A'}</td><td class="py-2 px-3 border-b align-middle">${fF}</td><td class="py-2 px-3 border-b text-right font-semibold align-middle">$${(v.total||0).toFixed(2)}</td><td class="py-2 px-3 border-b"><div class="flex flex-col items-center space-y-1"><button onclick="window.ventasModule.showPastSaleOptions('${v.id}','ticket')" class="w-full px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600">Compartir</button><button onclick="window.ventasModule.editVenta('${v.id}')" class="w-full px-3 py-1.5 bg-yellow-500 text-white text-xs rounded-lg hover:bg-yellow-600">Editar</button><button onclick="window.ventasModule.deleteVenta('${v.id}')" class="w-full px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600">Eliminar</button></div></td></tr>`; });
             tHTML += `</tbody></table>`; cont.innerHTML = tHTML;
         }, (err) => { 
+            // --- SOLUCIÓN: Revisar si isLoggingOut es true ---
+            if (window.isLoggingOut) return; 
             if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
                 console.log(`Ventas (lista) listener error ignored (assumed logout): ${err.code}`);
                 return;
@@ -603,10 +636,12 @@
             console.error("Error lista ventas:", err); 
             if(cont) cont.innerHTML = `<p class="text-red-500">Error al cargar.</p>`; 
         });
-        _activeListeners.push(unsub);
+        // --- SOLUCIÓN: Añadir a listeners locales ---
+        _localActiveListeners.push(unsub);
     }
 
     function showCierreSubMenuView() {
+         _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
          _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Cierre de Ventas</h2>
@@ -801,6 +836,7 @@
         showSharingOptions(venta, productosFormateados, venta.vaciosDevueltosPorTipo || {}, tipo, showVentasActualesView);
     }
     function editVenta(ventaId) {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         console.log("editVenta called with ID:", ventaId);
         const venta = _ventasGlobal.find(v => v.id === ventaId);
         if (!venta) { _showModal('Error', 'Venta no encontrada.'); return; }
@@ -927,6 +963,7 @@
         }, 'Sí, Eliminar y Revertir', null, true);
     }
     async function showEditVentaView(venta) {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden'); _monedaActual = 'USD';
         _mainContent.innerHTML = `
             <div class="p-2 sm:p-4 w-full"> <div class="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-full" style="min-height: calc(100vh - 2rem);">
@@ -945,11 +982,9 @@
         document.getElementById('saveChangesBtn').addEventListener('click', handleGuardarVentaEditada); document.getElementById('backToVentasBtn').addEventListener('click', showVentasActualesView);
         _showModal('Progreso', 'Cargando datos...');
         try {
-            // --- PASO 2: Eliminar _getDocs, usar caché global ---
             _ventaActual = { 
                 cliente: { id: venta.clienteId, nombreComercial: venta.clienteNombre, nombrePersonal: venta.clienteNombrePersonal }, 
                 productos: (venta.productos||[]).reduce((acc,p)=>{
-                    // --- PASO 2: Leer de caché global ---
                     const pComp = _globalCaches.getInventario().find(inv => inv.id === p.id) || p;
                     const cant=p.cantidadVendida||{}; 
                     acc[p.id]={...pComp, cantCj:cant.cj||0, cantPaq:cant.paq||0, cantUnd:cant.und||0, totalUnidadesVendidas:p.totalUnidadesVendidas||0}; 
@@ -960,19 +995,34 @@
             
             TIPOS_VACIO.forEach(t => { if(!_ventaActual.vaciosDevueltosPorTipo[t]) _ventaActual.vaciosDevueltosPorTipo[t]=0; });
             document.getElementById('rubroFilter').addEventListener('change', renderEditVentasInventario); 
-            populateRubroFilter(); // Esta función ahora usa caché global
+            
+            // --- SOLUCIÓN: Suscribirse a eventos ---
+            const rubroHandler = () => populateRubroFilter();
+            _addGlobalEventListener('inventario-updated', rubroHandler);
+            _localActiveListeners.push({ event: 'inventario-updated', handler: rubroHandler });
+            rubroHandler(); // Llamar una vez
+
+            const inventarioHandler = () => renderEditVentasInventario();
+            _addGlobalEventListener('inventario-updated', inventarioHandler);
+            _localActiveListeners.push({ event: 'inventario-updated', handler: inventarioHandler });
+            inventarioHandler(); // Llamar una vez
+
             document.getElementById('rubroFilter').value = '';
-            renderEditVentasInventario(); 
             updateVentaTotal(); 
             document.getElementById('modalContainer').classList.add('hidden');
         } catch (error) { console.error("Error cargando edit:", error); _showModal('Error', `Error: ${error.message}`); showVentasActualesView(); }
     }
     async function renderEditVentasInventario() {
-        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando...</td></tr>`;
-        const selRubro = rF.value; 
+        const body = document.getElementById('inventarioTableBody'), rF = document.getElementById('rubroFilter'); if (!body || !rF) return; 
         
-        // --- PASO 2: Leer de caché global ---
-        let invToShow = _globalCaches.getInventario().filter(p => 
+        const inventarioGlobal = _globalCaches.getInventario();
+        if (inventarioGlobal.length === 0) {
+            body.innerHTML = `<tr><td colspan="4" class="text-center text-gray-500">Cargando inventario...</td></tr>`;
+            return;
+        }
+        
+        const selRubro = rF.value; 
+        let invToShow = inventarioGlobal.filter(p => 
             _originalVentaForEdit.productos.some(oP => oP.id === p.id) || (p.cantidadUnidades || 0) > 0
         );
         
@@ -991,7 +1041,6 @@
         }); updateVentaTotal();
     }
     
-    // REFACTORIZADO COMPLETAMENTE PARA USAR UNA ÚNICA TRANSACCIÓN ATÓMICA
     async function handleGuardarVentaEditada() {
         if (!_originalVentaForEdit) { _showModal('Error', 'Venta original no encontrada.'); return; }
         const prods = Object.values(_ventaActual.productos).filter(p => p.totalUnidadesVendidas > 0);
@@ -1004,7 +1053,6 @@
         _showModal('Confirmar Cambios', '¿Guardar cambios? Stock y saldos se ajustarán atómicamente.', async () => {
             _showModal('Progreso', 'Guardando y ajustando...');
             try {
-                // --- INICIO: NUEVA LÓGICA DE TRANSACCIÓN ---
                 const origProds=new Map((_originalVentaForEdit.productos||[]).map(p=>[p.id,p]));
                 const newProds=new Map(Object.values(_ventaActual.productos).map(p=>[p.id,p]));
                 const allPIds=new Set([...origProds.keys(),...newProds.keys()]);
@@ -1017,13 +1065,11 @@
                 const cliRef=_doc(_db,`artifacts/ventas-9a210/public/data/clientes`,_originalVentaForEdit.clienteId);
 
                 await _runTransaction(_db, async (transaction) => {
-                    // 1. Leer cliente
                     const cliDoc = await transaction.get(cliRef);
                     if (!cliDoc.exists()) {
                         console.warn(`(Edit) Cliente ${cliRef.id} no encontrado. No se ajustarán saldos de vacíos.`);
                     }
 
-                    // 2. Leer todos los productos del inventario
                     const inventarioDocsMap = new Map();
                     const productoIds = Array.from(allPIds).filter(Boolean);
                     
@@ -1039,7 +1085,6 @@
                         });
                     }
 
-                    // 3. Procesar deltas y preparar escrituras
                     nTotal=0;
                     nItems.length = 0;
                     vaciosAdj = {};
@@ -1097,14 +1142,13 @@
                     }
 
                     transaction.update(vRef,{productos:nItems, total:nTotal, vaciosDevueltosPorTipo:_ventaActual.vaciosDevueltosPorTipo, fechaModificacion:new Date()});
-                }); // Fin de _runTransaction
+                }); 
 
                 _originalVentaForEdit=null;
                 _showModal('Éxito','Venta actualizada.',showVentasActualesView);
             
             } catch (error) { 
                 console.error("Error guardando edit:", error); 
-                // --- PASO 2: Ya no se llama a loadDataForNewSale ---
                 _showModal('Error', `Error: ${error.message}. Refresca los datos.`); 
             }
         }, 'Sí, Guardar', null, true);
