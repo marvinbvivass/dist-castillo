@@ -2,10 +2,10 @@
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls;
     let _showMainMenu, _showModal, _activeListeners;
     
-    // --- CORRECCIÓN: Añadir _onSnapshot ---
+    // --- CORRECCIÓN: Añadir _onSnapshot y listeners de eventos ---
     let _collection, _doc, _getDoc, _addDoc, _setDoc, _deleteDoc, _getDocs, _writeBatch, _runTransaction, _query, _where, _increment, _onSnapshot;
     let _addGlobalEventListener, _removeGlobalEventListener;
-    let _localActiveListeners = []; 
+    let _localActiveListeners = []; // Listeners locales de este módulo
 
     let _globalCaches; 
     
@@ -18,11 +18,14 @@
 
     const TIPOS_VACIO = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
+    // --- CORRECCIÓN: Función de limpieza de listeners locales ---
     function _cleanupLocalListeners() {
         _localActiveListeners.forEach(listenerOrUnsubscribe => {
             if (typeof listenerOrUnsubscribe === 'function') {
-                listenerOrUnsubscribe();
+                // Es un 'unsubscribe' de onSnapshot
+                try { listenerOrUnsubscribe(); } catch (e) { console.warn("Error al desuscribir listener de onSnapshot:", e); }
             } else if (listenerOrUnsubscribe.event && listenerOrUnsubscribe.handler) {
+                // Es un listener de evento global
                 _removeGlobalEventListener(listenerOrUnsubscribe.event, listenerOrUnsubscribe.handler);
             }
         });
@@ -42,11 +45,11 @@
         
         _globalCaches = dependencies.globalCaches;
 
+        // --- CORRECCIÓN: Añadir dependencias faltantes ---
         _addGlobalEventListener = dependencies.addGlobalEventListener;
         _removeGlobalEventListener = dependencies.removeGlobalEventListener;
-        
-        // --- CORRECCIÓN: _onSnapshot ha sido añadido ---
-        _onSnapshot = dependencies.onSnapshot; 
+        _onSnapshot = dependencies.onSnapshot; // <-- Esta era la dependencia faltante
+        // --- FIN CORRECCIÓN ---
         
         _collection = dependencies.collection;
         _doc = dependencies.doc;
@@ -423,7 +426,7 @@
             const prodsParaGuardar = Object.values(_ventaActual.productos);
 
             const ventaDataToSave = await _runTransaction(_db, async (transaction) => {
-                // --- INICIO CORRECCIÓN: Lógica de Snapshot movida aquí ---
+                // --- CORRECCIÓN: Lógica de Snapshot movida aquí ---
                 const SNAPSHOT_DOC_PATH = `artifacts/${_appId}/users/${_userId}/config/cargaInicialSnapshot`;
                 const snapshotRef = _doc(_db, SNAPSHOT_DOC_PATH);
                 try {
