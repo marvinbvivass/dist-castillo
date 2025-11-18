@@ -3,18 +3,24 @@
     let _showMainMenu, _showModal, _showAddItemModal;
     let _collection, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
 
-    // --- PASO 2: _globalCaches se inyectará ---
     let _globalCaches;
 
-    // --- PASO 2: _inventarioCache, _marcasCache, etc. ya no son necesarios aquí ---
-    let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
-    // --- PASO 2: Listener local eliminado ---
-    // let _inventarioListenerUnsubscribe = null; 
+    // --- SOLUCIÓN: Dependencias de eventos y tracker ---
+    let _addGlobalEventListener, _removeGlobalEventListener;
+    let _localActiveListeners = []; // Para rastrear listeners de esta vista
 
-    // Cache para ordenamiento (aún necesario para la UI de ordenar)
+    let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
+
     let _segmentoOrderCache = null;
     let _marcaOrderCacheBySegment = {};
 
+    // --- SOLUCIÓN: Función de limpieza de listeners locales ---
+    function _cleanupLocalListeners() {
+        _localActiveListeners.forEach(listener => {
+            _removeGlobalEventListener(listener.event, listener.handler);
+        });
+        _localActiveListeners = [];
+    }
 
     window.initInventario = function(dependencies) {
         _db = dependencies.db;
@@ -23,17 +29,16 @@
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
-        _activeListeners = dependencies.activeListeners; // Sigue aquí pero no se usa para listeners de datos
+        _activeListeners = dependencies.activeListeners;
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _showAddItemModal = dependencies.showAddItemModal;
         
-        // --- PASO 2: Inyectar cachés globales ---
         _globalCaches = dependencies.globalCaches; 
         
-        // --- PASO 2: _onSnapshot y _populateDropdown se eliminan (o no se usan) ---
-        // _onSnapshot = dependencies.onSnapshot; 
-        // _populateDropdown = dependencies.populateDropdown; // Reemplazado por helper local
+        // --- SOLUCIÓN: Recibir funciones de eventos ---
+        _addGlobalEventListener = dependencies.addGlobalEventListener;
+        _removeGlobalEventListener = dependencies.removeGlobalEventListener;
         
         _collection = dependencies.collection;
         _doc = dependencies.doc;
@@ -47,10 +52,6 @@
         _getDoc = dependencies.getDoc;
     };
 
-    // --- PASO 2: Función eliminada ---
-    // function startMainInventarioListener(callback) { ... }
-
-    // --- PASO 2: Nueva función helper para poblar dropdowns desde caché ---
     function _populateDropdownFromCache(cacheData, elementId, itemName, selectedValue = null) {
         const selectElement = document.getElementById(elementId);
         if (!selectElement) { 
@@ -67,7 +68,6 @@
         }
         placeholder.textContent = placeholderText;
         
-        // Limpiar opciones antiguas
         Array.from(selectElement.options).forEach(option => {
             if (option.value !== "") selectElement.removeChild(option);
         });
@@ -103,11 +103,9 @@
     }
 
 
-    // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
         _segmentoOrderCache = null;
         _marcaOrderCacheBySegment = {};
-        // _marcasCache = null; // Ya no se usa caché local de marcas
         
         if (window.catalogoModule?.invalidateCache) {
              window.catalogoModule.invalidateCache();
@@ -122,6 +120,7 @@
 
 
     window.showInventarioSubMenu = function() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden');
         const isAdmin = _userRole === 'admin';
         _mainContent.innerHTML = `
@@ -160,6 +159,7 @@
             _showModal('Acceso Denegado', 'Solo administradores.');
             return;
         }
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -188,26 +188,30 @@
         document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenJerarquia);
         const rubroFilter = document.getElementById('ordenarRubroFilter');
         
-        // --- PASO 2: Usar helper de caché ---
         _populateDropdownFromCache(_globalCaches.getRubros(), 'ordenarRubroFilter', 'Rubro');
         
-        rubroFilter.addEventListener('change', () => renderSortableHierarchy(rubroFilter.value));
-        renderSortableHierarchy('');
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const renderHandler = () => renderSortableHierarchy(rubroFilter.value);
+        _addGlobalEventListener('segmentos-updated', renderHandler);
+        _addGlobalEventListener('inventario-updated', renderHandler);
+        _addGlobalEventListener('rubros-updated', renderHandler);
+        _addGlobalEventListener('marcas-updated', renderHandler);
+        _localActiveListeners.push({ event: 'segmentos-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'inventario-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'rubros-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'marcas-updated', handler: renderHandler });
+        
+        rubroFilter.addEventListener('change', renderHandler);
+        renderHandler(); // Llamar una vez
     }
 
-    // --- PASO 2: Función eliminada ---
-    // async function getAllMarcas() { ... }
-
-    // --- PASO 2: Refactorizado para usar cachés globales ---
     async function renderSortableHierarchy(rubroFiltro = '') {
         const container = document.getElementById('segmentos-marcas-sortable-list');
         if (!container) return;
         container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
         try {
-            // Leer segmentos desde caché
             let allSegments = _globalCaches.getSegmentos();
 
-            // Asignar orden inicial si falta (esto sigue siendo una operación de ESCRITURA, por lo que está bien)
             const segsSinOrden = allSegments.filter(s => s.orden === undefined || s.orden === null);
             if (segsSinOrden.length > 0) {
                  const segsConOrden = allSegments.filter(s => s.orden !== undefined && s.orden !== null);
@@ -221,18 +225,15 @@
                     batch.update(dRef, { orden: nOrden });
                     seg.orden = nOrden;
                  });
-                 await batch.commit(); // Esperar a que se guarden los nuevos órdenes
-                 allSegments = [...segsConOrden, ...segsSinOrden]; // Combinar
+                 await batch.commit();
+                 allSegments = [...segsConOrden, ...segsSinOrden];
                  console.log("Orden inicial asignado a segmentos.");
-                 // El listener global actualizará la caché, pero la actualizamos localmente para el render
             }
             allSegments.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
 
-            // Leer marcas desde caché
             const allMarcas = _globalCaches.getMarcas();
             const marcasMap = new Map(allMarcas.map(m => [m.name, m.id]));
 
-            // Leer inventario desde caché y filtrar
             let prodsEnRubro = _globalCaches.getInventario();
             if (rubroFiltro) {
                 prodsEnRubro = prodsEnRubro.filter(p => p.rubro === rubroFiltro);
@@ -492,6 +493,7 @@
 
 
     function showAjusteMasivoView() {
+         _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
          if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8">
@@ -512,22 +514,28 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
-        const renderCallback = () => renderAjusteMasivoList();
         
-        // --- PASO 2: Usar helper de caché ---
-        _populateDropdownFromCache(_globalCaches.getRubros(), 'ajuste-filter-rubro', 'Rubro');
-        
-        setupFiltros('ajuste', renderCallback);
-        
-        // --- PASO 2: Eliminar listener, solo renderizar ---
-        renderCallback();
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const renderHandler = () => {
+            setupFiltros('ajuste'); // Configurar filtros (que ahora leen caché)
+            renderAjusteMasivoList(); // Renderizar lista
+        };
+        _addGlobalEventListener('inventario-updated', renderHandler);
+        _addGlobalEventListener('rubros-updated', renderHandler);
+        _addGlobalEventListener('segmentos-updated', renderHandler);
+        _addGlobalEventListener('marcas-updated', renderHandler);
+        _localActiveListeners.push({ event: 'inventario-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'rubros-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'segmentos-updated', handler: renderHandler });
+        _localActiveListeners.push({ event: 'marcas-updated', handler: renderHandler });
+
+        renderHandler(); // Llamar una vez
     }
 
     async function renderAjusteMasivoList() {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
         
-        // --- PASO 2: Leer de la caché global ---
         let productos = _globalCaches.getInventario();
         
         productos = productos.filter(p => {
@@ -539,12 +547,17 @@
              return textMatch && rubroMatch && segmentoMatch && marcaMatch;
         });
         
-        // La función getGlobalProductSortFunction aún depende de 'catalogo.js' y sus propias lecturas.
-        // Esto se refactorizará cuando se actualice 'catalogo.js'.
         const sortFunction = await window.getGlobalProductSortFunction();
         productos.sort(sortFunction);
         
-        if (productos.length === 0) { container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan con los filtros.</p>`; return; }
+        if (productos.length === 0) { 
+            if (_globalCaches.getInventario().length > 0) {
+                container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan con los filtros.</p>`;
+            } else {
+                container.innerHTML = `<p class="text-gray-500 text-center p-4">Cargando inventario...</p>`;
+            }
+            return; 
+        }
         
         let tableHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-100 sticky top-0 z-10"><tr><th class="py-2 px-4 border-b text-left">Producto</th><th class="py-2 px-4 border-b text-center w-40">Cant. Nueva</th></tr></thead><tbody>`;
         let lastHeaderKey = null; const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
@@ -627,7 +640,6 @@
             select.addEventListener('change', (e) => {
                 const docId = e.target.dataset.docId;
                 const input = container.querySelector(`.ajuste-qty-input[data-doc-id="${docId}"]`);
-                // --- PASO 2: Leer de la caché global ---
                 const producto = _globalCaches.getInventario().find(p => p.id === docId);
                 if (!input || !producto) return;
 
@@ -653,7 +665,6 @@
             const docId = input.dataset.docId;
             const newValueStr = input.value.trim();
             const newValue = parseInt(newValueStr, 10);
-            // --- PASO 2: Leer de la caché global ---
             const productoOriginal = _globalCaches.getInventario().find(p => p.id === docId);
 
             const unitSelect = document.querySelector(`.ajuste-unit-select[data-doc-id="${docId}"]`);
@@ -708,8 +719,7 @@
             try {
                 await batch.commit();
                 _showModal('Éxito',`Se actualizaron ${changesCount} producto(s) correctamente.`);
-                // El listener global actualizará la caché, pero forzamos un re-render
-                renderAjusteMasivoList();
+                // renderAjusteMasivoList(); // No es necesario, el listener global lo hará
             } catch (error) {
                 console.error("Error al guardar ajuste masivo:", error);
                 _showModal('Error',`Ocurrió un error al guardar: ${error.message}`);
@@ -719,6 +729,7 @@
 
 
     function showModificarDatosView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; }
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -751,12 +762,24 @@
         `;
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('deleteAllDatosMaestrosBtn').addEventListener('click', handleDeleteAllDatosMaestros);
-        renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
-        renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
-        renderDataListForEditing('marcas', 'marcas-list', 'Marca');
+        
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const rubrosHandler = () => renderDataListForEditing('rubros', 'rubros-list', 'Rubro');
+        _addGlobalEventListener('rubros-updated', rubrosHandler);
+        _localActiveListeners.push({ event: 'rubros-updated', handler: rubrosHandler });
+        rubrosHandler();
+
+        const segmentosHandler = () => renderDataListForEditing('segmentos', 'segmentos-list', 'Segmento');
+        _addGlobalEventListener('segmentos-updated', segmentosHandler);
+        _localActiveListeners.push({ event: 'segmentos-updated', handler: segmentosHandler });
+        segmentosHandler();
+        
+        const marcasHandler = () => renderDataListForEditing('marcas', 'marcas-list', 'Marca');
+        _addGlobalEventListener('marcas-updated', marcasHandler);
+        _localActiveListeners.push({ event: 'marcas-updated', handler: marcasHandler });
+        marcasHandler();
     }
 
-    // --- PASO 2: Refactorizado para usar caché global ---
     function renderDataListForEditing(collectionName, containerId, itemName) {
         const container = document.getElementById(containerId); 
         if (!container) return; 
@@ -784,13 +807,11 @@
             </div>`).join('');
     }
 
-    // Llama al modal de agregar, que ahora maneja la propagación si es admin
     function showAddCategoryModal(collectionName, itemName) {
          _showAddItemModal(collectionName, itemName);
     }
 
 
-    // --- PASO 2: Refactorizado para usar caché global ---
     async function handleDeleteDataItem(collectionName, itemName, itemType, itemId) {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; }
         const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' }; const fieldName = fieldMap[collectionName]; if (!fieldName) { _showModal('Error Interno', 'Tipo no reconocido.'); return; }
@@ -798,7 +819,6 @@
         _showModal('Progreso', `Verificando uso de "${itemName}"...`);
         
         try {
-            // Comprobar uso en caché
             const enUso = _globalCaches.getInventario().some(p => p[fieldName] === itemName);
             if (enUso) { 
                 _showModal('Error al Eliminar', `"${itemName}" está en uso por al menos 1 producto. No se puede eliminar.`); 
@@ -818,10 +838,7 @@
                     if (collectionName === 'segmentos') invalidateSegmentOrderCache(); 
                     _showModal('Éxito', `${itemType} "${itemName}" eliminado.`);
                     
-                    // Refrescar manualmente la lista
-                    const containerId = `${collectionName}-list`;
-                    renderDataListForEditing(collectionName, containerId, itemType);
-
+                    // No es necesario refrescar, el listener global lo hará
                 } catch (deleteError) { 
                     console.error(`Error eliminando/propagando ${itemName}:`, deleteError); 
                     _showModal('Error', `Error: ${deleteError.message}`); 
@@ -834,6 +851,7 @@
     }
 
     function showAgregarProductoView() {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; } if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto max-w-2xl"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center">
@@ -847,10 +865,23 @@
                 <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
             </div> </div> </div>
         `;
-        // --- PASO 2: Usar helper de caché ---
-        _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro'); 
-        _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento'); 
-        _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca');
+        
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const rubrosHandler = () => _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro');
+        _addGlobalEventListener('rubros-updated', rubrosHandler);
+        _localActiveListeners.push({ event: 'rubros-updated', handler: rubrosHandler });
+        rubrosHandler();
+
+        const segmentosHandler = () => _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento');
+        _addGlobalEventListener('segmentos-updated', segmentosHandler);
+        _localActiveListeners.push({ event: 'segmentos-updated', handler: segmentosHandler });
+        segmentosHandler();
+        
+        const marcasHandler = () => _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca');
+        _addGlobalEventListener('marcas-updated', marcasHandler);
+        _localActiveListeners.push({ event: 'marcas-updated', handler: marcasHandler });
+        marcasHandler();
+
         
         const vPorCont=document.getElementById('ventaPorContainer'), pCont=document.getElementById('preciosContainer'), eCont=document.getElementById('empaquesContainer'), mVacioCheck=document.getElementById('manejaVaciosCheck'), tVacioCont=document.getElementById('tipoVacioContainer'), tVacioSel=document.getElementById('tipoVacioSelect');
         const updateDynInputs=()=>{eCont.innerHTML=''; pCont.innerHTML=''; const vPaq=document.getElementById('ventaPorPaq').checked, vCj=document.getElementById('ventaPorCj').checked, vUnd=document.getElementById('ventaPorUnd').checked; if(vPaq)eCont.innerHTML+=`<div><label class="text-sm">Und/Paq:</label><input type="number" id="unidadesPorPaquete" min="1" class="w-full px-2 py-1 border rounded" value="1" required></div>`; if(vCj)eCont.innerHTML+=`<div><label class="text-sm">Und/Cj:</label><input type="number" id="unidadesPorCaja" min="1" class="w-full px-2 py-1 border rounded" value="1" required></div>`; if(vUnd)pCont.innerHTML+=`<div><label class="text-sm">Precio Und.</label><input type="number" step="0.01" min="0" id="precioUnd" class="w-full px-2 py-1 border rounded" required></div>`; if(vPaq)pCont.innerHTML+=`<div><label class="text-sm">Precio Paq.</label><input type="number" step="0.01" min="0" id="precioPaq" class="w-full px-2 py-1 border rounded" required></div>`; if(vCj)pCont.innerHTML+=`<div><label class="text-sm">Precio Cj.</label><input type="number" step="0.01" min="0" id="precioCj" class="w-full px-2 py-1 border rounded" required></div>`; pCont.querySelectorAll('input').forEach(i=>{i.required=document.getElementById(`ventaPor${i.id.substring(6)}`)?.checked??false;});};
@@ -864,11 +895,9 @@
         return { rubro: document.getElementById('rubro').value, segmento: document.getElementById('segmento').value, marca: document.getElementById('marca').value, presentacion: document.getElementById('presentacion').value.trim(), unidadesPorPaquete: undPaq, unidadesPorCaja: undCj, ventaPor: { und: document.getElementById('ventaPorUnd').checked, paq: document.getElementById('ventaPorPaq').checked, cj: document.getElementById('ventaPorCj').checked }, manejaVacios: manejaVac, tipoVacio: manejaVac ? tipoVac : null, precios: precios, precioPorUnidad: pFinalUnd, cantidadUnidades: cantUnd, iva: parseInt(document.getElementById('ivaTipo').value, 10) };
     }
 
-    // --- PASO 2: Refactorizado para usar caché global ---
     async function agregarProducto(e) {
         e.preventDefault(); if (_userRole !== 'admin') return; const pData = getProductoDataFromForm(false); if (!pData.rubro||!pData.segmento||!pData.marca||!pData.presentacion){_showModal('Error','Completa campos requeridos.');return;} if (!pData.ventaPor.und&&!pData.ventaPor.paq&&!pData.ventaPor.cj){_showModal('Error','Selecciona al menos una forma de venta.');return;} if (pData.manejaVacios&&!pData.tipoVacio){_showModal('Error','Si maneja vacío, selecciona el tipo.');document.getElementById('tipoVacioSelect')?.focus();return;} let pValido=(pData.ventaPor.und&&pData.precios.und>0)||(pData.ventaPor.paq&&pData.precios.paq>0)||(pData.ventaPor.cj&&pData.precios.cj>0); if(!pValido){_showModal('Error','Ingresa al menos un precio válido (> 0) para la forma de venta seleccionada.');document.querySelector('#preciosContainer input[required]')?.focus();return;} _showModal('Progreso','Verificando duplicados...');
         try {
-            // Comprobar duplicado en caché
             const duplicado = _globalCaches.getInventario().find(p => 
                 p.rubro === pData.rubro &&
                 p.segmento === pData.segmento &&
@@ -895,274 +924,30 @@
     }
 
 
-    // --- PASO 2: Refactorizado para usar caché global ---
-    function showModifyDeleteView() {
-         if (_floatingControls) _floatingControls.classList.add('hidden'); const isAdmin = _userRole === 'admin';
-        _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl"> <h2 class="text-2xl font-bold mb-6 text-center">Ver Productos / ${isAdmin?'Modificar Def.':'Consultar Stock'}</h2> ${getFiltrosHTML('modify')} <div id="productosListContainer" class="overflow-x-auto max-h-96 border rounded-lg"> <p class="text-gray-500 text-center p-4">Cargando...</p> </div> <div class="mt-6 flex flex-col sm:flex-row gap-4"> <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> ${isAdmin?`<button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg shadow-md hover:bg-red-700">Eliminar Todos</button>`:''} </div> </div> </div> </div>`;
-
-        const renderCallback = () => renderProductosList('productosListContainer', !isAdmin);
-
-        document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
-        if (isAdmin) document.getElementById('deleteAllProductosBtn')?.addEventListener('click', handleDeleteAllProductos);
-
-        // Poblar filtros desde caché
-        _populateDropdownFromCache(_globalCaches.getRubros(), 'modify-filter-rubro', 'Rubro');
-        
-        // Configurar filtros (que ahora leen de caché)
-        setupFiltros('modify', renderCallback); 
-        
-        // Renderizar lista inicial
-        renderCallback(); 
-        
-        // No se necesita startMainInventarioListener
-    }
-
-    function getFiltrosHTML(prefix) {
-        const currentSearch = _lastFilters.searchTerm || '';
-        return `
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-gray-50">
-                <input type="text" id="${prefix}-search-input" placeholder="Buscar por Presentación, Marca o Segmento..." class="md:col-span-4 w-full px-4 py-2 border rounded-lg text-sm" value="${currentSearch}">
-                <div>
-                    <label for="${prefix}-filter-rubro" class="text-xs font-medium text-gray-700">Rubro</label>
-                    <select id="${prefix}-filter-rubro" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-white focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="${prefix}-filter-segmento" class="text-xs font-medium text-gray-700">Segmento</label>
-                    <select id="${prefix}-filter-segmento" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-white focus:ring-blue-500 focus:border-blue-500" disabled>
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="${prefix}-filter-marca" class="text-xs font-medium text-gray-700">Marca</label>
-                    <select id="${prefix}-filter-marca" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-white focus:ring-blue-500 focus:border-blue-500" disabled>
-                        <option value="">Todos</option>
-                    </select>
-                </div>
-                <button id="${prefix}-clear-filters-btn" class="bg-gray-300 text-xs font-semibold text-gray-700 rounded-lg self-end py-1.5 px-3 hover:bg-gray-400 transition duration-150">Limpiar</button>
-            </div>
-        `;
-    }
-
-    // --- PASO 2: Refactorizado para usar caché global ---
-    function setupFiltros(prefix, renderCallback) {
-        const searchInput=document.getElementById(`${prefix}-search-input`);
-        const rubroFilter=document.getElementById(`${prefix}-filter-rubro`);
-        const segmentoFilter=document.getElementById(`${prefix}-filter-segmento`);
-        const marcaFilter=document.getElementById(`${prefix}-filter-marca`);
-        const clearBtn=document.getElementById(`${prefix}-clear-filters-btn`);
-
-        if(!searchInput || !rubroFilter || !segmentoFilter || !marcaFilter || !clearBtn) {
-            console.error(`Error: No se encontraron todos los elementos de filtro con prefijo ${prefix}.`);
-            return;
-        }
-
-        function updateDependentDropdowns(trigger) {
-            const selectedRubro = rubroFilter.value;
-            const currentSegmentoValue = (trigger === 'init' || trigger === 'rubro') ? _lastFilters.segmento : segmentoFilter.value;
-            const currentMarcaValue = (trigger === 'init' || trigger === 'rubro' || trigger === 'segmento') ? _lastFilters.marca : marcaFilter.value;
-
-            segmentoFilter.innerHTML = '<option value="">Todos</option>';
-            segmentoFilter.disabled = true;
-            segmentoFilter.value = ""; 
-
-            // Leer inventario desde caché global
-            const inventario = _globalCaches.getInventario();
-
-            if (selectedRubro) {
-                const segmentos = [...new Set(inventario
-                    .filter(p => p.rubro === selectedRubro && p.segmento)
-                    .map(p => p.segmento))]
-                    .sort();
-                if (segmentos.length > 0) {
-                    segmentos.forEach(s => {
-                        const option = document.createElement('option');
-                        option.value = s; option.textContent = s;
-                        if (s === currentSegmentoValue) { option.selected = true; }
-                        segmentoFilter.appendChild(option);
-                    });
-                    segmentoFilter.disabled = false;
-                    segmentoFilter.value = currentSegmentoValue;
-                }
-            }
-            if (segmentoFilter.value !== currentSegmentoValue) { _lastFilters.segmento = ''; }
-
-            marcaFilter.innerHTML = '<option value="">Todos</option>';
-            marcaFilter.disabled = true;
-             marcaFilter.value = "";
-
-            if (selectedRubro) {
-                const marcas = [...new Set(inventario
-                    .filter(p => p.rubro === selectedRubro && (!segmentoFilter.value || p.segmento === segmentoFilter.value) && p.marca)
-                    .map(p => p.marca))]
-                    .sort();
-                if (marcas.length > 0) {
-                    marcas.forEach(m => {
-                         const option = document.createElement('option');
-                         option.value = m; option.textContent = m;
-                         if (m === currentMarcaValue) { option.selected = true; }
-                         marcaFilter.appendChild(option);
-                    });
-                    marcaFilter.disabled = false;
-                    marcaFilter.value = currentMarcaValue;
-                }
-            }
-            if (marcaFilter.value !== currentMarcaValue) { _lastFilters.marca = ''; }
-        }
-
-        // --- PASO 2: Poblar el filtro de rubro inicial desde caché ---
-        // (Esto reemplaza la llamada a _populateDropdown que estaba en showModifyDeleteView)
-        _populateDropdownFromCache(_globalCaches.getRubros(), `${prefix}-filter-rubro`, 'Rubro');
-
-        // Restaurar estado inicial y popular filtros dependientes
-        setTimeout(() => {
-            rubroFilter.value = _lastFilters.rubro || '';
-            updateDependentDropdowns('init');
-            if (typeof renderCallback === 'function') renderCallback();
-        }, 100); // Pequeño timeout para asegurar que el dropdown de rubros esté poblado
-
-        const applyAndSaveChanges = () => {
-            _lastFilters.searchTerm = searchInput.value || '';
-            _lastFilters.rubro = rubroFilter.value || '';
-            _lastFilters.segmento = segmentoFilter.value || '';
-            _lastFilters.marca = marcaFilter.value || '';
-            if (typeof renderCallback === 'function') renderCallback();
-        };
-
-        searchInput.addEventListener('input', applyAndSaveChanges);
-        rubroFilter.addEventListener('change', () => {
-             _lastFilters.segmento = ''; _lastFilters.marca = '';
-            updateDependentDropdowns('rubro');
-            applyAndSaveChanges();
-        });
-        segmentoFilter.addEventListener('change', () => {
-            _lastFilters.marca = '';
-            updateDependentDropdowns('segmento');
-            applyAndSaveChanges();
-        });
-        marcaFilter.addEventListener('change', applyAndSaveChanges);
-        clearBtn.addEventListener('click', () => {
-            searchInput.value = '';
-            rubroFilter.value = '';
-            _lastFilters.segmento = ''; _lastFilters.marca = '';
-            updateDependentDropdowns('rubro');
-            applyAndSaveChanges();
-        });
-    }
-
-    // --- PASO 2: Refactorizado para usar caché global ---
-    async function renderProductosList(elementId, readOnly = false) {
-        const container = document.getElementById(elementId);
-        if (!container) { return; }
-
-        // Leer del caché global
-        let productosFiltrados = _globalCaches.getInventario();
-        
-        productosFiltrados = productosFiltrados.filter(p => {
-            const searchTermLower = (_lastFilters.searchTerm || '').toLowerCase();
-            const textMatch = !searchTermLower ||
-                (p.presentacion && p.presentacion.toLowerCase().includes(searchTermLower)) ||
-                (p.marca && p.marca.toLowerCase().includes(searchTermLower)) ||
-                (p.segmento && p.segmento.toLowerCase().includes(searchTermLower));
-            const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
-            const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
-            const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
-            return textMatch && rubroMatch && segmentoMatch && marcaMatch;
-        });
-
-        // getGlobalProductSortFunction sigue siendo una dependencia externa
-        const sortFunction = await window.getGlobalProductSortFunction();
-        productosFiltrados.sort(sortFunction);
-
-        if (productosFiltrados.length === 0) {
-            container.innerHTML = `<p class="text-center text-gray-500 p-4">No hay productos que coincidan con los filtros seleccionados.</p>`;
-            return;
-        }
-
-        const isAdmin = _userRole === 'admin';
-        const cols = readOnly ? 4 : 5;
-
-        let tableHTML = `
-            <table class="min-w-full bg-white text-sm">
-                <thead class="bg-gray-200 sticky top-0 z-10">
-                    <tr>
-                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Presentación</th>
-                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Marca</th>
-                        <th class="py-2 px-3 text-right font-semibold text-gray-600 uppercase tracking-wider">Precio</th>
-                        <th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Stock</th>
-                        ${!readOnly ? `<th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>` : ''}
-                    </tr>
-                </thead>
-                <tbody>`;
-
-        let lastHeaderKey = null;
-        const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
-
-        productosFiltrados.forEach(p => {
-            const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
-            if (currentHeaderValue !== lastHeaderKey) {
-                lastHeaderKey = currentHeaderValue;
-                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`;
-            }
-
-            const ventaPor = p.ventaPor || {und:true};
-            const precios = p.precios || {und: p.precioPorUnidad || 0};
-            let displayPresentacion = p.presentacion || 'N/A';
-            let displayPrecio = '$0.00';
-            let displayStock = `${p.cantidadUnidades || 0} Und`;
-            let conversionFactorStock = 1;
-            let stockUnitType = 'Und';
-
-            if (ventaPor.cj) {
-                if (p.unidadesPorCaja) displayPresentacion += ` (${p.unidadesPorCaja} und.)`;
-                displayPrecio = `$${(precios.cj || 0).toFixed(2)}`;
-                conversionFactorStock = Math.max(1, p.unidadesPorCaja || 1);
-                stockUnitType = 'Cj';
-            } else if (ventaPor.paq) {
-                if (p.unidadesPorPaquete) displayPresentacion += ` (${p.unidadesPorPaquete} und.)`;
-                displayPrecio = `$${(precios.paq || 0).toFixed(2)}`;
-                conversionFactorStock = Math.max(1, p.unidadesPorPaquete || 1);
-                stockUnitType = 'Paq';
-            } else {
-                displayPrecio = `$${(precios.und || 0).toFixed(2)}`;
-            }
-            displayStock = `${Math.floor((p.cantidadUnidades || 0) / conversionFactorStock)} ${stockUnitType}`;
-            const stockUnidadesBaseTitle = `${p.cantidadUnidades || 0} Und. Base`;
-
-            tableHTML += `
-                <tr class="hover:bg-gray-50 border-b">
-                    <td class="py-2 px-3 text-gray-800">${displayPresentacion}</td>
-                    <td class="py-2 px-3 text-gray-700">${p.marca || 'S/M'}</td>
-                    <td class="py-2 px-3 text-right font-medium text-gray-900">${displayPrecio}</td>
-                    <td class="py-2 px-3 text-center font-medium text-gray-900" title="${stockUnidadesBaseTitle}">${displayStock}</td>
-                    ${!readOnly ? `
-                    <td class="py-2 px-3 text-center space-x-1">
-                        <button onclick="window.inventarioModule.editProducto('${p.id}')" class="px-2 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50" title="Editar Definición">Edt</button>
-                        <button onclick="window.inventarioModule.deleteProducto('${p.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-opacity-50" title="Eliminar Producto">Del</button>
-                    </td>` : ''}
-                </tr>`;
-        });
-
-        tableHTML += `</tbody></table>`;
-        container.innerHTML = tableHTML;
-    }
-
-
-    // --- PASO 2: Refactorizado para usar caché global ---
     async function editProducto(productId) {
+        _cleanupLocalListeners(); // --- SOLUCIÓN: Limpiar listeners ---
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores pueden editar definiciones.'); return; }
-        // Leer de caché global
         const prod = _globalCaches.getInventario().find(p => p.id === productId); 
         if (!prod) { _showModal('Error', 'Producto no encontrado en caché.'); return; } 
         if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto max-w-2xl"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center"> <h2 class="text-2xl font-bold mb-6">Editar Producto</h2> <form id="editProductoForm" class="space-y-4 text-left"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="rubro">Rubro:</label> <div class="flex items-center space-x-2"> <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('rubros','Rubro')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="segmento">Segmento:</label> <div class="flex items-center space-x-2"> <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('segmentos','Segmento')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="marca">Marca:</label> <div class="flex items-center space-x-2"> <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('marcas','Marca')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="presentacion">Presentación:</label> <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required> </div> </div> <div class="border-t pt-4 mt-4"> <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"> <div> <label class="block mb-2 font-medium">Venta por:</label> <div id="ventaPorContainer" class="flex space-x-4"> <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Und.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Paq.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Cj.</span></label> </div> </div> <div class="mt-4 md:mt-0"> <label class="flex items-center cursor-pointer"> <input type="checkbox" id="manejaVaciosCheck" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2 font-medium">Maneja Vacío</span> </label> <div id="tipoVacioContainer" class="mt-2 hidden"> <label for="tipoVacioSelect" class="block text-sm font-medium">Tipo:</label> <select id="tipoVacioSelect" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-gray-50"> <option value="">Seleccione...</option> <option value="1/4 - 1/3">1/4 - 1/3</option> <option value="ret 350 ml">Ret 350 ml</option> <option value="ret 1.25 Lts">Ret 1.25 Lts</option> </select> </div> </div> </div> <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div> <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div> </div> <div class="border-t pt-4 mt-4"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="cantidadActual" class="block font-medium">Stock Actual (Und. Base):</label> <input type="number" id="cantidadActual" value="${prod.cantidadUnidades||0}" class="w-full mt-1 px-4 py-2 border rounded-lg bg-gray-100 text-gray-700" readonly title="La cantidad se modifica en 'Ajuste Masivo'"> <p class="text-xs text-gray-500 mt-1">Modificar en "Ajuste Masivo".</p> </div> <div> <label for="ivaTipo" class="block font-medium">IVA:</label> <select id="ivaTipo" class="w-full mt-1 px-4 py-2 border rounded-lg bg-white" required> <option value="16">16%</option> <option value="0">Exento 0%</option> </select> </div> </div> </div> <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-150">Guardar Cambios y Propagar</button> </form> <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-150">Volver</button> </div> </div> </div>`;
 
-        // Poblar dropdowns desde caché
-        _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro', prod.rubro);
-        _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento', prod.segmento);
-        _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca', prod.marca);
+        // --- SOLUCIÓN: Suscribirse a eventos ---
+        const rubrosHandler = () => _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro', prod.rubro);
+        _addGlobalEventListener('rubros-updated', rubrosHandler);
+        _localActiveListeners.push({ event: 'rubros-updated', handler: rubrosHandler });
+        rubrosHandler();
 
+        const segmentosHandler = () => _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento', prod.segmento);
+        _addGlobalEventListener('segmentos-updated', segmentosHandler);
+        _localActiveListeners.push({ event: 'segmentos-updated', handler: segmentosHandler });
+        segmentosHandler();
+        
+        const marcasHandler = () => _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca', prod.marca);
+        _addGlobalEventListener('marcas-updated', marcasHandler);
+        _localActiveListeners.push({ event: 'marcas-updated', handler: marcasHandler });
+        marcasHandler();
+        
         const ventaPorContainer=document.getElementById('ventaPorContainer');
         const preciosContainer=document.getElementById('preciosContainer');
         const empaquesContainer=document.getElementById('empaquesContainer');
@@ -1239,7 +1024,6 @@
 
     async function handleUpdateProducto(e, productId) {
         e.preventDefault(); if (_userRole !== 'admin') return; const updatedData = getProductoDataFromForm(true); 
-        // --- PASO 2: Leer de caché global ---
         const productoOriginal = _globalCaches.getInventario().find(p => p.id === productId); 
         if (!productoOriginal) { _showModal('Error', 'Producto original no encontrado.'); return; } 
         if (!updatedData.rubro||!updatedData.segmento||!updatedData.marca||!updatedData.presentacion){_showModal('Error','Completa Rubro, Segmento, Marca y Presentación.');return;} if (!updatedData.ventaPor.und&&!updatedData.ventaPor.paq&&!updatedData.ventaPor.cj){_showModal('Error','Selecciona al menos una forma de venta.');return;} if (updatedData.manejaVacios&&!updatedData.tipoVacio){_showModal('Error','Si maneja vacío, selecciona el tipo.');document.getElementById('tipoVacioSelect')?.focus();return;} let precioValido=(updatedData.ventaPor.und&&updatedData.precios.und>0)||(updatedData.ventaPor.paq&&updatedData.precios.paq>0)||(updatedData.ventaPor.cj&&updatedData.precios.cj>0); if(!precioValido){_showModal('Error','Ingresa al menos un precio válido (> 0) para la forma de venta seleccionada.');document.querySelector('#preciosContainer input[required]')?.focus();return;}
@@ -1251,7 +1035,6 @@
 
     function deleteProducto(productId) {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; } 
-        // --- PASO 2: Leer de caché global ---
         const prod = _globalCaches.getInventario().find(p => p.id === productId); 
         if (!prod) { _showModal('Error', 'Producto no encontrado.'); return; }
         _showModal('Confirmar Eliminación', `¿Estás seguro de eliminar el producto "${prod.presentacion}"? Esta acción se propagará a todos los usuarios y es IRREVERSIBLE.`, async () => { _showModal('Progreso', `Eliminando "${prod.presentacion}"...`); try { await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId)); if (window.adminModule?.propagateProductChange) { _showModal('Progreso', `Propagando eliminación...`); await window.adminModule.propagateProductChange(productId, null); } _showModal('Éxito',`Producto "${prod.presentacion}" eliminado y propagado.`); } catch (e) { console.error("Error eliminando producto:", e); _showModal('Error', `No se pudo eliminar: ${e.message}`); } }, 'Sí, Eliminar', null, true);
@@ -1271,14 +1054,12 @@
                 const itemsInUse = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
                 let totalFound = 0, totalToDelete = 0;
 
-                // --- PASO 2: Verificar uso en caché ---
                 _globalCaches.getInventario().forEach(data => {
                     if (data.rubro) itemsInUse.rubros.add(data.rubro);
                     if (data.segmento) itemsInUse.segmentos.add(data.segmento);
                     if (data.marca) itemsInUse.marcas.add(data.marca);
                 });
 
-                // Identificar ítems no usados
                 for (const colName of collectionsToClean) {
                     let cacheData;
                     if (colName === 'rubros') cacheData = _globalCaches.getRubros();
