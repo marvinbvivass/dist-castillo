@@ -238,6 +238,15 @@
         window.isLoggingOut = false; 
         window.TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
 
+        // --- INICIO PASO 2: Definir Cachés Globales ---
+        let _globalInventarioCache = [];
+        let _globalClientesCache = [];
+        let _globalSectoresCache = [];
+        let _globalRubrosCache = [];
+        let _globalSegmentosCache = [];
+        let _globalMarcasCache = [];
+        // --- FIN PASO 2 ---
+
         const mainContent = document.getElementById('mainContent');
         const modalContainer = document.getElementById('modalContainer');
         const modalContent = document.getElementById('modalContent');
@@ -453,7 +462,7 @@
             }).catch(error => {
                  console.error(`Error populating dropdown ${elementId} from ${collectionPath}:`, error);
                  selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
-                 selectElement.disabled = true;
+                  selectElement.disabled = true;
                  throw error; 
             });
         }
@@ -536,36 +545,61 @@
             const registerButton = registerForm?.querySelector('button[type="submit"]'); if(registerButton){ registerButton.disabled = false; registerButton.textContent = 'Registrar'; }
         }
 
-        async function preloadAllData() {
-              const startTime = performance.now();
-              const collectionsToPreload = [
-                  { path: `artifacts/${appId}/users/${userId}/inventario`, name: 'Inventario' },
-                  { path: `artifacts/${appId}/users/${userId}/rubros`, name: 'Rubros' },
-                  { path: `artifacts/${appId}/users/${userId}/segmentos`, name: 'Segmentos' },
-                  { path: `artifacts/${appId}/users/${userId}/marcas`, name: 'Marcas' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/clientes`, name: 'Clientes (Público)' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/sectores`, name: 'Sectores (Público)' },
-                  { path: `artifacts/${'ventas-9a210'}/public/data/config/obsequio`, name: 'Config Obsequio (Público)' } 
-              ];
-              console.log("Preloading data for offline use...");
-              const results = await Promise.allSettled(
-                  collectionsToPreload.map(col => {
-                      if (col.path.includes('/config/obsequio')) { 
-                           const docRef = doc(db, col.path);
-                           return getDoc(docRef).catch(err => ({ failed: true, reason: err }));
-                      } else { 
-                          return getDocs(collection(db, col.path)).catch(err => ({ failed: true, reason: err }));
-                      }
-                  })
-              );
-              results.forEach((result, index) => {
-                  const colInfo = collectionsToPreload[index];
-                  if (result.status !== 'fulfilled' || (result.value && result.value.failed)) {
-                      console.warn(` - ${colInfo.name}: Preload failed.`);
-                  }
-              });
-              const endTime = performance.now(); console.log(`Preloading finished in ${(endTime - startTime).toFixed(0)} ms.`);
+        // --- INICIO PASO 2: Nueva función de Listeners Globales ---
+        async function startGlobalListeners() {
+            // Esta función reemplaza a preloadAllData y usa onSnapshot para mantener las cachés actualizadas.
+            console.log("Starting global data listeners (onSnapshot)...");
+
+            // Helper para crear un listener con manejo de errores y actualización de caché
+            const createListener = (path, cacheUpdater, name) => {
+                const collectionRef = collection(db, path);
+                const unsubscribe = onSnapshot(collectionRef, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    cacheUpdater(data); // Actualiza la variable de caché global
+                    console.log(`Global cache updated: ${name} (${data.length} items)`);
+                }, (error) => {
+                    // Ignorar errores de permisos que ocurren al cerrar sesión
+                    if (error.code === 'permission-denied' || error.code === 'unauthenticated') {
+                        console.log(`Global listener (${name}) stopped (permission).`);
+                    } else {
+                        console.error(`Error grave en global listener (${name}):`, error);
+                        // Opcional: notificar al usuario si no es un error de cierre de sesión
+                        if (!window.isLoggingOut) {
+                             window.showModal("Error de Sincronización", `No se pudieron cargar ${name}.`);
+                        }
+                    }
+                });
+                activeListeners.push(unsubscribe); // Añadir a la lista para limpieza
+            };
+
+            // Definir rutas
+            const CLIENTES_PATH = `artifacts/ventas-9a210/public/data/clientes`;
+            const SECTORES_PATH = `artifacts/ventas-9a210/public/data/sectores`;
+            const INVENTARIO_PATH = `artifacts/${appId}/users/${userId}/inventario`;
+            const RUBROS_PATH = `artifacts/${appId}/users/${userId}/rubros`;
+            const SEGMENTOS_PATH = `artifacts/${appId}/users/${userId}/segmentos`;
+            const MARCAS_PATH = `artifacts/${appId}/users/${userId}/marcas`;
+
+            // Iniciar todos los listeners
+            // Los datos se cargarán asíncronamente. Los módulos deben manejar el estado de carga inicial.
+            try {
+                createListener(INVENTARIO_PATH, (data) => _globalInventarioCache = data, 'Inventario');
+                createListener(CLIENTES_PATH, (data) => _globalClientesCache = data, 'Clientes');
+                createListener(SECTORES_PATH, (data) => _globalSectoresCache = data, 'Sectores');
+                createListener(RUBROS_PATH, (data) => _globalRubrosCache = data, 'Rubros');
+                createListener(SEGMENTOS_PATH, (data) => _globalSegmentosCache = data, 'Segmentos');
+                createListener(MARCAS_PATH, (data) => _globalMarcasCache = data, 'Marcas');
+                
+                // Opcional: Podríamos esperar a que la primera carga (getDocs) termine
+                // pero por ahora, seguimos la estrategia de 'solo listeners'
+                console.log("Global listeners attached.");
+
+            } catch (error) {
+                console.error("Error al iniciar listeners globales:", error);
+                window.showModal("Error Crítico", "No se pudieron iniciar los listeners de datos.");
+            }
         }
+        // --- FIN PASO 2 ---
 
         async function showMainView(currentUser) {
             userId = currentUser.uid; console.log("Showing Main View for user:", userId);
@@ -581,17 +615,35 @@
             mainContent.innerHTML = `<div class="p-4 flex items-center justify-center min-h-full"><div class="bg-white/90 p-8 rounded-lg shadow-xl text-center"><h2 class="text-2xl font-bold animate-pulse">Sincronizando...</h2></div></div>`;
             mainContent.classList.remove('hidden'); if (floatingControls) floatingControls.classList.add('hidden');
 
-             console.log("Starting data preload..."); try { await preloadAllData(); } catch (preloadError) { console.error("Error preloadAllData:", preloadError); } console.log("Preload attempted. Initializing modules...");
+            // --- INICIO PASO 2: Reemplazar preloadAllData con startGlobalListeners ---
+            console.log("Starting global listeners..."); 
+            // No necesitamos 'await' aquí, los listeners trabajarán en segundo plano.
+            // Los módulos se inicializarán inmediatamente.
+            startGlobalListeners();
+            console.log("Global listeners attached. Initializing modules...");
+            // --- FIN PASO 2 ---
 
-            // --- MODIFICADO: Añadir 'increment' a las dependencias ---
+            // --- INICIO PASO 2: Inyectar cachés globales en las dependencias ---
             const dependencies = {
                 db, userId, appId, mainContent, floatingControls, activeListeners,
                 userRole: window.userRole,
                 showMainMenu, showModal: window.showModal, showAddItemModal, populateDropdown,
                 collection, onSnapshot, doc, getDoc, addDoc, setDoc, deleteDoc, getDocs, writeBatch, runTransaction, query, where, orderBy, limit, startAfter,
-                increment, // <-- AÑADIDO: Proveer la función 'increment'
-                firebaseConfig
+                increment, // <-- Esto ya estaba de la refactorización anterior
+                firebaseConfig,
+
+                // Inyectar getters para las cachés globales
+                globalCaches: {
+                    getInventario: () => _globalInventarioCache,
+                    getClientes: () => _globalClientesCache,
+                    getSectores: () => _globalSectoresCache,
+                    getRubros: () => _globalRubrosCache,
+                    getSegmentos: () => _globalSegmentosCache,
+                    getMarcas: () => _globalMarcasCache
+                }
             };
+            // --- FIN PASO 2 ---
+
             let initSuccess = true;
              const modules = [
                 { name: 'Data', init: window.initData },
@@ -745,6 +797,14 @@
             if (window.showAdminOrProfileView) document.getElementById('profileAdminBtn')?.addEventListener('click', () => navigateTo(window.showAdminOrProfileView)); else console.error("showAdminOrProfileView not found");
             if (window.showDataView) document.getElementById('dataBtn')?.addEventListener('click', () => navigateTo(window.showDataView)); 
         }
+
+        // --- INICIO PASO 2: Eliminar la función preloadAllData ---
+        /*
+        async function preloadAllData() {
+             // ... ESTA FUNCIÓN HA SIDO ELIMINADA Y REEMPLAZADA POR startGlobalListeners ...
+        }
+        */
+        // --- FIN PASO 2 ---
 
         async function initializeAppAndListeners() {
             console.log("Initializing Firebase app...");
