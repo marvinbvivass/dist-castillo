@@ -1,15 +1,17 @@
 (function() {
     let _db, _userId, _userRole, _appId, _mainContent, _floatingControls, _activeListeners;
-    let _showMainMenu, _showModal, _showAddItemModal, _populateDropdown;
-    let _collection, _onSnapshot, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
+    let _showMainMenu, _showModal, _showAddItemModal;
+    let _collection, _doc, _addDoc, _setDoc, _deleteDoc, _query, _where, _getDocs, _writeBatch, _getDoc;
 
-    let _inventarioCache = [];
-    // *** MODIFICADO: Añadir marca a _lastFilters ***
+    // --- PASO 2: _globalCaches se inyectará ---
+    let _globalCaches;
+
+    // --- PASO 2: _inventarioCache, _marcasCache, etc. ya no son necesarios aquí ---
     let _lastFilters = { searchTerm: '', rubro: '', segmento: '', marca: '' };
-    let _inventarioListenerUnsubscribe = null;
-    let _marcasCache = null;
+    // --- PASO 2: Listener local eliminado ---
+    // let _inventarioListenerUnsubscribe = null; 
 
-    // Cache para ordenamiento de Segmentos/Marcas (se invalida si cambian)
+    // Cache para ordenamiento (aún necesario para la UI de ordenar)
     let _segmentoOrderCache = null;
     let _marcaOrderCacheBySegment = {};
 
@@ -21,13 +23,19 @@
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
-        _activeListeners = dependencies.activeListeners;
+        _activeListeners = dependencies.activeListeners; // Sigue aquí pero no se usa para listeners de datos
         _showMainMenu = dependencies.showMainMenu;
         _showModal = dependencies.showModal;
         _showAddItemModal = dependencies.showAddItemModal;
-        _populateDropdown = dependencies.populateDropdown;
+        
+        // --- PASO 2: Inyectar cachés globales ---
+        _globalCaches = dependencies.globalCaches; 
+        
+        // --- PASO 2: _onSnapshot y _populateDropdown se eliminan (o no se usan) ---
+        // _onSnapshot = dependencies.onSnapshot; 
+        // _populateDropdown = dependencies.populateDropdown; // Reemplazado por helper local
+        
         _collection = dependencies.collection;
-        _onSnapshot = dependencies.onSnapshot;
         _doc = dependencies.doc;
         _addDoc = dependencies.addDoc;
         _setDoc = dependencies.setDoc;
@@ -39,38 +47,68 @@
         _getDoc = dependencies.getDoc;
     };
 
-    // --- CORRECCIÓN: Manejador de errores de listener mejorado ---
-    function startMainInventarioListener(callback) {
-        if (_inventarioListenerUnsubscribe) {
-            try { _inventarioListenerUnsubscribe(); } catch(e) { console.warn("Error unsubscribing previous listener:", e); }
+    // --- PASO 2: Función eliminada ---
+    // function startMainInventarioListener(callback) { ... }
+
+    // --- PASO 2: Nueva función helper para poblar dropdowns desde caché ---
+    function _populateDropdownFromCache(cacheData, elementId, itemName, selectedValue = null) {
+        const selectElement = document.getElementById(elementId);
+        if (!selectElement) { 
+            console.warn(`Dropdown element not found: ${elementId}`);
+            return; 
         }
-        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
-        _inventarioListenerUnsubscribe = _onSnapshot(collectionRef, (snapshot) => {
-            _inventarioCache = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            if (callback && typeof callback === 'function') {
-                 try { callback(); } catch (cbError) { console.error("Listener callback error:", cbError); }
-            }
-        }, (error) => {
-             // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
-             if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
-                 console.log(`Inventory listener error ignored (assumed logout): ${error.code}`); 
-                 return; // Ignorar el error silenciosamente
-             }
-             console.error("Error en listener de inventario:", error);
-             if (error.code !== 'cancelled') { // No mostrar modal si es cancelación manual
-                 _showModal('Error de Conexión', 'No se pudo actualizar el inventario.');
-             }
+
+        const placeholderText = `Seleccione un ${itemName}`;
+        let placeholder = selectElement.querySelector('option[value=""]');
+        if (!placeholder) {
+            placeholder = document.createElement('option');
+            placeholder.value = "";
+            selectElement.prepend(placeholder);
+        }
+        placeholder.textContent = placeholderText;
+        
+        // Limpiar opciones antiguas
+        Array.from(selectElement.options).forEach(option => {
+            if (option.value !== "") selectElement.removeChild(option);
         });
-        _activeListeners.push(_inventarioListenerUnsubscribe);
+
+        try {
+            const items = cacheData
+                .map(s => s.name)
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+
+            let foundSelected = false;
+            items.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item;
+                option.textContent = item;
+                if (selectedValue && item === selectedValue) {
+                    option.selected = true;
+                    foundSelected = true;
+                }
+                selectElement.appendChild(option);
+            });
+
+            if (!foundSelected) {
+                selectElement.value = "";
+            }
+            selectElement.disabled = false;
+            
+        } catch (error) {
+            console.error(`Error populating dropdown ${elementId} from cache:`, error);
+            selectElement.innerHTML = `<option value="">Error al cargar ${itemName}s</option>`;
+            selectElement.disabled = true;
+        }
     }
-    // --- FIN CORRECCIÓN ---
+
 
     // Invalida la caché local de ordenamiento y notifica a otros módulos
     function invalidateSegmentOrderCache() {
         _segmentoOrderCache = null;
         _marcaOrderCacheBySegment = {};
-        _marcasCache = null; // También invalidar caché de marcas globales
-        // Notificar a otros módulos que usan el ordenamiento global
+        // _marcasCache = null; // Ya no se usa caché local de marcas
+        
         if (window.catalogoModule?.invalidateCache) {
              window.catalogoModule.invalidateCache();
         } else {
@@ -78,8 +116,6 @@
         }
          if (window.ventasModule?.invalidateCache) {
              window.ventasModule.invalidateCache();
-        } else {
-             // console.warn("Función invalidateCache de ventasModule no encontrada (puede ser normal).");
         }
         console.log("Cachés de ordenamiento invalidadas (Inventario y Global).");
     }
@@ -151,37 +187,33 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveOrderBtn').addEventListener('click', handleGuardarOrdenJerarquia);
         const rubroFilter = document.getElementById('ordenarRubroFilter');
-        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'ordenarRubroFilter', 'Rubro');
+        
+        // --- PASO 2: Usar helper de caché ---
+        _populateDropdownFromCache(_globalCaches.getRubros(), 'ordenarRubroFilter', 'Rubro');
+        
         rubroFilter.addEventListener('change', () => renderSortableHierarchy(rubroFilter.value));
         renderSortableHierarchy('');
     }
 
-    async function getAllMarcas() {
-        if (_marcasCache) return _marcasCache;
-        try {
-            const marcasRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/marcas`);
-            const snapshot = await _getDocs(marcasRef);
-            _marcasCache = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-            return _marcasCache;
-        } catch (error) { console.error("Error cargando marcas:", error); return []; }
-    }
+    // --- PASO 2: Función eliminada ---
+    // async function getAllMarcas() { ... }
 
-    // *** MODIFICADO: renderSortableHierarchy ahora OCULTA segmentos en lugar de atenuarlos ***
+    // --- PASO 2: Refactorizado para usar cachés globales ---
     async function renderSortableHierarchy(rubroFiltro = '') {
         const container = document.getElementById('segmentos-marcas-sortable-list');
         if (!container) return;
         container.innerHTML = `<p class="text-gray-500 text-center">Cargando...</p>`;
         try {
-            const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
-            let segSnapshot = await _getDocs(segmentosRef);
-            let allSegments = segSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // Leer segmentos desde caché
+            let allSegments = _globalCaches.getSegmentos();
 
-            // Asignar orden inicial si falta
+            // Asignar orden inicial si falta (esto sigue siendo una operación de ESCRITURA, por lo que está bien)
             const segsSinOrden = allSegments.filter(s => s.orden === undefined || s.orden === null);
             if (segsSinOrden.length > 0) {
                  const segsConOrden = allSegments.filter(s => s.orden !== undefined && s.orden !== null);
                  const maxOrden = segsConOrden.reduce((max, s) => Math.max(max, s.orden ?? -1), -1);
                  const batch = _writeBatch(_db);
+                 const segmentosRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
                  segsSinOrden.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                  segsSinOrden.forEach((seg, index) => {
                     const dRef = _doc(segmentosRef, seg.id);
@@ -189,24 +221,22 @@
                     batch.update(dRef, { orden: nOrden });
                     seg.orden = nOrden;
                  });
-                 await batch.commit();
-                 allSegments = [...segsConOrden, ...segsSinOrden];
+                 await batch.commit(); // Esperar a que se guarden los nuevos órdenes
+                 allSegments = [...segsConOrden, ...segsSinOrden]; // Combinar
                  console.log("Orden inicial asignado a segmentos.");
-             }
-             // Ordenar TODOS los segmentos por el campo 'orden'
+                 // El listener global actualizará la caché, pero la actualizamos localmente para el render
+            }
             allSegments.sort((a, b) => (a.orden ?? 9999) - (b.orden ?? 9999));
 
-            const allMarcas = await getAllMarcas();
+            // Leer marcas desde caché
+            const allMarcas = _globalCaches.getMarcas();
             const marcasMap = new Map(allMarcas.map(m => [m.name, m.id]));
 
-            // Obtener productos filtrados por rubro (si aplica) para saber qué ocultar y qué marcas mostrar
-            let prodsQuery = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            // Leer inventario desde caché y filtrar
+            let prodsEnRubro = _globalCaches.getInventario();
             if (rubroFiltro) {
-                prodsQuery = _query(prodsQuery, _where("rubro", "==", rubroFiltro));
+                prodsEnRubro = prodsEnRubro.filter(p => p.rubro === rubroFiltro);
             }
-            const prodSnap = await _getDocs(prodsQuery);
-            const prodsEnRubro = prodSnap.docs.map(d => d.data());
-            // Crear un Set con los nombres de segmentos que SÍ tienen productos en el rubro filtrado
             const segmentsWithProductsInRubro = rubroFiltro ? new Set(prodsEnRubro.map(p => p.segmento).filter(Boolean)) : null;
 
             container.innerHTML = '';
@@ -215,7 +245,6 @@
                 return;
             }
 
-            // Renderizar TODOS los segmentos
             allSegments.forEach(seg => {
                 const segCont = document.createElement('div');
                 segCont.className = 'segmento-container border border-gray-300 rounded-lg mb-3 bg-white shadow';
@@ -223,10 +252,9 @@
                 segCont.dataset.segmentoName = seg.name;
                 segCont.dataset.type = 'segmento';
 
-                // Ocultar si hay filtro y este segmento no tiene productos en ese rubro
                 const segmentHasProductsInRubro = !segmentsWithProductsInRubro || segmentsWithProductsInRubro.has(seg.name);
                 if (rubroFiltro && !segmentHasProductsInRubro) {
-                    segCont.classList.add('hidden'); // <-- CAMBIO AQUÍ: Usar hidden en lugar de opacity-50
+                    segCont.classList.add('hidden');
                 }
 
                 const segTitle = document.createElement('div');
@@ -239,13 +267,11 @@
                 marcasList.className = 'marcas-sortable-list p-3 space-y-1 bg-white rounded-b-lg';
                 marcasList.dataset.segmentoParent = seg.id;
 
-                // Obtener marcas únicas en este segmento Y en el rubro filtrado (si aplica)
                 const marcasEnSeg = [...new Set(prodsEnRubro
                     .filter(p => p.segmento === seg.name && p.marca)
                     .map(p => p.marca)
                 )];
 
-                // Ordenar marcas según preferencia del segmento o alfabéticamente
                 const marcaOrderPref = seg.marcaOrder || [];
                 marcasEnSeg.sort((a, b) => {
                     const indexA = marcaOrderPref.indexOf(a);
@@ -275,7 +301,6 @@
                 container.appendChild(segCont);
             });
 
-            // Añadir manejadores de Drag & Drop
             addDragAndDropHandlersHierarchy(container);
 
         } catch (error) {
@@ -286,168 +311,137 @@
 
 
     function addDragAndDropHandlersHierarchy(container) {
-        let draggedItem = null; // El elemento que se está arrastrando (<li> o <div>)
-        let draggedItemElement = null; // Mismo que draggedItem, redundante?
-        let draggedType = null; // 'segmento' o 'marca'
-        let sourceList = null; // El <ul> o el <div> contenedor padre del elemento arrastrado
-        let placeholder = null; // El elemento visual que indica dónde se soltará
+        let draggedItem = null;
+        let draggedItemElement = null;
+        let draggedType = null;
+        let sourceList = null;
+        let placeholder = null;
 
-        // Crea el placeholder visual según el tipo
         const createPlaceholder = (type) => {
-            if(placeholder) placeholder.remove(); // Elimina placeholder anterior si existe
+            if(placeholder) placeholder.remove();
             placeholder = document.createElement(type === 'segmento' ? 'div' : 'li');
             placeholder.className = type === 'segmento' ? 'segmento-placeholder' : 'marca-placeholder';
-            // Estilos definidos en CSS
             placeholder.style.height = type === 'segmento' ? '60px' : '30px';
             placeholder.style.background = type === 'segmento' ? '#dbeafe' : '#e0e7ff';
             placeholder.style.border = type === 'segmento' ? '2px dashed #3b82f6' : '1px dashed #6366f1';
             placeholder.style.borderRadius = type === 'segmento' ? '0.5rem' : '0.25rem';
             placeholder.style.margin = type === 'segmento' ? '1rem 0' : '0.25rem 0';
-            if(type === 'marca') placeholder.style.listStyleType = 'none'; // Quitar viñeta si es marca
+            if(type === 'marca') placeholder.style.listStyleType = 'none';
         };
 
-        // --- Evento dragstart: Cuando se empieza a arrastrar ---
         container.addEventListener('dragstart', e => {
-            // Asegurarse de que el target sea un elemento arrastrable
-            draggedItemElement = e.target.closest('.segmento-title, .marca-item'); // Cambiado a .segmento-title
-            if (!draggedItemElement) { e.preventDefault(); return; } // Si no es arrastrable, no hacer nada
+            draggedItemElement = e.target.closest('.segmento-title, .marca-item');
+            if (!draggedItemElement) { e.preventDefault(); return; }
 
-            draggedType = draggedItemElement.dataset.type || (draggedItemElement.classList.contains('segmento-title') ? 'segmento' : null); // Determinar tipo
-             // Si es segmento, el item real a mover es el contenedor padre
+            draggedType = draggedItemElement.dataset.type || (draggedItemElement.classList.contains('segmento-title') ? 'segmento' : null);
             draggedItem = (draggedType === 'segmento') ? draggedItemElement.closest('.segmento-container') : draggedItemElement;
 
-            if (!draggedType || !draggedItem) { e.preventDefault(); return; } // Salir si algo falla
+            if (!draggedType || !draggedItem) { e.preventDefault(); return; }
 
-            sourceList = draggedItem.parentNode; // Guardar el contenedor original
+            sourceList = draggedItem.parentNode;
 
-            // Efecto visual: semi-transparente
             setTimeout(() => { if (draggedItem) draggedItem.classList.add('opacity-50'); }, 0);
             e.dataTransfer.effectAllowed = 'move';
-            createPlaceholder(draggedType); // Crear el placeholder para este tipo
+            createPlaceholder(draggedType);
         });
 
-        // --- Evento dragend: Cuando se suelta (después de 'drop') ---
         container.addEventListener('dragend', e => {
-            if (draggedItem) draggedItem.classList.remove('opacity-50'); // Restaurar opacidad
-            // Limpiar variables globales
+            if (draggedItem) draggedItem.classList.remove('opacity-50');
             draggedItem = null; draggedItemElement = null; draggedType = null; sourceList = null;
-            if (placeholder) placeholder.remove(); placeholder = null; // Eliminar placeholder
+            if (placeholder) placeholder.remove(); placeholder = null;
         });
 
-        // --- Evento dragover: Mientras se arrastra sobre un área válida ---
         container.addEventListener('dragover', e => {
-            e.preventDefault(); // Necesario para permitir 'drop'
-            if (!draggedItem || !placeholder) return; // Salir si no hay item arrastrado
+            e.preventDefault();
+            if (!draggedItem || !placeholder) return;
 
-            // Determinar el contenedor destino válido
             const targetList = e.target.closest(draggedType === 'segmento' ? '#segmentos-marcas-sortable-list' : '.marcas-sortable-list');
 
-            // Validar si el drop es permitido
-            // 1. Debe haber un targetList
-            // 2. Si es marca, SÓLO se puede soltar en su lista original (sourceList)
             if (!targetList || (draggedType === 'marca' && targetList !== sourceList)) {
-                if (placeholder.parentNode) placeholder.remove(); // Quitar placeholder si el área no es válida
-                e.dataTransfer.dropEffect = 'none'; // Cursor "no permitido"
+                if (placeholder.parentNode) placeholder.remove();
+                e.dataTransfer.dropEffect = 'none';
                 return;
             }
 
-            e.dataTransfer.dropEffect = 'move'; // Cursor "mover"
+            e.dataTransfer.dropEffect = 'move';
 
-            // Calcular dónde insertar el placeholder
             const afterElement = getDragAfterElementHierarchy(targetList, e.clientY, draggedType);
             if (afterElement === null) {
-                targetList.appendChild(placeholder); // Añadir al final
+                targetList.appendChild(placeholder);
             } else {
-                targetList.insertBefore(placeholder, afterElement); // Añadir antes del elemento detectado
+                targetList.insertBefore(placeholder, afterElement);
             }
         });
 
-        // --- Evento drop: Cuando se suelta el elemento ---
         container.addEventListener('drop', e => {
-            e.preventDefault(); // Prevenir comportamiento por defecto
+            e.preventDefault();
             const targetList = e.target.closest(draggedType === 'segmento' ? '#segmentos-marcas-sortable-list' : '.marcas-sortable-list');
 
-            // Mover el elemento arrastrado a la posición del placeholder
-            // Asegurarse de que todas las condiciones son válidas
             if (draggedItem && placeholder && placeholder.parentNode && targetList && !(draggedType === 'marca' && targetList !== sourceList) ) {
-                placeholder.parentNode.insertBefore(draggedItem, placeholder); // Mover el item real
+                placeholder.parentNode.insertBefore(draggedItem, placeholder);
             }
 
-            // Limpieza final (similar a dragend)
             if (draggedItem) draggedItem.classList.remove('opacity-50');
             if (placeholder) placeholder.remove();
             draggedItem = null; draggedItemElement = null; draggedType = null; sourceList = null; placeholder = null;
         });
 
-        // --- Evento dragleave: Cuando el cursor sale de un área de drop válida ---
         container.addEventListener('dragleave', e => {
-            // Eliminar placeholder SÓLO si el cursor sale del contenedor principal Y hay un placeholder
             if (!container.contains(e.relatedTarget) && placeholder) {
                  placeholder.remove();
                  placeholder = null;
             }
         });
 
-        // Función auxiliar para encontrar el elemento sobre el cual se está arrastrando
         function getDragAfterElementHierarchy(listContainer, y, itemType) {
-            const selector = itemType === 'segmento' ? '.segmento-container:not(.opacity-50)' : '.marca-item:not(.opacity-50)'; // Excluir el item que se arrastra
-            // Obtener todos los elementos arrastrables DENTRO del listContainer actual, excepto el placeholder y el item que se arrastra
+            const selector = itemType === 'segmento' ? '.segmento-container:not(.opacity-50)' : '.marca-item:not(.opacity-50)';
             const draggables = [...listContainer.children].filter(c => c.matches(selector) && c !== draggedItem && !c.matches('.segmento-placeholder') && !c.matches('.marca-placeholder'));
 
-            // Encontrar el elemento más cercano DESPUÉS del cursor
             return draggables.reduce((closest, child) => {
                 const box = child.getBoundingClientRect();
-                const offset = y - box.top - box.height / 2; // Distancia vertical desde el centro del elemento
-                // Si el offset es negativo (cursor está arriba del centro) y es más cercano que el anterior
+                const offset = y - box.top - box.height / 2;
                 if (offset < 0 && offset > closest.offset) {
                     return { offset: offset, element: child };
                 } else {
                     return closest;
                 }
-            }, { offset: Number.NEGATIVE_INFINITY }).element; // Retorna el elemento o null si no hay ninguno después
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
         }
     }
 
     async function handleGuardarOrdenJerarquia() {
         if (_userRole !== 'admin') return;
-        const segConts = document.querySelectorAll('#segmentos-marcas-sortable-list .segmento-container'); // Obtener TODOS los divs de segmento, incluso los ocultos
+        const segConts = document.querySelectorAll('#segmentos-marcas-sortable-list .segmento-container');
         if (segConts.length === 0) { _showModal('Aviso', 'No hay elementos para ordenar.'); return; }
         _showModal('Progreso', 'Guardando nuevo orden...');
         const batch = _writeBatch(_db);
         let segOrderChanged = false, marcaOrderChanged = false;
-        const orderedSegIds = []; // Guardar IDs de segmento en el nuevo orden para propagación
-        const currentSegmentDocs = {}; // Cache de datos actuales de segmentos para comparación
+        const orderedSegIds = [];
+        const currentSegmentDocs = {};
 
-        // Precargar datos actuales de segmentos para comparar
         try {
             const segsRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`);
             const segsSnap = await _getDocs(segsRef);
             segsSnap.docs.forEach(doc => { currentSegmentDocs[doc.id] = doc.data(); });
         } catch (e) {
             console.warn("No se pudieron precargar los datos de segmentos:", e);
-            // Continuar igual, la comparación fallará y se marcará como cambiado
         }
 
-
-        // Iterar sobre los contenedores de segmento en el orden visual actual (incluye ocultos)
         segConts.forEach((segCont, index) => {
             const segId = segCont.dataset.segmentoId;
-            orderedSegIds.push(segId); // Guardar ID en orden
+            orderedSegIds.push(segId);
             const segRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/segmentos`, segId);
-            const currentSegData = currentSegmentDocs[segId] || {}; // Datos actuales o vacío
+            const currentSegData = currentSegmentDocs[segId] || {};
 
-            // Actualizar orden del segmento si cambió
             if (currentSegData.orden === undefined || currentSegData.orden !== index) {
                 batch.update(segRef, { orden: index });
                 segOrderChanged = true;
             }
 
-            // Obtener el nuevo orden de marcas dentro de este segmento
             const marcaItems = segCont.querySelectorAll('.marcas-sortable-list .marca-item');
             const newMarcaOrder = Array.from(marcaItems).map(item => item.dataset.marcaName);
             const currentMarcaOrder = currentSegData.marcaOrder || [];
 
-            // Actualizar orden de marcas si cambió
             if (JSON.stringify(newMarcaOrder) !== JSON.stringify(currentMarcaOrder)) {
                 batch.update(segRef, { marcaOrder: newMarcaOrder });
                 marcaOrderChanged = true;
@@ -460,19 +454,17 @@
         }
 
         try {
-            await batch.commit(); // Guardar cambios locales (admin)
-            invalidateSegmentOrderCache(); // Limpiar caché local y notificar otros módulos
+            await batch.commit();
+            invalidateSegmentOrderCache();
             _showModal('Progreso', 'Orden guardado localmente. Propagando a usuarios...');
             let propSuccess = true;
 
-            // Propagar orden de segmentos si cambió
             if (segOrderChanged && window.adminModule?.propagateCategoryOrderChange) {
                 try {
                     await window.adminModule.propagateCategoryOrderChange('segmentos', orderedSegIds);
                 } catch (e) { propSuccess = false; console.error("Error propagando orden segmentos:", e); }
             }
 
-            // Propagar orden de marcas por cada segmento si cambió
             if (marcaOrderChanged && window.adminModule?.propagateCategoryChange) {
                 for (const segCont of segConts) {
                      const segId=segCont.dataset.segmentoId;
@@ -480,10 +472,9 @@
                      const newMarcaOrder=Array.from(marcaItems).map(item=>item.dataset.marcaName);
                      try {
                          const segRef=_doc(_db,`artifacts/${_appId}/users/${_userId}/segmentos`,segId);
-                         const segSnap=await _getDoc(segRef); // Obtener datos actualizados post-commit
+                         const segSnap=await _getDoc(segRef);
                          if(segSnap.exists()){
                              const segDataCompleto = segSnap.data();
-                             // No es necesario añadir marcaOrder aquí, ya se guardó en el batch
                              await window.adminModule.propagateCategoryChange('segmentos', segId, segDataCompleto);
                          }
                     } catch (e) {
@@ -522,15 +513,23 @@
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         document.getElementById('saveAjusteBtn').addEventListener('click', handleGuardarAjusteMasivo);
         const renderCallback = () => renderAjusteMasivoList();
-        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'ajuste-filter-rubro', 'Rubro');
+        
+        // --- PASO 2: Usar helper de caché ---
+        _populateDropdownFromCache(_globalCaches.getRubros(), 'ajuste-filter-rubro', 'Rubro');
+        
         setupFiltros('ajuste', renderCallback);
-        startMainInventarioListener(renderCallback);
+        
+        // --- PASO 2: Eliminar listener, solo renderizar ---
+        renderCallback();
     }
 
     async function renderAjusteMasivoList() {
         const container = document.getElementById('ajusteListContainer');
         if (!container) return;
-        let productos = [..._inventarioCache];
+        
+        // --- PASO 2: Leer de la caché global ---
+        let productos = _globalCaches.getInventario();
+        
         productos = productos.filter(p => {
              const searchTermLower = (_lastFilters.searchTerm || '').toLowerCase();
              const textMatch = !searchTermLower || (p.presentacion && p.presentacion.toLowerCase().includes(searchTermLower)) || (p.marca && p.marca.toLowerCase().includes(searchTermLower)) || (p.segmento && p.segmento.toLowerCase().includes(searchTermLower));
@@ -539,9 +538,14 @@
              const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
              return textMatch && rubroMatch && segmentoMatch && marcaMatch;
         });
+        
+        // La función getGlobalProductSortFunction aún depende de 'catalogo.js' y sus propias lecturas.
+        // Esto se refactorizará cuando se actualice 'catalogo.js'.
         const sortFunction = await window.getGlobalProductSortFunction();
         productos.sort(sortFunction);
+        
         if (productos.length === 0) { container.innerHTML = `<p class="text-gray-500 text-center p-4">No hay productos que coincidan con los filtros.</p>`; return; }
+        
         let tableHTML = `<table class="min-w-full bg-white text-sm"><thead class="bg-gray-100 sticky top-0 z-10"><tr><th class="py-2 px-4 border-b text-left">Producto</th><th class="py-2 px-4 border-b text-center w-40">Cant. Nueva</th></tr></thead><tbody>`;
         let lastHeaderKey = null; const firstSortKey = window._sortPreferenceCache ? window._sortPreferenceCache[0] : 'segmento';
         
@@ -552,13 +556,11 @@
             const vPor = p.ventaPor || {und:true};
             const cStockU = p.cantidadUnidades||0;
 
-            // --- Lógica para el <select> o texto estático ---
             let optionsHTML = '';
             let factors = {};
             let defaultUnit = 'und';
             let unitLabels = { cj: 'Cj.', paq: 'Paq.', und: 'Und.' };
 
-            // Construir opciones y factores
             if(vPor.cj){ 
                 factors['cj'] = p.unidadesPorCaja||1;
                 optionsHTML += `<option value="cj" data-factor="${factors['cj']}">Cj.</option>`; 
@@ -572,31 +574,26 @@
             if(vPor.und){ 
                 factors['und'] = 1;
                 optionsHTML += `<option value="und" data-factor="1">Und.</option>`; 
-                // defaultUnit es 'und' por defecto, así que no es necesario cambiarlo si es el único
             }
             
             const numOptions = Object.keys(factors).length;
             let unitElementHTML = '';
 
             if (numOptions > 1) {
-                // Hay múltiples opciones: renderizar <select>
                 optionsHTML = optionsHTML.replace(`value="${defaultUnit}"`, `value="${defaultUnit}" selected`);
                 unitElementHTML = `
                     <select data-doc-id="${p.id}" class="w-20 ml-2 p-1 border rounded-lg text-sm bg-gray-50 ajuste-unit-select">
                         ${optionsHTML}
                     </select>`;
             } else {
-                // Solo hay una opción (o ninguna, aunque 'und' es el fallback)
-                // Si no hay factores (raro), default a 'und'
                 if (numOptions === 0) {
                     factors['und'] = 1;
                     defaultUnit = 'und';
                 }
-                // Si hay 1, defaultUnit ya se habrá establecido a 'cj', 'paq', o 'und'
                 const singleUnitKey = numOptions === 1 ? Object.keys(factors)[0] : 'und';
                 const singleUnitLabel = unitLabels[singleUnitKey];
                 const singleUnitFactor = factors[singleUnitKey];
-                defaultUnit = singleUnitKey; // Asegurarse de que defaultUnit sea el correcto
+                defaultUnit = singleUnitKey;
 
                 unitElementHTML = `
                     <span data-doc-id="${p.id}" 
@@ -607,7 +604,7 @@
                     </span>`;
             }
 
-            const cStockDispU = Math.floor(cStockU / (factors[defaultUnit] || 1)); // Cantidad actual en la unidad de medida ELEGIDA
+            const cStockDispU = Math.floor(cStockU / (factors[defaultUnit] || 1));
 
             tableHTML += `
                 <tr class="hover:bg-gray-50">
@@ -626,20 +623,18 @@
         tableHTML += `</tbody></table>`; 
         container.innerHTML = tableHTML;
         
-        // --- Añadir listeners a los <select> ---
-        // Es necesario añadir listeners para recalcular el valor del input si el usuario cambia la unidad
         container.querySelectorAll('.ajuste-unit-select').forEach(select => {
             select.addEventListener('change', (e) => {
                 const docId = e.target.dataset.docId;
                 const input = container.querySelector(`.ajuste-qty-input[data-doc-id="${docId}"]`);
-                const producto = _inventarioCache.find(p => p.id === docId);
+                // --- PASO 2: Leer de la caché global ---
+                const producto = _globalCaches.getInventario().find(p => p.id === docId);
                 if (!input || !producto) return;
 
                 const selectedOption = e.target.options[e.target.selectedIndex];
                 const newFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
                 const stockBase = producto.cantidadUnidades || 0;
                 
-                // Recalcular y mostrar el stock actual en la *nueva* unidad seleccionada
                 input.value = Math.floor(stockBase / newFactor);
             });
         });
@@ -652,23 +647,21 @@
         let changesCount = 0;
         let invalidValues = false;
         
-        // Limpiar estilos de error
         inputs.forEach(i => i.classList.remove('border-red-500','ring-1','ring-red-500'));
 
         inputs.forEach(input => {
             const docId = input.dataset.docId;
             const newValueStr = input.value.trim();
             const newValue = parseInt(newValueStr, 10);
-            const productoOriginal = _inventarioCache.find(p => p.id === docId);
+            // --- PASO 2: Leer de la caché global ---
+            const productoOriginal = _globalCaches.getInventario().find(p => p.id === docId);
 
-            // --- Lógica para obtener el factor ---
             const unitSelect = document.querySelector(`.ajuste-unit-select[data-doc-id="${docId}"]`);
             const unitStatic = document.querySelector(`.ajuste-unit-static[data-doc-id="${docId}"]`);
             
             let conversionFactor = 1;
 
             if (unitSelect) {
-                // Es un dropdown
                 const selectedUnit = unitSelect.value;
                 const selectedOption = unitSelect.querySelector(`option[value="${selectedUnit}"]`);
                 if (!selectedOption) {
@@ -678,30 +671,25 @@
                 }
                 conversionFactor = parseInt(selectedOption.dataset.factor, 10) || 1;
             } else if (unitStatic) {
-                // Es un span estático
                 conversionFactor = parseInt(unitStatic.dataset.factor, 10) || 1;
             } else {
-                // Error: No se encontró ni select ni span
                 console.warn(`No se encontró elemento de unidad (select o static) para ${docId}`);
                 invalidValues = true;
-                return; // No se puede procesar
+                return;
             }
-            // --- Fin lógica factor ---
 
-             // Validar entrada: no vacío, número entero no negativo
             if (newValueStr === '' || isNaN(newValue) || !Number.isInteger(newValue) || newValue < 0) {
                 if(newValueStr !== '') {
                     input.classList.add('border-red-500','ring-1','ring-red-500');
                     invalidValues = true;
                 }
-                return; // Saltar este input si está vacío o inválido
+                return;
             }
 
             if (productoOriginal) {
                 const nuevaCantidadUnidades = newValue * conversionFactor;
                 const cantidadActualUnidades = productoOriginal.cantidadUnidades || 0;
 
-                // Solo añadir al batch si el valor calculado en unidades base es diferente
                 if (cantidadActualUnidades !== nuevaCantidadUnidades) {
                     const docRef = _doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, docId);
                     batch.update(docRef, { cantidadUnidades: nuevaCantidadUnidades });
@@ -720,14 +708,13 @@
             try {
                 await batch.commit();
                 _showModal('Éxito',`Se actualizaron ${changesCount} producto(s) correctamente.`);
-                // El listener actualizará la UI, pero forzamos un re-render para que los <input>
-                // muestren el valor correcto en la unidad seleccionada por defecto.
+                // El listener global actualizará la caché, pero forzamos un re-render
                 renderAjusteMasivoList();
             } catch (error) {
                 console.error("Error al guardar ajuste masivo:", error);
                 _showModal('Error',`Ocurrió un error al guardar: ${error.message}`);
             }
-        }, 'Sí, Actualizar', null, true); // true para triggerConfirmLogic
+        }, 'Sí, Actualizar', null, true);
     }
 
 
@@ -769,39 +756,81 @@
         renderDataListForEditing('marcas', 'marcas-list', 'Marca');
     }
 
+    // --- PASO 2: Refactorizado para usar caché global ---
     function renderDataListForEditing(collectionName, containerId, itemName) {
-        const container = document.getElementById(containerId); if (!container) return; container.innerHTML = `<p class="text-gray-500 text-sm p-2">Cargando...</p>`;
-        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`);
-        const unsubscribe = _onSnapshot(collectionRef, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            if (items.length === 0) { container.innerHTML = `<p class="text-gray-500 text-sm p-2">No hay ${itemName.toLowerCase()}s definidos.</p>`; return; }
-            container.innerHTML = items.map(item => `<div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-200"><span class="text-gray-800 text-sm flex-grow mr-2">${item.name}</span><div class="flex-shrink-0 space-x-1"><button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}', '${item.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" title="Eliminar">X</button></div></div>`).join('');
-        }, (error) => { 
-            // FIX: Ignorar errores de permisos/autenticación (comunes al cerrar sesión)
-            if (error.code === 'permission-denied' || error.code === 'unauthenticated') { 
-                console.log(`Listener ${collectionName} error ignored (assumed logout): ${error.code}`); 
-                return; // Ignorar el error silenciosamente
-            }
-            console.error(`Error listener ${collectionName}:`, error); 
-            container.innerHTML = `<p class="text-red-500 text-center p-2">Error al cargar.</p>`; 
-        });
-        _activeListeners.push(unsubscribe);
+        const container = document.getElementById(containerId); 
+        if (!container) return; 
+        container.innerHTML = `<p class="text-gray-500 text-sm p-2">Cargando...</p>`;
+
+        let cacheData;
+        if (collectionName === 'rubros') cacheData = _globalCaches.getRubros();
+        else if (collectionName === 'segmentos') cacheData = _globalCaches.getSegmentos();
+        else if (collectionName === 'marcas') cacheData = _globalCaches.getMarcas();
+        else { container.innerHTML = `<p class="text-red-500">Error: Colección no reconocida.</p>`; return; }
+
+        const items = [...cacheData].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        
+        if (items.length === 0) { 
+            container.innerHTML = `<p class="text-gray-500 text-sm p-2">No hay ${itemName.toLowerCase()}s definidos.</p>`; 
+            return; 
+        }
+        
+        container.innerHTML = items.map(item => `
+            <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-gray-200">
+                <span class="text-gray-800 text-sm flex-grow mr-2">${item.name}</span>
+                <div class="flex-shrink-0 space-x-1">
+                    <button onclick="window.inventarioModule.handleDeleteDataItem('${collectionName}', '${item.name}', '${itemName}', '${item.id}')" class="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600" title="Eliminar">X</button>
+                </div>
+            </div>`).join('');
     }
 
     // Llama al modal de agregar, que ahora maneja la propagación si es admin
     function showAddCategoryModal(collectionName, itemName) {
-        // La lógica de propagación ahora está dentro de showAddItemModal en index.html
          _showAddItemModal(collectionName, itemName);
     }
 
 
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function handleDeleteDataItem(collectionName, itemName, itemType, itemId) {
         if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; }
         const fieldMap = { rubros: 'rubro', segmentos: 'segmento', marcas: 'marca' }; const fieldName = fieldMap[collectionName]; if (!fieldName) { _showModal('Error Interno', 'Tipo no reconocido.'); return; }
-        _showModal('Progreso', `Verificando uso de "${itemName}"...`); const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const q = _query(inventarioRef, _where(fieldName, "==", itemName));
-        try { const usageSnapshot = await _getDocs(q); if (!usageSnapshot.empty) { _showModal('Error al Eliminar', `"${itemName}" está en uso por ${usageSnapshot.size} producto(s). No se puede eliminar.`); return; }
-            _showModal('Confirmar Eliminación', `Eliminar ${itemType} "${itemName}"? Se propagará y es IRREVERSIBLE.`, async () => { _showModal('Progreso', `Eliminando "${itemName}"...`); try { await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemId)); if (window.adminModule?.propagateCategoryChange) { _showModal('Progreso', `Propagando eliminación...`); await window.adminModule.propagateCategoryChange(collectionName, itemId, null); } else { console.warn('Propagate function not found.'); } if (collectionName === 'segmentos') invalidateSegmentOrderCache(); _showModal('Éxito', `${itemType} "${itemName}" eliminado.`); } catch (deleteError) { console.error(`Error eliminando/propagando ${itemName}:`, deleteError); _showModal('Error', `Error: ${deleteError.message}`); } }, 'Sí, Eliminar', null, true);
-        } catch (error) { console.error(`Error verificando uso ${itemName}:`, error); _showModal('Error', `Error al verificar: ${error.message}`); }
+        
+        _showModal('Progreso', `Verificando uso de "${itemName}"...`);
+        
+        try {
+            // Comprobar uso en caché
+            const enUso = _globalCaches.getInventario().some(p => p[fieldName] === itemName);
+            if (enUso) { 
+                _showModal('Error al Eliminar', `"${itemName}" está en uso por al menos 1 producto. No se puede eliminar.`); 
+                return; 
+            }
+
+            _showModal('Confirmar Eliminación', `Eliminar ${itemType} "${itemName}"? Se propagará y es IRREVERSIBLE.`, async () => { 
+                _showModal('Progreso', `Eliminando "${itemName}"...`); 
+                try { 
+                    await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/${collectionName}`, itemId)); 
+                    if (window.adminModule?.propagateCategoryChange) { 
+                        _showModal('Progreso', `Propagando eliminación...`); 
+                        await window.adminModule.propagateCategoryChange(collectionName, itemId, null); 
+                    } else { 
+                        console.warn('Propagate function not found.'); 
+                    } 
+                    if (collectionName === 'segmentos') invalidateSegmentOrderCache(); 
+                    _showModal('Éxito', `${itemType} "${itemName}" eliminado.`);
+                    
+                    // Refrescar manualmente la lista
+                    const containerId = `${collectionName}-list`;
+                    renderDataListForEditing(collectionName, containerId, itemType);
+
+                } catch (deleteError) { 
+                    console.error(`Error eliminando/propagando ${itemName}:`, deleteError); 
+                    _showModal('Error', `Error: ${deleteError.message}`); 
+                } 
+            }, 'Sí, Eliminar', null, true);
+        } catch (error) { 
+            console.error(`Error verificando uso ${itemName}:`, error); 
+            _showModal('Error', `Error al verificar: ${error.message}`); 
+        }
     }
 
     function showAgregarProductoView() {
@@ -818,7 +847,11 @@
                 <button id="backToInventarioBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button>
             </div> </div> </div>
         `;
-        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'rubro', 'Rubro'); _populateDropdown(`artifacts/${_appId}/users/${_userId}/segmentos`, 'segmento', 'Segmento'); _populateDropdown(`artifacts/${_appId}/users/${_userId}/marcas`, 'marca', 'Marca');
+        // --- PASO 2: Usar helper de caché ---
+        _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro'); 
+        _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento'); 
+        _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca');
+        
         const vPorCont=document.getElementById('ventaPorContainer'), pCont=document.getElementById('preciosContainer'), eCont=document.getElementById('empaquesContainer'), mVacioCheck=document.getElementById('manejaVaciosCheck'), tVacioCont=document.getElementById('tipoVacioContainer'), tVacioSel=document.getElementById('tipoVacioSelect');
         const updateDynInputs=()=>{eCont.innerHTML=''; pCont.innerHTML=''; const vPaq=document.getElementById('ventaPorPaq').checked, vCj=document.getElementById('ventaPorCj').checked, vUnd=document.getElementById('ventaPorUnd').checked; if(vPaq)eCont.innerHTML+=`<div><label class="text-sm">Und/Paq:</label><input type="number" id="unidadesPorPaquete" min="1" class="w-full px-2 py-1 border rounded" value="1" required></div>`; if(vCj)eCont.innerHTML+=`<div><label class="text-sm">Und/Cj:</label><input type="number" id="unidadesPorCaja" min="1" class="w-full px-2 py-1 border rounded" value="1" required></div>`; if(vUnd)pCont.innerHTML+=`<div><label class="text-sm">Precio Und.</label><input type="number" step="0.01" min="0" id="precioUnd" class="w-full px-2 py-1 border rounded" required></div>`; if(vPaq)pCont.innerHTML+=`<div><label class="text-sm">Precio Paq.</label><input type="number" step="0.01" min="0" id="precioPaq" class="w-full px-2 py-1 border rounded" required></div>`; if(vCj)pCont.innerHTML+=`<div><label class="text-sm">Precio Cj.</label><input type="number" step="0.01" min="0" id="precioCj" class="w-full px-2 py-1 border rounded" required></div>`; pCont.querySelectorAll('input').forEach(i=>{i.required=document.getElementById(`ventaPor${i.id.substring(6)}`)?.checked??false;});};
         mVacioCheck.addEventListener('change',()=>{if(mVacioCheck.checked){tVacioCont.classList.remove('hidden');tVacioSel.required=true;}else{tVacioCont.classList.add('hidden');tVacioSel.required=false;tVacioSel.value='';}}); vPorCont.addEventListener('change',updateDynInputs); updateDynInputs();
@@ -831,36 +864,59 @@
         return { rubro: document.getElementById('rubro').value, segmento: document.getElementById('segmento').value, marca: document.getElementById('marca').value, presentacion: document.getElementById('presentacion').value.trim(), unidadesPorPaquete: undPaq, unidadesPorCaja: undCj, ventaPor: { und: document.getElementById('ventaPorUnd').checked, paq: document.getElementById('ventaPorPaq').checked, cj: document.getElementById('ventaPorCj').checked }, manejaVacios: manejaVac, tipoVacio: manejaVac ? tipoVac : null, precios: precios, precioPorUnidad: pFinalUnd, cantidadUnidades: cantUnd, iva: parseInt(document.getElementById('ivaTipo').value, 10) };
     }
 
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function agregarProducto(e) {
         e.preventDefault(); if (_userRole !== 'admin') return; const pData = getProductoDataFromForm(false); if (!pData.rubro||!pData.segmento||!pData.marca||!pData.presentacion){_showModal('Error','Completa campos requeridos.');return;} if (!pData.ventaPor.und&&!pData.ventaPor.paq&&!pData.ventaPor.cj){_showModal('Error','Selecciona al menos una forma de venta.');return;} if (pData.manejaVacios&&!pData.tipoVacio){_showModal('Error','Si maneja vacío, selecciona el tipo.');document.getElementById('tipoVacioSelect')?.focus();return;} let pValido=(pData.ventaPor.und&&pData.precios.und>0)||(pData.ventaPor.paq&&pData.precios.paq>0)||(pData.ventaPor.cj&&pData.precios.cj>0); if(!pValido){_showModal('Error','Ingresa al menos un precio válido (> 0) para la forma de venta seleccionada.');document.querySelector('#preciosContainer input[required]')?.focus();return;} _showModal('Progreso','Verificando duplicados...');
-        try { const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const q = _query(invRef, _where("rubro","==",pData.rubro),_where("segmento","==",pData.segmento),_where("marca","==",pData.marca),_where("presentacion","==",pData.presentacion)); const qSnap = await _getDocs(q); if (!qSnap.empty) { _showModal('Duplicado', 'Ya existe un producto con esa combinación de Rubro, Segmento, Marca y Presentación.'); return; } _showModal('Progreso','Guardando y propagando...'); const dRef = await _addDoc(invRef, pData); if (window.adminModule?.propagateProductChange) { await window.adminModule.propagateProductChange(dRef.id, pData); } _showModal('Éxito','Producto agregado y propagado correctamente.'); showAgregarProductoView(); /* Podría resetear el form aquí */ } catch (err) { console.error("Error agregando producto:", err); _showModal('Error',`Ocurrió un error al guardar: ${err.message}`); }
+        try {
+            // Comprobar duplicado en caché
+            const duplicado = _globalCaches.getInventario().find(p => 
+                p.rubro === pData.rubro &&
+                p.segmento === pData.segmento &&
+                p.marca === pData.marca &&
+                p.presentacion === pData.presentacion
+            );
+            if (duplicado) { 
+                _showModal('Duplicado', 'Ya existe un producto con esa combinación de Rubro, Segmento, Marca y Presentación.'); 
+                return; 
+            }
+            
+            _showModal('Progreso','Guardando y propagando...'); 
+            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const dRef = await _addDoc(invRef, pData); 
+            if (window.adminModule?.propagateProductChange) { 
+                await window.adminModule.propagateProductChange(dRef.id, pData); 
+            } 
+            _showModal('Éxito','Producto agregado y propagado correctamente.'); 
+            showAgregarProductoView();
+        } catch (err) { 
+            console.error("Error agregando producto:", err); 
+            _showModal('Error',`Ocurrió un error al guardar: ${err.message}`); 
+        }
     }
 
 
+    // --- PASO 2: Refactorizado para usar caché global ---
     function showModifyDeleteView() {
          if (_floatingControls) _floatingControls.classList.add('hidden'); const isAdmin = _userRole === 'admin';
-        // Define el HTML
         _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl"> <h2 class="text-2xl font-bold mb-6 text-center">Ver Productos / ${isAdmin?'Modificar Def.':'Consultar Stock'}</h2> ${getFiltrosHTML('modify')} <div id="productosListContainer" class="overflow-x-auto max-h-96 border rounded-lg"> <p class="text-gray-500 text-center p-4">Cargando...</p> </div> <div class="mt-6 flex flex-col sm:flex-row gap-4"> <button id="backToInventarioBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver</button> ${isAdmin?`<button id="deleteAllProductosBtn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg shadow-md hover:bg-red-700">Eliminar Todos</button>`:''} </div> </div> </div> </div>`;
 
-        // --- INICIO CORRECCIÓN ---
-        // Define la función callback UNA VEZ
         const renderCallback = () => renderProductosList('productosListContainer', !isAdmin);
 
-        // Adjunta listeners a los botones DESPUÉS de setear innerHTML
         document.getElementById('backToInventarioBtn').addEventListener('click', showInventarioSubMenu);
         if (isAdmin) document.getElementById('deleteAllProductosBtn')?.addEventListener('click', handleDeleteAllProductos);
 
-        // Llama a la primera renderización explícitamente DESPUÉS de que el DOM se actualizó
-        renderCallback(); // Asegura que el contenedor existe para la primera carga
-
-        // Configura los filtros y el listener, pasando el mismo callback
-        _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'modify-filter-rubro', 'Rubro');
-        setupFiltros('modify', renderCallback); // setupFiltros podría llamar a renderCallback más tarde
-        startMainInventarioListener(renderCallback); // El listener llamará a renderCallback en actualizaciones
-        // --- FIN CORRECCIÓN ---
+        // Poblar filtros desde caché
+        _populateDropdownFromCache(_globalCaches.getRubros(), 'modify-filter-rubro', 'Rubro');
+        
+        // Configurar filtros (que ahora leen de caché)
+        setupFiltros('modify', renderCallback); 
+        
+        // Renderizar lista inicial
+        renderCallback(); 
+        
+        // No se necesita startMainInventarioListener
     }
 
-    // *** MODIFICADO: getFiltrosHTML ahora incluye el select de Marca ***
     function getFiltrosHTML(prefix) {
         const currentSearch = _lastFilters.searchTerm || '';
         return `
@@ -889,34 +945,33 @@
         `;
     }
 
-    // *** MODIFICADO: setupFiltros ahora maneja el select de Marca ***
+    // --- PASO 2: Refactorizado para usar caché global ---
     function setupFiltros(prefix, renderCallback) {
         const searchInput=document.getElementById(`${prefix}-search-input`);
         const rubroFilter=document.getElementById(`${prefix}-filter-rubro`);
         const segmentoFilter=document.getElementById(`${prefix}-filter-segmento`);
-        const marcaFilter=document.getElementById(`${prefix}-filter-marca`); // Añadido
+        const marcaFilter=document.getElementById(`${prefix}-filter-marca`);
         const clearBtn=document.getElementById(`${prefix}-clear-filters-btn`);
 
-        // Verificación robusta de elementos
         if(!searchInput || !rubroFilter || !segmentoFilter || !marcaFilter || !clearBtn) {
             console.error(`Error: No se encontraron todos los elementos de filtro con prefijo ${prefix}.`);
             return;
         }
 
-        // Función para actualizar Segmentos y Marcas basado en Rubro/Segmento seleccionado
         function updateDependentDropdowns(trigger) {
             const selectedRubro = rubroFilter.value;
-            // Guardar valores actuales antes de limpiar para intentar restaurarlos
             const currentSegmentoValue = (trigger === 'init' || trigger === 'rubro') ? _lastFilters.segmento : segmentoFilter.value;
             const currentMarcaValue = (trigger === 'init' || trigger === 'rubro' || trigger === 'segmento') ? _lastFilters.marca : marcaFilter.value;
 
-            // --- Actualizar Segmentos ---
             segmentoFilter.innerHTML = '<option value="">Todos</option>';
             segmentoFilter.disabled = true;
-            segmentoFilter.value = ""; // Resetear valor
+            segmentoFilter.value = ""; 
+
+            // Leer inventario desde caché global
+            const inventario = _globalCaches.getInventario();
 
             if (selectedRubro) {
-                const segmentos = [...new Set(_inventarioCache
+                const segmentos = [...new Set(inventario
                     .filter(p => p.rubro === selectedRubro && p.segmento)
                     .map(p => p.segmento))]
                     .sort();
@@ -924,103 +979,99 @@
                     segmentos.forEach(s => {
                         const option = document.createElement('option');
                         option.value = s; option.textContent = s;
-                        if (s === currentSegmentoValue) { option.selected = true; } // Restaurar si es posible
+                        if (s === currentSegmentoValue) { option.selected = true; }
                         segmentoFilter.appendChild(option);
                     });
                     segmentoFilter.disabled = false;
-                    segmentoFilter.value = currentSegmentoValue; // Reasignar valor (puede ser "" si no se encontró)
+                    segmentoFilter.value = currentSegmentoValue;
                 }
             }
-             // Si el valor restaurado no coincide con el valor guardado (porque ya no existe), limpiar filtro guardado
             if (segmentoFilter.value !== currentSegmentoValue) { _lastFilters.segmento = ''; }
 
-
-            // --- Actualizar Marcas ---
             marcaFilter.innerHTML = '<option value="">Todos</option>';
             marcaFilter.disabled = true;
-             marcaFilter.value = ""; // Resetear valor
+             marcaFilter.value = "";
 
-            // Las marcas dependen del rubro y opcionalmente del segmento seleccionado
             if (selectedRubro) {
-                const marcas = [...new Set(_inventarioCache
-                    .filter(p => p.rubro === selectedRubro && (!segmentoFilter.value || p.segmento === segmentoFilter.value) && p.marca) // Filtrar por rubro y segmento (si hay)
+                const marcas = [...new Set(inventario
+                    .filter(p => p.rubro === selectedRubro && (!segmentoFilter.value || p.segmento === segmentoFilter.value) && p.marca)
                     .map(p => p.marca))]
                     .sort();
                 if (marcas.length > 0) {
                     marcas.forEach(m => {
                          const option = document.createElement('option');
                          option.value = m; option.textContent = m;
-                         if (m === currentMarcaValue) { option.selected = true; } // Restaurar si es posible
+                         if (m === currentMarcaValue) { option.selected = true; }
                          marcaFilter.appendChild(option);
                     });
                     marcaFilter.disabled = false;
-                    marcaFilter.value = currentMarcaValue; // Reasignar valor
+                    marcaFilter.value = currentMarcaValue;
                 }
             }
-            // Si el valor restaurado no coincide, limpiar filtro guardado
             if (marcaFilter.value !== currentMarcaValue) { _lastFilters.marca = ''; }
         }
+
+        // --- PASO 2: Poblar el filtro de rubro inicial desde caché ---
+        // (Esto reemplaza la llamada a _populateDropdown que estaba en showModifyDeleteView)
+        _populateDropdownFromCache(_globalCaches.getRubros(), `${prefix}-filter-rubro`, 'Rubro');
 
         // Restaurar estado inicial y popular filtros dependientes
         setTimeout(() => {
             rubroFilter.value = _lastFilters.rubro || '';
-            // Llamar a updateDependentDropdowns con 'init' para que restaure segmento Y marca
             updateDependentDropdowns('init');
             if (typeof renderCallback === 'function') renderCallback();
-        }, 300);
+        }, 100); // Pequeño timeout para asegurar que el dropdown de rubros esté poblado
 
-
-        // Función para aplicar y guardar filtros
         const applyAndSaveChanges = () => {
             _lastFilters.searchTerm = searchInput.value || '';
             _lastFilters.rubro = rubroFilter.value || '';
             _lastFilters.segmento = segmentoFilter.value || '';
-            _lastFilters.marca = marcaFilter.value || ''; // Guardar filtro marca
+            _lastFilters.marca = marcaFilter.value || '';
             if (typeof renderCallback === 'function') renderCallback();
         };
 
-        // Listeners
         searchInput.addEventListener('input', applyAndSaveChanges);
         rubroFilter.addEventListener('change', () => {
-             _lastFilters.segmento = ''; _lastFilters.marca = ''; // Resetear dependientes
+             _lastFilters.segmento = ''; _lastFilters.marca = '';
             updateDependentDropdowns('rubro');
             applyAndSaveChanges();
         });
         segmentoFilter.addEventListener('change', () => {
-            _lastFilters.marca = ''; // Resetear marca
+            _lastFilters.marca = '';
             updateDependentDropdowns('segmento');
             applyAndSaveChanges();
         });
-        marcaFilter.addEventListener('change', applyAndSaveChanges); // Listener para marca
+        marcaFilter.addEventListener('change', applyAndSaveChanges);
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             rubroFilter.value = '';
-            // Resetear _lastFilters y actualizar dropdowns dependientes
             _lastFilters.segmento = ''; _lastFilters.marca = '';
-            updateDependentDropdowns('rubro'); // Trigger inicial
+            updateDependentDropdowns('rubro');
             applyAndSaveChanges();
         });
     }
 
-    // *** MODIFICADO: renderProductosList ahora incluye columna Marca y filtro Marca ***
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function renderProductosList(elementId, readOnly = false) {
         const container = document.getElementById(elementId);
-        if (!container) { return; } // Salir si el contenedor no existe
+        if (!container) { return; }
 
-        let productosFiltrados = [..._inventarioCache];
+        // Leer del caché global
+        let productosFiltrados = _globalCaches.getInventario();
+        
         productosFiltrados = productosFiltrados.filter(p => {
             const searchTermLower = (_lastFilters.searchTerm || '').toLowerCase();
-            // Búsqueda ahora incluye Marca
             const textMatch = !searchTermLower ||
                 (p.presentacion && p.presentacion.toLowerCase().includes(searchTermLower)) ||
                 (p.marca && p.marca.toLowerCase().includes(searchTermLower)) ||
                 (p.segmento && p.segmento.toLowerCase().includes(searchTermLower));
             const rubroMatch = !_lastFilters.rubro || p.rubro === _lastFilters.rubro;
             const segmentoMatch = !_lastFilters.segmento || p.segmento === _lastFilters.segmento;
-            const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca; // Añadido filtro por marca
+            const marcaMatch = !_lastFilters.marca || p.marca === _lastFilters.marca;
             return textMatch && rubroMatch && segmentoMatch && marcaMatch;
         });
 
+        // getGlobalProductSortFunction sigue siendo una dependencia externa
         const sortFunction = await window.getGlobalProductSortFunction();
         productosFiltrados.sort(sortFunction);
 
@@ -1030,14 +1081,14 @@
         }
 
         const isAdmin = _userRole === 'admin';
-        const cols = readOnly ? 4 : 5; // Aumentado el número de columnas
+        const cols = readOnly ? 4 : 5;
 
         let tableHTML = `
             <table class="min-w-full bg-white text-sm">
                 <thead class="bg-gray-200 sticky top-0 z-10">
                     <tr>
                         <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Presentación</th>
-                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Marca</th> <!-- Nueva Cabecera -->
+                        <th class="py-2 px-3 text-left font-semibold text-gray-600 uppercase tracking-wider">Marca</th>
                         <th class="py-2 px-3 text-right font-semibold text-gray-600 uppercase tracking-wider">Precio</th>
                         <th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Stock</th>
                         ${!readOnly ? `<th class="py-2 px-3 text-center font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>` : ''}
@@ -1052,7 +1103,7 @@
             const currentHeaderValue = p[firstSortKey] || `Sin ${firstSortKey}`;
             if (currentHeaderValue !== lastHeaderKey) {
                 lastHeaderKey = currentHeaderValue;
-                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`; // Ajustar colspan
+                tableHTML += `<tr><td colspan="${cols}" class="py-2 px-4 bg-gray-300 font-bold text-gray-800 sticky top-[calc(theme(height.10))] z-[9]">${lastHeaderKey}</td></tr>`;
             }
 
             const ventaPor = p.ventaPor || {und:true};
@@ -1063,7 +1114,6 @@
             let conversionFactorStock = 1;
             let stockUnitType = 'Und';
 
-            // Determinar precio y unidad de stock a mostrar (prioridad: Cj > Paq > Und)
             if (ventaPor.cj) {
                 if (p.unidadesPorCaja) displayPresentacion += ` (${p.unidadesPorCaja} und.)`;
                 displayPrecio = `$${(precios.cj || 0).toFixed(2)}`;
@@ -1074,16 +1124,16 @@
                 displayPrecio = `$${(precios.paq || 0).toFixed(2)}`;
                 conversionFactorStock = Math.max(1, p.unidadesPorPaquete || 1);
                 stockUnitType = 'Paq';
-            } else { // Venta por Unidad o default
+            } else {
                 displayPrecio = `$${(precios.und || 0).toFixed(2)}`;
             }
             displayStock = `${Math.floor((p.cantidadUnidades || 0) / conversionFactorStock)} ${stockUnitType}`;
-            const stockUnidadesBaseTitle = `${p.cantidadUnidades || 0} Und. Base`; // Tooltip siempre en unidades
+            const stockUnidadesBaseTitle = `${p.cantidadUnidades || 0} Und. Base`;
 
             tableHTML += `
                 <tr class="hover:bg-gray-50 border-b">
                     <td class="py-2 px-3 text-gray-800">${displayPresentacion}</td>
-                    <td class="py-2 px-3 text-gray-700">${p.marca || 'S/M'}</td> <!-- Nueva Celda Marca -->
+                    <td class="py-2 px-3 text-gray-700">${p.marca || 'S/M'}</td>
                     <td class="py-2 px-3 text-right font-medium text-gray-900">${displayPrecio}</td>
                     <td class="py-2 px-3 text-center font-medium text-gray-900" title="${stockUnidadesBaseTitle}">${displayStock}</td>
                     ${!readOnly ? `
@@ -1099,16 +1149,19 @@
     }
 
 
+    // --- PASO 2: Refactorizado para usar caché global ---
     async function editProducto(productId) {
-        if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores pueden editar definiciones.'); return; } const prod = _inventarioCache.find(p => p.id === productId); if (!prod) { _showModal('Error', 'Producto no encontrado en caché.'); return; } if (_floatingControls) _floatingControls.classList.add('hidden');
+        if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores pueden editar definiciones.'); return; }
+        // Leer de caché global
+        const prod = _globalCaches.getInventario().find(p => p.id === productId); 
+        if (!prod) { _showModal('Error', 'Producto no encontrado en caché.'); return; } 
+        if (_floatingControls) _floatingControls.classList.add('hidden');
         _mainContent.innerHTML = `<div class="p-4 pt-8"> <div class="container mx-auto max-w-2xl"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl text-center"> <h2 class="text-2xl font-bold mb-6">Editar Producto</h2> <form id="editProductoForm" class="space-y-4 text-left"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="rubro">Rubro:</label> <div class="flex items-center space-x-2"> <select id="rubro" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('rubros','Rubro')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="segmento">Segmento:</label> <div class="flex items-center space-x-2"> <select id="segmento" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('segmentos','Segmento')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="marca">Marca:</label> <div class="flex items-center space-x-2"> <select id="marca" class="w-full px-4 py-2 border rounded-lg" required></select> <button type="button" onclick="window.inventarioModule.showAddCategoryModal('marcas','Marca')" class="px-3 py-2 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600">+</button> </div> </div> <div> <label for="presentacion">Presentación:</label> <input type="text" id="presentacion" class="w-full px-4 py-2 border rounded-lg" required> </div> </div> <div class="border-t pt-4 mt-4"> <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"> <div> <label class="block mb-2 font-medium">Venta por:</label> <div id="ventaPorContainer" class="flex space-x-4"> <label class="flex items-center"><input type="checkbox" id="ventaPorUnd" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Und.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorPaq" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Paq.</span></label> <label class="flex items-center"><input type="checkbox" id="ventaPorCj" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2">Cj.</span></label> </div> </div> <div class="mt-4 md:mt-0"> <label class="flex items-center cursor-pointer"> <input type="checkbox" id="manejaVaciosCheck" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"> <span class="ml-2 font-medium">Maneja Vacío</span> </label> <div id="tipoVacioContainer" class="mt-2 hidden"> <label for="tipoVacioSelect" class="block text-sm font-medium">Tipo:</label> <select id="tipoVacioSelect" class="w-full mt-1 px-2 py-1 border rounded-lg text-sm bg-gray-50"> <option value="">Seleccione...</option> <option value="1/4 - 1/3">1/4 - 1/3</option> <option value="ret 350 ml">Ret 350 ml</option> <option value="ret 1.25 Lts">Ret 1.25 Lts</option> </select> </div> </div> </div> <div id="empaquesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4"></div> <div id="preciosContainer" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4"></div> </div> <div class="border-t pt-4 mt-4"> <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> <div> <label for="cantidadActual" class="block font-medium">Stock Actual (Und. Base):</label> <input type="number" id="cantidadActual" value="${prod.cantidadUnidades||0}" class="w-full mt-1 px-4 py-2 border rounded-lg bg-gray-100 text-gray-700" readonly title="La cantidad se modifica en 'Ajuste Masivo'"> <p class="text-xs text-gray-500 mt-1">Modificar en "Ajuste Masivo".</p> </div> <div> <label for="ivaTipo" class="block font-medium">IVA:</label> <select id="ivaTipo" class="w-full mt-1 px-4 py-2 border rounded-lg bg-white" required> <option value="16">16%</option> <option value="0">Exento 0%</option> </select> </div> </div> </div> <button type="submit" class="w-full px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 transition duration-150">Guardar Cambios y Propagar</button> </form> <button id="backToModifyDeleteBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white font-semibold rounded-lg shadow-md hover:bg-gray-500 transition duration-150">Volver</button> </div> </div> </div>`;
 
-        // Poblar dropdowns y esperar a que terminen antes de setear valores
-        await Promise.all([
-             _populateDropdown(`artifacts/${_appId}/users/${_userId}/rubros`, 'rubro', 'Rubro', prod.rubro),
-             _populateDropdown(`artifacts/${_appId}/users/${_userId}/segmentos`, 'segmento', 'Segmento', prod.segmento),
-             _populateDropdown(`artifacts/${_appId}/users/${_userId}/marcas`, 'marca', 'Marca', prod.marca)
-        ]);
+        // Poblar dropdowns desde caché
+        _populateDropdownFromCache(_globalCaches.getRubros(), 'rubro', 'Rubro', prod.rubro);
+        _populateDropdownFromCache(_globalCaches.getSegmentos(), 'segmento', 'Segmento', prod.segmento);
+        _populateDropdownFromCache(_globalCaches.getMarcas(), 'marca', 'Marca', prod.marca);
 
         const ventaPorContainer=document.getElementById('ventaPorContainer');
         const preciosContainer=document.getElementById('preciosContainer');
@@ -1117,7 +1170,6 @@
         const tipoVacioContainer=document.getElementById('tipoVacioContainer');
         const tipoVacioSelect=document.getElementById('tipoVacioSelect');
 
-        // Función para actualizar inputs dinámicos (empaques, precios)
         const updateDynamicInputs=()=>{
             empaquesContainer.innerHTML='';
             preciosContainer.innerHTML='';
@@ -1132,14 +1184,12 @@
             if(ventaPaq) preciosContainer.innerHTML += `<div><label for="precioPaq" class="block text-sm font-medium">Precio Paq.:</label><input type="number" step="0.01" min="0" id="precioPaq" class="w-full mt-1 px-2 py-1 border rounded-lg" required></div>`;
             if(ventaCj) preciosContainer.innerHTML += `<div><label for="precioCj" class="block text-sm font-medium">Precio Cj.:</label><input type="number" step="0.01" min="0" id="precioCj" class="w-full mt-1 px-2 py-1 border rounded-lg" required></div>`;
 
-            // Asegurar que al menos un precio sea requerido si su checkbox está marcado
              preciosContainer.querySelectorAll('input[type="number"]').forEach(input => {
-                 const type = input.id.substring(6).toLowerCase(); // 'und', 'paq', 'cj'
+                 const type = input.id.substring(6).toLowerCase();
                  input.required = document.getElementById(`ventaPor${type.charAt(0).toUpperCase() + type.slice(1)}`)?.checked ?? false;
              });
         };
 
-        // Listener para checkbox de vacío
         manejaVaciosCheck.addEventListener('change',()=>{
             if(manejaVaciosCheck.checked){
                 tipoVacioContainer.classList.remove('hidden');
@@ -1147,24 +1197,19 @@
             } else {
                 tipoVacioContainer.classList.add('hidden');
                 tipoVacioSelect.required = false;
-                tipoVacioSelect.value = ''; // Limpiar selección
+                tipoVacioSelect.value = '';
             }
         });
 
-        // Listener para checkboxes de 'Venta por'
         ventaPorContainer.addEventListener('change', updateDynamicInputs);
 
-        // Setear valores iniciales del formulario (después de poblar dropdowns)
         document.getElementById('presentacion').value = prod.presentacion || '';
         document.getElementById('ivaTipo').value = prod.iva !== undefined ? prod.iva : 16;
-        // Checkboxes 'Venta por'
-        const ventaPor = prod.ventaPor || { und: true }; // Default a Und si no existe
+        const ventaPor = prod.ventaPor || { und: true };
         document.getElementById('ventaPorUnd').checked = ventaPor.und || false;
         document.getElementById('ventaPorPaq').checked = ventaPor.paq || false;
         document.getElementById('ventaPorCj').checked = ventaPor.cj || false;
-        // Disparar update inicial para mostrar campos correctos
         updateDynamicInputs();
-        // Setear valores de empaque y precios (ahora que los inputs existen)
         const uPaqInput = document.getElementById('unidadesPorPaquete');
         if (uPaqInput && ventaPor.paq) uPaqInput.value = prod.unidadesPorPaquete || 1;
         const uCjInput = document.getElementById('unidadesPorCaja');
@@ -1176,7 +1221,6 @@
         if (pPaqInput) pPaqInput.value = preciosExistentes.paq || 0;
         const pCjInput = document.getElementById('precioCj');
         if (pCjInput) pCjInput.value = preciosExistentes.cj || 0;
-        // Checkbox de vacío y tipo
         if (prod.manejaVacios) {
             manejaVaciosCheck.checked = true;
             tipoVacioContainer.classList.remove('hidden');
@@ -1188,23 +1232,28 @@
             tipoVacioSelect.required = false;
         }
 
-        // Listeners finales
         document.getElementById('editProductoForm').addEventListener('submit', (e) => handleUpdateProducto(e, productId));
         document.getElementById('backToModifyDeleteBtn').addEventListener('click', showModifyDeleteView);
     }
 
 
     async function handleUpdateProducto(e, productId) {
-        e.preventDefault(); if (_userRole !== 'admin') return; const updatedData = getProductoDataFromForm(true); const productoOriginal = _inventarioCache.find(p => p.id === productId); if (!productoOriginal) { _showModal('Error', 'Producto original no encontrado.'); return; } // Validaciones básicas (campos requeridos, forma de venta, precio, vacío)
+        e.preventDefault(); if (_userRole !== 'admin') return; const updatedData = getProductoDataFromForm(true); 
+        // --- PASO 2: Leer de caché global ---
+        const productoOriginal = _globalCaches.getInventario().find(p => p.id === productId); 
+        if (!productoOriginal) { _showModal('Error', 'Producto original no encontrado.'); return; } 
         if (!updatedData.rubro||!updatedData.segmento||!updatedData.marca||!updatedData.presentacion){_showModal('Error','Completa Rubro, Segmento, Marca y Presentación.');return;} if (!updatedData.ventaPor.und&&!updatedData.ventaPor.paq&&!updatedData.ventaPor.cj){_showModal('Error','Selecciona al menos una forma de venta.');return;} if (updatedData.manejaVacios&&!updatedData.tipoVacio){_showModal('Error','Si maneja vacío, selecciona el tipo.');document.getElementById('tipoVacioSelect')?.focus();return;} let precioValido=(updatedData.ventaPor.und&&updatedData.precios.und>0)||(updatedData.ventaPor.paq&&updatedData.precios.paq>0)||(updatedData.ventaPor.cj&&updatedData.precios.cj>0); if(!precioValido){_showModal('Error','Ingresa al menos un precio válido (> 0) para la forma de venta seleccionada.');document.querySelector('#preciosContainer input[required]')?.focus();return;}
-        // Mantener cantidad original
+        
         updatedData.cantidadUnidades = productoOriginal.cantidadUnidades || 0;
         _showModal('Progreso','Guardando cambios...'); try { await _setDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId), updatedData); if (window.adminModule?.propagateProductChange) { _showModal('Progreso','Propagando cambios...'); await window.adminModule.propagateProductChange(productId, updatedData); } _showModal('Éxito','Producto modificado y propagado correctamente.'); showModifyDeleteView(); } catch (err) { console.error("Error modificando producto:", err); _showModal('Error',`Ocurrió un error al guardar: ${err.message}`); }
     }
 
 
     function deleteProducto(productId) {
-        if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; } const prod = _inventarioCache.find(p => p.id === productId); if (!prod) { _showModal('Error', 'Producto no encontrado.'); return; }
+        if (_userRole !== 'admin') { _showModal('Acceso Denegado', 'Solo administradores.'); return; } 
+        // --- PASO 2: Leer de caché global ---
+        const prod = _globalCaches.getInventario().find(p => p.id === productId); 
+        if (!prod) { _showModal('Error', 'Producto no encontrado.'); return; }
         _showModal('Confirmar Eliminación', `¿Estás seguro de eliminar el producto "${prod.presentacion}"? Esta acción se propagará a todos los usuarios y es IRREVERSIBLE.`, async () => { _showModal('Progreso', `Eliminando "${prod.presentacion}"...`); try { await _deleteDoc(_doc(_db, `artifacts/${_appId}/users/${_userId}/inventario`, productId)); if (window.adminModule?.propagateProductChange) { _showModal('Progreso', `Propagando eliminación...`); await window.adminModule.propagateProductChange(productId, null); } _showModal('Éxito',`Producto "${prod.presentacion}" eliminado y propagado.`); } catch (e) { console.error("Error eliminando producto:", e); _showModal('Error', `No se pudo eliminar: ${e.message}`); } }, 'Sí, Eliminar', null, true);
     }
 
@@ -1212,7 +1261,6 @@
         if (_userRole !== 'admin') return; _showModal('Confirmación Extrema', `¿Estás SEGURO de eliminar TODOS los productos del inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => { _showModal('Progreso', 'Eliminando productos locales...'); try { const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snapshot = await _getDocs(collectionRef); if (snapshot.empty) { _showModal('Aviso', 'No hay productos en el inventario para eliminar.'); return; } const productIds = snapshot.docs.map(d => d.id); const BATCH_LIMIT = 490; let batch = _writeBatch(_db), opsCount = 0, totalDeletedLocally = 0; for (const docSnapshot of snapshot.docs) { batch.delete(docSnapshot.ref); opsCount++; if (opsCount >= BATCH_LIMIT) { await batch.commit(); totalDeletedLocally += opsCount; batch = _writeBatch(_db); opsCount = 0; } } if (opsCount > 0) { await batch.commit(); totalDeletedLocally += opsCount; } _showModal('Progreso', `Se eliminaron ${totalDeletedLocally} productos localmente. Propagando eliminación...`); if (window.adminModule?.propagateProductChange) { let propagationErrors = 0; for (const productId of productIds) { try { await window.adminModule.propagateProductChange(productId, null); } catch (propError) { console.error(`Error propagando eliminación de ${productId}:`, propError); propagationErrors++; } } _showModal(propagationErrors > 0 ? 'Advertencia' : 'Éxito', `Se eliminaron ${totalDeletedLocally} productos.${propagationErrors > 0 ? ` Ocurrieron ${propagationErrors} errores al propagar.` : ' Propagado correctamente.'}`); } else { _showModal('Advertencia', `Se eliminaron ${totalDeletedLocally} productos localmente, pero la función de propagación no está disponible.`); } } catch (error) { console.error("Error al eliminar todos los productos:", error); _showModal('Error', `Hubo un error al eliminar los productos: ${error.message}`); } }, 'Sí, Eliminar Todos', null, true);
     }
 
-    // --- CORRECCIÓN DE SINTAXIS ---
     async function handleDeleteAllDatosMaestros() {
         if (_userRole !== 'admin') return;
         _showModal('Confirmar Borrado Datos Maestros', `¿Eliminar TODOS los Rubros, Segmentos y Marcas que NO estén siendo usados actualmente en el inventario? Esta acción es IRREVERSIBLE y se propagará.`, async () => {
@@ -1223,10 +1271,8 @@
                 const itemsInUse = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
                 let totalFound = 0, totalToDelete = 0;
 
-                // Verificar uso en el inventario actual
-                const inventarioSnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`));
-                inventarioSnap.docs.forEach(doc => {
-                    const data = doc.data();
+                // --- PASO 2: Verificar uso en caché ---
+                _globalCaches.getInventario().forEach(data => {
                     if (data.rubro) itemsInUse.rubros.add(data.rubro);
                     if (data.segmento) itemsInUse.segmentos.add(data.segmento);
                     if (data.marca) itemsInUse.marcas.add(data.marca);
@@ -1234,12 +1280,16 @@
 
                 // Identificar ítems no usados
                 for (const colName of collectionsToClean) {
-                    const categorySnap = await _getDocs(_collection(_db, `artifacts/${_appId}/users/${_userId}/${colName}`));
-                    categorySnap.docs.forEach(doc => {
-                        const name = doc.data().name;
+                    let cacheData;
+                    if (colName === 'rubros') cacheData = _globalCaches.getRubros();
+                    else if (colName === 'segmentos') cacheData = _globalCaches.getSegmentos();
+                    else if (colName === 'marcas') cacheData = _globalCaches.getMarcas();
+                    
+                    cacheData.forEach(item => {
+                        const name = item.name;
                         totalFound++;
                         if (name && !itemsInUse[colName].has(name)) {
-                            itemsToDelete[colName].push({ id: doc.id, name: name });
+                            itemsToDelete[colName].push({ id: item.id, name: name });
                             totalToDelete++;
                         }
                     });
@@ -1247,12 +1297,12 @@
 
                 if (totalToDelete === 0) {
                     _showModal('Aviso', 'No se encontraron Rubros, Segmentos o Marcas no utilizados para eliminar.');
-                    return; // Salir si no hay nada que eliminar
+                    return;
                 }
 
                 _showModal('Confirmación Final', `Se eliminarán ${totalToDelete} datos maestros no utilizados (${itemsToDelete.rubros.length} Rubros, ${itemsToDelete.segmentos.length} Segmentos, ${itemsToDelete.marcas.length} Marcas). Esta acción se propagará. ¿Continuar?`, async () => {
                     _showModal('Progreso', `Eliminando ${totalToDelete} datos maestros locales...`);
-                    try { // Try interno para eliminación y propagación
+                    try { 
                         const batchAdmin = _writeBatch(_db);
                         for (const colName in itemsToDelete) {
                             itemsToDelete[colName].forEach(item => {
@@ -1278,29 +1328,27 @@
                         } else {
                             _showModal('Advertencia', `Se eliminaron ${totalToDelete} datos maestros localmente, pero la función de propagación no está disponible.`);
                         }
-                        invalidateSegmentOrderCache(); // Limpiar cache local
+                        invalidateSegmentOrderCache();
 
-                    } catch (deletePropError) { // Catch para errores en el try interno
+                    } catch (deletePropError) {
                          console.error("Error durante eliminación/propagación de datos maestros:", deletePropError);
                          _showModal('Error', `Ocurrió un error durante la eliminación/propagación: ${deletePropError.message}`);
                     }
-                }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmación Final
+                }, 'Sí, Eliminar No Usados', null, true);
 
-            } catch (error) { // Catch para errores en el try externo (verificación inicial)
+            } catch (error) {
                 console.error("Error al verificar/eliminar datos maestros:", error);
                 _showModal('Error', `Ocurrió un error: ${error.message}`);
             }
-        }, 'Sí, Eliminar No Usados', null, true); // Fin _showModal Confirmar Borrado
+        }, 'Sí, Eliminar No Usados', null, true);
     }
-    // --- FIN CORRECCIÓN DE SINTAXIS ---
 
-    // Exponer funciones públicas necesarias
     window.inventarioModule = {
         editProducto,
         deleteProducto,
         handleDeleteDataItem,
         showAddCategoryModal,
-        invalidateSegmentOrderCache // Exponer función para invalidar caché
+        invalidateSegmentOrderCache
     };
 
 })();
