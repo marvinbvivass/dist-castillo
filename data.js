@@ -148,6 +148,16 @@
         _mainContent.innerHTML = `
             <div class="p-4 pt-8"> <div class="container mx-auto"> <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                 <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cierres de Vendedores</h1>
+                
+                <!-- SECCIÓN DE MIGRACIÓN AGREGADA -->
+                <div class="mb-8 text-center border-b pb-6 bg-yellow-50 p-4 rounded-lg">
+                    <h2 class="text-lg font-bold text-yellow-800 mb-2">Zona de Migración</h2>
+                    <button id="downloadMigrationBtn" class="w-full md:w-auto px-6 py-3 bg-yellow-500 text-white font-bold rounded-lg shadow-lg hover:bg-yellow-600 flex items-center justify-center gap-2 mx-auto transition transform hover:scale-105">
+                        <span class="text-xl">📥</span> Descargar TODO (JSON)
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2">Genera un archivo completo con todo el historial para cargar en la nueva versión.</p>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg items-end">
                     <div> <label for="userFilter" class="block text-sm font-medium">Vendedor:</label> <select id="userFilter" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm"> <option value="">Todos</option> </select> </div>
                     <div> <label for="fechaDesde" class="block text-sm font-medium">Desde:</label> <input type="date" id="fechaDesde" class="mt-1 block w-full px-3 py-2 border rounded-md shadow-sm text-sm"> </div>
@@ -160,10 +170,63 @@
         `;
         document.getElementById('backToDataMenuBtn').addEventListener('click', showDataView);
         document.getElementById('searchCierresBtn').addEventListener('click', handleSearchClosings);
+        
+        // Listener para el botón de migración
+        document.getElementById('downloadMigrationBtn').addEventListener('click', handleDownloadMigrationFile);
+
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('fechaDesde').value = today; document.getElementById('fechaHasta').value = today;
         await populateUserFilter();
     };
+
+    // --- FUNCIÓN DE DESCARGA PARA MIGRACIÓN (JSON) ---
+    async function handleDownloadMigrationFile() {
+        _showModal('Procesando', 'Descargando TODO el historial de cierres... Esto puede tardar dependiendo de la cantidad de datos.');
+        
+        try {
+            // Referencia a la colección pública donde se guardan los cierres en esta versión
+            const closingsRef = _collection(_db, `public_data/${_appId}/user_closings`);
+            const snapshot = await _getDocs(closingsRef);
+            
+            if (snapshot.empty) {
+                _showModal('Aviso', 'No hay datos en la base de datos para exportar.');
+                return;
+            }
+
+            // Convertir documentos a un array limpio
+            const allClosings = snapshot.docs.map(doc => {
+                const data = doc.data();
+                // IMPORTANTE: Convertir Timestamps de Firebase a ISO String para que el JSON sea válido
+                // y pueda ser leído correctamente por el script de importación de la nueva versión.
+                const safeData = {
+                    ...data,
+                    migrationId: doc.id, // Preservamos el ID original por si acaso
+                    fecha: (data.fecha && data.fecha.toDate) ? data.fecha.toDate().toISOString() : data.fecha
+                };
+                return safeData;
+            });
+
+            // Convertir a cadena JSON con formato legible (indentado)
+            const jsonString = JSON.stringify(allClosings, null, 2);
+            
+            // Crear Blob y enlace de descarga
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `MIGRACION_VENTAS_HISTORICAS_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            _showModal('Éxito', `Archivo de migración generado con ${allClosings.length} cierres totales. Guárdalo para importarlo en la nueva versión.`);
+
+        } catch (error) {
+            console.error("Error en migración:", error);
+            _showModal('Error', 'Falló la descarga masiva: ' + error.message);
+        }
+    }
 
     async function populateUserFilter() {
         const userFilterSelect = document.getElementById('userFilter');
@@ -246,109 +309,58 @@
         let grandTotalValue = 0;
         const allProductsMap = new Map();
         const vaciosMovementsPorTipo = {};
-        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
+        const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
         
-        // --- INICIO DE LA CORRECCIÓN ---
-        // 1. Construir el inventarioMap SIEMPRE desde el inventario ACTUAL del usuario.
-        //    (La vista de modal no usa el stock, solo las definiciones del producto)
-        console.log("_processSalesDataForModal: Fetching CURRENT inventory map...");
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`);
-        const inventarioSnapshot = await _getDocs(inventarioRef);
-        const inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        console.log(`_processSalesDataForModal: inventarioMap created with ${inventarioMap.size} current products.`);
-        // --- FIN DE LA CORRECCIÓN ---
+        let inventarioMap;
+        let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
+        
+        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
+        const inventarioSnapshot = await _getDocs(inventarioRef); 
+        inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
+        let snapshotMap = new Map();
+        if(hasSnapshot) snapshotMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
 
-
-        const allData = [
-            ...ventas.map(v => ({ tipo: 'venta', data: v })),
-            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
-        ];
+        const allData = [...ventas.map(v => ({ tipo: 'venta', data: v })), ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))];
 
         for (const item of allData) {
             const clientName = item.data.clienteNombre || 'Cliente Desconocido';
             if (!clientData[clientName]) clientData[clientName] = { products: {}, totalValue: 0 };
-            if (!vaciosMovementsPorTipo[clientName]) { vaciosMovementsPorTipo[clientName] = {}; TIPOS_VACIO_GLOBAL.forEach(tipo => vaciosMovementsPorTipo[clientName][tipo] = { entregados: 0, devueltos: 0 }); }
-            
+            if (!vaciosMovementsPorTipo[clientName]) { vaciosMovementsPorTipo[clientName] = {}; TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); }
             if (item.tipo === 'venta') {
                 const venta = item.data;
                 const ventaTotalCliente = venta.total || 0;
                 clientData[clientName].totalValue += ventaTotalCliente;
                 clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
                 grandTotalValue += ventaTotalCliente;
-                
-                const vaciosDev = venta.vaciosDevueltosPorTipo || {};
-                for (const tipo in vaciosDev) { if (!vaciosMovementsPorTipo[clientName][tipo]) vaciosMovementsPorTipo[clientName][tipo] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipo].devueltos += (vaciosDev[tipo] || 0); }
-                
+                const vacDev = venta.vaciosDevueltosPorTipo || {};
+                for (const t in vacDev) { if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); }
                 (venta.productos || []).forEach(p => {
-                    // 2. CORRECCIÓN: Usar '|| p' como fallback
-                    //    Si el producto existió en una venta pero fue borrado, 
-                    //    usar los datos guardados en la venta (p).
                     const prodComp = inventarioMap.get(p.id) || p;
-                    // --- FIN CORRECCIÓN ---
                     if (prodComp && prodComp.manejaVacios && prodComp.tipoVacio) { const tipoV = prodComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tipoV]) vaciosMovementsPorTipo[clientName][tipoV] = { e: 0, d: 0 }; vaciosMovementsPorTipo[clientName][tipoV].entregados += p.cantidadVendida?.cj || 0; }
                     const rubro = prodComp?.rubro || 'Sin Rubro', seg = prodComp?.segmento || 'Sin Segmento', marca = prodComp?.marca || 'Sin Marca';
                     if (p.id && !allProductsMap.has(p.id)) allProductsMap.set(p.id, { ...prodComp, id: p.id, rubro: rubro, segmento: seg, marca: marca, presentacion: p.presentacion });
                     if (p.id && !clientData[clientName].products[p.id]) clientData[clientName].products[p.id] = 0;
-                    
                     let cantidadUnidades = 0;
-                    if (p.cantidadVendida) { 
-                        const uCj = p.unidadesPorCaja || 1;
-                        const uPaq = p.unidadesPorPaquete || 1;
-                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
-                    } else if (p.totalUnidadesVendidas) { 
-                        cantidadUnidades = p.totalUnidadesVendidas;
-                    }
+                    if (p.cantidadVendida) { const uCj = p.unidadesPorCaja || 1; const uPaq = p.unidadesPorPaquete || 1; cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0); } else if (p.totalUnidadesVendidas) { cantidadUnidades = p.totalUnidadesVendidas; }
                     if(p.id) clientData[clientName].products[p.id] += cantidadUnidades;
                 });
-
             } else if (item.tipo === 'obsequio') {
-                // --- INICIO DE LA CORRECCIÓN (Modal) ---
                 const obsequio = item.data;
                 const prodInventario = inventarioMap.get(obsequio.productoId);
-
-                let pComp; // Producto para el reporte
-
-                if (prodInventario) {
-                    // Caso 1: El producto AÚN EXISTE en el inventario actual.
-                    pComp = { ...prodInventario, id: obsequio.productoId }; // <-- CORRECCIÓN: Añadir ID
-                } else {
-                    // Caso 2: El producto fue ELIMINADO. Usar datos de respaldo del obsequio.
-                    console.warn(`(Modal) Producto de obsequio ${obsequio.productoId} no encontrado. Usando fallback.`);
-                    pComp = {
-                        id: obsequio.productoId,
-                        presentacion: obsequio.productoNombre || 'Producto Eliminado',
-                        rubro: 'OBSEQUIOS (ELIMINADO)',
-                        segmento: 'N/A',
-                        marca: 'N/A',
-                        unidadesPorCaja: 1, // No podemos saber el real, asumimos 1
-                        manejaVacios: !!obsequio.tipoVacio,
-                        tipoVacio: obsequio.tipoVacio || null
-                    };
-                }
-                
+                let pComp;
+                if (prodInventario) { pComp = { ...prodInventario, id: obsequio.productoId }; pComp.precios = { und: 0, paq: 0, cj: 0 }; } 
+                else { pComp = { id: obsequio.productoId, presentacion: obsequio.productoNombre || 'Producto Eliminado', rubro: 'OBSEQUIOS (ELIMINADO)', segmento: 'OBSEQUIOS (ELIMINADO)', marca: 'N/A', precios: { und: 0, paq: 0, cj: 0 }, unidadesPorCaja: 1, manejaVacios: !!obsequio.tipoVacio, tipoVacio: obsequio.tipoVacio || null }; }
                 const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
-
-                // Lógica de vacíos (Entregados)
-                if (pComp.manejaVacios && pComp.tipoVacio) {
-                    const tV = pComp.tipoVacio; 
-                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                    vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
-                }
-                
-                // Lógica de vacíos (Devueltos en el mismo obsequio)
-                const vacDev = obsequio.vaciosRecibidos || 0;
-                const tipoVacDev = obsequio.tipoVacio;
-                if (vacDev > 0 && tipoVacDev) {
-                     if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
-                     vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
-                }
-
-                // Añadir a la lista de productos
-                const rubro = pComp.rubro || 'Sin Rubro', seg = pComp.segmento || 'Sin Segmento', marca = pComp.marca || 'Sin Marca';
-                if (pComp.id && !allProductsMap.has(pComp.id)) allProductsMap.set(pComp.id, { ...pComp, id: pComp.id, rubro: rubro, segmento: seg, marca: marca, presentacion: pComp.presentacion });
-                if (pComp.id && !clientData[clientName].products[pComp.id]) clientData[clientName].products[pComp.id] = 0;
-                clientData[clientName].products[pComp.id] += cantidadUnidades;
-                // --- FIN DE LA CORRECCIÓN (Modal) ---
+                const rubro = pComp.rubro || 'SIN RUBRO';
+                allRubros.add(rubro);
+                if (!dataByRubro[rubro]) { dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() }; }
+                if (!dataByRubro[rubro].clients[clientName]) { dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 }; }
+                if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) { dataByRubro[rubro].productsMap.set(pComp.id, pComp); }
+                dataByRubro[rubro].obsequiosMap.add(pComp.id);
+                if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
+                if (pComp.manejaVacios && pComp.tipoVacio) { const tV = pComp.tipoVacio; if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); }
+                const vacDev = obsequio.vaciosRecibidos || 0; const tipoVacDev = obsequio.tipoVacio;
+                if (vacDev > 0 && tipoVacDev) { if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 }; vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev; }
             }
         }
         
@@ -430,7 +442,7 @@
             footerHTML+=`<td class="p-1 border text-right sticky right-0 z-10">$${grandTotalValue.toFixed(2)}</td></tr>`;
             
             let vHTML = ''; 
-            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
             const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
             
             if(cliVacios.length > 0){ 
@@ -458,230 +470,6 @@
         } catch (error) { console.error("Error generando detalle:", error); _showModal('Error', `No se pudo generar: ${error.message}`); }
     }
 
-    async function processSalesDataForReport(ventas, obsequios, cargaInicialInventario, userIdForInventario) {
-        const dataByRubro = {};
-        const clientTotals = {}; 
-        let grandTotalValue = 0;
-        const vaciosMovementsPorTipo = {};
-        const allRubros = new Set();
-        const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"];
-        
-        let inventarioMap;
-        let hasSnapshot = cargaInicialInventario && cargaInicialInventario.length > 0;
-        
-        // --- INICIO DE LA CORRECCIÓN ---
-        // 1. Construir el inventarioMap SIEMPRE desde el inventario ACTUAL del usuario.
-        //    Esto garantiza que tengamos la definición de TODOS los productos,
-        //    incluyendo obsequios añadidos a mitad del día.
-        console.log("processSalesDataForReport: Fetching CURRENT inventory map...");
-        const inventarioRef = _collection(_db, `artifacts/${_appId}/users/${userIdForInventario}/inventario`); 
-        const inventarioSnapshot = await _getDocs(inventarioRef); 
-        inventarioMap = new Map(inventarioSnapshot.docs.map(doc => [doc.id, doc.data()]));
-        console.log(`processSalesDataForReport: inventarioMap created with ${inventarioMap.size} current products.`);
-
-        // 2. Crear un mapa SEPARADO para el snapshot (Carga Inicial).
-        let snapshotMap = new Map();
-        if(hasSnapshot) {
-             console.log("processSalesDataForReport: Snapshot (Carga Inicial) found. Creating snapshotMap.");
-             snapshotMap = new Map(cargaInicialInventario.map(doc => [doc.id, doc]));
-        } else {
-            console.warn("processSalesDataForReport: No se encontró snapshot (Carga Inicial).");
-        }
-        // --- FIN DE LA CORRECCIÓN ---
-
-        const userDoc = await _getDoc(_doc(_db, "users", userIdForInventario));
-        const userInfo = userDoc.exists() ? userDoc.data() : { email: 'Usuario Desconocido' };
-
-        const allData = [
-            ...ventas.map(v => ({ tipo: 'venta', data: v })),
-            ...(obsequios || []).map(o => ({ tipo: 'obsequio', data: o }))
-        ];
-
-        for (const item of allData) {
-            const clientName = item.data.clienteNombre || 'Cliente Desconocido';
-            
-            if (!vaciosMovementsPorTipo[clientName]) { 
-                vaciosMovementsPorTipo[clientName] = {}; 
-                TIPOS_VACIO_GLOBAL.forEach(t => vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }); 
-            }
-
-            if (item.tipo === 'venta') {
-                const venta = item.data;
-                const ventaTotalCliente = venta.total || 0;
-                clientTotals[clientName] = (clientTotals[clientName] || 0) + ventaTotalCliente;
-                grandTotalValue += ventaTotalCliente;
-
-                const vacDev = venta.vaciosDevueltosPorTipo || {};
-                for (const t in vacDev) { 
-                    if (!vaciosMovementsPorTipo[clientName][t]) vaciosMovementsPorTipo[clientName][t] = { entregados: 0, devueltos: 0 }; 
-                    vaciosMovementsPorTipo[clientName][t].devueltos += (vacDev[t] || 0); 
-                }
-
-                (venta.productos || []).forEach(p => {
-                    // 3. CORRECCIÓN: Usar '|| p' como fallback
-                    const prodInventario = inventarioMap.get(p.id);
-                    const prodParaReporte = {
-                        ...(prodInventario || {}), // Usar datos del inventario actual (si existe)
-                        ...p, // Sobrescribir con datos de la venta (precios, etc.)
-                        id: p.id,
-                        // Asegurar que las categorías existan, usando fallback del inventario o de la venta
-                        rubro: prodInventario?.rubro || p.rubro || 'SIN RUBRO',
-                        segmento: prodInventario?.segmento || p.segmento || 'S/S',
-                        marca: prodInventario?.marca || p.marca || 'S/M',
-                    };
-                    // --- FIN CORRECCIÓN ---
-                    
-                    const rubro = prodParaReporte.rubro;
-                    allRubros.add(rubro);
-                    if (!dataByRubro[rubro]) {
-                        dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
-                    }
-                    if (!dataByRubro[rubro].clients[clientName]) {
-                        dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
-                    }
-                    if (p.id && !dataByRubro[rubro].productsMap.has(p.id)) {
-                        dataByRubro[rubro].productsMap.set(p.id, prodParaReporte); 
-                    }
-
-                    let cantidadUnidades = 0;
-                    if (p.cantidadVendida) { 
-                        const uCj = p.unidadesPorCaja || 1;
-                        const uPaq = p.unidadesPorPaquete || 1;
-                        cantidadUnidades = (p.cantidadVendida.cj || 0) * uCj + (p.cantidadVendida.paq || 0) * uPaq + (p.cantidadVendida.und || 0);
-                    } else if (p.totalUnidadesVendidas) { 
-                        cantidadUnidades = p.totalUnidadesVendidas;
-                    }
-                    
-                    const subtotalProducto = (p.precios?.cj || 0) * (p.cantidadVendida?.cj || 0) + (p.precios?.paq || 0) * (p.cantidadVendida?.paq || 0) + (p.precios?.und || 0) * (p.cantidadVendida?.und || 0);
-                    
-                    if(p.id) dataByRubro[rubro].clients[clientName].products[p.id] = (dataByRubro[rubro].clients[clientName].products[p.id] || 0) + cantidadUnidades;
-                    dataByRubro[rubro].clients[clientName].totalValue += subtotalProducto;
-                    dataByRubro[rubro].totalValue += subtotalProducto;
-                    
-                    if (prodParaReporte.manejaVacios && prodParaReporte.tipoVacio) {
-                        const tV = prodParaReporte.tipoVacio; 
-                        if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                        vaciosMovementsPorTipo[clientName][tV].entregados += p.cantidadVendida?.cj || 0; 
-                    }
-                });
-
-            } else if (item.tipo === 'obsequio') {
-                // --- INICIO DE LA CORRECCIÓN (Reporte) ---
-                const obsequio = item.data;
-                const prodInventario = inventarioMap.get(obsequio.productoId); // Obtener del inventario ACTUAL
-
-                let pComp; // Producto para el reporte
-
-                if (prodInventario) {
-                    // Caso 1: El producto AÚN EXISTE en el inventario actual.
-                    pComp = { ...prodInventario, id: obsequio.productoId }; // <-- CORRECCIÓN: Añadir ID
-                    pComp.precios = { und: 0, paq: 0, cj: 0 }; // Obsequios no tienen precio
-                } else {
-                    // Caso 2: El producto fue ELIMINADO. Usar datos de respaldo del obsequio.
-                    console.warn(`(Reporte) Producto de obsequio ${obsequio.productoId} (${obsequio.productoNombre}) no encontrado. Usando fallback.`);
-                    pComp = {
-                        id: obsequio.productoId,
-                        productoNombre: obsequio.productoNombre,
-                        presentacion: obsequio.productoNombre || 'Producto Eliminado',
-                        rubro: 'OBSEQUIOS (ELIMINADO)', // Asignar rubro de respaldo
-                        segmento: 'OBSEQUIOS (ELIMINADO)', // Asignar segmento de respaldo
-                        marca: 'N/A',
-                        precios: { und: 0, paq: 0, cj: 0 },
-                        unidadesPorCaja: 1, // No podemos saber el real, asumimos 1 para el cálculo
-                        manejaVacios: !!obsequio.tipoVacio,
-                        tipoVacio: obsequio.tipoVacio || null
-                    };
-                }
-                
-                // Procesar el pComp (ya sea el real o el de respaldo)
-                const cantidadUnidades = (obsequio.cantidadCajas || 0) * (pComp.unidadesPorCaja || 1);
-                const rubro = pComp.rubro || 'SIN RUBRO';
-                
-                allRubros.add(rubro);
-                if (!dataByRubro[rubro]) {
-                    dataByRubro[rubro] = { clients: {}, productsMap: new Map(), productTotals: {}, totalValue: 0, obsequiosMap: new Set() };
-                }
-                if (!dataByRubro[rubro].clients[clientName]) {
-                    dataByRubro[rubro].clients[clientName] = { products: {}, totalValue: 0 };
-                }
-                if (pComp.id && !dataByRubro[rubro].productsMap.has(pComp.id)) {
-                    dataByRubro[rubro].productsMap.set(pComp.id, pComp); 
-                }
-                dataByRubro[rubro].obsequiosMap.add(pComp.id);
-
-                if(pComp.id) dataByRubro[rubro].clients[clientName].products[pComp.id] = (dataByRubro[rubro].clients[clientName].products[pComp.id] || 0) + cantidadUnidades;
-                
-                // Lógica de vacíos (Entregados)
-                if (pComp.manejaVacios && pComp.tipoVacio) {
-                    const tV = pComp.tipoVacio; 
-                    if (!vaciosMovementsPorTipo[clientName][tV]) vaciosMovementsPorTipo[clientName][tV] = { entregados: 0, devueltos: 0 }; 
-                    vaciosMovementsPorTipo[clientName][tV].entregados += (obsequio.cantidadCajas || 0); 
-                }
-
-                // Lógica de vacíos (Devueltos en el mismo obsequio)
-                const vacDev = obsequio.vaciosRecibidos || 0;
-                const tipoVacDev = obsequio.tipoVacio; // El obsequio guarda su propio tipo de vacío
-                if (vacDev > 0 && tipoVacDev) {
-                     if (!vaciosMovementsPorTipo[clientName][tipoVacDev]) vaciosMovementsPorTipo[clientName][tipoVacDev] = { entregados: 0, devueltos: 0 };
-                     vaciosMovementsPorTipo[clientName][tipoVacDev].devueltos += vacDev;
-                }
-                // --- FIN DE LA CORRECCIÓN (Reporte) ---
-            }
-        }
-        
-        const sortFunction = await getGlobalProductSortFunction();
-        const finalData = { rubros: {}, vaciosMovementsPorTipo: vaciosMovementsPorTipo, clientTotals: clientTotals, grandTotalValue: grandTotalValue };
-
-        for (const rubroName of Array.from(allRubros).sort()) {
-            const rubroData = dataByRubro[rubroName];
-            const sortedProducts = Array.from(rubroData.productsMap.values()).sort(sortFunction);
-            const sortedClients = Object.keys(rubroData.clients).sort();
-            const productTotals = {};
-
-            for (const p of sortedProducts) {
-                const productId = p.id;
-                let totalSoldUnits = 0;
-                for (const clientName of sortedClients) {
-                    totalSoldUnits += (rubroData.clients[clientName].products[productId] || 0);
-                }
-
-                // --- INICIO DE LA CORRECCIÓN (Stock Calculation) ---
-                // 3. Modificar cómo se calcula el stock inicial y actual.
-                const pInfoCurrent = inventarioMap.get(productId); // Info del inventario actual
-                const pInfoSnapshot = snapshotMap.get(productId); // Info del snapshot (Carga Inicial)
-
-                let initialStockUnits = 0;
-                let currentStockUnits = 0;
-                
-                if (hasSnapshot) {
-                    // Si hay snapshot, la Carga Inicial ES el snapshot.
-                    // Si el producto no estaba en el snapshot (ej. obsequio añadido hoy), su Carga Inicial es 0.
-                    initialStockUnits = pInfoSnapshot ? (pInfoSnapshot.cantidadUnidades || 0) : 0;
-                    // La Carga Restante se calcula: Carga Inicial - Total Vendido
-                    currentStockUnits = initialStockUnits - totalSoldUnits;
-                } else {
-                    // Si NO hay snapshot (método antiguo), la Carga Restante ES el inventario actual.
-                    currentStockUnits = pInfoCurrent ? (pInfoCurrent.cantidadUnidades || 0) : 0;
-                    // La Carga Inicial se calcula: Carga Restante + Total Vendido
-                    initialStockUnits = currentStockUnits + totalSoldUnits;
-                }
-                // --- FIN DE LA CORRECCIÓN ---
-
-                productTotals[productId] = { totalSold: totalSoldUnits, currentStock: currentStockUnits, initialStock: initialStockUnits };
-            }
-            
-            finalData.rubros[rubroName] = { 
-                clients: rubroData.clients, 
-                products: sortedProducts, 
-                sortedClients: sortedClients, 
-                totalValue: rubroData.totalValue, 
-                productTotals: productTotals,
-                obsequiosMap: rubroData.obsequiosMap || new Set()
-            };
-        }
-        return { finalData, userInfo };
-    }
-
     async function exportSingleClosingToExcel(closingData) {
         if (typeof ExcelJS === 'undefined') {
             _showModal('Error', 'Librería ExcelJS no cargada. No se puede exportar.');
@@ -705,7 +493,7 @@
         _showModal('Progreso', 'Generando Excel con su diseño...'); 
 
         try {
-            const { finalData, userInfo } = await processSalesDataForReport(
+            const { finalData, userInfo } = await _processSalesDataForModal(
                 closingData.ventas || [], 
                 closingData.obsequios || [], 
                 closingData.cargaInicialInventario || [], 
@@ -714,18 +502,13 @@
             
             const workbook = new ExcelJS.Workbook();
             
-            // --- INICIO DE LA CORRECCIÓN ---
-            // Obtenemos el objeto fecha.
             const fechaObjeto = closingData.fecha;
             
-            // Verificamos si es un Timestamp de Firebase (tiene .toDate()) o si ya es un JS Date.
             const jsDate = (fechaObjeto && typeof fechaObjeto.toDate === 'function') 
-                            ? fechaObjeto.toDate()  // Es un Timestamp, lo convertimos
-                            : fechaObjeto;          // Ya es un Date (creado con new Date())
+                            ? fechaObjeto.toDate()  
+                            : fechaObjeto;          
 
-            // Usamos la variable jsDate (que ahora sí es un Date)
             const fechaCierre = jsDate ? jsDate.toLocaleDateString('es-ES') : 'Fecha Inválida';
-            // --- FIN DE LA CORRECCIÓN ---
             
             const usuarioNombre = (userInfo.nombre || '') + ' ' + (userInfo.apellido || '');
             const usuarioDisplay = usuarioNombre.trim() || userInfo.email || 'Usuario Desconocido';
@@ -871,18 +654,13 @@
                     const esSoloObsequio = !finalData.clientTotals.hasOwnProperty(clientName) && clientSales.totalValue === 0 && Object.values(clientSales.products).some(q => q > 0);
                     const clientNameDisplay = esSoloObsequio ? `${clientName} (OBSEQUIO)` : clientName;
 
-                    // --- INICIO DE LA CORRECCIÓN ---
-
-                    // 1. Determinar el objeto de estilo base para TODA la fila
-                    // Si esSoloObsequio, usamos el estilo de obsequio; si no, usamos el estilo de cliente por defecto.
                     const rowBaseStyleSettings = esSoloObsequio ? s.rowDataClientsObsequio : s.rowDataClients;
 
-                    // 2. Construir y aplicar el estilo a la PRIMERA celda (Nombre del Cliente)
                     const clientNameStyle = buildExcelJSStyle(
                         rowBaseStyleSettings,
                         rowBaseStyleSettings.border ? thinBorderStyle : null,
-                        null, // Sin formato numérico
-                        'left' // Alineación
+                        null, 
+                        'left' 
                     );
                     clientRow.getCell(1).value = clientNameDisplay;
                     clientRow.getCell(1).style = clientNameStyle;
@@ -894,26 +672,21 @@
                         const qtyDisplay = getDisplayQty(qU, p);
                         cell.value = qtyDisplay.value;
                         
-                        // 3. Determinar el estilo para CADA celda de producto
                         let cellStyleSettings;
                         
                         if (esSoloObsequio) {
-                            // Si la fila entera es de obsequio, usar ese estilo
                             cellStyleSettings = s.rowDataClientsObsequio;
                         } else if (qU > 0) {
-                            // Si es una fila normal Y la celda tiene venta, usar el estilo de venta
                             cellStyleSettings = s.rowDataClientsSale;
                         } else {
-                            // Si es una fila normal y la celda está vacía, usar el estilo por defecto
                             cellStyleSettings = s.rowDataClients;
                         }
                         
-                        // 4. Construir y aplicar el estilo a la celda del producto
                         const finalCellStyle = buildExcelJSStyle(
                             cellStyleSettings,
                             cellStyleSettings.border ? thinBorderStyle : null,
-                            "0", // Formato numérico
-                            'center' // Alineación
+                            "0", 
+                            'center' 
                         );
                         
                         cell.style = finalCellStyle;
@@ -922,16 +695,14 @@
                     const subtotalCell = clientRow.getCell(subTotalCol);
                     subtotalCell.value = clientSales.totalValue;
 
-                    // 5. Construir y aplicar el estilo a la ÚLTIMA celda (Subtotal)
                     const subtotalStyle = buildExcelJSStyle(
-                        rowBaseStyleSettings, // Usar el mismo estilo base de la fila
+                        rowBaseStyleSettings, 
                         rowBaseStyleSettings.border ? thinBorderStyle : null,
-                        "$#,##0.00", // Formato numérico
-                        'right' // Alineación
+                        "$#,##0.00", 
+                        'right' 
                     );
                     subtotalCell.style = subtotalStyle;
                     
-                    // --- FIN DE LA CORRECCIÓN ---
                 });
 
                 currentRowNum++;
@@ -966,7 +737,7 @@
             }
 
             const { vaciosMovementsPorTipo } = finalData;
-            const TIPOS_VACIO_GLOBAL = window.TIPOS_VACIO_GLOBAL || ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
+            const TIPOS_VACIO_GLOBAL = ["1/4 - 1/3", "ret 350 ml", "ret 1.25 Lts"]; 
             const cliVacios = Object.keys(vaciosMovementsPorTipo).filter(cli => TIPOS_VACIO_GLOBAL.some(t => (vaciosMovementsPorTipo[cli][t]?.entregados || 0) > 0 || (vaciosMovementsPorTipo[cli][t]?.devueltos || 0) > 0)).sort(); 
             
             if (settings.showVaciosSheet && cliVacios.length > 0) { 
