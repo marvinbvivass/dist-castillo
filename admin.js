@@ -4,7 +4,7 @@
     let limit, startAfter;
     let _obsequioProductId = null;
     let _inventarioParaImportar = [];
-    let _cierresParaImportar = []; // Variable para importar cierres
+    let _cierresParaImportar = []; 
 
     let _segmentoOrderCacheAdmin = null;
     let _rubroOrderCacheAdmin = null;
@@ -15,7 +15,7 @@
             return;
         }
         _db = dependencies.db;
-        _userId = dependencies.userId; // ID del Admin
+        _userId = dependencies.userId; 
         _userRole = dependencies.userRole;
         _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
@@ -86,11 +86,11 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold mb-6 text-center text-indigo-800">Migración de Cierres</h1>
                         <p class="text-center text-gray-600 mb-6 text-sm">
-                            Utiliza formato <strong>JSON</strong> para transferir el historial completo de cierres entre bases de datos diferentes sin perder detalles.
+                            Utiliza formato <strong>JSON</strong> para transferir el historial completo de cierres (de TODOS los usuarios) entre bases de datos.
                         </p>
                         <div class="space-y-4">
                             <button id="exportCierresBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 font-bold">
-                                📤 Exportar Cierres (Backup JSON)
+                                📤 Exportar Cierres (Backup Global)
                             </button>
                             <button id="importCierresBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 font-bold">
                                 📥 Importar Cierres (Restaurar)
@@ -109,39 +109,59 @@
     }
 
     async function handleExportCierres() {
-        _showModal('Progreso', 'Descargando historial de cierres...', null, '', null, false);
+        _showModal('Progreso', 'Escaneando usuarios y descargando cierres...', null, '', null, false);
         try {
-            const cierresRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
-            const snap = await _getDocs(cierresRef);
+            // 1. Obtener todos los usuarios del sistema
+            const usersRef = _collection(_db, "users");
+            const usersSnap = await _getDocs(usersRef);
+            const userIds = usersSnap.docs.map(d => d.id);
             
-            if (snap.empty) {
-                _showModal('Aviso', 'No hay cierres registrados para exportar.');
+            let allCierres = [];
+
+            // 2. Iterar por cada usuario para extraer sus cierres
+            for (const uid of userIds) {
+                const cierresRef = _collection(_db, `artifacts/${_appId}/users/${uid}/cierres`);
+                const snap = await _getDocs(cierresRef);
+                
+                const userCierres = snap.docs.map(d => {
+                    const data = d.data();
+                    // Serializar fechas de Firebase a formato texto (ISO) para el JSON
+                    if (data.fecha && typeof data.fecha.toDate === 'function') {
+                        data.fechaISO = data.fecha.toDate().toISOString();
+                    } else if (data.fecha) {
+                        // Si ya es string o fecha JS
+                        data.fechaISO = new Date(data.fecha).toISOString();
+                    }
+                    
+                    return { 
+                        _id: d.id, // ID del documento original
+                        _userId: uid, // Guardar a quién pertenece para restaurarlo correctamente
+                        ...data 
+                    };
+                });
+                
+                if (userCierres.length > 0) {
+                    allCierres = [...allCierres, ...userCierres];
+                }
+            }
+
+            if (allCierres.length === 0) {
+                _showModal('Aviso', 'No se encontraron cierres en ningún usuario.');
                 return;
             }
 
-            const data = snap.docs.map(d => {
-                const cierre = d.data();
-                // Convertir Timestamp de Firebase a ISO String para portabilidad JSON
-                if (cierre.fecha && typeof cierre.fecha.toDate === 'function') {
-                    cierre.fechaISO = cierre.fecha.toDate().toISOString();
-                } else if (cierre.fecha) {
-                    cierre.fechaISO = new Date(cierre.fecha).toISOString();
-                }
-                return { id: d.id, ...cierre };
-            });
-
-            const jsonStr = JSON.stringify(data, null, 2);
+            const jsonStr = JSON.stringify(allCierres, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Respaldo_Cierres_${new Date().toISOString().slice(0,10)}.json`;
+            a.download = `Respaldo_Cierres_Global_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            _showModal('Éxito', `Se exportaron ${data.length} cierres correctamente.`);
+            _showModal('Éxito', `Se exportaron ${allCierres.length} cierres de ${userIds.length} usuarios escaneados.`);
         } catch (error) {
             console.error("Error exportando cierres:", error);
             _showModal('Error', `Falló la exportación: ${error.message}`);
@@ -155,7 +175,7 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h2 class="text-2xl font-bold mb-4 text-center">Importar Cierres (JSON)</h2>
                         <p class="text-center text-gray-600 mb-6 text-sm">
-                            Selecciona el archivo .json generado previamente. Esto añadirá los cierres al historial actual.
+                            Selecciona el archivo .json generado. Los cierres se restaurarán en la carpeta de cada usuario correspondiente.
                         </p>
                         <input type="file" id="cierres-uploader" accept=".json" class="w-full p-4 border-2 border-dashed rounded-lg mb-6 cursor-pointer hover:bg-gray-50">
                         
@@ -208,7 +228,7 @@
     async function handleConfirmCierresImport() {
         if (_cierresParaImportar.length === 0) return;
 
-        _showModal('Progreso', `Importando ${_cierresParaImportar.length} cierres...`, null, '', null, false);
+        _showModal('Progreso', `Restaurando ${_cierresParaImportar.length} cierres...`, null, '', null, false);
         
         const BATCH_LIMIT = 450;
         let batch = _writeBatch(_db);
@@ -220,18 +240,23 @@
                 // Restaurar fecha si existe ISO string
                 if (item.fechaISO) {
                     item.fecha = new Date(item.fechaISO);
-                    delete item.fechaISO; // Limpiar auxiliar
+                    delete item.fechaISO; 
                 } else if (typeof item.fecha === 'string') {
                     item.fecha = new Date(item.fecha);
                 }
 
-                // Generar referencia (usar ID original si existe para evitar duplicados si se re-importa lo mismo)
-                const docRef = item.id 
-                    ? _doc(_db, `artifacts/${_appId}/users/${_userId}/cierres`, item.id)
-                    : _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
+                // Determinar el ID del usuario destino
+                // Si el JSON tiene _userId, lo usamos. Si no (versiones viejas), usamos el admin actual (fallback).
+                const targetUserId = item._userId || _userId;
+
+                // Generar referencia en la ruta correcta del usuario
+                const docId = item._id || item.id; 
+                const docRef = docId 
+                    ? _doc(_db, `artifacts/${_appId}/users/${targetUserId}/cierres`, docId)
+                    : _doc(_collection(_db, `artifacts/${_appId}/users/${targetUserId}/cierres`));
                 
-                // Limpiar ID del cuerpo del documento
-                const { id, ...dataToSave } = item;
+                // Limpiar campos auxiliares de control antes de guardar en Firestore
+                const { _id, _userId: uidField, id, ...dataToSave } = item;
 
                 batch.set(docRef, dataToSave, { merge: true });
                 ops++;
@@ -246,8 +271,8 @@
 
             if (ops > 0) await batch.commit();
 
-            _cierresParaImportar = []; // Limpiar memoria
-            _showModal('Éxito', `Se importaron ${imported} cierres correctamente.`, showImportExportCierresView);
+            _cierresParaImportar = []; 
+            _showModal('Éxito', `Se restauraron ${imported} cierres correctamente.`, showImportExportCierresView);
 
         } catch (error) {
             console.error("Error importing cierres:", error);
