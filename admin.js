@@ -9,6 +9,9 @@
     let _segmentoOrderCacheAdmin = null;
     let _rubroOrderCacheAdmin = null;
 
+    // ID REAL DE LA BASE DE DATOS (Fijo para asegurar compatibilidad)
+    const DB_ID = 'ventas-9a210';
+
     window.initAdmin = function(dependencies) {
         if (!dependencies.db || !dependencies.mainContent || !dependencies.showMainMenu || !dependencies.showModal) {
             console.error("Admin Init Error: Faltan dependencias críticas");
@@ -17,7 +20,7 @@
         _db = dependencies.db;
         _userId = dependencies.userId; 
         _userRole = dependencies.userRole;
-        _appId = dependencies.appId;
+        _appId = dependencies.appId; // Se mantiene por si acaso, pero usaremos DB_ID para rutas
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
@@ -119,8 +122,9 @@
             let allCierres = [];
 
             // 2. Iterar por cada usuario para extraer sus cierres
+            // Usamos DB_ID en lugar de _appId para asegurar que buscamos en la carpeta correcta
             for (const uid of userIds) {
-                const cierresRef = _collection(_db, `artifacts/${_appId}/users/${uid}/cierres`);
+                const cierresRef = _collection(_db, `artifacts/${DB_ID}/users/${uid}/cierres`);
                 const snap = await _getDocs(cierresRef);
                 
                 const userCierres = snap.docs.map(d => {
@@ -129,7 +133,6 @@
                     if (data.fecha && typeof data.fecha.toDate === 'function') {
                         data.fechaISO = data.fecha.toDate().toISOString();
                     } else if (data.fecha) {
-                        // Si ya es string o fecha JS
                         data.fechaISO = new Date(data.fecha).toISOString();
                     }
                     
@@ -146,7 +149,7 @@
             }
 
             if (allCierres.length === 0) {
-                _showModal('Aviso', 'No se encontraron cierres en ningún usuario.');
+                _showModal('Aviso', `No se encontraron cierres en ningún usuario bajo la ruta artifacts/${DB_ID}/users/...`);
                 return;
             }
 
@@ -246,16 +249,15 @@
                 }
 
                 // Determinar el ID del usuario destino
-                // Si el JSON tiene _userId, lo usamos. Si no (versiones viejas), usamos el admin actual (fallback).
                 const targetUserId = item._userId || _userId;
 
-                // Generar referencia en la ruta correcta del usuario
+                // Generar referencia en la ruta correcta usando DB_ID
                 const docId = item._id || item.id; 
                 const docRef = docId 
-                    ? _doc(_db, `artifacts/${_appId}/users/${targetUserId}/cierres`, docId)
-                    : _doc(_collection(_db, `artifacts/${_appId}/users/${targetUserId}/cierres`));
+                    ? _doc(_db, `artifacts/${DB_ID}/users/${targetUserId}/cierres`, docId)
+                    : _doc(_collection(_db, `artifacts/${DB_ID}/users/${targetUserId}/cierres`));
                 
-                // Limpiar campos auxiliares de control antes de guardar en Firestore
+                // Limpiar campos auxiliares de control
                 const { _id, _userId: uidField, id, ...dataToSave } = item;
 
                 batch.set(docRef, dataToSave, { merge: true });
@@ -353,7 +355,7 @@
         if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return false; }
         _showModal('Progreso', 'Generando respaldo...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
-        const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); 
+        const pubProjId = DB_ID; const today = new Date().toISOString().slice(0, 10); 
         
         const wb = new ExcelJS.Workbook(); 
         let sheetsAdded = 0;
@@ -371,23 +373,23 @@
             };
 
             if (cleanInv) { 
-                addSheet(wb, 'Inventario_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/inventario`));
-                addSheet(wb, 'Rubros_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/rubros`));
-                addSheet(wb, 'Segmentos_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/segmentos`));
-                addSheet(wb, 'Marcas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/marcas`));
+                addSheet(wb, 'Inventario_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/inventario`));
+                addSheet(wb, 'Rubros_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/rubros`));
+                addSheet(wb, 'Segmentos_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/segmentos`));
+                addSheet(wb, 'Marcas_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/marcas`));
             }
             if (cleanCli) { 
                 addSheet(wb, 'Clientes_Public', await fetchData(`artifacts/${pubProjId}/public/data/clientes`));
                 addSheet(wb, 'Sectores_Public', await fetchData(`artifacts/${pubProjId}/public/data/sectores`));
             }
             if (cleanVen) { 
-                addSheet(wb, 'Ventas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/ventas`));
-                addSheet(wb, 'Cierres_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/cierres`));
-                addSheet(wb, 'Cierres_Vendedores', await fetchData(`public_data/${_appId}/user_closings`));
+                addSheet(wb, 'Ventas_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/ventas`));
+                addSheet(wb, 'Cierres_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/cierres`));
+                addSheet(wb, 'Cierres_Vendedores', await fetchData(`public_data/${DB_ID}/user_closings`));
             }
             if (cleanObs) { 
-                addSheet(wb, 'Obsequios_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
-                const admConfRef = _doc(_db,`artifacts/${_appId}/users/${_userId}/config/obsequio`); 
+                addSheet(wb, 'Obsequios_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/obsequios_entregados`));
+                const admConfRef = _doc(_db,`artifacts/${DB_ID}/users/${_userId}/config/obsequio`); 
                 const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); 
                 const [admConfS, pubConfS] = await Promise.allSettled([_getDoc(admConfRef), _getDoc(pubConfRef)]); 
                 const confs=[]; 
@@ -421,12 +423,12 @@
     async function executeDeepClean() {
         _showModal('Progreso', 'Iniciando limpieza profunda...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
-        const colsToDelPub = []; const pubProjId = 'ventas-9a210'; let allUserIds = [];
+        const colsToDelPub = []; const pubProjId = DB_ID; let allUserIds = [];
         try { const uSnap = await _getDocs(_collection(_db, "users")); allUserIds = uSnap.docs.map(d => d.id); console.log(`Limpieza para ${allUserIds.length} usuarios.`); }
         catch (uErr) { console.error("Error obteniendo usuarios:", uErr); _showModal('Error Crítico', `No se pudo obtener lista usuarios. Limpieza cancelada: ${uErr.message}`); return; }
 
         if (cleanCli) { colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/clientes`, name: 'Clientes Públicos' }); colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/sectores`, name: 'Sectores Públicos' }); }
-        if (cleanVen) { colsToDelPub.push({ path: `public_data/${_appId}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
+        if (cleanVen) { colsToDelPub.push({ path: `public_data/${DB_ID}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
         if (cleanObs) { const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); try { await _deleteDoc(pubConfRef); console.log("Deleted public obsequio config."); } catch(e){ console.warn("Could not delete public obsequio config:", e.code); } }
 
         const privColsToClean = []; 
@@ -453,7 +455,7 @@
         for (const colInfo of colsToDelPub) { _showModal('Progreso', `Eliminando ${colInfo.name}...`); try { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(colInfo.path); console.log(`Deleted ${count} docs from ${colInfo.name}`); deletedDocCount+=count; deletedColCount++; } catch (error) { console.error(`Error public ${colInfo.name}:`, error); errorsOccurred=true; _showModal('Error Parcial', `Error ${colInfo.name}: ${error.message}. Continuando...`, null, 'OK'); await new Promise(r=>setTimeout(r,2000)); } }
 
         for (const targetUserId of allUserIds) { _showModal('Progreso', `Limpiando ${targetUserId.substring(0,6)}... (${allUserIds.indexOf(targetUserId)+1}/${allUserIds.length})`); console.log(`--- Cleaning private for ${targetUserId} ---`);
-            for (const privCol of privColsToClean) { const fullPath = `artifacts/${_appId}/users/${targetUserId}/${privCol.sub}`; try { if (privCol.isDoc) { const docRef = _doc(_db, fullPath); await _deleteDoc(docRef); console.log(`  - Deleted doc ${privCol.n} (${fullPath})`); deletedDocCount++; } else { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(fullPath); console.log(`  - Deleted ${count} docs from ${privCol.n} (${fullPath})`); deletedDocCount+=count; } } catch (error) { if(error.code!=='not-found'&&error.code!=='permission-denied'){console.error(`  - Error ${privCol.n} for ${targetUserId}:`, error); errorsOccurred=true;} else if(error.code==='permission-denied'){console.warn(`  - Permission denied ${privCol.n} for ${targetUserId}.`); errorsOccurred=true;} else {console.log(`  - ${privCol.n} not found for ${targetUserId}.`);} } } }
+            for (const privCol of privColsToClean) { const fullPath = `artifacts/${DB_ID}/users/${targetUserId}/${privCol.sub}`; try { if (privCol.isDoc) { const docRef = _doc(_db, fullPath); await _deleteDoc(docRef); console.log(`  - Deleted doc ${privCol.n} (${fullPath})`); deletedDocCount++; } else { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(fullPath); console.log(`  - Deleted ${count} docs from ${privCol.n} (${fullPath})`); deletedDocCount+=count; } } catch (error) { if(error.code!=='not-found'&&error.code!=='permission-denied'){console.error(`  - Error ${privCol.n} for ${targetUserId}:`, error); errorsOccurred=true;} else if(error.code==='permission-denied'){console.warn(`  - Permission denied ${privCol.n} for ${targetUserId}.`); errorsOccurred=true;} else {console.log(`  - ${privCol.n} not found for ${targetUserId}.`);} } } }
 
         _rubroOrderCacheAdmin=null; _segmentoOrderCacheAdmin=null; if(window.inventarioModule)window.inventarioModule.invalidateSegmentOrderCache(); if(window.catalogoModule)window.catalogoModule.invalidateCache(); if(window.ventasModule)window.ventasModule.invalidateCache();
         _showModal(errorsOccurred?'Limpieza Completada (con errores)':'Limpieza Completada', `Intentado para ${allUserIds.length} usuarios. Docs/Configs eliminados: ${deletedDocCount}. ${errorsOccurred?'Ocurrieron errores. Revisa consola.':''}`, showAdminSubMenuView, 'OK');
@@ -468,10 +470,10 @@
 
     // --- Funciones para Importar/Exportar Inventario ---
     async function getRubroOrderMapAdmin() {
-        if (_rubroOrderCacheAdmin) return _rubroOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _rubroOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getRubroOrderMapAdmin:", e); return {}; }
+        if (_rubroOrderCacheAdmin) return _rubroOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/rubros`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _rubroOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getRubroOrderMapAdmin:", e); return {}; }
     }
     async function getSegmentoOrderMapAdmin() {
-         if (_segmentoOrderCacheAdmin) return _segmentoOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _segmentoOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getSegmentoOrderMapAdmin:", e); return {}; }
+         if (_segmentoOrderCacheAdmin) return _segmentoOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/segmentos`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _segmentoOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getSegmentoOrderMapAdmin:", e); return {}; }
     }
     function showImportExportInventarioView() {
         _floatingControls?.classList.add('hidden');
@@ -494,7 +496,7 @@
         if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return; }
         _showModal('Progreso', 'Generando Excel...');
         try { 
-            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); 
+            const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`); 
             const snap = await _getDocs(invRef); 
             let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             const rOMap = await getRubroOrderMapAdmin(); 
@@ -610,13 +612,13 @@
                 const nombresNuevos = Array.from(categoriasNuevas[tipoCategoria]);
                 if (nombresNuevos.length > 0) {
                     _showModal('Progreso', `Verificando ${tipoCategoria} existentes...`);
-                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
+                    const collectionRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/${tipoCategoria}`);
                     const snapshot = await _getDocs(collectionRef);
                     const nombresExistentes = new Set(snapshot.docs.map(doc => doc.data().name));
                     nombresNuevos.forEach(nombre => { if (!nombresExistentes.has(nombre)) { categoriasParaAgregar[tipoCategoria].push({ name: nombre }); } });
                 }
             }
-            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
+            const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`);
             const snap = await _getDocs(invRef);
             const curInvMap = new Map();
             snap.docs.forEach(d => { const data = d.data(); const key = `${data.rubro || ''}|${data.segmento || ''}|${data.marca || ''}|${data.presentacion || ''}`.toUpperCase(); curInvMap.set(key, d.id); });
@@ -653,7 +655,7 @@
                     const BATCH_LIMIT = 490;
                     const addedCategoriesData = [];
                     for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
-                        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
+                        const collectionRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/${tipoCategoria}`);
                         for (const catData of categoriasParaAgregar[tipoCategoria]) {
                             const newCatRef = _doc(collectionRef); 
                             batchCategorias.set(newCatRef, catData);
@@ -735,7 +737,7 @@
     }
     async function loadAndPopulateObsequioSelect() {
         const selEl = document.getElementById('obsequioProductSelect'); if (!selEl) return; const pubConfPath = `artifacts/ventas-9a210/public/data/config/obsequio`;
-        try { const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); const pVal = snap.docs.map(d=>({id: d.id,...d.data()})).filter(p=>p.manejaVacios&&p.ventaPor?.cj).sort((a,b)=>`${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
+        try { const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); const pVal = snap.docs.map(d=>({id: d.id,...d.data()})).filter(p=>p.manejaVacios&&p.ventaPor?.cj).sort((a,b)=>`${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
             selEl.innerHTML='<option value="">-- Seleccione --</option>'; const saveBtn = document.getElementById('saveObsequioConfigBtn');
             if (pVal.length===0) { selEl.innerHTML='<option value="">No hay productos válidos</option>'; selEl.disabled=true; if(saveBtn) saveBtn.disabled=true; }
             else { pVal.forEach(p=>{selEl.innerHTML+=`<option value="${p.id}">${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;}); selEl.disabled=false; if(saveBtn) saveBtn.disabled=false; const confRef = _doc(_db, pubConfPath); const confSnap = await _getDoc(confRef); if (confSnap.exists()){ _obsequioProductId = confSnap.data().productoId; if (_obsequioProductId && pVal.some(p=>p.id===_obsequioProductId)) selEl.value=_obsequioProductId; else if (_obsequioProductId) _obsequioProductId=null; } }
@@ -752,16 +754,16 @@
     }
     async function propagateProductChange(productId, productData) {
         if (!productId) { console.error("propagateProductChange: productId missing."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating product ${productId} to users:`, allUIds); const BATCH_LIMIT = 490; let batch = _writeBatch(_db); let ops = 0; let errors = false;
-        try { for (const tUserId of allUIds) { const tPRef = _doc(_db, `artifacts/${_appId}/users/${tUserId}/inventario`, productId); if (productData === null) { batch.delete(tPRef); } else { const { cantidadUnidades, ...defData } = productData; const tDSnap = await _getDoc(tPRef); if (tDSnap.exists()) { batch.set(tPRef, defData, { merge: true }); } else { const initData = { ...defData, cantidadUnidades: 0 }; batch.set(tPRef, initData); } } ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for product ${productId}.`); } catch (error) { errors = true; console.error("Error propagating product:", error); window.showModal('Error', `Error propagando producto: ${error.message}.`); }
+        try { for (const tUserId of allUIds) { const tPRef = _doc(_db, `artifacts/${DB_ID}/users/${tUserId}/inventario`, productId); if (productData === null) { batch.delete(tPRef); } else { const { cantidadUnidades, ...defData } = productData; const tDSnap = await _getDoc(tPRef); if (tDSnap.exists()) { batch.set(tPRef, defData, { merge: true }); } else { const initData = { ...defData, cantidadUnidades: 0 }; batch.set(tPRef, initData); } } ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for product ${productId}.`); } catch (error) { errors = true; console.error("Error propagating product:", error); window.showModal('Error', `Error propagando producto: ${error.message}.`); }
     }
      async function propagateCategoryChange(collectionName, itemId, itemData) {
          if (!collectionName || !itemId) { console.error("propagateCategoryChange: missing args."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating category ${collectionName} (${itemId}) to ${allUIds.length} users...`); const BATCH_LIMIT = 490; let batch = _writeBatch(_db); let ops = 0; let errors = false;
-         try { for (const tUserId of allUIds) { const tIRef = _doc(_db, `artifacts/${_appId}/users/${tUserId}/${collectionName}`, itemId); if (itemData === null) batch.delete(tIRef); else batch.set(tIRef, itemData); ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); console.log(`Propagation complete for category ${collectionName} (${itemId}).`); } catch (error) { errors = true; console.error(`Error propagating category ${collectionName} (${itemId}):`, error); window.showModal('Error Propagación', `Error al actualizar categoría.`); }
+         try { for (const tUserId of allUIds) { const tIRef = _doc(_db, `artifacts/${DB_ID}/users/${tUserId}/${collectionName}`, itemId); if (itemData === null) batch.delete(tIRef); else batch.set(tIRef, itemData); ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); console.log(`Propagation complete for category ${collectionName} (${itemId}).`); } catch (error) { errors = true; console.error(`Error propagating category ${collectionName} (${itemId}):`, error); window.showModal('Error Propagación', `Error al actualizar categoría.`); }
      }
      async function propagateCategoryOrderChange(collectionName, orderedIds) {
           if (!collectionName || !Array.isArray(orderedIds)) { console.error("propagateCategoryOrderChange: missing args."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating order for ${collectionName} to users:`, allUIds); const BATCH_LIMIT = 490; let errors = false;
           try { const oMap = new Map(orderedIds.map((id, i) => [id, i])); let maxOrdAdmin = orderedIds.length - 1;
-              for (const tUserId of allUIds) { let batch = _writeBatch(_db); let ops = 0; const tColRef = _collection(_db, `artifacts/${_appId}/users/${tUserId}/${collectionName}`); const snap = await _getDocs(tColRef); let uMaxOrd = maxOrdAdmin; const itemsUser = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+              for (const tUserId of allUIds) { let batch = _writeBatch(_db); let ops = 0; const tColRef = _collection(_db, `artifacts/${DB_ID}/users/${tUserId}/${collectionName}`); const snap = await _getDocs(tColRef); let uMaxOrd = maxOrdAdmin; const itemsUser = snap.docs.map(d => ({ id: d.id, data: d.data() }));
                   for (const item of itemsUser) { const cOrd = item.data.orden; let nOrd; if (oMap.has(item.id)) { nOrd = oMap.get(item.id); if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } uMaxOrd = Math.max(uMaxOrd, nOrd); } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
                   itemsUser.sort((a,b)=> (a.data.name || '').localeCompare(b.data.name || ''));
                   for (const item of itemsUser) { if (!oMap.has(item.id)) { uMaxOrd++; const nOrd = uMaxOrd; const cOrd = item.data.orden; if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
