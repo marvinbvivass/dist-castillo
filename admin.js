@@ -4,6 +4,7 @@
     let limit, startAfter;
     let _obsequioProductId = null;
     let _inventarioParaImportar = [];
+    let _cierresParaImportar = []; // Variable para importar cierres
 
     let _segmentoOrderCacheAdmin = null;
     let _rubroOrderCacheAdmin = null;
@@ -60,6 +61,7 @@
                             <button id="userManagementBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700">Gestión Usuarios</button>
                             <button id="obsequioConfigBtn" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg shadow-md hover:bg-purple-700">Config Obsequio</button>
                             <button id="importExportInventarioBtn" class="w-full px-6 py-3 bg-teal-600 text-white rounded-lg shadow-md hover:bg-teal-700">Importar/Exportar Inventario</button>
+                            <button id="importExportCierresBtn" class="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg shadow-md hover:bg-indigo-700">Importar/Exportar Cierres</button>
                             <button id="deepCleanBtn" class="w-full px-6 py-3 bg-red-700 text-white rounded-lg shadow-md hover:bg-red-800">Limpieza Profunda</button>
                             <button id="backToMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">Volver Menú</button>
                         </div>
@@ -70,9 +72,189 @@
         document.getElementById('userManagementBtn').addEventListener('click', showUserManagementView);
         document.getElementById('obsequioConfigBtn').addEventListener('click', showObsequioConfigView);
         document.getElementById('importExportInventarioBtn').addEventListener('click', showImportExportInventarioView);
+        document.getElementById('importExportCierresBtn').addEventListener('click', showImportExportCierresView);
         document.getElementById('deepCleanBtn').addEventListener('click', showDeepCleanView);
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
+
+    // --- NUEVAS FUNCIONES: Importar/Exportar Cierres (JSON para Migración) ---
+    function showImportExportCierresView() {
+        _floatingControls?.classList.add('hidden');
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h1 class="text-3xl font-bold mb-6 text-center text-indigo-800">Migración de Cierres</h1>
+                        <p class="text-center text-gray-600 mb-6 text-sm">
+                            Utiliza formato <strong>JSON</strong> para transferir el historial completo de cierres entre bases de datos diferentes sin perder detalles.
+                        </p>
+                        <div class="space-y-4">
+                            <button id="exportCierresBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 font-bold">
+                                📤 Exportar Cierres (Backup JSON)
+                            </button>
+                            <button id="importCierresBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 font-bold">
+                                📥 Importar Cierres (Restaurar)
+                            </button>
+                            <button id="backToAdminMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('exportCierresBtn').addEventListener('click', handleExportCierres);
+        document.getElementById('importCierresBtn').addEventListener('click', showImportCierresView);
+        document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
+    }
+
+    async function handleExportCierres() {
+        _showModal('Progreso', 'Descargando historial de cierres...', null, '', null, false);
+        try {
+            const cierresRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`);
+            const snap = await _getDocs(cierresRef);
+            
+            if (snap.empty) {
+                _showModal('Aviso', 'No hay cierres registrados para exportar.');
+                return;
+            }
+
+            const data = snap.docs.map(d => {
+                const cierre = d.data();
+                // Convertir Timestamp de Firebase a ISO String para portabilidad JSON
+                if (cierre.fecha && typeof cierre.fecha.toDate === 'function') {
+                    cierre.fechaISO = cierre.fecha.toDate().toISOString();
+                } else if (cierre.fecha) {
+                    cierre.fechaISO = new Date(cierre.fecha).toISOString();
+                }
+                return { id: d.id, ...cierre };
+            });
+
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Respaldo_Cierres_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            _showModal('Éxito', `Se exportaron ${data.length} cierres correctamente.`);
+        } catch (error) {
+            console.error("Error exportando cierres:", error);
+            _showModal('Error', `Falló la exportación: ${error.message}`);
+        }
+    }
+
+    function showImportCierresView() {
+        _mainContent.innerHTML = `
+            <div class="p-4 pt-8">
+                <div class="container mx-auto max-w-lg">
+                    <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
+                        <h2 class="text-2xl font-bold mb-4 text-center">Importar Cierres (JSON)</h2>
+                        <p class="text-center text-gray-600 mb-6 text-sm">
+                            Selecciona el archivo .json generado previamente. Esto añadirá los cierres al historial actual.
+                        </p>
+                        <input type="file" id="cierres-uploader" accept=".json" class="w-full p-4 border-2 border-dashed rounded-lg mb-6 cursor-pointer hover:bg-gray-50">
+                        
+                        <div id="cierres-preview-info" class="mb-4 text-center text-sm font-bold text-blue-600 hidden"></div>
+
+                        <div id="cierres-import-actions" class="flex flex-col gap-3 hidden">
+                            <button id="confirmCierresImportBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 font-bold">
+                                Confirmar Importación
+                            </button>
+                        </div>
+                        <button id="backToIECierresBtn" class="mt-4 w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('cierres-uploader').addEventListener('change', handleFileUploadCierres);
+        document.getElementById('backToIECierresBtn').addEventListener('click', showImportExportCierresView);
+        document.getElementById('confirmCierresImportBtn').addEventListener('click', handleConfirmCierresImport);
+    }
+
+    async function handleFileUploadCierres(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                if (!Array.isArray(json)) throw new Error("El archivo no es una lista válida de cierres.");
+                
+                _cierresParaImportar = json;
+                const infoDiv = document.getElementById('cierres-preview-info');
+                const actionDiv = document.getElementById('cierres-import-actions');
+                
+                infoDiv.textContent = `Archivo válido. ${json.length} cierres encontrados para importar.`;
+                infoDiv.classList.remove('hidden');
+                actionDiv.classList.remove('hidden');
+
+            } catch (err) {
+                _showModal('Error', 'Archivo JSON inválido o corrupto.');
+                console.error(err);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    async function handleConfirmCierresImport() {
+        if (_cierresParaImportar.length === 0) return;
+
+        _showModal('Progreso', `Importando ${_cierresParaImportar.length} cierres...`, null, '', null, false);
+        
+        const BATCH_LIMIT = 450;
+        let batch = _writeBatch(_db);
+        let ops = 0;
+        let imported = 0;
+
+        try {
+            for (const item of _cierresParaImportar) {
+                // Restaurar fecha si existe ISO string
+                if (item.fechaISO) {
+                    item.fecha = new Date(item.fechaISO);
+                    delete item.fechaISO; // Limpiar auxiliar
+                } else if (typeof item.fecha === 'string') {
+                    item.fecha = new Date(item.fecha);
+                }
+
+                // Generar referencia (usar ID original si existe para evitar duplicados si se re-importa lo mismo)
+                const docRef = item.id 
+                    ? _doc(_db, `artifacts/${_appId}/users/${_userId}/cierres`, item.id)
+                    : _doc(_collection(_db, `artifacts/${_appId}/users/${_userId}/cierres`));
+                
+                // Limpiar ID del cuerpo del documento
+                const { id, ...dataToSave } = item;
+
+                batch.set(docRef, dataToSave, { merge: true });
+                ops++;
+                imported++;
+
+                if (ops >= BATCH_LIMIT) {
+                    await batch.commit();
+                    batch = _writeBatch(_db);
+                    ops = 0;
+                }
+            }
+
+            if (ops > 0) await batch.commit();
+
+            _cierresParaImportar = []; // Limpiar memoria
+            _showModal('Éxito', `Se importaron ${imported} cierres correctamente.`, showImportExportCierresView);
+
+        } catch (error) {
+            console.error("Error importing cierres:", error);
+            _showModal('Error', `Falló la importación: ${error.message}`);
+        }
+    }
+    // --- FIN NUEVAS FUNCIONES ---
 
     function showDeepCleanView() {
         _floatingControls?.classList.add('hidden');
@@ -143,26 +325,19 @@
     }
 
     async function handleBackupBeforeClean() {
-        // --- CORRECCIÓN: Revisar si ExcelJS está cargado, no XLSX ---
-        if (typeof ExcelJS === 'undefined') { 
-            _showModal('Error', 'Librería ExcelJS no cargada.'); 
-            return false; 
-        }
+        if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return false; }
         _showModal('Progreso', 'Generando respaldo...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
         const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); 
         
-        // --- CORRECCIÓN: Usar ExcelJS ---
         const wb = new ExcelJS.Workbook(); 
         let sheetsAdded = 0;
         try {
             const fetchData = async (path) => { try { const snap = await _getDocs(_collection(_db, path)); return snap.docs.map(d => ({ id: d.id, ...d.data() })); } catch (err) { console.error(`Error backup ${path}:`, err); return []; } };
             
-            // Helper para añadir hoja con datos
             const addSheet = (workbook, sheetName, data) => {
                 if (data.length === 0) return;
                 const ws = workbook.addWorksheet(sheetName);
-                // Crear cabeceras dinámicamente
                 const headers = Array.from(new Set(data.flatMap(row => Object.keys(row))));
                 ws.columns = headers.map(h => ({ header: h, key: h, width: 20 }));
                 ws.getRow(1).font = { bold: true };
@@ -197,7 +372,6 @@
             }
             
             if (sheetsAdded > 0) { 
-                // Descargar usando ExcelJS
                 const buffer = await wb.xlsx.writeBuffer();
                 const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                 const link = document.createElement('a');
@@ -236,14 +410,12 @@
             privColsToClean.push({sub:'rubros',n:'Rubros'}); 
             privColsToClean.push({sub:'segmentos',n:'Segmentos'}); 
             privColsToClean.push({sub:'marcas',n:'Marcas'});
-            // --- AÑADIDOS ---
             privColsToClean.push({sub:'config/productSortOrder',n:'Config Orden Catálogo',isDoc:true});
             privColsToClean.push({sub:'config/reporteCierreVentas',n:'Config Diseño Reporte',isDoc:true});
         } 
         if(cleanVen){
             privColsToClean.push({sub:'ventas',n:'Ventas'}); 
             privColsToClean.push({sub:'cierres',n:'Cierres'});
-            // --- AÑADIDO ---
             privColsToClean.push({sub:'config/cargaInicialSnapshot',n:'Snapshot Carga Inicial',isDoc:true});
         } 
         if(cleanObs){
@@ -294,81 +466,23 @@
         document.getElementById('backToAdminMenuBtn').addEventListener('click', showAdminSubMenuView);
     }
     async function handleExportInventario() {
-        // --- CORRECCIÓN ---
-        // Se cambió la librería de 'XLSX' (SheetJS) a 'ExcelJS' para soportar estilos.
-        // La función de exportar inventario no se había actualizado.
-        
-        // 1. Revisar la librería correcta (ExcelJS)
-        if (typeof ExcelJS === 'undefined') { 
-            _showModal('Error', 'Librería ExcelJS no cargada.'); 
-            return; 
-        }
+        if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return; }
         _showModal('Progreso', 'Generando Excel...');
-        
         try { 
             const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); 
             const snap = await _getDocs(invRef); 
             let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             const rOMap = await getRubroOrderMapAdmin(); 
             const sOMap = await getSegmentoOrderMapAdmin();
-            
-            // 2. Ordenar datos (lógica existente, sin cambios)
             inv.sort((a,b)=>{ const rOA=rOMap[a.rubro]??9999, rOB=rOMap[b.rubro]??9999; if(rOA!==rOB) return rOA-rOB; const sOA=sOMap[a.segmento]??9999, sOB=sOMap[b.segmento]??9999; if(sOA!==sOB) return sOA-sOB; const mC=(a.marca||'').localeCompare(b.marca||''); if(mC!==0) return mC; return (a.presentacion||'').localeCompare(b.presentacion||''); });
-            
-            // 3. Mapear datos (lógica existente, sin cambios)
-            const dExport = inv.map(p=>({
-                'Rubro':p.rubro||'',
-                'Segmento':p.segmento||'',
-                'Marca':p.marca||'',
-                'Presentacion':p.presentacion||'',
-                'CantidadActualUnidades':p.cantidadUnidades||0,
-                'VentaPorUnd':p.ventaPor?.und?'SI':'NO',
-                'VentaPorPaq':p.ventaPor?.paq?'SI':'NO',
-                'VentaPorCj':p.ventaPor?.cj?'SI':'NO',
-                'UnidadesPorPaquete':p.unidadesPorPaquete||'',
-                'UnidadesPorCaja':p.unidadesPorCaja||'',
-                'PrecioUnd':p.precios?.und||'',
-                'PrecioPaq':p.precios?.paq||'',
-                'PrecioCj':p.precios?.cj||'',
-                'ManejaVacios':p.manejaVacios?'SI':'NO',
-                'TipoVacio':p.tipoVacio||'',
-                'IVA':p.iva!==undefined?`${p.iva}%`:''
-            }));
-
-            // 4. Crear el Excel usando ExcelJS (Lógica nueva)
+            const dExport = inv.map(p=>({ 'Rubro':p.rubro||'', 'Segmento':p.segmento||'', 'Marca':p.marca||'', 'Presentacion':p.presentacion||'', 'CantidadActualUnidades':p.cantidadUnidades||0, 'VentaPorUnd':p.ventaPor?.und?'SI':'NO', 'VentaPorPaq':p.ventaPor?.paq?'SI':'NO', 'VentaPorCj':p.ventaPor?.cj?'SI':'NO', 'UnidadesPorPaquete':p.unidadesPorPaquete||'', 'UnidadesPorCaja':p.unidadesPorCaja||'', 'PrecioUnd':p.precios?.und||'', 'PrecioPaq':p.precios?.paq||'', 'PrecioCj':p.precios?.cj||'', 'ManejaVacios':p.manejaVacios?'SI':'NO', 'TipoVacio':p.tipoVacio||'', 'IVA':p.iva!==undefined?`${p.iva}%`:'' }));
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Inventario');
-            
-            // Definir columnas basadas en las claves de dExport
-            worksheet.columns = [
-                { header: 'Rubro', key: 'Rubro', width: 20 },
-                { header: 'Segmento', key: 'Segmento', width: 20 },
-                { header: 'Marca', key: 'Marca', width: 25 },
-                { header: 'Presentacion', key: 'Presentacion', width: 35 },
-                { header: 'CantidadActualUnidades', key: 'CantidadActualUnidades', width: 15, style: { numFmt: '0' } },
-                { header: 'VentaPorUnd', key: 'VentaPorUnd', width: 10 },
-                { header: 'VentaPorPaq', key: 'VentaPorPaq', width: 10 },
-                { header: 'VentaPorCj', key: 'VentaPorCj', width: 10 },
-                { header: 'UnidadesPorPaquete', key: 'UnidadesPorPaquete', width: 15, style: { numFmt: '0' } },
-                { header: 'UnidadesPorCaja', key: 'UnidadesPorCaja', width: 15, style: { numFmt: '0' } },
-                { header: 'PrecioUnd', key: 'PrecioUnd', width: 12, style: { numFmt: '$#,##0.00' } },
-                { header: 'PrecioPaq', key: 'PrecioPaq', width: 12, style: { numFmt: '$#,##0.00' } },
-                { header: 'PrecioCj', key: 'PrecioCj', width: 12, style: { numFmt: '$#,##0.00' } },
-                { header: 'ManejaVacios', key: 'ManejaVacios', width: 10 },
-                { header: 'TipoVacio', key: 'TipoVacio', width: 15 },
-                { header: 'IVA', key: 'IVA', width: 8, style: { numFmt: '0"%"' } }
-            ];
-            
-            // Poner cabecera en negrita
+            worksheet.columns = [ { header: 'Rubro', key: 'Rubro', width: 20 }, { header: 'Segmento', key: 'Segmento', width: 20 }, { header: 'Marca', key: 'Marca', width: 25 }, { header: 'Presentacion', key: 'Presentacion', width: 35 }, { header: 'CantidadActualUnidades', key: 'CantidadActualUnidades', width: 15, style: { numFmt: '0' } }, { header: 'VentaPorUnd', key: 'VentaPorUnd', width: 10 }, { header: 'VentaPorPaq', key: 'VentaPorPaq', width: 10 }, { header: 'VentaPorCj', key: 'VentaPorCj', width: 10 }, { header: 'UnidadesPorPaquete', key: 'UnidadesPorPaquete', width: 15, style: { numFmt: '0' } }, { header: 'UnidadesPorCaja', key: 'UnidadesPorCaja', width: 15, style: { numFmt: '0' } }, { header: 'PrecioUnd', key: 'PrecioUnd', width: 12, style: { numFmt: '$#,##0.00' } }, { header: 'PrecioPaq', key: 'PrecioPaq', width: 12, style: { numFmt: '$#,##0.00' } }, { header: 'PrecioCj', key: 'PrecioCj', width: 12, style: { numFmt: '$#,##0.00' } }, { header: 'ManejaVacios', key: 'ManejaVacios', width: 10 }, { header: 'TipoVacio', key: 'TipoVacio', width: 15 }, { header: 'IVA', key: 'IVA', width: 8, style: { numFmt: '0"%"' } } ];
             worksheet.getRow(1).font = { bold: true };
-            
-            // Añadir los datos
             worksheet.addRows(dExport);
-            
-            // 5. Descargar el archivo (Lógica nueva)
             const today = new Date().toISOString().slice(0, 10); 
             const fileName = `Inventario_${today}.xlsx`;
-            
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const link = document.createElement('a');
@@ -378,17 +492,8 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
-
-            const modal = document.getElementById('modalContainer'); 
-            if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) {
-                 modal.classList.add('hidden');
-            }
-            
-        } catch (error) { 
-            console.error("Error exportando:", error); 
-            _showModal('Error', `Error: ${error.message}`); 
-        }
-        // --- FIN CORRECCIÓN ---
+            const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) { modal.classList.add('hidden'); }
+        } catch (error) { console.error("Error exportando:", error); _showModal('Error', `Error: ${error.message}`); }
     }
     function showImportInventarioView() {
         _mainContent.innerHTML = `
@@ -404,87 +509,40 @@
         document.getElementById('inventario-excel-uploader').addEventListener('change', handleFileUploadInventario);
         document.getElementById('backToImportExportBtn').addEventListener('click', showImportExportInventarioView);
     }
-
-    // --- INICIO DE LA CORRECCIÓN (Error XLSX is not defined) ---
     function handleFileUploadInventario(event) {
-        // --- CORRECCIÓN: Comprobación más robusta ---
-        if (!event.target || !event.target.files || event.target.files.length === 0) {
-            console.warn("handleFileUploadInventario llamado sin archivo.");
-            renderPreviewTableInventario([]);
-            return;
-        }
+        if (!event.target || !event.target.files || event.target.files.length === 0) { console.warn("handleFileUploadInventario llamado sin archivo."); renderPreviewTableInventario([]); return; }
         const file = event.target.files[0];
-        // --- FIN CORRECCIÓN ---
-
         _inventarioParaImportar = [];
         const reader = new FileReader(); 
-        
-        // 1. Convertir la función a 'async' para poder usar 'await'
         reader.onload = async function(e) { 
-            // 2. 'data' ahora es un ArrayBuffer (ver reader.readAsArrayBuffer abajo)
-            const data = e.target.result; 
-            let jsonData = []; 
+            const data = e.target.result; let jsonData = []; 
             try { 
-                // 3. Usar ExcelJS para leer el ArrayBuffer en lugar de XLSX.read
-                if (typeof ExcelJS === 'undefined') {
-                     throw new Error("La librería ExcelJS no está cargada.");
-                }
+                if (typeof ExcelJS === 'undefined') { throw new Error("La librería ExcelJS no está cargada."); }
                 const workbook = new ExcelJS.Workbook();
                 await workbook.xlsx.load(data);
-                const worksheet = workbook.getWorksheet(1); // Obtener la primera hoja
-
-                // 4. Convertir las filas de ExcelJS al formato esperado (array de arrays)
+                const worksheet = workbook.getWorksheet(1);
                 jsonData = [];
                 worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-                    // row.values es [null, 'valor1', 'valor2', ...]
-                    // Usamos .slice(1) para omitir el primer 'null' y que coincida con el formato de sheet_to_json
-                    // Si la fila 1 (cabecera) tiene valores vacíos (ej: undefined o null), reemplazarlos con string vacío
-                    // para evitar que el .toString() falle más adelante
-                    if (rowNumber === 1) {
-                         const headerValues = row.values.slice(1).map(val => val === null || val === undefined ? '' : val);
-                         jsonData.push(headerValues);
-                    } else {
-                         jsonData.push(row.values.slice(1));
-                    }
+                    if (rowNumber === 1) { const headerValues = row.values.slice(1).map(val => val === null || val === undefined ? '' : val); jsonData.push(headerValues); } else { jsonData.push(row.values.slice(1)); }
                 });
-            
-            } catch (readError) { 
-                console.error("Error al leer el archivo Excel con ExcelJS:", readError);
-                // CORRECCIÓN: Usar el mensaje de error real
-                _showModal('Error Lectura', `Error: ${readError.message}`); 
-                renderPreviewTableInventario([]); // Limpiar vista previa en error
-                return; 
-            }
-
+            } catch (readError) { console.error("Error al leer el archivo Excel con ExcelJS:", readError); _showModal('Error Lectura', `Error: ${readError.message}`); renderPreviewTableInventario([]); return; }
             if (jsonData.length < 2) { _showModal('Error', 'Archivo vacío.'); renderPreviewTableInventario([]); return; }
-            
-            // Asegurarse de que las cabeceras sean strings antes de llamar a .toLowerCase()
             const headers = jsonData[0].map(h=>(h?h.toString().toLowerCase().trim().replace(/\s+/g,''):''));
-            
             const reqHeaders=['rubro','segmento','marca','presentacion'];
             const optHeaders=['ventaporund','ventaporpaq','ventaporcj','unidadesporpaquete','unidadesporcaja','preciound','preciopaq','preciocj','manejavacios','tipovacio','iva'];
             const hMap={}; let missing=false;
             reqHeaders.forEach(rh=>{ const i=headers.indexOf(rh); if(i!==-1)hMap[rh]=i; else{_showModal('Error',`Falta columna requerida: "${rh}"`); missing=true;}}); if(missing){renderPreviewTableInventario([]); return;}
             optHeaders.forEach(oh=>{ const i=headers.indexOf(oh); if(i!==-1)hMap[oh]=i; });
-
             _inventarioParaImportar = jsonData.slice(1).map((row, rIdx) => {
                 const item = {
                     rubro: (row[hMap['rubro']] || '').toString().trim().toUpperCase(),
                     segmento: (row[hMap['segmento']] || '').toString().trim().toUpperCase(),
                     marca: (row[hMap['marca']] || '').toString().trim().toUpperCase(),
                     presentacion: (row[hMap['presentacion']] || '').toString().trim(),
-                    ventaPor: {
-                        und: (row[hMap['ventaporund']] || 'SI').toString().trim().toUpperCase() === 'SI',
-                        paq: (row[hMap['ventaporpaq']] || 'NO').toString().trim().toUpperCase() === 'SI',
-                        cj: (row[hMap['ventaporcj']] || 'NO').toString().trim().toUpperCase() === 'SI'
-                    },
+                    ventaPor: { und: (row[hMap['ventaporund']] || 'SI').toString().trim().toUpperCase() === 'SI', paq: (row[hMap['ventaporpaq']] || 'NO').toString().trim().toUpperCase() === 'SI', cj: (row[hMap['ventaporcj']] || 'NO').toString().trim().toUpperCase() === 'SI' },
                     unidadesPorPaquete: parseInt(row[hMap['unidadesporpaquete']], 10) || 1,
                     unidadesPorCaja: parseInt(row[hMap['unidadesporcaja']], 10) || 1,
-                    precios: {
-                        und: parseFloat(row[hMap['preciound']]) || 0,
-                        paq: parseFloat(row[hMap['preciopaq']]) || 0,
-                        cj: parseFloat(row[hMap['preciocj']]) || 0
-                    },
+                    precios: { und: parseFloat(row[hMap['preciound']]) || 0, paq: parseFloat(row[hMap['preciopaq']]) || 0, cj: parseFloat(row[hMap['preciocj']]) || 0 },
                     manejaVacios: (row[hMap['manejavacios']] || 'NO').toString().trim().toUpperCase() === 'SI',
                     tipoVacio: (row[hMap['tipovacio']] || null)?.toString().trim() || null,
                     iva: parseInt((row[hMap['iva']] || '16').toString().replace('%','').trim(), 10) || 16,
@@ -501,48 +559,28 @@
                 item.key = `${item.rubro}|${item.segmento}|${item.marca}|${item.presentacion}`.toUpperCase();
                 return item;
             }).filter(item => item !== null);
-
             renderPreviewTableInventario(_inventarioParaImportar);
         }; 
         reader.onerror = function(e){_showModal('Error Archivo','No se pudo leer.');renderPreviewTableInventario([]);}; 
-        
-        // --- CORRECCIÓN: Leer como ArrayBuffer para ExcelJS, no como BinaryString ---
         reader.readAsArrayBuffer(file);
     }
-    // --- FIN DE LA CORRECCIÓN ---
-
-
     function renderPreviewTableInventario(items) {
         const cont=document.getElementById('inventario-preview-container'), acts=document.getElementById('inventario-import-actions'), back=document.getElementById('backToImportExportBtn'), upInp=document.getElementById('inventario-excel-uploader'); if(!cont||!acts||!back||!upInp) return;
         if(items.length===0){cont.innerHTML=`<p class="text-center text-gray-500 p-4">No hay productos válidos.</p>`; acts.classList.add('hidden'); back.classList.remove('hidden'); return;}
         const vCount=items.length;
-        // --- CORRECCIÓN: tHTML -> tableHTML ---
         let tableHTML=`<div class="p-4"><h3 class="font-bold text-lg mb-2">Vista Previa (${vCount} productos a procesar)</h3><p class="text-sm text-gray-600 mb-2">Los productos existentes se ignorarán. Los nuevos se añadirán con cantidad 0.</p><table class="min-w-full bg-white text-xs"><thead class="bg-gray-200 sticky top-0"><tr><th>Rubro</th><th>Segmento</th><th>Marca</th><th>Presentación</th><th>Precio Und</th><th>Precio Paq</th><th>Precio Cj</th><th>IVA</th></tr></thead><tbody>`;
-        items.forEach(i=>{
-             tableHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`;
-        });
+        items.forEach(i=>{ tableHTML+=`<tr class="border-b"><td class="py-1 px-2">${i.rubro}</td><td class="py-1 px-2">${i.segmento}</td><td class="py-1 px-2">${i.marca}</td><td class="py-1 px-2">${i.presentacion}</td><td class="py-1 px-2 text-right">${i.precios.und.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.paq.toFixed(2)}</td><td class="py-1 px-2 text-right">${i.precios.cj.toFixed(2)}</td><td class="py-1 px-2 text-center">${i.iva}%</td></tr>`; });
         tableHTML+='</tbody></table></div>'; cont.innerHTML=tableHTML;
-        // --- FIN CORRECCIÓN ---
         acts.classList.remove('hidden'); back.classList.add('hidden'); document.getElementById('confirmInventarioImportBtn').onclick=handleConfirmInventarioImport; document.getElementById('cancelInventarioImportBtn').onclick=()=>{_inventarioParaImportar=[]; upInp.value=''; cont.innerHTML=''; acts.classList.add('hidden'); back.classList.remove('hidden');};
     }
-
     async function handleConfirmInventarioImport() {
         const itemsToProcess = _inventarioParaImportar;
         if (itemsToProcess.length === 0) { _showModal('Aviso', 'No hay productos válidos para procesar.'); return; }
-
         _showModal('Progreso', `Verificando ${itemsToProcess.length} productos con inventario actual...`);
-
         try {
-            // --- INICIO: Lógica para identificar y agregar nuevas categorías ---
             const categoriasNuevas = { rubros: new Set(), segmentos: new Set(), marcas: new Set() };
-            itemsToProcess.forEach(item => {
-                if (item.rubro) categoriasNuevas.rubros.add(item.rubro);
-                if (item.segmento) categoriasNuevas.segmentos.add(item.segmento);
-                if (item.marca) categoriasNuevas.marcas.add(item.marca);
-            });
-
+            itemsToProcess.forEach(item => { if (item.rubro) categoriasNuevas.rubros.add(item.rubro); if (item.segmento) categoriasNuevas.segmentos.add(item.segmento); if (item.marca) categoriasNuevas.marcas.add(item.marca); });
             const categoriasParaAgregar = { rubros: [], segmentos: [], marcas: [] };
-
             for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
                 const nombresNuevos = Array.from(categoriasNuevas[tipoCategoria]);
                 if (nombresNuevos.length > 0) {
@@ -550,172 +588,75 @@
                     const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
                     const snapshot = await _getDocs(collectionRef);
                     const nombresExistentes = new Set(snapshot.docs.map(doc => doc.data().name));
-                    nombresNuevos.forEach(nombre => {
-                        if (!nombresExistentes.has(nombre)) {
-                            categoriasParaAgregar[tipoCategoria].push({ name: nombre });
-                        }
-                    });
+                    nombresNuevos.forEach(nombre => { if (!nombresExistentes.has(nombre)) { categoriasParaAgregar[tipoCategoria].push({ name: nombre }); } });
                 }
             }
-            // --- FIN: Lógica para identificar nuevas categorías ---
-
-            // Verificar productos existentes (igual que antes)
             const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snap = await _getDocs(invRef);
             const curInvMap = new Map();
-            snap.docs.forEach(d => {
-                const data = d.data();
-                const key = `${data.rubro || ''}|${data.segmento || ''}|${data.marca || ''}|${data.presentacion || ''}`.toUpperCase();
-                curInvMap.set(key, d.id);
-            });
-
-            // Preparar batch para productos NUEVOS
+            snap.docs.forEach(d => { const data = d.data(); const key = `${data.rubro || ''}|${data.segmento || ''}|${data.marca || ''}|${data.presentacion || ''}`.toUpperCase(); curInvMap.set(key, d.id); });
             const batchProductos = _writeBatch(_db);
             let addedProductCount = 0;
             let skippedProductCount = 0;
-            const addedProductsData = []; // Para propagación
-
+            const addedProductsData = [];
             itemsToProcess.forEach(item => {
                 const key = item.key;
                 if (!curInvMap.has(key)) {
-                    // Excluir propiedades temporales antes de guardar
                     const { isValid, key: itemKey, originalRow, error, ...newProductData } = item;
-                    newProductData.cantidadUnidades = 0; // Añadir con cantidad 0
-                    const newDocRef = _doc(invRef); // Generar ID localmente
+                    newProductData.cantidadUnidades = 0; 
+                    const newDocRef = _doc(invRef); 
                     batchProductos.set(newDocRef, newProductData);
                     addedProductCount++;
-                    // Guardar datos + ID para propagación posterior
                     addedProductsData.push({ id: newDocRef.id, data: newProductData });
-                    console.log(`Adding new product: ${item.presentacion}`);
-                } else {
-                    skippedProductCount++;
-                    console.log(`Skipping existing product: ${item.presentacion}`);
-                }
+                } else { skippedProductCount++; }
             });
-
-            // Contar categorías nuevas
             const addedRubroCount = categoriasParaAgregar.rubros.length;
             const addedSegmentoCount = categoriasParaAgregar.segmentos.length;
             const addedMarcaCount = categoriasParaAgregar.marcas.length;
             const totalCategoriasNuevas = addedRubroCount + addedSegmentoCount + addedMarcaCount;
-
-            // Mensaje de confirmación
             let confirmMsg = '';
             if (addedProductCount > 0) confirmMsg += `Se añadirán ${addedProductCount} producto(s) nuevo(s) (stock 0). `;
             if (skippedProductCount > 0) confirmMsg += `${skippedProductCount} producto(s) existentes serán ignorados. `;
             if (totalCategoriasNuevas > 0) confirmMsg += `Se añadirán ${totalCategoriasNuevas} categorías nuevas (${addedRubroCount}R/${addedSegmentoCount}S/${addedMarcaCount}M). `;
-            if (!confirmMsg) {
-                 _showModal('Aviso', 'No hay productos ni categorías nuevas para importar.');
-                 showImportExportInventarioView();
-                 return;
-            }
+            if (!confirmMsg) { _showModal('Aviso', 'No hay productos ni categorías nuevas para importar.'); showImportExportInventarioView(); return; }
             confirmMsg += '¿Continuar?';
-
             _showModal('Confirmar Importación', confirmMsg, async () => {
                 _showModal('Progreso', 'Guardando cambios...');
                 try {
-                    // --- INICIO: Guardar categorías nuevas ---
                     let batchCategorias = _writeBatch(_db);
                     let catOps = 0;
                     const BATCH_LIMIT = 490;
-                    const addedCategoriesData = []; // Para propagación
-
+                    const addedCategoriesData = [];
                     for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
                         const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
                         for (const catData of categoriasParaAgregar[tipoCategoria]) {
-                            const newCatRef = _doc(collectionRef); // Generar ID
+                            const newCatRef = _doc(collectionRef); 
                             batchCategorias.set(newCatRef, catData);
-                            addedCategoriesData.push({ collectionName: tipoCategoria, id: newCatRef.id, data: catData }); // Guardar para propagar
+                            addedCategoriesData.push({ collectionName: tipoCategoria, id: newCatRef.id, data: catData });
                             catOps++;
-                            if (catOps >= BATCH_LIMIT) {
-                                await batchCategorias.commit();
-                                batchCategorias = _writeBatch(_db);
-                                catOps = 0;
-                            }
+                            if (catOps >= BATCH_LIMIT) { await batchCategorias.commit(); batchCategorias = _writeBatch(_db); catOps = 0; }
                         }
                     }
-                    if (catOps > 0) {
-                        await batchCategorias.commit();
-                        console.log(`Added ${totalCategoriasNuevas} new categories locally.`);
-                    }
-                    // --- FIN: Guardar categorías nuevas ---
-
-                    // --- INICIO: Guardar productos nuevos ---
-                    if (addedProductCount > 0) {
-                        await batchProductos.commit();
-                        console.log(`Added ${addedProductCount} new products locally.`);
-                    }
-                    // --- FIN: Guardar productos nuevos ---
-
-                    // --- INICIO: Propagación ---
+                    if (catOps > 0) { await batchCategorias.commit(); console.log(`Added ${totalCategoriasNuevas} new categories locally.`); }
+                    if (addedProductCount > 0) { await batchProductos.commit(); console.log(`Added ${addedProductCount} new products locally.`); }
                     _showModal('Progreso', 'Propagando cambios a otros usuarios...');
                     let propErrors = 0;
-
-                    // Propagar categorías nuevas
                     if (addedCategoriesData.length > 0 && window.adminModule?.propagateCategoryChange) {
-                        for (const catInfo of addedCategoriesData) {
-                            try {
-                                await window.adminModule.propagateCategoryChange(catInfo.collectionName, catInfo.id, catInfo.data);
-                            } catch (propError) {
-                                console.error(`Error propagating new category ${catInfo.collectionName}/${catInfo.id}:`, propError);
-                                propErrors++;
-                            }
-                        }
-                    } else if (addedCategoriesData.length > 0) {
-                        console.warn('Propagate category function not found, skipping category propagation.');
-                        // Opcional: Mostrar advertencia al usuario
+                        for (const catInfo of addedCategoriesData) { try { await window.adminModule.propagateCategoryChange(catInfo.collectionName, catInfo.id, catInfo.data); } catch (propError) { console.error(`Error propagating new category ${catInfo.collectionName}/${catInfo.id}:`, propError); propErrors++; } }
                     }
-
-                    // Propagar productos nuevos
                     if (addedProductsData.length > 0 && window.adminModule?.propagateProductChange) {
-                        for (const prodInfo of addedProductsData) {
-                            try {
-                                await window.adminModule.propagateProductChange(prodInfo.id, prodInfo.data);
-                            } catch (propError) {
-                                console.error(`Error propagating new product ${prodInfo.id}:`, propError);
-                                propErrors++;
-                            }
-                        }
-                    } else if (addedProductsData.length > 0) {
-                         console.warn('Propagate product function not found, skipping product propagation.');
-                         // Opcional: Mostrar advertencia al usuario
+                        for (const prodInfo of addedProductsData) { try { await window.adminModule.propagateProductChange(prodInfo.id, prodInfo.data); } catch (propError) { console.error(`Error propagating new product ${prodInfo.id}:`, propError); propErrors++; } }
                     }
-                    // --- FIN: Propagación ---
-
-                    // Mostrar resultado final
                     let finalMsg = '';
                     if (addedProductCount > 0) finalMsg += `Se añadieron ${addedProductCount} producto(s). `;
                     if (totalCategoriasNuevas > 0) finalMsg += `Se añadieron ${totalCategoriasNuevas} categoría(s). `;
-                    if (propErrors > 0) {
-                         _showModal('Advertencia', `${finalMsg} Ocurrieron ${propErrors} errores al propagar.`, showImportExportInventarioView);
-                    } else {
-                         _showModal('Éxito', `${finalMsg} Propagado correctamente.`, showImportExportInventarioView);
-                    }
-                    // Invalidar caché local de categorías si existe (ej. en inventario.js)
-                    if (window.inventarioModule?.invalidateSegmentOrderCache) {
-                         window.inventarioModule.invalidateSegmentOrderCache(); // Esto también limpia caché de marcas
-                    }
-
-
-                } catch (commitError) {
-                    console.error("Error committing changes:", commitError);
-                    _showModal('Error', `Error al guardar cambios: ${commitError.message}`);
-                }
+                    if (propErrors > 0) { _showModal('Advertencia', `${finalMsg} Ocurrieron ${propErrors} errores al propagar.`, showImportExportInventarioView); } else { _showModal('Éxito', `${finalMsg} Propagado correctamente.`, showImportExportInventarioView); }
+                    if (window.inventarioModule?.invalidateSegmentOrderCache) { window.inventarioModule.invalidateSegmentOrderCache(); }
+                } catch (commitError) { console.error("Error committing changes:", commitError); _showModal('Error', `Error al guardar cambios: ${commitError.message}`); }
             }, 'Sí, Importar');
-
-        } catch (error) {
-            console.error("Error during inventory import preparation:", error);
-            _showModal('Error', `Error durante la preparación de la importación: ${error.message}`);
-        }
-        finally {
-             // Limpiar caché de importación independientemente del resultado
-            _inventarioParaImportar = [];
-            // Resetear input de archivo
-            const uploader = document.getElementById('inventario-excel-uploader');
-            if (uploader) uploader.value = '';
-        }
+        } catch (error) { console.error("Error during inventory import preparation:", error); _showModal('Error', `Error durante la preparación de la importación: ${error.message}`); }
+        finally { _inventarioParaImportar = []; const uploader = document.getElementById('inventario-excel-uploader'); if (uploader) uploader.value = ''; }
     }
-
 
     // --- Funciones de Gestión de Usuarios, Perfil, Config Obsequio, Propagación ---
     function showUserManagementView() {
