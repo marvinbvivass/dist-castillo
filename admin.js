@@ -9,8 +9,8 @@
     let _segmentoOrderCacheAdmin = null;
     let _rubroOrderCacheAdmin = null;
 
-    // ID REAL DE LA BASE DE DATOS (Fijo para asegurar compatibilidad)
-    const DB_ID = 'ventas-9a210';
+    // ID para la estructura de destino (Nuevo Sistema)
+    const TARGET_DB_ID = 'ventas-9a210';
 
     window.initAdmin = function(dependencies) {
         if (!dependencies.db || !dependencies.mainContent || !dependencies.showMainMenu || !dependencies.showModal) {
@@ -20,7 +20,7 @@
         _db = dependencies.db;
         _userId = dependencies.userId; 
         _userRole = dependencies.userRole;
-        _appId = dependencies.appId; // Se mantiene por si acaso, pero usaremos DB_ID para rutas
+        _appId = dependencies.appId;
         _mainContent = dependencies.mainContent;
         _floatingControls = dependencies.floatingControls;
         _showMainMenu = dependencies.showMainMenu;
@@ -80,7 +80,7 @@
         document.getElementById('backToMenuBtn').addEventListener('click', _showMainMenu);
     }
 
-    // --- NUEVAS FUNCIONES: Importar/Exportar Cierres (JSON para Migración) ---
+    // --- NUEVAS FUNCIONES: Importar/Exportar Cierres (Migración Legacy a New) ---
     function showImportExportCierresView() {
         _floatingControls?.classList.add('hidden');
         _mainContent.innerHTML = `
@@ -89,14 +89,14 @@
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
                         <h1 class="text-3xl font-bold mb-6 text-center text-indigo-800">Migración de Cierres</h1>
                         <p class="text-center text-gray-600 mb-6 text-sm">
-                            Utiliza formato <strong>JSON</strong> para transferir el historial completo de cierres (de TODOS los usuarios) entre bases de datos.
+                            Exporta desde <b>public_data</b> (sistema actual) o importa hacia <b>artifacts</b> (sistema nuevo).
                         </p>
                         <div class="space-y-4">
                             <button id="exportCierresBtn" class="w-full px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 font-bold">
-                                📤 Exportar Cierres (Backup Global)
+                                📤 Exportar Cierres (Desde Public Data)
                             </button>
                             <button id="importCierresBtn" class="w-full px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 font-bold">
-                                📥 Importar Cierres (Restaurar)
+                                📥 Importar Cierres (Hacia Artifacts)
                             </button>
                             <button id="backToAdminMenuBtn" class="w-full px-6 py-3 bg-gray-400 text-white rounded-lg shadow-md hover:bg-gray-500">
                                 Volver
@@ -112,59 +112,51 @@
     }
 
     async function handleExportCierres() {
-        _showModal('Progreso', 'Escaneando usuarios y descargando cierres...', null, '', null, false);
+        _showModal('Progreso', 'Descargando cierres desde Public Data...', null, '', null, false);
         try {
-            // 1. Obtener todos los usuarios del sistema
-            const usersRef = _collection(_db, "users");
-            const usersSnap = await _getDocs(usersRef);
-            const userIds = usersSnap.docs.map(d => d.id);
+            // CORRECCIÓN: Apuntar a la colección pública donde data.js lee los datos
+            const closingsPath = `public_data/${_appId}/user_closings`;
+            console.log(`Exportando desde: ${closingsPath}`);
             
-            let allCierres = [];
-
-            // 2. Iterar por cada usuario para extraer sus cierres
-            // Usamos DB_ID en lugar de _appId para asegurar que buscamos en la carpeta correcta
-            for (const uid of userIds) {
-                const cierresRef = _collection(_db, `artifacts/${DB_ID}/users/${uid}/cierres`);
-                const snap = await _getDocs(cierresRef);
-                
-                const userCierres = snap.docs.map(d => {
-                    const data = d.data();
-                    // Serializar fechas de Firebase a formato texto (ISO) para el JSON
-                    if (data.fecha && typeof data.fecha.toDate === 'function') {
-                        data.fechaISO = data.fecha.toDate().toISOString();
-                    } else if (data.fecha) {
-                        data.fechaISO = new Date(data.fecha).toISOString();
-                    }
-                    
-                    return { 
-                        _id: d.id, // ID del documento original
-                        _userId: uid, // Guardar a quién pertenece para restaurarlo correctamente
-                        ...data 
-                    };
-                });
-                
-                if (userCierres.length > 0) {
-                    allCierres = [...allCierres, ...userCierres];
-                }
-            }
-
-            if (allCierres.length === 0) {
-                _showModal('Aviso', `No se encontraron cierres en ningún usuario bajo la ruta artifacts/${DB_ID}/users/...`);
+            const closingsRef = _collection(_db, closingsPath);
+            const snap = await _getDocs(closingsRef);
+            
+            if (snap.empty) {
+                _showModal('Aviso', `No se encontraron cierres en la ruta pública: ${closingsPath}`);
                 return;
             }
 
-            const jsonStr = JSON.stringify(allCierres, null, 2);
+            const data = snap.docs.map(d => {
+                const closing = d.data();
+                // Serializar fechas
+                if (closing.fecha && typeof closing.fecha.toDate === 'function') {
+                    closing.fechaISO = closing.fecha.toDate().toISOString();
+                } else if (closing.fecha) {
+                    closing.fechaISO = new Date(closing.fecha).toISOString();
+                }
+                
+                // Asegurar que tenemos el userId del vendedor para la importación
+                const ownerId = closing.vendedorInfo?.userId || closing.userId || 'unknown';
+                
+                return { 
+                    _id: d.id, 
+                    _userId: ownerId, // Crucial para restaurar en la carpeta correcta
+                    ...closing 
+                };
+            });
+
+            const jsonStr = JSON.stringify(data, null, 2);
             const blob = new Blob([jsonStr], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Respaldo_Cierres_Global_${new Date().toISOString().slice(0,10)}.json`;
+            a.download = `Backup_Cierres_Publicos_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            _showModal('Éxito', `Se exportaron ${allCierres.length} cierres de ${userIds.length} usuarios escaneados.`);
+            _showModal('Éxito', `Se exportaron ${data.length} cierres correctamente.`);
         } catch (error) {
             console.error("Error exportando cierres:", error);
             _showModal('Error', `Falló la exportación: ${error.message}`);
@@ -176,9 +168,9 @@
             <div class="p-4 pt-8">
                 <div class="container mx-auto max-w-lg">
                     <div class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-xl">
-                        <h2 class="text-2xl font-bold mb-4 text-center">Importar Cierres (JSON)</h2>
+                        <h2 class="text-2xl font-bold mb-4 text-center">Importar Cierres</h2>
                         <p class="text-center text-gray-600 mb-6 text-sm">
-                            Selecciona el archivo .json generado. Los cierres se restaurarán en la carpeta de cada usuario correspondiente.
+                            Restaura el historial en la estructura nueva (Artifacts/Users). Requiere que el JSON tenga el campo <code>_userId</code>.
                         </p>
                         <input type="file" id="cierres-uploader" accept=".json" class="w-full p-4 border-2 border-dashed rounded-lg mb-6 cursor-pointer hover:bg-gray-50">
                         
@@ -210,18 +202,18 @@
         reader.onload = function(e) {
             try {
                 const json = JSON.parse(e.target.result);
-                if (!Array.isArray(json)) throw new Error("El archivo no es una lista válida de cierres.");
+                if (!Array.isArray(json)) throw new Error("El archivo no es una lista válida.");
                 
                 _cierresParaImportar = json;
                 const infoDiv = document.getElementById('cierres-preview-info');
                 const actionDiv = document.getElementById('cierres-import-actions');
                 
-                infoDiv.textContent = `Archivo válido. ${json.length} cierres encontrados para importar.`;
+                infoDiv.textContent = `Archivo válido. ${json.length} cierres listos para importar.`;
                 infoDiv.classList.remove('hidden');
                 actionDiv.classList.remove('hidden');
 
             } catch (err) {
-                _showModal('Error', 'Archivo JSON inválido o corrupto.');
+                _showModal('Error', 'Archivo JSON inválido.');
                 console.error(err);
             }
         };
@@ -231,7 +223,7 @@
     async function handleConfirmCierresImport() {
         if (_cierresParaImportar.length === 0) return;
 
-        _showModal('Progreso', `Restaurando ${_cierresParaImportar.length} cierres...`, null, '', null, false);
+        _showModal('Progreso', `Restaurando ${_cierresParaImportar.length} cierres en la estructura nueva...`, null, '', null, false);
         
         const BATCH_LIMIT = 450;
         let batch = _writeBatch(_db);
@@ -240,24 +232,22 @@
 
         try {
             for (const item of _cierresParaImportar) {
-                // Restaurar fecha si existe ISO string
                 if (item.fechaISO) {
                     item.fecha = new Date(item.fechaISO);
-                    delete item.fechaISO; 
+                    delete item.fechaISO;
                 } else if (typeof item.fecha === 'string') {
                     item.fecha = new Date(item.fecha);
                 }
 
-                // Determinar el ID del usuario destino
-                const targetUserId = item._userId || _userId;
+                // Usar el ID del usuario del archivo exportado, o el actual como fallback
+                const targetUserId = item._userId || item.vendedorInfo?.userId || _userId;
 
-                // Generar referencia en la ruta correcta usando DB_ID
-                const docId = item._id || item.id; 
+                // CORRECCIÓN: Escribir en la estructura nueva (Artifacts)
+                const docId = item._id || item.id;
                 const docRef = docId 
-                    ? _doc(_db, `artifacts/${DB_ID}/users/${targetUserId}/cierres`, docId)
-                    : _doc(_collection(_db, `artifacts/${DB_ID}/users/${targetUserId}/cierres`));
+                    ? _doc(_db, `artifacts/${TARGET_DB_ID}/users/${targetUserId}/cierres`, docId)
+                    : _doc(_collection(_db, `artifacts/${TARGET_DB_ID}/users/${targetUserId}/cierres`));
                 
-                // Limpiar campos auxiliares de control
                 const { _id, _userId: uidField, id, ...dataToSave } = item;
 
                 batch.set(docRef, dataToSave, { merge: true });
@@ -274,7 +264,7 @@
             if (ops > 0) await batch.commit();
 
             _cierresParaImportar = []; 
-            _showModal('Éxito', `Se restauraron ${imported} cierres correctamente.`, showImportExportCierresView);
+            _showModal('Éxito', `Migración completada: ${imported} cierres restaurados.`, showImportExportCierresView);
 
         } catch (error) {
             console.error("Error importing cierres:", error);
@@ -355,7 +345,7 @@
         if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return false; }
         _showModal('Progreso', 'Generando respaldo...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
-        const pubProjId = DB_ID; const today = new Date().toISOString().slice(0, 10); 
+        const pubProjId = 'ventas-9a210'; const today = new Date().toISOString().slice(0, 10); 
         
         const wb = new ExcelJS.Workbook(); 
         let sheetsAdded = 0;
@@ -373,23 +363,23 @@
             };
 
             if (cleanInv) { 
-                addSheet(wb, 'Inventario_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/inventario`));
-                addSheet(wb, 'Rubros_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/rubros`));
-                addSheet(wb, 'Segmentos_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/segmentos`));
-                addSheet(wb, 'Marcas_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/marcas`));
+                addSheet(wb, 'Inventario_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/inventario`));
+                addSheet(wb, 'Rubros_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/rubros`));
+                addSheet(wb, 'Segmentos_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/segmentos`));
+                addSheet(wb, 'Marcas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/marcas`));
             }
             if (cleanCli) { 
                 addSheet(wb, 'Clientes_Public', await fetchData(`artifacts/${pubProjId}/public/data/clientes`));
                 addSheet(wb, 'Sectores_Public', await fetchData(`artifacts/${pubProjId}/public/data/sectores`));
             }
             if (cleanVen) { 
-                addSheet(wb, 'Ventas_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/ventas`));
-                addSheet(wb, 'Cierres_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/cierres`));
-                addSheet(wb, 'Cierres_Vendedores', await fetchData(`public_data/${DB_ID}/user_closings`));
+                addSheet(wb, 'Ventas_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/ventas`));
+                addSheet(wb, 'Cierres_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/cierres`));
+                addSheet(wb, 'Cierres_Vendedores', await fetchData(`public_data/${_appId}/user_closings`));
             }
             if (cleanObs) { 
-                addSheet(wb, 'Obsequios_Admin', await fetchData(`artifacts/${DB_ID}/users/${_userId}/obsequios_entregados`));
-                const admConfRef = _doc(_db,`artifacts/${DB_ID}/users/${_userId}/config/obsequio`); 
+                addSheet(wb, 'Obsequios_Admin', await fetchData(`artifacts/${_appId}/users/${_userId}/obsequios_entregados`));
+                const admConfRef = _doc(_db,`artifacts/${_appId}/users/${_userId}/config/obsequio`); 
                 const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); 
                 const [admConfS, pubConfS] = await Promise.allSettled([_getDoc(admConfRef), _getDoc(pubConfRef)]); 
                 const confs=[]; 
@@ -423,12 +413,12 @@
     async function executeDeepClean() {
         _showModal('Progreso', 'Iniciando limpieza profunda...');
         const cleanInv=document.getElementById('cleanInventario').checked, cleanCli=document.getElementById('cleanClientes').checked, cleanVen=document.getElementById('cleanVentas').checked, cleanObs=document.getElementById('cleanObsequios').checked;
-        const colsToDelPub = []; const pubProjId = DB_ID; let allUserIds = [];
+        const colsToDelPub = []; const pubProjId = 'ventas-9a210'; let allUserIds = [];
         try { const uSnap = await _getDocs(_collection(_db, "users")); allUserIds = uSnap.docs.map(d => d.id); console.log(`Limpieza para ${allUserIds.length} usuarios.`); }
         catch (uErr) { console.error("Error obteniendo usuarios:", uErr); _showModal('Error Crítico', `No se pudo obtener lista usuarios. Limpieza cancelada: ${uErr.message}`); return; }
 
         if (cleanCli) { colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/clientes`, name: 'Clientes Públicos' }); colsToDelPub.push({ path: `artifacts/${pubProjId}/public/data/sectores`, name: 'Sectores Públicos' }); }
-        if (cleanVen) { colsToDelPub.push({ path: `public_data/${DB_ID}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
+        if (cleanVen) { colsToDelPub.push({ path: `public_data/${_appId}/user_closings`, name: 'Cierres Vendedores Públicos' }); }
         if (cleanObs) { const pubConfRef = _doc(_db,`artifacts/${pubProjId}/public/data/config/obsequio`); try { await _deleteDoc(pubConfRef); console.log("Deleted public obsequio config."); } catch(e){ console.warn("Could not delete public obsequio config:", e.code); } }
 
         const privColsToClean = []; 
@@ -455,7 +445,7 @@
         for (const colInfo of colsToDelPub) { _showModal('Progreso', `Eliminando ${colInfo.name}...`); try { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(colInfo.path); console.log(`Deleted ${count} docs from ${colInfo.name}`); deletedDocCount+=count; deletedColCount++; } catch (error) { console.error(`Error public ${colInfo.name}:`, error); errorsOccurred=true; _showModal('Error Parcial', `Error ${colInfo.name}: ${error.message}. Continuando...`, null, 'OK'); await new Promise(r=>setTimeout(r,2000)); } }
 
         for (const targetUserId of allUserIds) { _showModal('Progreso', `Limpiando ${targetUserId.substring(0,6)}... (${allUserIds.indexOf(targetUserId)+1}/${allUserIds.length})`); console.log(`--- Cleaning private for ${targetUserId} ---`);
-            for (const privCol of privColsToClean) { const fullPath = `artifacts/${DB_ID}/users/${targetUserId}/${privCol.sub}`; try { if (privCol.isDoc) { const docRef = _doc(_db, fullPath); await _deleteDoc(docRef); console.log(`  - Deleted doc ${privCol.n} (${fullPath})`); deletedDocCount++; } else { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(fullPath); console.log(`  - Deleted ${count} docs from ${privCol.n} (${fullPath})`); deletedDocCount+=count; } } catch (error) { if(error.code!=='not-found'&&error.code!=='permission-denied'){console.error(`  - Error ${privCol.n} for ${targetUserId}:`, error); errorsOccurred=true;} else if(error.code==='permission-denied'){console.warn(`  - Permission denied ${privCol.n} for ${targetUserId}.`); errorsOccurred=true;} else {console.log(`  - ${privCol.n} not found for ${targetUserId}.`);} } } }
+            for (const privCol of privColsToClean) { const fullPath = `artifacts/${_appId}/users/${targetUserId}/${privCol.sub}`; try { if (privCol.isDoc) { const docRef = _doc(_db, fullPath); await _deleteDoc(docRef); console.log(`  - Deleted doc ${privCol.n} (${fullPath})`); deletedDocCount++; } else { if(typeof limit!=='function'||typeof startAfter!=='function')throw new Error("Funciones limit/startAfter no disponibles."); const count = await deleteCollection(fullPath); console.log(`  - Deleted ${count} docs from ${privCol.n} (${fullPath})`); deletedDocCount+=count; } } catch (error) { if(error.code!=='not-found'&&error.code!=='permission-denied'){console.error(`  - Error ${privCol.n} for ${targetUserId}:`, error); errorsOccurred=true;} else if(error.code==='permission-denied'){console.warn(`  - Permission denied ${privCol.n} for ${targetUserId}.`); errorsOccurred=true;} else {console.log(`  - ${privCol.n} not found for ${targetUserId}.`);} } } }
 
         _rubroOrderCacheAdmin=null; _segmentoOrderCacheAdmin=null; if(window.inventarioModule)window.inventarioModule.invalidateSegmentOrderCache(); if(window.catalogoModule)window.catalogoModule.invalidateCache(); if(window.ventasModule)window.ventasModule.invalidateCache();
         _showModal(errorsOccurred?'Limpieza Completada (con errores)':'Limpieza Completada', `Intentado para ${allUserIds.length} usuarios. Docs/Configs eliminados: ${deletedDocCount}. ${errorsOccurred?'Ocurrieron errores. Revisa consola.':''}`, showAdminSubMenuView, 'OK');
@@ -470,10 +460,10 @@
 
     // --- Funciones para Importar/Exportar Inventario ---
     async function getRubroOrderMapAdmin() {
-        if (_rubroOrderCacheAdmin) return _rubroOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/rubros`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _rubroOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getRubroOrderMapAdmin:", e); return {}; }
+        if (_rubroOrderCacheAdmin) return _rubroOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/rubros`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _rubroOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getRubroOrderMapAdmin:", e); return {}; }
     }
     async function getSegmentoOrderMapAdmin() {
-         if (_segmentoOrderCacheAdmin) return _segmentoOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/segmentos`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _segmentoOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getSegmentoOrderMapAdmin:", e); return {}; }
+         if (_segmentoOrderCacheAdmin) return _segmentoOrderCacheAdmin; const map = {}; const ref = _collection(_db, `artifacts/${_appId}/users/${_userId}/segmentos`); try { const snap = await _getDocs(ref); snap.docs.forEach(d => { const data = d.data(); map[data.name] = data.orden ?? 9999; }); _segmentoOrderCacheAdmin = map; return map; } catch (e) { console.warn("Error getSegmentoOrderMapAdmin:", e); return {}; }
     }
     function showImportExportInventarioView() {
         _floatingControls?.classList.add('hidden');
@@ -496,7 +486,7 @@
         if (typeof ExcelJS === 'undefined') { _showModal('Error', 'Librería ExcelJS no cargada.'); return; }
         _showModal('Progreso', 'Generando Excel...');
         try { 
-            const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`); 
+            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); 
             const snap = await _getDocs(invRef); 
             let inv = snap.docs.map(d => ({ id: d.id, ...d.data() })); 
             const rOMap = await getRubroOrderMapAdmin(); 
@@ -612,13 +602,13 @@
                 const nombresNuevos = Array.from(categoriasNuevas[tipoCategoria]);
                 if (nombresNuevos.length > 0) {
                     _showModal('Progreso', `Verificando ${tipoCategoria} existentes...`);
-                    const collectionRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/${tipoCategoria}`);
+                    const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
                     const snapshot = await _getDocs(collectionRef);
                     const nombresExistentes = new Set(snapshot.docs.map(doc => doc.data().name));
                     nombresNuevos.forEach(nombre => { if (!nombresExistentes.has(nombre)) { categoriasParaAgregar[tipoCategoria].push({ name: nombre }); } });
                 }
             }
-            const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`);
+            const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`);
             const snap = await _getDocs(invRef);
             const curInvMap = new Map();
             snap.docs.forEach(d => { const data = d.data(); const key = `${data.rubro || ''}|${data.segmento || ''}|${data.marca || ''}|${data.presentacion || ''}`.toUpperCase(); curInvMap.set(key, d.id); });
@@ -655,7 +645,7 @@
                     const BATCH_LIMIT = 490;
                     const addedCategoriesData = [];
                     for (const tipoCategoria of ['rubros', 'segmentos', 'marcas']) {
-                        const collectionRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/${tipoCategoria}`);
+                        const collectionRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/${tipoCategoria}`);
                         for (const catData of categoriasParaAgregar[tipoCategoria]) {
                             const newCatRef = _doc(collectionRef); 
                             batchCategorias.set(newCatRef, catData);
@@ -737,7 +727,7 @@
     }
     async function loadAndPopulateObsequioSelect() {
         const selEl = document.getElementById('obsequioProductSelect'); if (!selEl) return; const pubConfPath = `artifacts/ventas-9a210/public/data/config/obsequio`;
-        try { const invRef = _collection(_db, `artifacts/${DB_ID}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); const pVal = snap.docs.map(d=>({id: d.id,...d.data()})).filter(p=>p.manejaVacios&&p.ventaPor?.cj).sort((a,b)=>`${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
+        try { const invRef = _collection(_db, `artifacts/${_appId}/users/${_userId}/inventario`); const snap = await _getDocs(invRef); const pVal = snap.docs.map(d=>({id: d.id,...d.data()})).filter(p=>p.manejaVacios&&p.ventaPor?.cj).sort((a,b)=>`${a.marca} ${a.segmento} ${a.presentacion}`.localeCompare(`${b.marca} ${b.segmento} ${b.presentacion}`));
             selEl.innerHTML='<option value="">-- Seleccione --</option>'; const saveBtn = document.getElementById('saveObsequioConfigBtn');
             if (pVal.length===0) { selEl.innerHTML='<option value="">No hay productos válidos</option>'; selEl.disabled=true; if(saveBtn) saveBtn.disabled=true; }
             else { pVal.forEach(p=>{selEl.innerHTML+=`<option value="${p.id}">${p.marca} - ${p.segmento} - ${p.presentacion}</option>`;}); selEl.disabled=false; if(saveBtn) saveBtn.disabled=false; const confRef = _doc(_db, pubConfPath); const confSnap = await _getDoc(confRef); if (confSnap.exists()){ _obsequioProductId = confSnap.data().productoId; if (_obsequioProductId && pVal.some(p=>p.id===_obsequioProductId)) selEl.value=_obsequioProductId; else if (_obsequioProductId) _obsequioProductId=null; } }
@@ -754,16 +744,16 @@
     }
     async function propagateProductChange(productId, productData) {
         if (!productId) { console.error("propagateProductChange: productId missing."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating product ${productId} to users:`, allUIds); const BATCH_LIMIT = 490; let batch = _writeBatch(_db); let ops = 0; let errors = false;
-        try { for (const tUserId of allUIds) { const tPRef = _doc(_db, `artifacts/${DB_ID}/users/${tUserId}/inventario`, productId); if (productData === null) { batch.delete(tPRef); } else { const { cantidadUnidades, ...defData } = productData; const tDSnap = await _getDoc(tPRef); if (tDSnap.exists()) { batch.set(tPRef, defData, { merge: true }); } else { const initData = { ...defData, cantidadUnidades: 0 }; batch.set(tPRef, initData); } } ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for product ${productId}.`); } catch (error) { errors = true; console.error("Error propagating product:", error); window.showModal('Error', `Error propagando producto: ${error.message}.`); }
+        try { for (const tUserId of allUIds) { const tPRef = _doc(_db, `artifacts/${_appId}/users/${tUserId}/inventario`, productId); if (productData === null) { batch.delete(tPRef); } else { const { cantidadUnidades, ...defData } = productData; const tDSnap = await _getDoc(tPRef); if (tDSnap.exists()) { batch.set(tPRef, defData, { merge: true }); } else { const initData = { ...defData, cantidadUnidades: 0 }; batch.set(tPRef, initData); } } ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); const modal = document.getElementById('modalContainer'); if(modal && !modal.classList.contains('hidden') && modal.querySelector('h3')?.textContent.startsWith('Progreso')) modal.classList.add('hidden'); console.log(`Propagation complete for product ${productId}.`); } catch (error) { errors = true; console.error("Error propagating product:", error); window.showModal('Error', `Error propagando producto: ${error.message}.`); }
     }
      async function propagateCategoryChange(collectionName, itemId, itemData) {
          if (!collectionName || !itemId) { console.error("propagateCategoryChange: missing args."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating category ${collectionName} (${itemId}) to ${allUIds.length} users...`); const BATCH_LIMIT = 490; let batch = _writeBatch(_db); let ops = 0; let errors = false;
-         try { for (const tUserId of allUIds) { const tIRef = _doc(_db, `artifacts/${DB_ID}/users/${tUserId}/${collectionName}`, itemId); if (itemData === null) batch.delete(tIRef); else batch.set(tIRef, itemData); ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); console.log(`Propagation complete for category ${collectionName} (${itemId}).`); } catch (error) { errors = true; console.error(`Error propagating category ${collectionName} (${itemId}):`, error); window.showModal('Error Propagación', `Error al actualizar categoría.`); }
+         try { for (const tUserId of allUIds) { const tIRef = _doc(_db, `artifacts/${_appId}/users/${tUserId}/${collectionName}`, itemId); if (itemData === null) batch.delete(tIRef); else batch.set(tIRef, itemData); ops++; if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } } if (ops > 0) await batch.commit(); console.log(`Propagation complete for category ${collectionName} (${itemId}).`); } catch (error) { errors = true; console.error(`Error propagating category ${collectionName} (${itemId}):`, error); window.showModal('Error Propagación', `Error al actualizar categoría.`); }
      }
      async function propagateCategoryOrderChange(collectionName, orderedIds) {
           if (!collectionName || !Array.isArray(orderedIds)) { console.error("propagateCategoryOrderChange: missing args."); return; } const allUIds = await _getAllOtherUserIds(); if (allUIds.length === 0) return; console.log(`Propagating order for ${collectionName} to users:`, allUIds); const BATCH_LIMIT = 490; let errors = false;
           try { const oMap = new Map(orderedIds.map((id, i) => [id, i])); let maxOrdAdmin = orderedIds.length - 1;
-              for (const tUserId of allUIds) { let batch = _writeBatch(_db); let ops = 0; const tColRef = _collection(_db, `artifacts/${DB_ID}/users/${tUserId}/${collectionName}`); const snap = await _getDocs(tColRef); let uMaxOrd = maxOrdAdmin; const itemsUser = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+              for (const tUserId of allUIds) { let batch = _writeBatch(_db); let ops = 0; const tColRef = _collection(_db, `artifacts/${_appId}/users/${tUserId}/${collectionName}`); const snap = await _getDocs(tColRef); let uMaxOrd = maxOrdAdmin; const itemsUser = snap.docs.map(d => ({ id: d.id, data: d.data() }));
                   for (const item of itemsUser) { const cOrd = item.data.orden; let nOrd; if (oMap.has(item.id)) { nOrd = oMap.get(item.id); if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } uMaxOrd = Math.max(uMaxOrd, nOrd); } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
                   itemsUser.sort((a,b)=> (a.data.name || '').localeCompare(b.data.name || ''));
                   for (const item of itemsUser) { if (!oMap.has(item.id)) { uMaxOrd++; const nOrd = uMaxOrd; const cOrd = item.data.orden; if (cOrd !== nOrd) { const tIRef = _doc(tColRef, item.id); batch.update(tIRef, { orden: nOrd }); ops++; } } if (ops >= BATCH_LIMIT) { await batch.commit(); batch = _writeBatch(_db); ops = 0; } }
